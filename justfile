@@ -168,7 +168,10 @@ prefect-plan:
 # check the state of everything
 status:
     @echo "==> nodes"
-    @kubectl get nodes
+    @kubectl top nodes
+    @echo ""
+    @echo "==> pods (by memory)"
+    @kubectl top pods --all-namespaces --sort-by=memory
     @echo ""
     @echo "==> pods (prefect)"
     @kubectl get pods -n prefect
@@ -176,12 +179,32 @@ status:
     @echo "==> pods (monitoring)"
     @kubectl get pods -n monitoring
 
-# tail prefect server logs
-logs:
-    kubectl logs -n prefect -l app.kubernetes.io/name=prefect-server -f
+# tail logs for a component (server, background-services, worker)
+logs component="prefect-server":
+    kubectl logs -n prefect -l app.kubernetes.io/name={{component}} -f
 
 # check prefect health via public endpoint
 health:
     #!/usr/bin/env bash
     : "${DOMAIN:?set DOMAIN}"
     curl -sf "https://$DOMAIN/api/health" | jq .
+
+# run a prefect CLI command against the remote server
+prefect *args:
+    PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
+        uv run --with prefect prefect {{args}}
+
+# reload grafana dashboards from deploy/dashboards/
+dashboards:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for dashboard in deploy/dashboards/*.json; do
+        name=$(basename "$dashboard" .json | tr '.' '-')
+        kubectl create configmap "prefect-dashboard-$name" \
+            --namespace monitoring \
+            --from-file="$dashboard" \
+            --dry-run=client -o yaml \
+            | kubectl label --local -f - grafana_dashboard=1 -o yaml \
+            | kubectl apply -f -
+        echo "  loaded $name"
+    done

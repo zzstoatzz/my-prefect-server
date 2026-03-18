@@ -36,8 +36,8 @@ kubelet:
 
 prometheus:
   prometheusSpec:
-    scrapeInterval: 30s
-    retention: 14d
+    scrapeInterval: 60s
+    retention: 7d
     serviceMonitorSelectorNilUsesHelmValues: false
     storageSpec:
       volumeClaimTemplate:
@@ -48,9 +48,9 @@ prometheus:
               storage: 10Gi
     resources:
       requests:
-        memory: 256Mi
+        memory: 200Mi
       limits:
-        memory: 1Gi
+        memory: 512Mi
 
   prometheusOperator:
     resources:
