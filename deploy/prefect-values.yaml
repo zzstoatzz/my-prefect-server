@@ -8,9 +8,12 @@ server:
   uiConfig:
     prefectUiApiUrl: "https://DOMAIN_PLACEHOLDER/api"
 
+  extraEnvVarsCM: prefect-docket-config
+
 backgroundServices:
   runAsSeparateDeployment: true
   replicaCount: 1
+  extraEnvVarsCM: prefect-docket-config
 
 postgresql:
   enabled: true
