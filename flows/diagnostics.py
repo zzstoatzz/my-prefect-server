@@ -23,7 +23,7 @@ if __name__ == "__main__":
         source="https://tangled.sh/zzstoatzz.io/my-prefect-server.git",
         entrypoint="flows/diagnostics.py:diagnostics",
     ).deploy(
-        name="diagnostics-every-5m",
+        name="diagnostics",
         work_pool_name="kubernetes-pool",
         cron="*/5 * * * *",
     )

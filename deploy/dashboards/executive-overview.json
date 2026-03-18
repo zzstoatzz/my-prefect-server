@@ -248,7 +248,7 @@
       "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
       "title": "pods not ready",
       "type": "stat",
-      "targets": [{ "expr": "count(kube_pod_status_phase{namespace=~\"prefect|monitoring\", phase=~\"Failed|Unknown\"}) or vector(0)", "refId": "A" }]
+      "targets": [{ "expr": "count(kube_pod_status_phase{namespace=~\"prefect|monitoring\", phase=~\"Failed|Unknown\"} == 1) or vector(0)", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },

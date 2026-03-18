@@ -11,9 +11,9 @@ variable "ssh_public_key_path" {
 }
 
 variable "server_type" {
-  description = "Hetzner server type (cpx21 = 3 vCPU, 4 GB RAM, 80 GB disk)"
+  description = "Hetzner server type (cpx31 = 4 vCPU, 8 GB RAM, 160 GB disk)"
   type        = string
-  default     = "cpx21"
+  default     = "cpx31"
 }
 
 variable "location" {

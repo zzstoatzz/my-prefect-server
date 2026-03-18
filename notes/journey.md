@@ -149,27 +149,124 @@ if __name__ == "__main__":
 └─────────────────────────────────────────────────────┘
 ```
 
-## TODO: file issue on prefecthq/prefect-helm
+## step 6: redis/docket configuration
 
-**the `prefect-server` helm chart does not configure `PREFECT_SERVER_DOCKET_URL`.**
+docket is Prefect's coordination layer for background services (scheduler, late run detection, automation triggers). it's configured via `PREFECT_SERVER_DOCKET_URL` and defaults to `memory://`, which only works for single-process deployments.
 
-when `redis.enabled: true` and `backgroundServices.runAsSeparateDeployment: true`, the chart automatically sets all the other Redis env vars:
-- `PREFECT_MESSAGING_BROKER`
-- `PREFECT_MESSAGING_CACHE`
-- `PREFECT_SERVER_EVENTS_CAUSAL_ORDERING`
-- `PREFECT_SERVER_CONCURRENCY_LEASE_STORAGE`
-- `PREFECT_REDIS_MESSAGING_HOST` / `PORT` / `DB` / `PASSWORD`
+the helm chart auto-configures all the other Redis env vars (`PREFECT_MESSAGING_BROKER`, `PREFECT_MESSAGING_CACHE`, etc.) but does NOT set `PREFECT_SERVER_DOCKET_URL`. this means HA deployments silently run docket in-memory mode.
 
-but it does NOT set `PREFECT_SERVER_DOCKET_URL`, which defaults to `memory://` (single-server only). this means HA deployments using the helm chart have docket silently running in-memory mode, which breaks coordination of background services like the scheduler, late run detection, and automation triggers.
+### workaround: ConfigMap for docket URL
 
-the fix should be: when `redis.enabled: true`, automatically set `PREFECT_SERVER_DOCKET_URL` to `redis://<redis-host>:6379/1` (using a separate db number from messaging, matching the docker-compose example in the self-hosted docs). this belongs in the `backgroundServices.envVars` helper in `_helpers.tpl`.
+created a ConfigMap with `PREFECT_SERVER_DOCKET_URL` and referenced it via `extraEnvVarsCM` on both `server` and `backgroundServices`:
 
-the current workaround is creating a separate ConfigMap with the env var and referencing it via `extraEnvVarsCM` on both `server` and `backgroundServices`, which is unnecessarily complex for what should be a built-in setting.
+```yaml
+# in prefect-values.yaml
+server:
+  extraEnvVarsCM: prefect-docket-config
+backgroundServices:
+  extraEnvVarsCM: prefect-docket-config
+```
+
+### pitfall: Redis auth in docket URL
+
+initial attempt used `redis://redis-host:6379/1` — failed with `redis.exceptions.AuthenticationError`. the bitnami Redis subchart enables auth by default. the URL must include the password:
+
+```
+redis://:${REDIS_PASSWORD}@prefect-server-redis-master.prefect.svc.cluster.local:6379/1
+```
+
+verified docket is working by checking Redis db 1:
+```bash
+kubectl exec -it -n prefect prefect-server-redis-master-0 -- redis-cli -a "$PASS" -n 1 KEYS '*'
+# shows docket coordination keys
+```
+
+### TODO: file issue on prefecthq/prefect-helm
+
+**the `prefect-server` helm chart should configure `PREFECT_SERVER_DOCKET_URL` automatically.**
+
+when `redis.enabled: true`, the chart should set `PREFECT_SERVER_DOCKET_URL` to `redis://<redis-host>:6379/1` (separate db from messaging, matching the docker-compose example in the self-hosted docs). this belongs in the `backgroundServices.envVars` helper in `_helpers.tpl`.
 
 **action: create an issue at https://github.com/PrefectHQ/prefect-helm/issues with the above.**
 
+## step 7: executive grafana dashboard
+
+built a single-pane dashboard (`deploy/dashboards/executive-overview.json`) combining infra + prefect overview:
+
+**prefect section:**
+- stat panels: flows, deployments, work pools, workers, avg run time, active runs
+- pie chart: flow runs by state (color-coded — green/completed, red/failed, blue/running, etc.)
+- table: deployments with name, flow, status, work pool
+
+**infrastructure section:**
+- gauge panels: node CPU %, memory %, disk %
+- stat panel: pods not ready (Failed|Unknown only — initially counted Succeeded pods from completed Jobs, which inflated the number to 51)
+- time series: per-pod CPU and memory usage in the prefect namespace
+
+dashboards are loaded as ConfigMaps with the `grafana_dashboard: "1"` label, auto-discovered by the grafana sidecar.
+
+### pitfall: pods-not-ready counting completed Jobs
+
+initial query counted all pods not in `Running` or `Succeeded` phase. but completed flow run Jobs leave pods in `Succeeded` state, and a broad "not ready" filter caught them. fix: only count `Failed|Unknown` phases:
+```promql
+count(kube_pod_status_phase{namespace=~"prefect|monitoring", phase=~"Failed|Unknown"}) or vector(0)
+```
+
+## step 8: memory optimization
+
+the cpx21 node (4 GB RAM) was at ~80% memory usage. biggest consumers:
+- grafana: ~340 Mi
+- prometheus: ~301 Mi
+- prefect API servers (2 replicas): ~170 Mi each
+
+optimizations applied:
+1. scaled API server to 1 replica (sufficient for this use case)
+2. increased prometheus scrape interval from 30s to 60s
+3. reduced prometheus retention from 14d to 7d
+4. set explicit resource limits on prometheus (512Mi), grafana (256Mi), prometheus-operator (128Mi)
+
+result: ~73% memory usage, stable.
+
+## step 9: justfile as the operations interface
+
+early on, we were running long ad-hoc `kubectl` commands. consolidated everything into justfile recipes to keep operations repeatable:
+
+- `just logs [component]` — parameterized log tailing (defaults to prefect-server)
+- `just prefect *args` — proxy for running prefect CLI against the remote server
+- `just dashboards` — reload grafana dashboards from `deploy/dashboards/`
+- `just status` — `kubectl top nodes`, `kubectl top pods`, pod status for prefect + monitoring namespaces
+
+**lesson**: if you're running it more than once, put it in the justfile.
+
+## architecture summary
+
+```
+┌─────────────────────────────────────────────────────┐
+│ hetzner cpx21 (k3s)                                 │
+│                                                     │
+│  prefect namespace:                                 │
+│    ├── prefect-server (1 replica) ─── traefik ─── TLS │
+│    ├── prefect-background-services (1 replica)      │
+│    ├── postgresql (1 replica, 10Gi PVC)             │
+│    ├── redis (1 replica, standalone)                │
+│    ├── prefect-worker (1 replica)                   │
+│    ├── prometheus-prefect-exporter                  │
+│    └── flow run jobs (ephemeral, per-run)           │
+│                                                     │
+│  monitoring namespace:                              │
+│    ├── prometheus (60s scrape, 7d retention)        │
+│    ├── grafana ─── traefik ─── TLS                  │
+│    ├── node-exporter                                │
+│    └── kube-state-metrics                           │
+│                                                     │
+│  cert-manager namespace:                            │
+│    └── cert-manager (ACME/Let's Encrypt)            │
+└─────────────────────────────────────────────────────┘
+```
+
 ## what's next
 
-- custom "executive" grafana dashboard — single pane with infra + prefect overview
 - CI for flow registration on tangled (.tangled CI, not github actions)
+- more interesting deployments with automations
+- file upstream issue on prefecthq/prefect-helm for docket URL
 - contribute guide back to prefect docs
