@@ -19,9 +19,11 @@ def diagnostics():
 
 
 if __name__ == "__main__":
-    diagnostics.deploy(
+    flow.from_source(
+        source="https://tangled.sh/zzstoatzz.io/my-prefect-server.git",
+        entrypoint="flows/diagnostics.py:diagnostics",
+    ).deploy(
         name="diagnostics-every-5m",
         work_pool_name="kubernetes-pool",
-        image="prefecthq/prefect:3-latest",
         cron="*/5 * * * *",
     )

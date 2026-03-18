@@ -16,7 +16,7 @@ spec:
       serviceAccountName: prefect-worker
       containers:
         - name: worker
-          image: prefecthq/prefect:3-latest
+          image: prefecthq/prefect:3-python3.11-kubernetes
           command:
             - prefect
             - worker
@@ -31,6 +31,8 @@ spec:
                 secretKeyRef:
                   name: prefect-auth
                   key: auth-string
+            - name: PREFECT_INTEGRATIONS_KUBERNETES_OBSERVER_NAMESPACES
+              value: prefect
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -44,12 +46,12 @@ metadata:
   name: prefect-worker
   namespace: prefect
 rules:
+  - apiGroups: [""]
+    resources: ["events", "pods", "pods/log", "pods/status"]
+    verbs: ["get", "watch", "list"]
   - apiGroups: ["batch"]
     resources: ["jobs"]
-    verbs: ["create", "get", "list", "watch", "delete"]
-  - apiGroups: [""]
-    resources: ["pods", "pods/log"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
