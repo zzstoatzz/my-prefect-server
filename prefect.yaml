@@ -14,3 +14,17 @@ deployments:
       name: kubernetes-pool
     schedules:
       - cron: "*/5 * * * *"
+
+  - name: cleanup
+    entrypoint: flows/cleanup.py:cleanup
+    work_pool:
+      name: kubernetes-pool
+    schedules:
+      - cron: "0 2 * * 0"
+    parameters:
+      config:
+        days_to_keep: 30
+        states_to_clean: ["Completed", "Failed", "Cancelled", "Crashed"]
+        batch_size: 100
+        rate_limit_delay: 0.5
+        dry_run: true
