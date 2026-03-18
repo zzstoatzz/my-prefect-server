@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prefect-worker
+  namespace: prefect
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prefect-worker
+  template:
+    metadata:
+      labels:
+        app: prefect-worker
+    spec:
+      serviceAccountName: prefect-worker
+      containers:
+        - name: worker
+          image: prefecthq/prefect:3-latest
+          command:
+            - prefect
+            - worker
+            - start
+            - --pool
+            - kubernetes-pool
+          env:
+            - name: PREFECT_API_URL
+              value: http://prefect-server.prefect.svc.cluster.local:4200/api
+            - name: PREFECT_API_AUTH_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: prefect-auth
+                  key: auth-string
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prefect-worker
+  namespace: prefect
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: prefect-worker
+  namespace: prefect
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: prefect-worker
+  namespace: prefect
+subjects:
+  - kind: ServiceAccount
+    name: prefect-worker
+    namespace: prefect
+roleRef:
+  kind: Role
+  name: prefect-worker
+  apiGroup: rbac.authorization.k8s.io

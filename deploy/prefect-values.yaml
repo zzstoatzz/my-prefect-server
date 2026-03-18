@@ -1,0 +1,39 @@
+server:
+  replicaCount: 2
+
+  basicAuth:
+    enabled: true
+    existingSecret: prefect-auth
+
+  uiConfig:
+    prefectUiApiUrl: "https://DOMAIN_PLACEHOLDER/api"
+
+backgroundServices:
+  runAsSeparateDeployment: true
+  replicaCount: 1
+
+postgresql:
+  enabled: true
+  auth:
+    enablePostgresUser: false
+    database: prefect
+    username: prefect
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+
+redis:
+  enabled: true
+  architecture: standalone
+
+ingress:
+  enabled: true
+  className: traefik
+  host:
+    hostname: DOMAIN_PLACEHOLDER
+    path: /
+    pathType: Prefix
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls: true

@@ -1,0 +1,81 @@
+# lightweight kube-prometheus-stack — follows relay/indigo pattern
+alertmanager:
+  enabled: false
+
+nodeExporter:
+  enabled: true
+
+kubeStateMetrics:
+  enabled: true
+
+kubeApiServer:
+  enabled: false
+
+kubeControllerManager:
+  enabled: false
+
+kubeScheduler:
+  enabled: false
+
+kubeProxy:
+  enabled: false
+
+kubeEtcd:
+  enabled: false
+
+kubeDns:
+  enabled: false
+
+coreDns:
+  enabled: false
+
+kubelet:
+  enabled: true
+  serviceMonitor:
+    cAdvisor: true
+
+prometheus:
+  prometheusSpec:
+    scrapeInterval: 30s
+    retention: 14d
+    serviceMonitorSelectorNilUsesHelmValues: false
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+    resources:
+      requests:
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+
+  prometheusOperator:
+    resources:
+      requests:
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+
+grafana:
+  enabled: true
+  adminPassword: bufobufobufo
+  grafana.ini:
+    auth.anonymous:
+      enabled: true
+      org_role: Viewer
+    server:
+      root_url: "https://GRAFANA_DOMAIN_PLACEHOLDER"
+
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+
+  resources:
+    requests:
+      memory: 128Mi
+    limits:
+      memory: 256Mi

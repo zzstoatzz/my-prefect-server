@@ -1,0 +1,12 @@
+# prometheus-prefect-exporter values
+prefectApiUrl: "http://prefect-server.prefect.svc.cluster.local:4200/api"
+
+basicAuth:
+  enabled: true
+  existingSecret: prefect-auth
+  existingSecretKey: auth-string
+
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  scrapeTimeout: 10s
