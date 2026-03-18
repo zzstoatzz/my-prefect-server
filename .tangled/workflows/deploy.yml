@@ -1,0 +1,17 @@
+when:
+  - event: ["push"]
+    branch: main
+
+engine: nixery
+
+dependencies:
+  nixpkgs:
+    - uv
+
+environment:
+  PREFECT_API_URL: "https://prefect-server.waow.tech/api"
+
+steps:
+  - name: register flows
+    command: |
+      uv run --with prefect flows/diagnostics.py
