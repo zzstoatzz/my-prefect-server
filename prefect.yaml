@@ -2,7 +2,7 @@ name: my-prefect-server
 
 pull:
   - prefect.deployments.steps.git_clone:
-      repository: https://tangled.org/zzstoatzz.io/my-prefect-server
+      repository: https://github.com/zzstoatzz/my-prefect-server.git
       branch: main
 
 deployments:
