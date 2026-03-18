@@ -1,5 +1,7 @@
 self-hosted prefect OSS on a single hetzner VM (k3s), with monitoring.
 
+[executive dashboard](https://prefect-metrics.waow.tech/d/executive-overview/executive-overview?orgId=1&from=now-6h&to=now&timezone=browser)
+
 <details>
 <summary>deployment</summary>
 

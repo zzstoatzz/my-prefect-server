@@ -17,80 +17,35 @@
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
-          "thresholds": { "steps": [{ "color": "green", "value": null }] }
-        }
-      },
-      "gridPos": { "h": 3, "w": 4, "x": 0, "y": 1 },
-      "id": 1,
-      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "title": "flows",
-      "type": "stat",
-      "targets": [{ "expr": "sum(prefect_flows_total)", "refId": "A" }]
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": { "steps": [{ "color": "green", "value": null }] }
-        }
-      },
-      "gridPos": { "h": 3, "w": 4, "x": 4, "y": 1 },
-      "id": 2,
-      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "title": "deployments",
-      "type": "stat",
-      "targets": [{ "expr": "sum(prefect_deployments_total)", "refId": "A" }]
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": { "steps": [{ "color": "green", "value": null }] }
-        }
-      },
-      "gridPos": { "h": 3, "w": 4, "x": 8, "y": 1 },
-      "id": 3,
-      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "title": "work pools",
-      "type": "stat",
-      "targets": [{ "expr": "sum(prefect_work_pools_total)", "refId": "A" }]
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": { "steps": [{ "color": "green", "value": null }] }
-        }
-      },
-      "gridPos": { "h": 3, "w": 4, "x": 12, "y": 1 },
-      "id": 4,
-      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "title": "workers",
-      "type": "stat",
-      "targets": [{ "expr": "sum(kube_deployment_status_replicas{deployment=~\".*worker\"})", "refId": "A" }]
-    },
-    {
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
           "thresholds": { "steps": [
             { "color": "green", "value": null },
-            { "color": "yellow", "value": 60 },
-            { "color": "red", "value": 300 }
-          ] },
-          "unit": "s"
+            { "color": "red", "value": 1 }
+          ] }
         }
       },
-      "gridPos": { "h": 3, "w": 4, "x": 16, "y": 1 },
-      "id": 5,
-      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "title": "avg run time",
+      "gridPos": { "h": 3, "w": 8, "x": 0, "y": 1 },
+      "id": 2,
+      "description": "work pools with status != READY",
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "pools not ready",
       "type": "stat",
-      "targets": [{ "expr": "avg(prefect_flow_runs_total_run_time)", "refId": "A" }]
+      "targets": [{ "expr": "count(group by (name) (prefect_info_work_pools{status!=\"READY\"})) or vector(0)", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "steps": [{ "color": "green", "value": null }] }
+        }
+      },
+      "gridPos": { "h": 3, "w": 8, "x": 8, "y": 1 },
+      "id": 3,
+      "description": "terminal runs in 24h snapshot window",
+      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "terminal runs (24h)",
+      "type": "stat",
+      "targets": [{ "expr": "sum(prefect_info_flow_runs{state_name=~\"Completed|Failed|Crashed|Cancelled\"}) or vector(0)", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -103,38 +58,34 @@
           ] }
         }
       },
-      "gridPos": { "h": 3, "w": 4, "x": 20, "y": 1 },
-      "id": 6,
-      "options": { "colorMode": "value", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "title": "runs (active)",
+      "gridPos": { "h": 3, "w": 8, "x": 16, "y": 1 },
+      "id": 4,
+      "description": "late_runs_count from work queues",
+      "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
+      "title": "late runs",
       "type": "stat",
-      "targets": [{ "expr": "count(prefect_info_flow_runs{state_name=~\"Running|Pending|Scheduled\"}) or vector(0)", "refId": "A" }]
+      "targets": [{ "expr": "sum(prefect_late_runs) or vector(0)", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": {
-            "fillOpacity": 80,
-            "stacking": { "mode": "normal" }
-          }
+          "color": { "mode": "palette-classic" }
         },
         "overrides": [
-          { "matcher": { "id": "byName", "options": "COMPLETED" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "FAILED" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "RUNNING" }, "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "CANCELLED" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "CRASHED" }, "properties": [{ "id": "color", "value": { "fixedColor": "dark-red", "mode": "fixed" } }] },
-          { "matcher": { "id": "byName", "options": "PENDING" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] }
+          { "matcher": { "id": "byName", "options": "Completed" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Failed" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Cancelled" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Crashed" }, "properties": [{ "id": "color", "value": { "fixedColor": "dark-red", "mode": "fixed" } }] }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 11 },
       "id": 10,
+      "description": "snapshot of terminal runs in 24h window",
       "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "tooltip": { "mode": "multi" }, "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] }, "pieType": "donut" },
-      "title": "flow runs by state",
+      "title": "runs by state (24h)",
       "type": "piechart",
-      "targets": [{ "expr": "count by (state_name) (prefect_info_flow_runs)", "legendFormat": "{{ state_name }}", "refId": "A", "instant": true }]
+      "targets": [{ "expr": "sum by (state_name) (prefect_info_flow_runs{state_name=~\"Completed|Failed|Crashed|Cancelled\"})", "legendFormat": "{{ state_name }}", "refId": "A" }]
     },
     {
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -149,19 +100,20 @@
           { "matcher": { "id": "byName", "options": "work_pool_name" }, "properties": [{ "id": "custom.width", "value": 120 }] }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 11 },
       "id": 11,
+      "description": "current deployment registrations",
       "options": { "showHeader": true, "sortBy": [{ "displayName": "deployment_name", "desc": false }] },
       "title": "deployments",
       "type": "table",
-      "targets": [{ "expr": "prefect_info_deployment", "format": "table", "instant": true, "refId": "A" }],
+      "targets": [{ "expr": "max by (deployment_name, flow_name, status, work_pool_name) (prefect_info_deployment)", "format": "table", "instant": true, "refId": "A" }],
       "transformations": [
         { "id": "filterFieldsByName", "options": { "include": { "names": ["deployment_name", "flow_name", "status", "work_pool_name"] } } }
       ]
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 12 },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 19 },
       "id": 200,
       "title": "infrastructure",
       "type": "row"
@@ -181,7 +133,7 @@
           "unit": "percent"
         }
       },
-      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 13 },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 20 },
       "id": 20,
       "options": { "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "showThresholdLabels": false, "showThresholdMarkers": true },
       "title": "node CPU",
@@ -203,7 +155,7 @@
           "unit": "percent"
         }
       },
-      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 13 },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 20 },
       "id": 21,
       "options": { "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "showThresholdLabels": false, "showThresholdMarkers": true },
       "title": "node memory",
@@ -225,7 +177,7 @@
           "unit": "percent"
         }
       },
-      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 13 },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 20 },
       "id": 22,
       "options": { "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"] }, "showThresholdLabels": false, "showThresholdMarkers": true },
       "title": "node disk",
@@ -243,7 +195,7 @@
           ] }
         }
       },
-      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 13 },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 20 },
       "id": 23,
       "options": { "colorMode": "background", "graphMode": "none", "reduceOptions": { "calcs": ["lastNotNull"] } },
       "title": "pods not ready",
@@ -259,7 +211,7 @@
           "unit": "percentunit"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 18 },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 4 },
       "id": 30,
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
       "title": "pod CPU usage (prefect)",
@@ -275,7 +227,7 @@
           "unit": "bytes"
         }
       },
-      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 18 },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 4 },
       "id": 31,
       "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
       "title": "pod memory usage (prefect)",

@@ -1,10 +1,21 @@
-# prometheus-prefect-exporter values
+# prometheus-prefect-exporter values (forked: zzstoatzz/prometheus-prefect-exporter)
+image:
+  repository: atcr.io/zzstoatzz.io/prometheus-prefect-exporter
+  tag: better-metrics
+  pullPolicy: Always
+
+imagePullSecrets:
+  - name: atcr-creds
+
 prefectApiUrl: "http://prefect-server.prefect.svc.cluster.local:4200/api"
 
 basicAuth:
   enabled: true
   existingSecret: prefect-auth
   existingSecretKey: auth-string
+
+env:
+  OFFSET_MINUTES: "1440"
 
 serviceMonitor:
   enabled: true
