@@ -7,11 +7,13 @@ engine: nixery
 dependencies:
   nixpkgs:
     - uv
+    - python3
 
 environment:
   PREFECT_API_URL: "https://prefect-server.waow.tech/api"
+  UV_PYTHON_PREFERENCE: "only-system"
 
 steps:
   - name: register flows
     command: |
-      uv run --python 3.12 --with prefect flows/diagnostics.py
+      uv run --with prefect flows/diagnostics.py
