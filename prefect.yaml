@@ -1,0 +1,14 @@
+name: my-prefect-server
+
+pull:
+  - prefect.deployments.steps.git_clone:
+      repository: https://tangled.org/zzstoatzz.io/my-prefect-server
+      branch: main
+
+deployments:
+  - name: diagnostics
+    entrypoint: flows/diagnostics.py:diagnostics
+    work_pool:
+      name: kubernetes-pool
+    schedules:
+      - cron: "*/5 * * * *"

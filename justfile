@@ -143,7 +143,7 @@ worker:
 # register flow deployments (run locally with PREFECT_API_URL + PREFECT_API_AUTH_STRING)
 register-flows:
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
-        uv run --with prefect flows/diagnostics.py
+        uv run --with prefect prefect --no-prompt deploy --all
 
 # --- prefect resources (terraform) ---
 

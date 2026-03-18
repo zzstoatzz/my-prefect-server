@@ -16,4 +16,4 @@ environment:
 steps:
   - name: register flows
     command: |
-      uv run --with prefect flows/diagnostics.py
+      uv run --with prefect prefect --no-prompt deploy --all
