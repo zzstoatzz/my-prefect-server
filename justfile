@@ -201,6 +201,10 @@ health:
     : "${DOMAIN:?set DOMAIN}"
     curl -sf "https://$DOMAIN/api/health" | jq .
 
+# first-time dbt setup: install deps, seed reference data, compile models
+init-analytics:
+    cd analytics && uv run dbt deps && uv run dbt seed && uv run dbt compile
+
 # run a prefect CLI command against the remote server
 prefect *args:
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \

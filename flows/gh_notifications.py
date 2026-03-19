@@ -12,6 +12,7 @@ Requires:
 """
 
 import datetime
+import os
 from dataclasses import dataclass
 from typing import Literal
 
@@ -49,6 +50,7 @@ class IssueOrPR(BaseModel):
     updated_at: str | None = None
     user: str | None = None
     comments: int = 0
+    reactions_total: int = 0
 
 
 # --- cache policy ---
@@ -138,7 +140,41 @@ def fetch_issue_or_pr(ref: IssueRef, token: str) -> IssueOrPR | None:
         updated_at=data.get("updated_at"),
         user=(data.get("user") or {}).get("login"),
         comments=data.get("comments", 0),
+        reactions_total=(data.get("reactions") or {}).get("total_count", 0),
     )
+
+
+@task
+def write_to_duckdb(items: list[IssueOrPR], db_path: str) -> int:
+    import duckdb
+    con = duckdb.connect(db_path)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS raw_github_issues (
+            repo VARCHAR, number INTEGER, type VARCHAR,
+            title VARCHAR, state VARCHAR, body VARCHAR, url VARCHAR,
+            labels VARCHAR[], created_at VARCHAR, updated_at VARCHAR,
+            "user" VARCHAR, comments INTEGER, reactions_total INTEGER,
+            fetched_at TIMESTAMP DEFAULT now(),
+            PRIMARY KEY (repo, number)
+        )
+    """)
+    rows = [
+        (
+            item.repo, item.number, item.type,
+            item.title, item.state, item.body, item.url,
+            item.labels, item.created_at, item.updated_at,
+            item.user, item.comments, item.reactions_total,
+            datetime.datetime.now(datetime.UTC),
+        )
+        for item in items
+    ]
+    con.executemany(
+        "INSERT OR REPLACE INTO raw_github_issues VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    count = con.execute("SELECT count(*) FROM raw_github_issues").fetchone()[0]
+    con.close()
+    return count
 
 
 # --- flow ---
@@ -161,6 +197,10 @@ def gh_notifications(only_unread: bool = True) -> list[IssueOrPR]:
     futures = fetch_issue_or_pr.map(refs, unmapped(token))
     items = [r for r in futures.result() if r is not None]
     logger.info(f"resolved {len(items)} issues/PRs")
+
+    db_path = os.environ.get("PREFECT_LOCAL_STORAGE_PATH", "/tmp") + "/analytics.duckdb"
+    total = write_to_duckdb(items, db_path)
+    logger.info(f"upserted {len(items)} rows; {total} total in raw_github_issues")
     return items
 
 
