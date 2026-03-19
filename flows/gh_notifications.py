@@ -203,7 +203,10 @@ def gh_notifications(only_unread: bool = True) -> list[IssueOrPR]:
     items = [r for r in futures.result() if r is not None]
     logger.info(f"resolved {len(items)} issues/PRs")
 
-    db_path = os.environ.get("PREFECT_LOCAL_STORAGE_PATH", "/tmp") + "/analytics.duckdb"
+    db_path = os.environ.get(
+        "ANALYTICS_DB_PATH",
+        os.environ.get("PREFECT_LOCAL_STORAGE_PATH", "/tmp") + "/analytics.duckdb",
+    )
     total = write_to_duckdb(items, db_path)
     logger.info(f"upserted {len(items)} rows; {total} total in raw_github_issues")
     return items

@@ -3,5 +3,5 @@ github_intelligence:
   outputs:
     dev:
       type: duckdb
-      path: "{{ env_var('PREFECT_LOCAL_STORAGE_PATH', '/tmp') }}/analytics.duckdb"
+      path: "{{ env_var('ANALYTICS_DB_PATH', '/prefect-analytics/analytics.duckdb') }}"
       threads: 4

@@ -140,8 +140,16 @@ deploy:
 worker:
     kubectl apply -f deploy/worker.yaml
 
-# create the results PVC and patch the kubernetes-pool base job template to mount it
-results-storage:
+# create the analytics hostPath directory on the node (run once after cluster is up)
+analytics-storage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "==> creating /var/lib/prefect-analytics on the k3s node"
+    ssh root@$(just server-ip) "mkdir -p /var/lib/prefect-analytics"
+    echo "done — Grafana and flow pods can now share analytics.duckdb via hostPath"
+
+# create the results PVC, analytics hostPath, and patch the work pool
+results-storage: analytics-storage
     #!/usr/bin/env bash
     set -euo pipefail
     : "${DOMAIN:?set DOMAIN}"

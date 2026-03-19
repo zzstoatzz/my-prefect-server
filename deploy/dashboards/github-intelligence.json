@@ -1,0 +1,123 @@
+{
+  "title": "github intelligence",
+  "uid": "github-intelligence",
+  "version": 1,
+  "schemaVersion": 39,
+  "refresh": "5m",
+  "tags": ["prefect", "github"],
+  "templating": {
+    "list": [
+      {
+        "name": "DS_DUCKDB",
+        "type": "datasource",
+        "pluginId": "motherduck-duckdb-datasource",
+        "hide": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "tracked",
+      "description": "total issues + PRs in raw table",
+      "gridPos": {"h": 4, "w": 4, "x": 0, "y": 0},
+      "datasource": {"type": "motherduck-duckdb-datasource", "uid": "duckdb"},
+      "options": {"colorMode": "background", "graphMode": "none"},
+      "targets": [{"rawSql": "SELECT count(*)::INT AS value FROM raw_github_issues", "format": "table"}],
+      "fieldConfig": {"defaults": {"thresholds": {"steps": [{"color": "blue", "value": null}]}}}
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "open",
+      "gridPos": {"h": 4, "w": 4, "x": 4, "y": 0},
+      "datasource": {"type": "motherduck-duckdb-datasource", "uid": "duckdb"},
+      "options": {"colorMode": "background", "graphMode": "none"},
+      "targets": [{"rawSql": "SELECT count(*)::INT AS value FROM raw_github_issues WHERE state = 'open'", "format": "table"}],
+      "fieldConfig": {"defaults": {"thresholds": {"steps": [{"color": "green", "value": null}]}}}
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "with reactions",
+      "gridPos": {"h": 4, "w": 4, "x": 8, "y": 0},
+      "datasource": {"type": "motherduck-duckdb-datasource", "uid": "duckdb"},
+      "options": {"colorMode": "background", "graphMode": "none"},
+      "targets": [{"rawSql": "SELECT count(*)::INT AS value FROM raw_github_issues WHERE reactions_total > 0", "format": "table"}],
+      "fieldConfig": {"defaults": {"thresholds": {"steps": [{"color": "orange", "value": null}]}}}
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "repos tracked",
+      "gridPos": {"h": 4, "w": 4, "x": 12, "y": 0},
+      "datasource": {"type": "motherduck-duckdb-datasource", "uid": "duckdb"},
+      "options": {"colorMode": "background", "graphMode": "none"},
+      "targets": [{"rawSql": "SELECT count(DISTINCT repo)::INT AS value FROM raw_github_issues", "format": "table"}],
+      "fieldConfig": {"defaults": {"thresholds": {"steps": [{"color": "purple", "value": null}]}}}
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "top action items (open, scored by engagement)",
+      "description": "recency-weighted by updated_at, boosted by reactions + comments. once dbt enrich flow has run, query github_action_items instead.",
+      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 4},
+      "datasource": {"type": "motherduck-duckdb-datasource", "uid": "duckdb"},
+      "options": {"sortBy": [{"desc": true, "displayName": "score"}]},
+      "targets": [
+        {
+          "rawSql": "SELECT\n  repo,\n  number,\n  type,\n  title,\n  url,\n  \"user\",\n  comments,\n  reactions_total,\n  ROUND(\n    GREATEST(0.0, 1.0 - DATEDIFF('day', updated_at::DATE, CURRENT_DATE) / 30.0)\n    * LEAST(1.0, LN(1 + comments + reactions_total) / LN(50))\n  , 4) AS score,\n  updated_at\nFROM raw_github_issues\nWHERE state = 'open'\nORDER BY score DESC, comments DESC\nLIMIT 50",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "url"}, "properties": [{"id": "links", "value": [{"title": "open", "url": "${__value.text}"}]}]},
+          {"matcher": {"id": "byName", "options": "score"}, "properties": [{"id": "custom.displayMode", "value": "color-background"}, {"id": "thresholds", "mode": "absolute", "steps": [{"color": "blue", "value": null}, {"color": "green", "value": 0.1}, {"color": "orange", "value": 0.3}]}]},
+          {"matcher": {"id": "byName", "options": "body"}, "properties": [{"id": "custom.hidden", "value": true}]}
+        ]
+      }
+    },
+    {
+      "id": 6,
+      "type": "barchart",
+      "title": "open issues by repo",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "datasource": {"type": "motherduck-duckdb-datasource", "uid": "duckdb"},
+      "options": {"xField": "repo", "orientation": "horizontal"},
+      "targets": [
+        {
+          "rawSql": "SELECT repo, count(*) AS open_count\nFROM raw_github_issues\nWHERE state = 'open'\nGROUP BY repo\nORDER BY open_count DESC\nLIMIT 15",
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "piechart",
+      "title": "issues vs PRs",
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 16},
+      "datasource": {"type": "motherduck-duckdb-datasource", "uid": "duckdb"},
+      "targets": [
+        {
+          "rawSql": "SELECT type, count(*) AS cnt FROM raw_github_issues WHERE state = 'open' GROUP BY type",
+          "format": "table"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "piechart",
+      "title": "open vs closed",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 16},
+      "datasource": {"type": "motherduck-duckdb-datasource", "uid": "duckdb"},
+      "targets": [
+        {
+          "rawSql": "SELECT state, count(*) AS cnt FROM raw_github_issues GROUP BY state",
+          "format": "table"
+        }
+      ]
+    }
+  ]
+}
