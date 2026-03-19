@@ -15,6 +15,15 @@ deployments:
     schedules:
       - cron: "*/5 * * * *"
 
+  - name: gh-notifications
+    entrypoint: flows/gh_notifications.py:gh_notifications
+    work_pool:
+      name: kubernetes-pool
+    schedules:
+      - cron: "0 * * * *"  # hourly
+    parameters:
+      only_unread: true
+
   - name: cleanup
     entrypoint: flows/cleanup.py:cleanup
     work_pool:
