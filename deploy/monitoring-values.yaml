@@ -95,7 +95,6 @@ grafana:
       readOnly: true
     - name: analytics-duckdb
       mountPath: /analytics
-      readOnly: true
 
   additionalDataSources:
     - name: DuckDB

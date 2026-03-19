@@ -61,13 +61,13 @@
       "id": 5,
       "type": "table",
       "title": "top action items (open, scored by engagement)",
-      "description": "recency-weighted by updated_at, boosted by reactions + comments. once dbt enrich flow has run, query github_action_items instead.",
+      "description": "scored by dbt: recency × engagement × label multiplier × contributor weight",
       "gridPos": {"h": 12, "w": 24, "x": 0, "y": 4},
       "datasource": {"type": "motherduck-duckdb-datasource", "uid": "duckdb"},
-      "options": {"sortBy": [{"desc": true, "displayName": "score"}]},
+      "options": {"sortBy": [{"desc": true, "displayName": "importance_score"}]},
       "targets": [
         {
-          "rawSql": "SELECT\n  repo,\n  number,\n  type,\n  title,\n  url,\n  \"user\",\n  comments,\n  reactions_total,\n  ROUND(\n    GREATEST(0.0, 1.0 - DATEDIFF('day', updated_at::DATE, CURRENT_DATE) / 30.0)\n    * LEAST(1.0, LN(1 + comments + reactions_total) / LN(50))\n  , 4) AS score,\n  updated_at\nFROM raw_github_issues\nWHERE state = 'open'\nORDER BY score DESC, comments DESC\nLIMIT 50",
+          "rawSql": "SELECT repo, number, type, title, url, \"user\", labels, comments, reactions_total, importance_score, updated_at FROM github_action_items ORDER BY importance_score DESC",
           "format": "table"
         }
       ],
