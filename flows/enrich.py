@@ -36,7 +36,7 @@ def enrich():
     )
     orchestrator = PrefectDbtOrchestrator(
         settings=settings,
-        execution_mode=ExecutionMode.PER_NODE,
+        execution_mode=ExecutionMode.SEQUENTIAL,
         cache=CacheConfig(expiration=timedelta(hours=1)),
         test_strategy=TestStrategy.DEFERRED,
         create_summary_artifact=True,
