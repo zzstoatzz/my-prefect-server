@@ -140,6 +140,22 @@ deploy:
 worker:
     kubectl apply -f deploy/worker.yaml
 
+# install grafana plugins onto the node (pre-requisite for grafana deploy)
+# usage: just install-grafana-plugin motherduck-duckdb-datasource v0.4.1 <zip_url>
+install-grafana-plugin plugin version url:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "==> installing {{plugin}} {{version}} on node"
+    ssh root@$(just server-ip) "
+      apt-get install -y unzip -q 2>/dev/null || true
+      mkdir -p /var/lib/grafana-plugins
+      cd /var/lib/grafana-plugins
+      curl -fsSL {{url}} -o /tmp/plugin.zip
+      unzip -o /tmp/plugin.zip -d .
+      rm /tmp/plugin.zip
+      echo installed: \$(ls {{plugin}}/)
+    "
+
 # create the analytics hostPath directory on the node (run once after cluster is up)
 analytics-storage:
     #!/usr/bin/env bash
