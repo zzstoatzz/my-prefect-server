@@ -2,7 +2,8 @@ server:
   replicaCount: 1
 
   basicAuth:
-    enabled: false  # auth moves to Traefik IngressRoute
+    enabled: true
+    existingSecret: prefect-auth
 
   uiConfig:
     prefectUiApiUrl: "https://DOMAIN_PLACEHOLDER/api"
@@ -34,4 +35,12 @@ redis:
   architecture: standalone
 
 ingress:
-  enabled: false  # replaced by IngressRoute CRDs + Certificate CR in deploy/prefect-ingress-route.yaml
+  enabled: true
+  className: traefik
+  host:
+    hostname: DOMAIN_PLACEHOLDER
+    path: /
+    pathType: Prefix
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tls: true
