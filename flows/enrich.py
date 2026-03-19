@@ -1,3 +1,11 @@
+# k8s: prefect uses system python, but uv sync in the pull step creates .venv/
+# with extra deps (duckdb, prefect-dbt, etc). inject it into sys.path before any imports.
+import sys as _sys
+from pathlib import Path as _Path
+_site = _Path(__file__).parent.parent / ".venv" / "lib" / f"python{_sys.version_info.major}.{_sys.version_info.minor}" / "site-packages"
+if _site.exists() and str(_site) not in _sys.path:
+    _sys.path.insert(0, str(_site))
+
 import subprocess
 from datetime import timedelta
 from pathlib import Path
