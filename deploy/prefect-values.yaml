@@ -7,6 +7,10 @@ server:
   uiConfig:
     prefectUiApiUrl: "https://DOMAIN_PLACEHOLDER/api"
 
+  env:
+    - name: PREFECT_SERVER_UI_SHOW_PROMOTIONAL_CONTENT
+      value: "false"
+
   extraEnvVarsCM: prefect-docket-config
 
 backgroundServices:
