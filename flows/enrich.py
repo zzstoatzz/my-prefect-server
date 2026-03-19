@@ -1,8 +1,11 @@
 import subprocess
+from datetime import timedelta
 from pathlib import Path
 
 from prefect import flow, get_run_logger
+from prefect.task_runners import ThreadPoolTaskRunner
 from prefect_dbt.core._orchestrator import (
+    CacheConfig,
     ExecutionMode,
     PrefectDbtOrchestrator,
     TestStrategy,
@@ -34,7 +37,9 @@ def enrich():
     )
     orchestrator = PrefectDbtOrchestrator(
         settings=settings,
-        execution_mode=ExecutionMode.PER_WAVE,
+        execution_mode=ExecutionMode.PER_NODE,
+        task_runner_type=ThreadPoolTaskRunner,
+        cache=CacheConfig(expiration=timedelta(hours=1)),
         test_strategy=TestStrategy.DEFERRED,
         create_summary_artifact=True,
     )
