@@ -1,0 +1,17 @@
+---
+# Persistent storage for Prefect task results.
+# k3s local-path provisioner stores data at /var/lib/rancher/k3s/storage/.
+# Flow job pods mount this at /prefect-results and write JSON results there.
+# DuckDB can query the files directly: read_json('/prefect-results/**/*.json')
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prefect-results
+  namespace: prefect
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi

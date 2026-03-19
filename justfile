@@ -140,6 +140,18 @@ deploy:
 worker:
     kubectl apply -f deploy/worker.yaml
 
+# create the results PVC and patch the kubernetes-pool base job template to mount it
+results-storage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${DOMAIN:?set DOMAIN}"
+    : "${AUTH_STRING:?set AUTH_STRING}"
+    echo "==> creating results PVC"
+    kubectl apply -f deploy/results-pvc.yaml
+    echo "==> patching kubernetes-pool base job template"
+    PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
+        uv run --with prefect python scripts/patch_work_pool.py
+
 # register flow deployments (run locally with PREFECT_API_URL + PREFECT_API_AUTH_STRING)
 register-flows:
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
