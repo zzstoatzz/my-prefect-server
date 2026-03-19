@@ -86,10 +86,13 @@ deploy:
     sed "s|LETSENCRYPT_EMAIL_PLACEHOLDER|$LETSENCRYPT_EMAIL|g" deploy/cluster-issuer.yaml \
         | kubectl apply -f -
 
-    echo "==> creating prefect auth secret"
-    kubectl create secret generic prefect-auth \
+    echo "==> creating prefect traefik auth secret (htpasswd format)"
+    USER=$(echo "$AUTH_STRING" | cut -d: -f1)
+    PASS=$(echo "$AUTH_STRING" | cut -d: -f2-)
+    HASH=$(openssl passwd -apr1 "$PASS")
+    kubectl create secret generic prefect-traefik-auth \
         --namespace prefect \
-        --from-literal=auth-string="$AUTH_STRING" \
+        --from-literal=users="${USER}:${HASH}" \
         --dry-run=client -o yaml | kubectl apply -f -
 
     echo "==> installing prefect server"
@@ -99,6 +102,14 @@ deploy:
             --values - \
             --set postgresql.auth.password="$POSTGRES_PASSWORD" \
             --wait --timeout 5m
+
+    echo "==> applying prefect certificate"
+    sed "s|DOMAIN_PLACEHOLDER|$DOMAIN|g" deploy/prefect-certificate.yaml \
+        | kubectl apply -f -
+
+    echo "==> applying prefect ingress routes"
+    sed "s|DOMAIN_PLACEHOLDER|$DOMAIN|g" deploy/prefect-ingress-route.yaml \
+        | kubectl apply -f -
 
     echo "==> installing monitoring stack"
     sed "s|GRAFANA_DOMAIN_PLACEHOLDER|$GRAFANA_DOMAIN|g" deploy/monitoring-values.yaml \
@@ -139,6 +150,28 @@ deploy:
 # deploy the kubernetes worker to the cluster
 worker:
     kubectl apply -f deploy/worker.yaml
+
+# re-apply public ingress config without full deploy (certificate + ingress routes + auth secret)
+public-ingress:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${DOMAIN:?set DOMAIN}"
+    : "${AUTH_STRING:?set AUTH_STRING}"
+    USER=$(echo "$AUTH_STRING" | cut -d: -f1)
+    PASS=$(echo "$AUTH_STRING" | cut -d: -f2-)
+    HASH=$(openssl passwd -apr1 "$PASS")
+    kubectl create secret generic prefect-traefik-auth \
+        --namespace prefect \
+        --from-literal=users="${USER}:${HASH}" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    sed "s|DOMAIN_PLACEHOLDER|$DOMAIN|g" deploy/prefect-certificate.yaml \
+        | kubectl apply -f -
+    sed "s|DOMAIN_PLACEHOLDER|$DOMAIN|g" deploy/prefect-ingress-route.yaml \
+        | kubectl apply -f -
+    echo "done — verify:"
+    echo "  curl -sf https://$DOMAIN/api/health | jq ."
+    echo "  curl -sf -X POST https://$DOMAIN/api/flow_runs/filter -H 'Content-Type: application/json' -d '{}' | jq 'length'"
+    echo "  curl -o /dev/null -w '%{http_code}' -X POST https://$DOMAIN/api/flow_runs/ -H 'Content-Type: application/json' -d '{}'  # expect 401"
 
 # register flow deployments (run locally with PREFECT_API_URL + PREFECT_API_AUTH_STRING)
 register-flows:

@@ -1,0 +1,12 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: prefect-server-tls
+  namespace: prefect
+spec:
+  secretName: prefect-server-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - DOMAIN_PLACEHOLDER
