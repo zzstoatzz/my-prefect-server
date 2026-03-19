@@ -13,9 +13,11 @@ Requires:
 
 import datetime
 from dataclasses import dataclass
+from typing import Literal
 
 import httpx
-from prefect import flow, task, get_run_logger
+from pydantic import BaseModel
+from prefect import flow, task, get_run_logger, unmapped
 from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
@@ -24,11 +26,36 @@ from prefect.context import TaskRunContext
 GITHUB_API = "https://api.github.com"
 
 
+# --- models ---
+
+class IssueRef(BaseModel):
+    """Parsed from a GitHub notification — what we need to fetch."""
+    repo: str
+    number: int
+    subject_type: Literal["Issue", "PullRequest"]
+
+
+class IssueOrPR(BaseModel):
+    """Fetched issue or PR data — persisted as JSON result."""
+    repo: str
+    number: int
+    type: str
+    title: str | None = None
+    state: str | None = None
+    body: str = ""
+    url: str | None = None
+    labels: list[str] = []
+    created_at: str | None = None
+    updated_at: str | None = None
+    user: str | None = None
+    comments: int = 0
+
+
 # --- cache policy ---
 
 @dataclass
 class ByRepoAndNumber(CachePolicy):
-    """Cache key is repo + number only — ignores token/client/other args."""
+    """Cache key is repo + number only — ignores token and other args."""
 
     def compute_key(
         self,
@@ -37,11 +64,10 @@ class ByRepoAndNumber(CachePolicy):
         flow_parameters: dict,
         **kwargs,
     ) -> str | None:
-        repo = inputs.get("repo")
-        number = inputs.get("number")
-        if not repo or not number:
+        ref: IssueRef | None = inputs.get("ref")
+        if ref is None:
             return None
-        return f"gh/{repo}/{number}"
+        return f"gh/{ref.repo}/{ref.number}"
 
 
 # --- tasks ---
@@ -52,7 +78,8 @@ def load_token() -> str:
 
 
 @task
-def fetch_notifications(token: str, only_unread: bool = True) -> list[dict]:
+def fetch_notifications(token: str, only_unread: bool = True) -> list[IssueRef]:
+    """Fetch notifications and parse into IssueRef objects (Issues/PRs only)."""
     logger = get_run_logger()
     with httpx.Client(headers=_gh_headers(token)) as client:
         resp = client.get(
@@ -60,9 +87,26 @@ def fetch_notifications(token: str, only_unread: bool = True) -> list[dict]:
             params={"all": str(not only_unread).lower(), "per_page": 50},
         )
         resp.raise_for_status()
-    notifications = resp.json()
-    logger.info(f"fetched {len(notifications)} notifications")
-    return notifications
+
+    refs: list[IssueRef] = []
+    for n in resp.json():
+        subject = n.get("subject", {})
+        subject_type = subject.get("type")
+        if subject_type not in ("Issue", "PullRequest"):
+            continue
+        url = subject.get("url", "")
+        try:
+            number = int(url.rstrip("/").split("/")[-1])
+        except (ValueError, IndexError):
+            continue
+        refs.append(IssueRef(
+            repo=n["repository"]["full_name"],
+            number=number,
+            subject_type=subject_type,
+        ))
+
+    logger.info(f"fetched {len(refs)} issue/PR notifications")
+    return refs
 
 
 @task(
@@ -71,35 +115,36 @@ def fetch_notifications(token: str, only_unread: bool = True) -> list[dict]:
     persist_result=True,
     result_serializer="json",
 )
-def fetch_issue_or_pr(token: str, repo: str, number: int, subject_type: str) -> dict:
+def fetch_issue_or_pr(ref: IssueRef, token: str) -> IssueOrPR | None:
     """Fetch a single issue or PR. Cached by repo+number for 24h."""
     with httpx.Client(headers=_gh_headers(token)) as client:
-        kind = "pulls" if subject_type == "PullRequest" else "issues"
-        resp = client.get(f"{GITHUB_API}/repos/{repo}/{kind}/{number}")
+        kind = "pulls" if ref.subject_type == "PullRequest" else "issues"
+        resp = client.get(f"{GITHUB_API}/repos/{ref.repo}/{kind}/{ref.number}")
         if resp.status_code == 404:
-            return {}
+            return None
         resp.raise_for_status()
         data = resp.json()
-    return {
-        "repo": repo,
-        "number": number,
-        "type": subject_type,
-        "title": data.get("title"),
-        "state": data.get("state"),
-        "body": data.get("body") or "",
-        "url": data.get("html_url"),
-        "labels": [la["name"] for la in data.get("labels", [])],
-        "created_at": data.get("created_at"),
-        "updated_at": data.get("updated_at"),
-        "user": (data.get("user") or {}).get("login"),
-        "comments": data.get("comments", 0),
-    }
+
+    return IssueOrPR(
+        repo=ref.repo,
+        number=ref.number,
+        type=ref.subject_type,
+        title=data.get("title"),
+        state=data.get("state"),
+        body=data.get("body") or "",
+        url=data.get("html_url"),
+        labels=[la["name"] for la in data.get("labels", [])],
+        created_at=data.get("created_at"),
+        updated_at=data.get("updated_at"),
+        user=(data.get("user") or {}).get("login"),
+        comments=data.get("comments", 0),
+    )
 
 
 # --- flow ---
 
 @flow(name="gh-notifications", log_prints=True)
-def gh_notifications(only_unread: bool = True) -> list[dict]:
+def gh_notifications(only_unread: bool = True) -> list[IssueOrPR]:
     """
     Fetch GitHub notifications and persist each issue/PR as a cached JSON result.
     Cache hit = skips the fetch entirely. Results on disk = DuckDB-queryable.
@@ -107,43 +152,21 @@ def gh_notifications(only_unread: bool = True) -> list[dict]:
     logger = get_run_logger()
 
     token = load_token()
-    notifications = fetch_notifications(token, only_unread=only_unread)
+    refs = fetch_notifications(token, only_unread=only_unread)
 
-    if not notifications:
+    if not refs:
         logger.info("no notifications")
         return []
 
-    items = []
-    for n in notifications:
-        subject = n.get("subject", {})
-        subject_type = subject.get("type")
-        if subject_type not in ("Issue", "PullRequest"):
-            continue
-
-        # parse number from subject URL e.g. .../issues/42
-        url = subject.get("url", "")
-        try:
-            number = int(url.rstrip("/").split("/")[-1])
-        except (ValueError, IndexError):
-            continue
-
-        repo = n["repository"]["full_name"]
-        result = fetch_issue_or_pr(
-            token=token,
-            repo=repo,
-            number=number,
-            subject_type=subject_type,
-        )
-        if result:
-            items.append(result)
-
-    logger.info(f"resolved {len(items)} issues/PRs (cache hits skip fetches)")
+    futures = fetch_issue_or_pr.map(refs, unmapped(token))
+    items = [r for r in futures.result() if r is not None]
+    logger.info(f"resolved {len(items)} issues/PRs")
     return items
 
 
 # --- helpers ---
 
-def _gh_headers(token: str) -> dict:
+def _gh_headers(token: str) -> dict[str, str]:
     return {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github+json",

@@ -1,0 +1,23 @@
+[project]
+name = "my-prefect-server"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "prefect>=3.0",
+    "httpx>=0.27",
+]
+
+[dependency-groups]
+dev = [
+    "ty>=0.0.23",
+]
+
+[tool.ty.src]
+include = ["flows", "scripts"]
+exclude = ["**/__pycache__", ".venv", ".git"]
+
+[tool.ty.environment]
+python-version = "3.11"
+
+[tool.ty.terminal]
+error-on-warning = true
