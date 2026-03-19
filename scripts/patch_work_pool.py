@@ -45,6 +45,9 @@ async def main():
         envs = props.setdefault("env", {}).setdefault("default", {})
         envs["PREFECT_LOCAL_STORAGE_PATH"] = "/prefect-results"
         envs["ANALYTICS_DB_PATH"] = "/prefect-analytics/analytics.duckdb"
+        # tell uv sync to install into system Python instead of creating a .venv —
+        # this makes deps available to the prefect engine without any sys.path hacks
+        envs["UV_PROJECT_ENVIRONMENT"] = "/usr/local"
 
         await c.update_work_pool(
             "kubernetes-pool",
