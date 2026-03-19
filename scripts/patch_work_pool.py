@@ -8,6 +8,14 @@ async def main():
     async with get_client() as c:
         pool = await c.read_work_pool("kubernetes-pool")
         t = pool.base_job_template
+
+        # 1. patch job_manifest to reference {{ volumes }} and {{ volume_mounts }}
+        pod_spec = t["job_configuration"]["job_manifest"]["spec"]["template"]["spec"]
+        pod_spec["volumes"] = "{{ volumes }}"
+        container = pod_spec["containers"][0]
+        container["volumeMounts"] = "{{ volume_mounts }}"
+
+        # 2. patch variables with defaults for volumes, volume_mounts, env
         props = t.setdefault("variables", {}).setdefault("properties", {})
 
         vols = props.setdefault("volumes", {}).setdefault("default", [])
