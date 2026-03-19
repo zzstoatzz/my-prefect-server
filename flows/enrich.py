@@ -27,7 +27,7 @@ def enrich():
         capture_output=True, text=True,
     )
     if result.returncode != 0:
-        raise RuntimeError(f"dbt compile failed:\n{result.stderr}")
+        raise RuntimeError(f"dbt compile failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
     logger.info("dbt compile OK")
 
     settings = PrefectDbtSettings(

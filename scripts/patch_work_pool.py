@@ -49,6 +49,9 @@ async def main():
         # this makes deps available to the prefect engine without any sys.path hacks
         envs["UV_PROJECT_ENVIRONMENT"] = "/usr/local"
 
+        # clean up finished job pods after 5 minutes — prevents overlayfs snapshot accumulation
+        props.setdefault("finished_job_ttl", {})["default"] = 300
+
         await c.update_work_pool(
             "kubernetes-pool",
             WorkPoolUpdate(base_job_template=t),
