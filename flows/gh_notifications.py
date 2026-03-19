@@ -55,6 +55,10 @@ class IssueOrPR(BaseModel):
 
 # --- cache policy ---
 
+# bump to invalidate all cached results (e.g. when fetch shape changes)
+_CACHE_VERSION = "v2"
+
+
 @dataclass
 class ByRepoAndNumber(CachePolicy):
     """Cache key is repo + number only — ignores token and other args."""
@@ -69,7 +73,7 @@ class ByRepoAndNumber(CachePolicy):
         ref: IssueRef | None = inputs.get("ref")
         if ref is None:
             return None
-        return f"gh/{ref.repo}/{ref.number}"
+        return f"gh/{_CACHE_VERSION}/{ref.repo}/{ref.number}"
 
 
 # --- tasks ---
@@ -120,8 +124,9 @@ def fetch_notifications(token: str, only_unread: bool = True) -> list[IssueRef]:
 def fetch_issue_or_pr(ref: IssueRef, token: str) -> IssueOrPR | None:
     """Fetch a single issue or PR. Cached by repo+number for 24h."""
     with httpx.Client(headers=_gh_headers(token)) as client:
-        kind = "pulls" if ref.subject_type == "PullRequest" else "issues"
-        resp = client.get(f"{GITHUB_API}/repos/{ref.repo}/{kind}/{ref.number}")
+        # always use the issues endpoint — PRs are issues in GitHub's model and
+        # only the issues endpoint returns the reactions field
+        resp = client.get(f"{GITHUB_API}/repos/{ref.repo}/issues/{ref.number}")
         if resp.status_code == 404:
             return None
         resp.raise_for_status()
