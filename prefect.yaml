@@ -28,6 +28,7 @@ deployments:
     entrypoint: flows/enrich.py:enrich
     work_pool:
       name: kubernetes-pool
+    concurrency_limit: 1
     schedules:
       - cron: "5 * * * *"  # 5 minutes after gh-notifications
 
