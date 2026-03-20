@@ -40,7 +40,13 @@ deployments:
 
   - name: enrich
     entrypoint: flows/enrich.py:enrich
-    work_pool: *k8s
+    work_pool:
+      name: kubernetes-pool
+      job_variables:
+        command: >-
+          uv run --python 3.13
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
     concurrency_limit: 1
     schedules:
       - cron: "5 * * * *"  # 5 minutes after gh-notifications
