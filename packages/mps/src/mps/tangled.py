@@ -26,15 +26,14 @@ class TangledItem(BaseModel):
     parent_uri: str | None = None
 
 
-def _rkey(uri: str) -> str:
-    """Extract rkey from an at:// URI."""
-    return uri.rsplit("/", 1)[-1]
+def build_tangled_url(repo_name: str, kind: str) -> str:
+    """Construct a tangled.org web URL.
 
-
-def build_tangled_url(repo_name: str, kind: str, rkey: str) -> str:
-    """Construct a tangled.org web URL."""
+    Links to the issues/pulls list page — the PDS doesn't store sequential
+    issue numbers (those are appview-only), so we can't deep-link yet.
+    """
     segment = "pulls" if kind == "pr" else "issues"
-    return f"https://tangled.org/{HANDLE}/{repo_name}/{segment}/{rkey}"
+    return f"https://tangled.org/{HANDLE}/{repo_name}/{segment}"
 
 
 def fetch_repo_at_uris(client: httpx.Client) -> dict[str, str]:
@@ -104,14 +103,13 @@ def fetch_items(
                 if repo_name is None:
                     continue
 
-            rkey = _rkey(uri)
             items.append(
                 TangledItem(
                     repo=repo_name,
                     kind=kind,
                     title=value.get("title"),
                     body=value.get("body", ""),
-                    url=build_tangled_url(repo_name, kind, rkey),
+                    url=build_tangled_url(repo_name, kind),
                     at_uri=uri,
                     author_did=DID,
                     author_handle=HANDLE,
