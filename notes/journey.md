@@ -264,9 +264,81 @@ early on, we were running long ad-hoc `kubectl` commands. consolidated everythin
 └─────────────────────────────────────────────────────┘
 ```
 
+## step 10: ephemeral flow environments with `uv run --with`
+
+the original approach baked dependencies into the worker image or tried to install them during pull steps. this doesn't work because pull steps run *after* the container process starts — so the process needs deps before pull steps can provide them.
+
+the solution is overriding the `command` job variable to use `uv run --with`:
+
+```yaml
+definitions:
+  work_pools:
+    k8s: &k8s
+      name: kubernetes-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
+```
+
+this creates an ephemeral venv per flow run with the project and all its deps installed, before `prefect flow-run execute` invokes pull steps. uv is pre-installed in the `prefecthq/prefect:3-python3.14-kubernetes` image.
+
+references: [discussion #21185](https://github.com/PrefectHQ/prefect/discussions/21185), [discussion #18223](https://github.com/PrefectHQ/prefect/discussions/18223).
+
+### per-deployment python version overrides
+
+dbt-core doesn't support python 3.14 yet (mashumaro + pydantic v1 shim issues). rather than downgrading everything, the enrich deployment overrides `command` to use `--python 3.13`:
+
+```yaml
+- name: enrich
+  entrypoint: flows/enrich.py:enrich
+  work_pool:
+    name: kubernetes-pool
+    job_variables:
+      command: >-
+        uv run --python 3.13
+        --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+        prefect flow-run execute
+```
+
+uv downloads cpython 3.13 on-demand in the pod. this required lowering `requires-python` to `>=3.13` in both root and `packages/mps` pyproject.toml files.
+
+### pitfall: `job_variables` placement
+
+`job_variables` must go under `work_pool`, not at the deployment root level. prefect silently ignores it in the wrong location.
+
+### pitfall: tangled.sh git protocol errors
+
+`git+https://tangled.sh/...` intermittently fails with `fatal: protocol error: bad pack header` during uv resolution. using the github mirror (`git+https://github.com/...`) in the `--with` URL avoids this. the pull step still tries tangled.sh first (with github fallback), which works fine since git clone is more tolerant.
+
+## step 11: tangled.org as a second hub data source
+
+added tangled.org issues/PRs alongside github as a data source for the hub (hub.waow.tech).
+
+### data pipeline
+
+1. **`flows/tangled_items.py`** — fetches issues, PRs, and comments from the PDS (`pds.zzstoatzz.io`) via `com.atproto.repo.listRecords`. no auth needed — PDS records are public. resolves repo names from `sh.tangled.repo` records.
+2. **`packages/mps/src/mps/tangled.py`** — models (`TangledItem`), PDS fetch helpers, URL builders for tangled.org
+3. **`packages/mps/src/mps/db.py`** — `write_tangled_items()` persists to `raw_tangled_items` table in DuckDB
+4. **dbt models**:
+   - `stg_tangled_items` — dedup view, excludes comments
+   - `int_tangled_items_scored` — scoring (recency only, no engagement data from PDS)
+   - `hub_action_items` — cross-source union mart replacing `github_action_items`
+5. **hub frontend** — updated to read from `hub_action_items`, handles both sources with appropriate URL helpers
+
+### what we learned about tangled/AT Protocol data
+
+- issue/PR **state (open/closed) is NOT on the PDS** — the knot/appview tracks it server-side. `sh.tangled.repo.issue.state` records exist but are empty.
+- the `repo` field on issues/PRs is an `at://` URI, not a name — need to resolve via `sh.tangled.repo` records
+- labels are tracked via `sh.tangled.label.op` records (add/delete operations on AT URI subjects)
+- activity volume is very low currently — full resync each run is fine
+
 ## what's next
 
 - CI for flow registration on tangled (.tangled CI, not github actions)
 - more interesting deployments with automations
 - file upstream issue on prefecthq/prefect-helm for docket URL
 - contribute guide back to prefect docs
+- upstream: `job_variables` placement should be validated or warned about (silent ignore is surprising)
+- upstream: consider a prefect recipe/docs page for the `uv run --with` pattern on kubernetes work pools
