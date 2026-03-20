@@ -14,46 +14,17 @@ Requires:
 import datetime
 import os
 from dataclasses import dataclass
-from typing import Literal
 
 import httpx
-from pydantic import BaseModel
 from prefect import flow, task, get_run_logger, unmapped
 from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 
+from mps.db import write_github_issues
+from mps.github import IssueOrPR, IssueRef, gh_headers
 
 GITHUB_API = "https://api.github.com"
-
-
-# --- models ---
-
-class IssueRef(BaseModel):
-    """Parsed from a GitHub notification — what we need to fetch."""
-    repo: str
-    number: int
-    subject_type: Literal["Issue", "PullRequest"]
-
-
-class IssueOrPR(BaseModel):
-    """Fetched issue or PR data — persisted as JSON result."""
-    repo: str
-    number: int
-    type: str
-    title: str | None = None
-    state: str | None = None
-    body: str = ""
-    url: str | None = None
-    labels: list[str] = []
-    created_at: str | None = None
-    updated_at: str | None = None
-    user: str | None = None
-    comments: int = 0
-    reactions_total: int = 0
-
-
-# --- cache policy ---
 
 # bump to invalidate all cached results (e.g. when fetch shape changes)
 _CACHE_VERSION = "v2"
@@ -76,8 +47,6 @@ class ByRepoAndNumber(CachePolicy):
         return f"gh/{_CACHE_VERSION}/{ref.repo}/{ref.number}"
 
 
-# --- tasks ---
-
 @task
 def load_token() -> str:
     return Secret.load("github-token").get()
@@ -87,7 +56,7 @@ def load_token() -> str:
 def fetch_notifications(token: str, only_unread: bool = True) -> list[IssueRef]:
     """Fetch notifications and parse into IssueRef objects (Issues/PRs only)."""
     logger = get_run_logger()
-    with httpx.Client(headers=_gh_headers(token)) as client:
+    with httpx.Client(headers=gh_headers(token)) as client:
         resp = client.get(
             f"{GITHUB_API}/notifications",
             params={"all": str(not only_unread).lower(), "per_page": 50},
@@ -123,7 +92,7 @@ def fetch_notifications(token: str, only_unread: bool = True) -> list[IssueRef]:
 )
 def fetch_issue_or_pr(ref: IssueRef, token: str) -> IssueOrPR | None:
     """Fetch a single issue or PR. Cached by repo+number for 24h."""
-    with httpx.Client(headers=_gh_headers(token)) as client:
+    with httpx.Client(headers=gh_headers(token)) as client:
         # always use the issues endpoint — PRs are issues in GitHub's model and
         # only the issues endpoint returns the reactions field
         resp = client.get(f"{GITHUB_API}/repos/{ref.repo}/issues/{ref.number}")
@@ -150,39 +119,13 @@ def fetch_issue_or_pr(ref: IssueRef, token: str) -> IssueOrPR | None:
 
 
 @task
-def write_to_duckdb(items: list[IssueOrPR], db_path: str) -> int:
-    import duckdb
-    con = duckdb.connect(db_path)
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS raw_github_issues (
-            repo VARCHAR, number INTEGER, type VARCHAR,
-            title VARCHAR, state VARCHAR, body VARCHAR, url VARCHAR,
-            labels VARCHAR[], created_at VARCHAR, updated_at VARCHAR,
-            "user" VARCHAR, comments INTEGER, reactions_total INTEGER,
-            fetched_at TIMESTAMP DEFAULT now(),
-            PRIMARY KEY (repo, number)
-        )
-    """)
-    rows = [
-        (
-            item.repo, item.number, item.type,
-            item.title, item.state, item.body, item.url,
-            item.labels, item.created_at, item.updated_at,
-            item.user, item.comments, item.reactions_total,
-            datetime.datetime.now(datetime.UTC),
-        )
-        for item in items
-    ]
-    con.executemany(
-        "INSERT OR REPLACE INTO raw_github_issues VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        rows,
+def persist_to_duckdb(items: list[IssueOrPR]) -> int:
+    db_path = os.environ.get(
+        "ANALYTICS_DB_PATH",
+        os.environ.get("PREFECT_LOCAL_STORAGE_PATH", "/tmp") + "/analytics.duckdb",
     )
-    count = con.execute("SELECT count(*) FROM raw_github_issues").fetchone()[0]
-    con.close()
-    return count
+    return write_github_issues(items, db_path)
 
-
-# --- flow ---
 
 @flow(name="gh-notifications", log_prints=True)
 def gh_notifications(only_unread: bool = True) -> list[IssueOrPR]:
@@ -203,23 +146,9 @@ def gh_notifications(only_unread: bool = True) -> list[IssueOrPR]:
     items = [r for r in futures.result() if r is not None]
     logger.info(f"resolved {len(items)} issues/PRs")
 
-    db_path = os.environ.get(
-        "ANALYTICS_DB_PATH",
-        os.environ.get("PREFECT_LOCAL_STORAGE_PATH", "/tmp") + "/analytics.duckdb",
-    )
-    total = write_to_duckdb(items, db_path)
+    total = persist_to_duckdb(items)
     logger.info(f"upserted {len(items)} rows; {total} total in raw_github_issues")
     return items
-
-
-# --- helpers ---
-
-def _gh_headers(token: str) -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
 
 
 if __name__ == "__main__":

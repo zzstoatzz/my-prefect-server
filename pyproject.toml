@@ -1,14 +1,18 @@
 [project]
 name = "my-prefect-server"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 dependencies = [
-    "prefect>=3.0",
-    "httpx>=0.27",
-    "duckdb>=1.0",
+    "mps",
     "dbt-duckdb>=1.9",
     "prefect-dbt>=0.6",
 ]
+
+[tool.uv.sources]
+mps = { workspace = true }
+
+[tool.uv.workspace]
+members = ["packages/*"]
 
 [dependency-groups]
 dev = [
@@ -16,11 +20,11 @@ dev = [
 ]
 
 [tool.ty.src]
-include = ["flows", "scripts"]
+include = ["flows", "packages/mps/src"]
 exclude = ["**/__pycache__", ".venv", ".git"]
 
 [tool.ty.environment]
-python-version = "3.11"
+python-version = "3.14"
 
 [tool.ty.terminal]
 error-on-warning = true

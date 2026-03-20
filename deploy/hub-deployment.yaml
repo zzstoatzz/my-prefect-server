@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hub
+  namespace: prefect
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hub
+  template:
+    metadata:
+      labels:
+        app: hub
+    spec:
+      imagePullSecrets:
+        - name: atcr-creds
+      containers:
+        - name: hub
+          image: atcr.io/zzstoatzz.io/hub:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: DUCKDB_PATH
+              value: /analytics/analytics.duckdb
+          volumeMounts:
+            - name: analytics
+              mountPath: /analytics
+              readOnly: true
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 256Mi
+              cpu: 500m
+      volumes:
+        - name: analytics
+          hostPath:
+            path: /var/lib/prefect-analytics
+            type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hub
+  namespace: prefect
+spec:
+  selector:
+    app: hub
+  ports:
+    - port: 3000
+      targetPort: 3000

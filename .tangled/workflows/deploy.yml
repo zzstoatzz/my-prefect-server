@@ -7,7 +7,7 @@ engine: nixery
 dependencies:
   nixpkgs:
     - uv
-    - python3
+    - python314
 
 environment:
   PREFECT_API_URL: "https://prefect-server.waow.tech/api"

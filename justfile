@@ -1,10 +1,21 @@
-# my-prefect-server deployment (k3s + helm)
+# my-prefect-server
 # required env vars: HCLOUD_TOKEN, POSTGRES_PASSWORD, AUTH_STRING, DOMAIN, LETSENCRYPT_EMAIL
 # optional env vars: GRAFANA_DOMAIN (default: prefect-metrics.waow.tech)
 
 set dotenv-load
 
 export KUBECONFIG := source_directory() / "kubeconfig.yaml"
+
+# --- dev ---
+
+# sync workspace (all members)
+sync:
+    uv sync
+
+# run a prefect CLI command against the remote server
+prefect *args:
+    PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
+        uv run --with prefect prefect {{args}}
 
 # --- infrastructure ---
 
@@ -15,10 +26,6 @@ init:
 # create the hetzner server with k3s
 infra:
     terraform -chdir=infra apply -var="hcloud_token=$HCLOUD_TOKEN"
-
-# plan infra changes
-infra-plan:
-    terraform -chdir=infra plan -var="hcloud_token=$HCLOUD_TOKEN"
 
 # destroy all infrastructure
 destroy:
@@ -31,8 +38,6 @@ server-ip:
 # ssh into the server
 ssh:
     ssh root@$(just server-ip)
-
-# --- cluster access ---
 
 # fetch kubeconfig from the server (run after cloud-init finishes)
 kubeconfig:
@@ -54,9 +59,9 @@ kubeconfig:
     echo "kubeconfig written"
     kubectl get nodes
 
-# --- deployment ---
+# --- cluster ---
 
-# deploy everything to the cluster
+# deploy everything to the cluster (idempotent)
 deploy:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -132,40 +137,13 @@ deploy:
     echo "done. point DNS:"
     echo "  $DOMAIN -> $(just server-ip)"
     echo "  $GRAFANA_DOMAIN -> $(just server-ip)"
-    echo "then check:"
-    echo "  curl https://$DOMAIN/api/health"
-    echo "  curl https://$GRAFANA_DOMAIN"
 
-# deploy the kubernetes worker to the cluster
+# apply the kubernetes worker
 worker:
     kubectl apply -f deploy/worker.yaml
 
-# install grafana plugins onto the node (pre-requisite for grafana deploy)
-# usage: just install-grafana-plugin motherduck-duckdb-datasource v0.4.1 <zip_url>
-install-grafana-plugin plugin version url:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "==> installing {{plugin}} {{version}} on node"
-    ssh root@$(just server-ip) "
-      apt-get install -y unzip -q 2>/dev/null || true
-      mkdir -p /var/lib/grafana-plugins
-      cd /var/lib/grafana-plugins
-      curl -fsSL {{url}} -o /tmp/plugin.zip
-      unzip -o /tmp/plugin.zip -d .
-      rm /tmp/plugin.zip
-      echo installed: \$(ls {{plugin}}/)
-    "
-
-# create the analytics hostPath directory on the node (run once after cluster is up)
-analytics-storage:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "==> creating /var/lib/prefect-analytics on the k3s node"
-    ssh root@$(just server-ip) "mkdir -p /var/lib/prefect-analytics"
-    echo "done — Grafana and flow pods can now share analytics.duckdb via hostPath"
-
-# create the results PVC, analytics hostPath, and patch the work pool
-results-storage: analytics-storage
+# create the analytics hostPath + results PVC and patch the work pool
+storage: _analytics-dir
     #!/usr/bin/env bash
     set -euo pipefail
     : "${DOMAIN:?set DOMAIN}"
@@ -176,32 +154,12 @@ results-storage: analytics-storage
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
         uv run --with prefect python scripts/patch_work_pool.py
 
-# register flow deployments (run locally with PREFECT_API_URL + PREFECT_API_AUTH_STRING)
-register-flows:
-    PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
-        uv run --with prefect prefect --no-prompt deploy --all
-
-# --- prefect resources (terraform) ---
-
-# initialize prefect terraform
-prefect-init:
-    terraform -chdir=prefect init
-
-# apply prefect resources
-prefect-apply:
-    terraform -chdir=prefect apply \
-        -var="domain=$DOMAIN" \
-        -var="auth_string=$AUTH_STRING"
-
-# plan prefect resource changes
-prefect-plan:
-    terraform -chdir=prefect plan \
-        -var="domain=$DOMAIN" \
-        -var="auth_string=$AUTH_STRING"
+_analytics-dir:
+    ssh root@$(just server-ip) "mkdir -p /var/lib/prefect-analytics"
 
 # --- operations ---
 
-# check the state of everything
+# check cluster state
 status:
     @echo "==> nodes"
     @kubectl top nodes
@@ -219,20 +177,11 @@ status:
 logs component="prefect-server":
     kubectl logs -n prefect -l app.kubernetes.io/name={{component}} -f
 
-# check prefect health via public endpoint
+# check prefect API health
 health:
     #!/usr/bin/env bash
     : "${DOMAIN:?set DOMAIN}"
     curl -sf "https://$DOMAIN/api/health" | jq .
-
-# first-time dbt setup: install deps, seed reference data, compile models
-init-analytics:
-    cd analytics && uv run dbt deps && uv run dbt seed && uv run dbt compile
-
-# run a prefect CLI command against the remote server
-prefect *args:
-    PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
-        uv run --with prefect prefect {{args}}
 
 # reload grafana dashboards from deploy/dashboards/
 dashboards:
@@ -248,3 +197,27 @@ dashboards:
             | kubectl apply -f -
         echo "  loaded $name"
     done
+
+# --- analytics ---
+
+# first-time dbt setup: install deps, seed reference data, compile models
+init-analytics:
+    cd analytics && uv run dbt deps && uv run dbt seed && uv run dbt compile
+
+# --- hub ---
+
+# build the hub container image (linux/amd64 for hetzner k3s node)
+build-web:
+    docker build --platform linux/amd64 -t atcr.io/zzstoatzz.io/hub:latest web/
+
+# build and push the hub image
+push-web: build-web
+    docker push atcr.io/zzstoatzz.io/hub:latest
+
+# apply hub k8s manifests
+deploy-web:
+    kubectl apply -f deploy/hub-deployment.yaml
+    sed "s|HUB_DOMAIN_PLACEHOLDER|hub.waow.tech|g" deploy/hub-ingress.yaml | kubectl apply -f -
+
+# build, push, and deploy hub
+web: push-web deploy-web

@@ -4,3 +4,9 @@
 .terraform/
 .terraform.lock.hcl
 kubeconfig.yaml
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+web/.svelte-kit/
+web/build/
