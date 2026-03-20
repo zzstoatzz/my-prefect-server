@@ -3,26 +3,30 @@ name: my-prefect-server
 pull:
   - prefect.deployments.steps.run_shell_script:
       script: |
-        bash -c "rm -rf my-prefect-server && (git clone --depth 1 --branch main https://tangled.sh/zzstoatzz.io/my-prefect-server.git my-prefect-server || git clone --depth 1 --branch main https://github.com/zzstoatzz/my-prefect-server.git my-prefect-server) && cd my-prefect-server && pip install -q -U uv && export PATH=\"$HOME/.local/bin:$PATH\" UV_PROJECT_ENVIRONMENT=.venv && uv python install 3.14 && uv sync --python 3.14"
+        bash -c "rm -rf my-prefect-server && (git clone --depth 1 --branch main https://tangled.sh/zzstoatzz.io/my-prefect-server.git my-prefect-server || git clone --depth 1 --branch main https://github.com/zzstoatzz/my-prefect-server.git my-prefect-server)"
   - prefect.deployments.steps.set_working_directory:
       directory: my-prefect-server
+
+definitions:
+  work_pools:
+    k8s: &k8s
+      name: kubernetes-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://tangled.sh/zzstoatzz.io/my-prefect-server.git'
+          prefect flow-run execute
 
 deployments:
   - name: diagnostics
     entrypoint: flows/diagnostics.py:diagnostics
-    work_pool:
-      name: kubernetes-pool
-      job_variables:
-        command: uv run prefect flow-run execute
+    work_pool: *k8s
     schedules:
       - cron: "*/5 * * * *"
 
   - name: gh-notifications
     entrypoint: flows/gh_notifications.py:gh_notifications
-    work_pool:
-      name: kubernetes-pool
-      job_variables:
-        command: uv run prefect flow-run execute
+    work_pool: *k8s
     schedules:
       - cron: "0 * * * *"  # hourly
     parameters:
@@ -30,29 +34,20 @@ deployments:
 
   - name: tangled-items
     entrypoint: flows/tangled_items.py:tangled_items
-    work_pool:
-      name: kubernetes-pool
-      job_variables:
-        command: uv run prefect flow-run execute
+    work_pool: *k8s
     schedules:
       - cron: "0 * * * *"  # hourly
 
   - name: enrich
     entrypoint: flows/enrich.py:enrich
-    work_pool:
-      name: kubernetes-pool
-      job_variables:
-        command: uv run prefect flow-run execute
+    work_pool: *k8s
     concurrency_limit: 1
     schedules:
       - cron: "5 * * * *"  # 5 minutes after gh-notifications
 
   - name: cleanup
     entrypoint: flows/cleanup.py:cleanup
-    work_pool:
-      name: kubernetes-pool
-      job_variables:
-        command: uv run prefect flow-run execute
+    work_pool: *k8s
     schedules:
       - cron: "0 2 * * 0"
     parameters:

@@ -45,9 +45,10 @@ async def main():
         envs = props.setdefault("env", {}).setdefault("default", {})
         envs["PREFECT_LOCAL_STORAGE_PATH"] = "/prefect-results"
         envs["ANALYTICS_DB_PATH"] = "/prefect-analytics/analytics.duckdb"
-        # tell uv sync to install into system Python instead of creating a .venv —
-        # this makes deps available to the prefect engine without any sys.path hacks
-        envs["UV_PROJECT_ENVIRONMENT"] = "/usr/local"
+        envs.pop("UV_PROJECT_ENVIRONMENT", None)
+
+        # use python 3.14 base image (uv is pre-installed)
+        props.setdefault("image", {})["default"] = "prefecthq/prefect:3-python3.14-kubernetes"
 
         # clean up finished job pods after 5 minutes — prevents overlayfs snapshot accumulation
         props.setdefault("finished_job_ttl", {})["default"] = 300
