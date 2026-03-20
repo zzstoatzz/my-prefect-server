@@ -14,7 +14,7 @@ definitions:
       job_variables:
         command: >-
           uv run
-          --with 'my-prefect-server @ git+https://tangled.sh/zzstoatzz.io/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
 
 deployments:
