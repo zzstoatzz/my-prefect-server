@@ -3,7 +3,7 @@ name: my-prefect-server
 pull:
   - prefect.deployments.steps.run_shell_script:
       script: |
-        bash -c "rm -rf my-prefect-server && (git clone --depth 1 --branch main https://tangled.sh/zzstoatzz.io/my-prefect-server.git my-prefect-server || git clone --depth 1 --branch main https://github.com/zzstoatzz/my-prefect-server.git my-prefect-server) && cd my-prefect-server && pip install -q -U uv && uv python install 3.14 && uv sync"
+        bash -c "rm -rf my-prefect-server && (git clone --depth 1 --branch main https://tangled.sh/zzstoatzz.io/my-prefect-server.git my-prefect-server || git clone --depth 1 --branch main https://github.com/zzstoatzz/my-prefect-server.git my-prefect-server) && cd my-prefect-server && pip install -q -U uv && export PATH=\"$HOME/.local/bin:$PATH\" && uv python install 3.14 && uv sync --python 3.14"
   - prefect.deployments.steps.set_working_directory:
       directory: my-prefect-server
 
