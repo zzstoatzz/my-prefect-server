@@ -1,21 +1,24 @@
 import subprocess
-from datetime import timedelta
 from pathlib import Path
 
 from prefect import flow, get_run_logger
-from prefect_dbt.core._orchestrator import (
-    CacheConfig,
-    ExecutionMode,
-    PrefectDbtOrchestrator,
-    TestStrategy,
-)
-from prefect_dbt.core.settings import PrefectDbtSettings
 
 ANALYTICS_DIR = Path(__file__).parent.parent / "analytics"
 
 
 @flow(name="enrich", log_prints=True)
 def enrich():
+    # lazy imports: dbt-common -> mashumaro has Python 3.14 compat issues at
+    # module load time; importing inside the function defers until flow runs
+    from datetime import timedelta
+    from prefect_dbt.core._orchestrator import (
+        CacheConfig,
+        ExecutionMode,
+        PrefectDbtOrchestrator,
+        TestStrategy,
+    )
+    from prefect_dbt.core.settings import PrefectDbtSettings
+
     logger = get_run_logger()
 
     # compile manifest.json so PrefectDbtOrchestrator can parse the project
