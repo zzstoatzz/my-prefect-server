@@ -12,6 +12,8 @@ deployments:
     entrypoint: flows/diagnostics.py:diagnostics
     work_pool:
       name: kubernetes-pool
+    job_variables:
+      command: uv run prefect flow-run execute
     schedules:
       - cron: "*/5 * * * *"
 
@@ -19,6 +21,8 @@ deployments:
     entrypoint: flows/gh_notifications.py:gh_notifications
     work_pool:
       name: kubernetes-pool
+    job_variables:
+      command: uv run prefect flow-run execute
     schedules:
       - cron: "0 * * * *"  # hourly
     parameters:
@@ -28,6 +32,8 @@ deployments:
     entrypoint: flows/tangled_items.py:tangled_items
     work_pool:
       name: kubernetes-pool
+    job_variables:
+      command: uv run prefect flow-run execute
     schedules:
       - cron: "0 * * * *"  # hourly
 
@@ -35,6 +41,8 @@ deployments:
     entrypoint: flows/enrich.py:enrich
     work_pool:
       name: kubernetes-pool
+    job_variables:
+      command: uv run prefect flow-run execute
     concurrency_limit: 1
     schedules:
       - cron: "5 * * * *"  # 5 minutes after gh-notifications
@@ -43,6 +51,8 @@ deployments:
     entrypoint: flows/cleanup.py:cleanup
     work_pool:
       name: kubernetes-pool
+    job_variables:
+      command: uv run prefect flow-run execute
     schedules:
       - cron: "0 2 * * 0"
     parameters:
