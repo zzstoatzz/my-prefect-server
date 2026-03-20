@@ -4,3 +4,4 @@ sources:
     schema: main
     tables:
       - name: raw_github_issues
+      - name: raw_tangled_items

@@ -1,28 +1,21 @@
 import { query } from '$lib/server/db';
+import type { Card, DashboardStats } from '$lib/types';
 
-interface Stats {
-	tracked: number;
-	open: number;
-	with_reactions: number;
-	repos: number;
-}
-
-interface ActionItem {
+interface ActionRow {
+	source: string;
 	repo: string;
-	number: number;
-	type: string;
+	identifier: string;
+	kind: string;
 	title: string;
 	url: string;
-	user: string;
-	labels: string;
-	comments: number;
-	reactions_total: number;
+	author: string;
+	labels: string[];
 	importance_score: number;
-	updated_at: string;
+	updated: string;
 }
 
 export async function load() {
-	const [stats] = await query<Stats>(`
+	const [stats] = await query<DashboardStats>(`
 		SELECT
 			count(*)::INT as tracked,
 			count(*) FILTER (WHERE state = 'open')::INT as open,
@@ -31,13 +24,29 @@ export async function load() {
 		FROM raw_github_issues
 	`);
 
-	const items = await query<ActionItem>(`
-		SELECT repo, number, type, title, url, "user",
-			array_to_string(labels, ', ') AS labels,
-			comments, reactions_total, importance_score, updated_at
-		FROM github_action_items
+	const rows = await query<ActionRow>(`
+		SELECT source, repo, identifier, kind, title, url,
+			author, labels, importance_score, updated
+		FROM hub_action_items
 		ORDER BY importance_score DESC
+		LIMIT 200
 	`);
 
-	return { stats, items };
+	const cards: Card[] = rows.map((r) => ({
+		id: `${r.source}:${r.repo}#${r.identifier}`,
+		source: r.source,
+		kind: r.kind,
+		title: r.title,
+		url: r.url,
+		score: r.importance_score,
+		updated: r.updated,
+		tags: Array.isArray(r.labels) ? r.labels : [],
+		meta: {
+			repo: r.repo,
+			number: r.identifier,
+			user: r.author
+		}
+	}));
+
+	return { stats, cards };
 }

@@ -18,6 +18,7 @@ spec:
       containers:
         - name: hub
           image: atcr.io/zzstoatzz.io/hub:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
           env:

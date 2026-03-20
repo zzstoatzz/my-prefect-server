@@ -24,6 +24,13 @@ deployments:
     parameters:
       only_unread: true
 
+  - name: tangled-items
+    entrypoint: flows/tangled_items.py:tangled_items
+    work_pool:
+      name: kubernetes-pool
+    schedules:
+      - cron: "0 * * * *"  # hourly
+
   - name: enrich
     entrypoint: flows/enrich.py:enrich
     work_pool:

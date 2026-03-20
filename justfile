@@ -214,10 +214,11 @@ build-web:
 push-web: build-web
     docker push atcr.io/zzstoatzz.io/hub:latest
 
-# apply hub k8s manifests
+# apply hub k8s manifests and restart the pod to pull the new image
 deploy-web:
     kubectl apply -f deploy/hub-deployment.yaml
     sed "s|HUB_DOMAIN_PLACEHOLDER|hub.waow.tech|g" deploy/hub-ingress.yaml | kubectl apply -f -
+    kubectl rollout restart deployment/hub -n prefect
 
 # build, push, and deploy hub
 web: push-web deploy-web
