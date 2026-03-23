@@ -140,8 +140,6 @@ grafana:
     - name: analytics-snapshot
       emptyDir: {}
 
-  extraVolumeMounts: []
-
   additionalDataSources:
     - name: DuckDB
       uid: duckdb
