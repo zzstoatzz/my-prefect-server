@@ -1,4 +1,5 @@
 import os
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -45,7 +46,10 @@ def make_agent(api_key: str) -> PrefectAgent[Briefing]:
 @task
 def load_items(db_path: str) -> str:
     """Read scored items from hub_action_items, format as text for the LLM."""
-    db = duckdb.connect(db_path, read_only=True)
+    # snapshot to bypass exclusive flock (same pattern as hub frontend)
+    snap = "/tmp/curate_analytics_snapshot.duckdb"
+    shutil.copy2(db_path, snap)
+    db = duckdb.connect(snap, read_only=True)
     rows = db.execute(
         "SELECT source, repo, identifier, kind, title, url, "
         "author, labels, importance_score, updated "
