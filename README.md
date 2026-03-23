@@ -1,8 +1,28 @@
-self-hosted prefect OSS on a single hetzner VM (k3s), with monitoring.
+personal data pipeline that digests my github and [tangled.org](https://tangled.org) activity, scores items by importance, and generates an LLM-curated briefing. self-hosted on a single hetzner VM (k3s) running prefect OSS.
 
-[executive dashboard](https://prefect-metrics.waow.tech/d/executive-overview/executive-overview?orgId=1&from=now-6h&to=now&timezone=browser) · [hub](https://hub.waow.tech)
+[hub](https://hub.waow.tech) · [grafana](https://prefect-metrics.waow.tech/d/executive-overview/executive-overview?orgId=1&from=now-6h&to=now&timezone=browser)
 
-see [docs/hub.md](docs/hub.md) for how the data pipeline and hub frontend work.
+```
+github API ──► gh-notifications ──► raw_github_issues ──┐
+               (hourly :00)                              │
+                                                         ▼
+                                                  enrich (dbt, :05)
+                                                         │
+tangled PDS ──► tangled-items ───► raw_tangled_items ────┘
+               (hourly :02)                              │
+                                                         ▼
+                                                  hub_action_items
+                                                    (top 200)
+                                                         │
+                                          ┌──────────────┼──────────┐
+                                          ▼              ▼          ▼
+                                    curate (:10)    /api/cards   hub UI
+                                          │
+                                          ▼
+                                    briefing.json
+```
+
+see [docs/hub.md](docs/hub.md) for the full pipeline breakdown.
 
 <details>
 <summary>deployment</summary>
