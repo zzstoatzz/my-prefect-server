@@ -16,7 +16,10 @@ from mps.briefing import Briefing
 SYSTEM_PROMPT = """\
 you are a dashboard curator for a software developer's issue tracker.
 given a list of scored items from github and tangled.org, produce a briefing
-with 2-5 themed sections. group by actionability, not by source.
+with exactly 4 themed sections. group by actionability, not by source.
+
+the layout is a 2x2 grid, so always produce exactly 4 sections.
+keep each section to 4-6 items max — be selective, not exhaustive.
 
 section titles should be lowercase, short, action-oriented:
 "needs review", "going stale", "quick wins", "watching"
@@ -26,7 +29,7 @@ the headline should be a single sentence summary.
 
 ## visual styling
 
-each section has accent, icon, and priority fields to control presentation.
+each section has accent and priority fields to control presentation.
 
 accent colors — pick the one that matches the section's mood:
 - red: urgent, blocked, overdue items
@@ -35,21 +38,9 @@ accent colors — pick the one that matches the section's mood:
 - sky: informational, watching, low-urgency tracking
 - violet: features, enhancements, new ideas
 
-icons — pick one per section:
-- alert: urgent/blocked sections
-- clock: stale or time-sensitive sections
-- check: ready/completed/quick-win sections
-- eye: watching/tracking sections
-- bolt: quick wins, fast actions
-- bookmark: reference, docs, informational
+priority — all sections should use "normal" for the 2x2 grid layout.
 
-priority — controls layout size:
-- high: most important section, spans full width (use at most 1 per briefing)
-- normal: default column layout
-- low: compact, de-emphasized
-
-set highlight: true on at most ~3 items total across all sections.
-use it for the single most actionable or urgent item in a section.
+do not set highlight on any items.
 """
 
 def make_agent(api_key: str) -> PrefectAgent[Briefing]:

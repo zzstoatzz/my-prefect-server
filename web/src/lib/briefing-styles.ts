@@ -8,7 +8,6 @@ import type { SectionAccent, SectionPriority } from '$lib/server/briefing';
  * bg-red-950/40 bg-amber-950/40 bg-emerald-950/40 bg-sky-950/40 bg-violet-950/40
  * bg-red-400 bg-amber-400 bg-emerald-400 bg-sky-400 bg-violet-400
  * border-l-2 border-l-3 border-l-4
- * sm:col-span-2 bg-white/5
  */
 
 export const ACCENT_STYLES: Record<
@@ -60,22 +59,19 @@ export const ACCENT_STYLES: Record<
 
 export const PRIORITY_LAYOUT: Record<
 	SectionPriority,
-	{ colSpan: string; titleSize: string; padding: string; borderWidth: string }
+	{ titleSize: string; padding: string; borderWidth: string }
 > = {
 	high: {
-		colSpan: 'sm:col-span-2',
 		titleSize: 'text-base',
 		padding: 'px-5 py-4',
 		borderWidth: 'border-l-4'
 	},
 	normal: {
-		colSpan: '',
 		titleSize: 'text-sm',
 		padding: 'px-5 py-4',
 		borderWidth: 'border-l-3'
 	},
 	low: {
-		colSpan: '',
 		titleSize: 'text-xs',
 		padding: 'px-4 py-3',
 		borderWidth: 'border-l-2'

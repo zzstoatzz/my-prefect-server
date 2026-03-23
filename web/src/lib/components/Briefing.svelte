@@ -8,13 +8,8 @@
 
 	let cardMap = $derived(new Map(cards.map((c) => [c.id, c])));
 
-	/** sections that don't already span full width */
-	let normalSections = $derived(
-		briefing?.sections.filter((s) => (s.priority ?? 'normal') !== 'high') ?? []
-	);
-	let lastNormalTitle = $derived(
-		normalSections.length % 2 === 1 ? normalSections[normalSections.length - 1]?.title : null
-	);
+	/** cap at 4 sections for 2x2 grid */
+	let sections = $derived(briefing?.sections.slice(0, 4) ?? []);
 
 	function urlFor(item: BriefingItem): string | null {
 		return cardMap.get(item.item_id)?.url ?? null;
@@ -63,14 +58,12 @@
 		<h2 class="text-xl font-semibold text-gray-100">{briefing.headline}</h2>
 
 		<div class="grid gap-4 sm:grid-cols-2">
-			{#each briefing.sections as section (section.title)}
+			{#each sections as section (section.title)}
 				{@const accent = ACCENT_STYLES[section.accent ?? 'sky']}
 				{@const layout = PRIORITY_LAYOUT[section.priority ?? 'normal']}
-				{@const isOrphan = section.title === lastNormalTitle}
-				{@const colSpan = layout.colSpan || (isOrphan ? 'sm:col-span-2' : '')}
 
 				<div
-					class="rounded-lg {accent.bgTint} {accent.border} {layout.borderWidth} {layout.padding} {colSpan} space-y-3"
+					class="rounded-lg {accent.bgTint} {accent.border} {layout.borderWidth} {layout.padding} space-y-3"
 				>
 					<div class="flex items-center gap-2">
 						<span class="h-2 w-2 shrink-0 rounded-full {accent.dot}"></span>
@@ -86,12 +79,7 @@
 							{#each section.items as item (item.item_id)}
 								{@const url = urlFor(item)}
 								{@const parsed = parseItemId(item.item_id)}
-								{@const highlighted = item.highlight ?? false}
-								<li
-									class="text-sm flex items-center gap-2 {highlighted
-										? 'bg-white/5 rounded px-1.5 py-0.5 -mx-1.5 text-gray-100 font-medium'
-										: 'text-gray-300'}"
-								>
+								<li class="text-sm flex items-center gap-2 text-gray-300">
 									{#if parsed}
 										<a
 											href={repoUrl(parsed)}
