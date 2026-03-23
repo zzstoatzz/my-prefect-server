@@ -118,7 +118,16 @@ async def delete_old_flow_runs(config: RetentionConfig) -> dict:
         return {"deleted": deleted_total, "failed": failed_total}
 
 
-@flow(name="cleanup", log_prints=True)
+def _cleanup_run_name():
+    import prefect.runtime
+
+    config = prefect.runtime.flow_run.parameters.get("config", RetentionConfig())
+    mode = "dry-run" if getattr(config, "dry_run", True) else "live"
+    days = getattr(config, "days_to_keep", 30)
+    return f"{mode}-{days}d"
+
+
+@flow(name="cleanup", flow_run_name=_cleanup_run_name, log_prints=True)
 async def cleanup(config: RetentionConfig = RetentionConfig()) -> dict:
     """Delete old terminal flow runs.
 
