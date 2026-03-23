@@ -6,8 +6,8 @@ from prefect import flow, get_run_logger
 ANALYTICS_DIR = Path(__file__).parent.parent / "analytics"
 
 
-@flow(name="enrich", log_prints=True)
-def enrich():
+@flow(name="transform", log_prints=True)
+def transform():
     # lazy imports: dbt-common -> mashumaro has Python 3.14 compat issues at
     # module load time; importing inside the function defers until flow runs
     from datetime import timedelta
@@ -49,4 +49,4 @@ def enrich():
 
 
 if __name__ == "__main__":
-    enrich()
+    transform()

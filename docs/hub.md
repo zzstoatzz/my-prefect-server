@@ -4,7 +4,7 @@ action item dashboard at [hub.waow.tech](https://hub.waow.tech). aggregates issu
 
 ## data sources
 
-a single `ingest` flow runs hourly on cron and fetches both data sources concurrently, then writes to DuckDB sequentially (same process = no single-writer lock contention). downstream flows (enrich, curate) are event-driven via deployment triggers — they only run when upstream completes.
+a single `ingest` flow runs hourly on cron and fetches both data sources concurrently, then writes to DuckDB sequentially (same process = no single-writer lock contention). downstream flows (transform, brief) are event-driven via deployment triggers — they only run when upstream completes.
 
 **github** — fetches notifications (issues + PRs) and open items authored by `zzstoatzz` via the search API. each issue is cached by repo+number for 24h. persists to `raw_github_issues`.
 
@@ -17,7 +17,7 @@ github API ──┐
              ├──► ingest ──► raw_github_issues ──┐
 tangled PDS ─┘   (hourly)   raw_tangled_items ──┤
                                                  ▼
-                                          enrich (dbt)
+                                          transform (dbt)
                                           [on ingest ✓]
                                                  │
                                                  ▼
@@ -26,8 +26,8 @@ tangled PDS ─┘   (hourly)   raw_tangled_items ──┤
                                                  │
                                   ┌──────────────┼──────────────┐
                                   ▼              ▼              ▼
-                               curate      /api/cards.json   +page.svelte
-                           [on enrich ✓]                     (SSR loader)
+                                brief      /api/cards.json   +page.svelte
+                          [on transform ✓]                   (SSR loader)
                                   │
                                   ▼
                             briefing.json ──► /api/briefing.json
@@ -39,8 +39,8 @@ tangled PDS ─┘   (hourly)   raw_tangled_items ──┤
 |---|---|---|
 | `diagnostics` | cron `*/5 * * * *` | prints system info — canary for worker health |
 | `ingest` | cron `0 * * * *` | fetches github notifications + authored items and tangled.org items concurrently, persists both to DuckDB sequentially |
-| `enrich` | on `ingest` completion | dbt build: staging → enrichment → mart. concurrency limit 1. runs under python 3.13 (dbt-core compat) |
-| `curate` | on `enrich` completion | loads top 200 scored items, sends to claude haiku 4.5 via pydantic-ai, writes `briefing.json`. cached by items content hash (skips LLM when data unchanged) |
+| `transform` | on `ingest` completion | dbt build: staging → scoring → mart. concurrency limit 1. runs under python 3.13 (dbt-core compat) |
+| `brief` | on `transform` completion | loads top 200 scored items, sends to claude haiku 4.5 via pydantic-ai, writes `briefing.json`. cached by items content hash (skips LLM when data unchanged) |
 | `cleanup` | cron `0 2 * * 0` | deletes old terminal flow runs (completed, failed, cancelled, crashed) older than 30 days |
 
 all flows run in the `kubernetes-pool` work pool. code is pulled at runtime via `git clone` from tangled.sh (github fallback). deps install via `uv run --with 'my-prefect-server @ git+...'`. deployments are registered by CI on every push to main.
@@ -61,7 +61,7 @@ contributor weights come from the `known_contributors` seed (zzstoatzz + zzstoat
 
 ## curation
 
-the `curate` flow fires automatically when `enrich` completes (via deployment trigger). it:
+the `brief` flow fires automatically when `transform` completes (via deployment trigger). it:
 
 1. snapshots DuckDB to `/tmp` (bypass exclusive flock)
 2. loads top 200 items from `hub_action_items`

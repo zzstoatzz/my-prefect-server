@@ -109,8 +109,8 @@ def write_briefing(briefing: Briefing, path: str):
     Path(path).write_text(briefing.model_dump_json(indent=2))
 
 
-@flow(name="curate", log_prints=True)
-async def curate():
+@flow(name="brief", log_prints=True)
+async def brief():
     logger = get_run_logger()
     db_path = os.environ.get(
         "ANALYTICS_DB_PATH",
@@ -136,4 +136,4 @@ async def curate():
 if __name__ == "__main__":
     import asyncio
 
-    asyncio.run(curate())
+    asyncio.run(brief())

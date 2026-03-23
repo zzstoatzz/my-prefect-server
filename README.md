@@ -7,7 +7,7 @@ github API ──┐
              ├──► ingest ──► raw_github_issues ──┐
 tangled PDS ─┘   (hourly)   raw_tangled_items ──┤
                                                  ▼
-                                          enrich (dbt)
+                                          transform (dbt)
                                           [on ingest ✓]
                                                  │
                                                  ▼
@@ -16,8 +16,8 @@ tangled PDS ─┘   (hourly)   raw_tangled_items ──┤
                                                  │
                                   ┌──────────────┼──────────┐
                                   ▼              ▼          ▼
-                               curate       /api/cards   hub UI
-                          [on enrich ✓]
+                                brief       /api/cards   hub UI
+                          [on transform ✓]
                                   │
                                   ▼
                             briefing.json

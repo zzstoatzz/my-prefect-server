@@ -32,8 +32,8 @@ deployments:
     parameters:
       only_unread: true
 
-  - name: enrich
-    entrypoint: flows/enrich.py:enrich
+  - name: transform
+    entrypoint: flows/transform.py:transform
     work_pool:
       name: kubernetes-pool
       job_variables:
@@ -63,13 +63,13 @@ deployments:
         rate_limit_delay: 0.5
         dry_run: false
 
-  - name: curate
-    entrypoint: flows/curate.py:curate
+  - name: brief
+    entrypoint: flows/brief.py:brief
     work_pool: *k8s
     triggers:
       - type: event
         expect:
           - "prefect.flow-run.Completed"
         match_related:
-          prefect.resource.name: "enrich"
+          prefect.resource.name: "transform"
           prefect.resource.role: "deployment"
