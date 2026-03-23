@@ -4,19 +4,21 @@ personal data pipeline that digests my github and [tangled.org](https://tangled.
 
 ```
 github API ──► gh-notifications ──► raw_github_issues ──┐
-               (hourly :00)                              │
+               (hourly)                                  │
                                                          ▼
-                                                  enrich (dbt, :05)
+                                                  enrich (dbt)
+                                                    [on complete ✓]
                                                          │
 tangled PDS ──► tangled-items ───► raw_tangled_items ────┘
-               (hourly :02)                              │
+               (hourly)                                  │
                                                          ▼
                                                   hub_action_items
                                                     (top 200)
                                                          │
                                           ┌──────────────┼──────────┐
                                           ▼              ▼          ▼
-                                    curate (:10)    /api/cards   hub UI
+                                       curate       /api/cards   hub UI
+                                  [on complete ✓]
                                           │
                                           ▼
                                     briefing.json

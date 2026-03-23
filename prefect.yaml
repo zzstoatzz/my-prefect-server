@@ -48,8 +48,13 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
     concurrency_limit: 1
-    schedules:
-      - cron: "5 * * * *"  # 5 minutes after gh-notifications
+    triggers:
+      - type: event
+        expect:
+          - "prefect.flow-run.Completed"
+        match_related:
+          prefect.resource.name: "tangled-items"
+          prefect.resource.role: "deployment"
 
   - name: cleanup
     entrypoint: flows/cleanup.py:cleanup
@@ -67,5 +72,10 @@ deployments:
   - name: curate
     entrypoint: flows/curate.py:curate
     work_pool: *k8s
-    schedules:
-      - cron: "10 * * * *"  # after enrich refreshes the mart
+    triggers:
+      - type: event
+        expect:
+          - "prefect.flow-run.Completed"
+        match_related:
+          prefect.resource.name: "enrich"
+          prefect.resource.role: "deployment"

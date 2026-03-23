@@ -334,11 +334,36 @@ added tangled.org issues/PRs alongside github as a data source for the hub (hub.
 - labels are tracked via `sh.tangled.label.op` records (add/delete operations on AT URI subjects)
 - activity volume is very low currently — full resync each run is fine
 
+## step 12: event-driven pipeline with deployment triggers
+
+replaced the staggered cron schedules on `enrich` and `curate` with deployment triggers (prefect automations). the data flows (`gh-notifications` at :00, `tangled-items` at :02) stay on cron. downstream flows fire reactively:
+
+- `enrich` triggers on `tangled-items` completion — by that point both data sources have written to DuckDB
+- `curate` triggers on `enrich` completion — the mart is fresh
+
+this eliminates wasted pods: no enrich/curate run unless upstream actually finished. previously, cron offsets were a guess (`:05`, `:10`) — if enrich took longer than 5 minutes, curate would run on stale data.
+
+the `curate` flow also gained a `ByItemsContent` cache policy that hashes the items text + system prompt. if the scored items haven't changed, the LLM call is skipped entirely (4h cache expiration). combined with event-driven triggering, curate only spins up a pod when there's new data, and only calls haiku when the data actually changed.
+
+defined in `prefect.yaml` as deployment triggers:
+```yaml
+triggers:
+  - type: event
+    expect:
+      - "prefect.flow-run.Completed"
+    match_related:
+      prefect.resource.name: "tangled-items"
+      prefect.resource.role: "deployment"
+```
+
+these are syntactic sugar — `prefect deploy` converts each trigger into a full `Automation` with a `RunDeployment` action targeting the owning deployment.
+
+**gotcha**: `prefect deploy` creates the automation but does NOT remove old cron schedules. must manually pause them via `prefect deployment schedule pause`.
+
 ## what's next
 
-- CI for flow registration on tangled (.tangled CI, not github actions)
-- more interesting deployments with automations
 - file upstream issue on prefecthq/prefect-helm for docket URL
 - contribute guide back to prefect docs
 - upstream: `job_variables` placement should be validated or warned about (silent ignore is surprising)
 - upstream: consider a prefect recipe/docs page for the `uv run --with` pattern on kubernetes work pools
+- upstream: `prefect deploy` should remove schedules when switching to triggers-only
