@@ -11,8 +11,19 @@
 	/** cap at 4 sections for 2x2 grid */
 	let sections = $derived(briefing?.sections.slice(0, 4) ?? []);
 
+	const MY_HANDLES = new Set(['zzstoatzz', 'zzstoatzz.io']);
+
+	function cardFor(item: BriefingItem): Card | undefined {
+		return cardMap.get(item.item_id);
+	}
+
 	function urlFor(item: BriefingItem): string | null {
-		return cardMap.get(item.item_id)?.url ?? null;
+		return cardFor(item)?.url ?? null;
+	}
+
+	function isMine(item: BriefingItem): boolean {
+		const user = cardFor(item)?.meta?.user;
+		return typeof user === 'string' && MY_HANDLES.has(user);
 	}
 
 	interface ParsedItemId {
@@ -79,6 +90,7 @@
 							{#each section.items as item (item.item_id)}
 								{@const url = urlFor(item)}
 								{@const parsed = parseItemId(item.item_id)}
+								{@const mine = isMine(item)}
 								<li class="text-sm flex items-center gap-2 text-gray-300">
 									{#if parsed}
 										<a
@@ -111,6 +123,12 @@
 										<span class="font-mono text-xs opacity-60 shrink-0">
 											{item.item_id}
 										</span>
+									{/if}
+									{#if mine}
+										<span
+											class="shrink-0 text-[10px] px-1 py-px rounded bg-sky-400/15 text-sky-400 font-medium"
+											>you</span
+										>
 									{/if}
 									{#if url}
 										<a
