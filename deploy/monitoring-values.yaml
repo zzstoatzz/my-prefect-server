@@ -82,7 +82,7 @@ grafana:
   # a busybox sidecar refreshes the snapshot every 60s so the DuckDB plugin
   # can't take an exclusive lock on the production database.
 
-  extraContainerVolumeMounts:
+  extraVolumeMounts:
     - name: duckdb-plugin
       mountPath: /var/lib/grafana/plugins/motherduck-duckdb-datasource
       readOnly: true
@@ -108,8 +108,8 @@ grafana:
         - name: analytics-snapshot
           mountPath: /analytics-snap
 
-  extraContainers:
-    # refresh snapshot every 60s — grafana reads the copy, never the live DB
+  # extraContainers is templated as a string in grafana chart 7.x (tpl . $)
+  extraContainers: |
     - name: snapshot-sync
       image: busybox:1
       command: ["sh", "-c"]
