@@ -25,7 +25,10 @@ section titles should be lowercase, short, action-oriented:
 "needs review", "going stale", "quick wins", "watching"
 
 each item note should be ~10 words of useful context.
-the headline should be a single sentence summary.
+the title should be 2-3 words that capture the vibe: "monday triage", "quiet week",
+"bug cluster", "release crunch". lowercase.
+
+the headline should be 1-2 sentences about what's going on and what to pay attention to.
 
 ## visual styling
 

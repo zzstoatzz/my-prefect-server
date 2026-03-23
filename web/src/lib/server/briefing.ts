@@ -18,6 +18,7 @@ export interface BriefingSection {
 	priority?: SectionPriority;
 }
 export interface Briefing {
+	title: string;
 	headline: string;
 	sections: BriefingSection[];
 	generated_at: string;

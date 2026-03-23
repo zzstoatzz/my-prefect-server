@@ -66,7 +66,10 @@
 
 {#if briefing}
 	<div class="space-y-4">
-		<h2 class="text-xl font-semibold text-gray-100">{briefing.headline}</h2>
+		{#if briefing.title}
+			<h2 class="text-xl font-semibold text-gray-100">{briefing.title}</h2>
+		{/if}
+		<p class="text-sm text-gray-400">{briefing.headline}</p>
 
 		<div class="grid gap-4 sm:grid-cols-2">
 			{#each sections as section (section.title)}
