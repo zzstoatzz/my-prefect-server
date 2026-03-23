@@ -4,7 +4,7 @@ action item dashboard at [hub.waow.tech](https://hub.waow.tech). aggregates issu
 
 ## data sources
 
-two ingestion flows run hourly, staggered to avoid DuckDB write contention:
+two ingestion flows run hourly at :00, writing to separate DuckDB tables:
 
 **gh-notifications** (`flows/gh_notifications.py`) — fetches github notifications (issues + PRs) and open items authored by `zzstoatzz` via the search API. each issue is cached by repo+number for 24h. persists to `raw_github_issues`.
 
@@ -21,7 +21,7 @@ github API ──► gh-notifications ──► raw_github_issues ──┐
                                                   └────────────────────┘
                                                          │
 tangled PDS ──► tangled-items ───► raw_tangled_items ────┘
-               (hourly :02)                              │
+               (hourly :00)                              │
                                                          ▼
                                                   hub_action_items
                                                     (mart, top 200)
@@ -41,7 +41,7 @@ tangled PDS ──► tangled-items ───► raw_tangled_items ────�
 |---|---|---|
 | `diagnostics` | `*/5 * * * *` | prints system info — canary for worker health |
 | `gh-notifications` | `0 * * * *` | github notifications + authored open issues/PRs → `raw_github_issues` |
-| `tangled-items` | `2 * * * *` | tangled.org issues/PRs/comments → `raw_tangled_items` |
+| `tangled-items` | `0 * * * *` | tangled.org issues/PRs/comments → `raw_tangled_items` |
 | `enrich` | `5 * * * *` | dbt build: staging → enrichment → mart. concurrency limit 1. runs under python 3.13 (dbt-core compat) |
 | `curate` | `10 * * * *` | loads top 200 scored items, sends to claude haiku 4.5 via pydantic-ai, writes `briefing.json` |
 | `cleanup` | `0 2 * * 0` | deletes old terminal flow runs (completed, failed, cancelled, crashed) older than 30 days |

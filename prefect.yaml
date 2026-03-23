@@ -36,7 +36,7 @@ deployments:
     entrypoint: flows/tangled_items.py:tangled_items
     work_pool: *k8s
     schedules:
-      - cron: "2 * * * *"  # staggered from gh-notifications to avoid DuckDB write contention
+      - cron: "0 * * * *"  # hourly
 
   - name: enrich
     entrypoint: flows/enrich.py:enrich
