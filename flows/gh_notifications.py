@@ -159,7 +159,14 @@ def persist_to_duckdb(items: list[IssueOrPR]) -> int:
     return write_github_issues(items, db_path)
 
 
-@flow(name="gh-notifications", log_prints=True)
+def _gh_run_name():
+    import prefect.runtime
+
+    unread = prefect.runtime.flow_run.parameters.get("only_unread", True)
+    return "unread" if unread else "all"
+
+
+@flow(name="gh-notifications", flow_run_name=_gh_run_name, log_prints=True)
 def gh_notifications(only_unread: bool = True) -> list[IssueOrPR]:
     """
     Fetch GitHub notifications and persist each issue/PR as a cached JSON result.
