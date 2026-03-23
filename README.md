@@ -3,25 +3,24 @@ personal data pipeline that digests my github and [tangled.org](https://tangled.
 [hub](https://hub.waow.tech) · [grafana](https://prefect-metrics.waow.tech/d/executive-overview/executive-overview?orgId=1&from=now-6h&to=now&timezone=browser)
 
 ```
-github API ──► gh-notifications ──► raw_github_issues ──┐
-               (hourly)                                  │
-                                                         ▼
-                                                  enrich (dbt)
-                                                    [on complete ✓]
-                                                         │
-tangled PDS ──► tangled-items ───► raw_tangled_items ────┘
-               (hourly)                                  │
-                                                         ▼
-                                                  hub_action_items
-                                                    (top 200)
-                                                         │
-                                          ┌──────────────┼──────────┐
-                                          ▼              ▼          ▼
-                                       curate       /api/cards   hub UI
-                                  [on complete ✓]
-                                          │
-                                          ▼
-                                    briefing.json
+github API ──┐
+             ├──► ingest ──► raw_github_issues ──┐
+tangled PDS ─┘   (hourly)   raw_tangled_items ──┤
+                                                 ▼
+                                          enrich (dbt)
+                                          [on ingest ✓]
+                                                 │
+                                                 ▼
+                                          hub_action_items
+                                            (top 200)
+                                                 │
+                                  ┌──────────────┼──────────┐
+                                  ▼              ▼          ▼
+                               curate       /api/cards   hub UI
+                          [on enrich ✓]
+                                  │
+                                  ▼
+                            briefing.json
 ```
 
 see [docs/hub.md](docs/hub.md) for the full pipeline breakdown.

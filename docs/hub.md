@@ -4,35 +4,33 @@ action item dashboard at [hub.waow.tech](https://hub.waow.tech). aggregates issu
 
 ## data sources
 
-two ingestion flows run hourly on cron, staggered because DuckDB only allows one writer process at a time. downstream flows (enrich, curate) are event-driven via deployment triggers — they only run when upstream completes:
+a single `ingest` flow runs hourly on cron and fetches both data sources concurrently, then writes to DuckDB sequentially (same process = no single-writer lock contention). downstream flows (enrich, curate) are event-driven via deployment triggers — they only run when upstream completes.
 
-**gh-notifications** (`flows/gh_notifications.py`) — fetches github notifications (issues + PRs) and open items authored by `zzstoatzz` via the search API. each issue is cached by repo+number for 24h. persists to `raw_github_issues`.
+**github** — fetches notifications (issues + PRs) and open items authored by `zzstoatzz` via the search API. each issue is cached by repo+number for 24h. persists to `raw_github_issues`.
 
-**tangled-items** (`flows/tangled_items.py`) — fetches issues, PRs, and comments from the tangled.org PDS (`pds.zzstoatzz.io`) via AT Protocol's `com.atproto.repo.listRecords`. no auth needed — records are public. targets repos: zat, zlay, plyr.fm, at-me, pollz, typeahead. persists to `raw_tangled_items`.
+**tangled.org** — fetches issues, PRs, and comments from the PDS (`pds.zzstoatzz.io`) via AT Protocol's `com.atproto.repo.listRecords`. no auth needed — records are public. targets repos: zat, zlay, plyr.fm, at-me, pollz, typeahead. persists to `raw_tangled_items`.
 
 ## pipeline
 
 ```
-github API ──► gh-notifications ──► raw_github_issues ──┐
-               (hourly :00)                              │
-                                                         ▼
-                                                  ┌─── enrich (dbt) ───┐
-                                                  │ [on tangled-items ✓] │
-                                                  └────────────────────┘
-                                                         │
-tangled PDS ──► tangled-items ───► raw_tangled_items ────┘
-               (hourly :02)                              │
-                                                         ▼
-                                                  hub_action_items
-                                                    (mart, top 200)
-                                                         │
-                                          ┌──────────────┼──────────────┐
-                                          ▼              ▼              ▼
-                                       curate      /api/cards.json   +page.svelte
-                                   [on enrich ✓]                     (SSR loader)
-                                          │
-                                          ▼
-                                    briefing.json ──► /api/briefing.json
+github API ──┐
+             ├──► ingest ──► raw_github_issues ──┐
+tangled PDS ─┘   (hourly)   raw_tangled_items ──┤
+                                                 ▼
+                                          enrich (dbt)
+                                          [on ingest ✓]
+                                                 │
+                                                 ▼
+                                          hub_action_items
+                                            (mart, top 200)
+                                                 │
+                                  ┌──────────────┼──────────────┐
+                                  ▼              ▼              ▼
+                               curate      /api/cards.json   +page.svelte
+                           [on enrich ✓]                     (SSR loader)
+                                  │
+                                  ▼
+                            briefing.json ──► /api/briefing.json
 ```
 
 ## flows
@@ -40,9 +38,8 @@ tangled PDS ──► tangled-items ───► raw_tangled_items ────�
 | deployment | trigger | what it does |
 |---|---|---|
 | `diagnostics` | cron `*/5 * * * *` | prints system info — canary for worker health |
-| `gh-notifications` | cron `0 * * * *` | github notifications + authored open issues/PRs → `raw_github_issues` |
-| `tangled-items` | cron `2 * * * *` | tangled.org issues/PRs/comments → `raw_tangled_items` |
-| `enrich` | on `tangled-items` completion | dbt build: staging → enrichment → mart. concurrency limit 1. runs under python 3.13 (dbt-core compat) |
+| `ingest` | cron `0 * * * *` | fetches github notifications + authored items and tangled.org items concurrently, persists both to DuckDB sequentially |
+| `enrich` | on `ingest` completion | dbt build: staging → enrichment → mart. concurrency limit 1. runs under python 3.13 (dbt-core compat) |
 | `curate` | on `enrich` completion | loads top 200 scored items, sends to claude haiku 4.5 via pydantic-ai, writes `briefing.json`. cached by items content hash (skips LLM when data unchanged) |
 | `cleanup` | cron `0 2 * * 0` | deletes old terminal flow runs (completed, failed, cancelled, crashed) older than 30 days |
 

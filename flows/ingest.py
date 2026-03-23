@@ -1,14 +1,14 @@
 """
-Fetch GitHub notifications and the issues/PRs behind them.
-Results are persisted as JSON to a shared PVC so DuckDB can query them later.
+Fetch GitHub notifications and tangled.org items, persist both to DuckDB.
 
-Cache policy: each issue is cached by repo+number for 24h — we don't re-fetch
-what we already have.
+Combines the two data sources into one flow so DuckDB's single-writer lock
+is never contested — both persists happen sequentially in the same process.
+
+Cache policy: each GitHub issue is cached by repo+number for 24h.
 
 Requires:
   - Secret block "github-token" (notifications scope)
   - PREFECT_LOCAL_STORAGE_PATH env var pointing at the mounted PVC
-    (set in the work pool base job template or via deploy/results-pvc.yaml)
 """
 
 import datetime
@@ -16,15 +16,23 @@ import os
 from dataclasses import dataclass
 
 import httpx
-from prefect import flow, task, get_run_logger, unmapped
+from prefect import flow, get_run_logger, task, unmapped
 from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 
-from mps.db import write_github_issues
+from mps.db import write_github_issues, write_tangled_items
 from mps.github import IssueOrPR, IssueRef, gh_headers
+from mps.tangled import PDS_BASE, TangledItem, fetch_items, fetch_repo_at_uris
 
 GITHUB_API = "https://api.github.com"
+
+TANGLED_COLLECTIONS = [
+    "sh.tangled.repo.issue",
+    "sh.tangled.repo.pull",
+    "sh.tangled.repo.issue.comment",
+    "sh.tangled.repo.pull.comment",
+]
 
 # bump to invalidate all cached results (e.g. when fetch shape changes)
 _CACHE_VERSION = "v2"
@@ -45,6 +53,9 @@ class ByRepoAndNumber(CachePolicy):
         if ref is None:
             return None
         return f"gh/{_CACHE_VERSION}/{ref.repo}/{ref.number}"
+
+
+# --- github tasks ---
 
 
 @task
@@ -93,8 +104,6 @@ def fetch_notifications(token: str, only_unread: bool = True) -> list[IssueRef]:
 def fetch_issue_or_pr(ref: IssueRef, token: str) -> IssueOrPR | None:
     """Fetch a single issue or PR. Cached by repo+number for 24h."""
     with httpx.Client(headers=gh_headers(token)) as client:
-        # always use the issues endpoint — PRs are issues in GitHub's model and
-        # only the issues endpoint returns the reactions field
         resp = client.get(f"{GITHUB_API}/repos/{ref.repo}/issues/{ref.number}")
         if resp.status_code == 404:
             return None
@@ -133,7 +142,6 @@ def fetch_authored_items(token: str, username: str = "zzstoatzz") -> list[IssueR
     for item in resp.json().get("items", []):
         html_url = item.get("html_url", "")
         is_pr = "/pull/" in html_url
-        # extract repo from html_url: https://github.com/{owner}/{repo}/issues/{n}
         parts = html_url.split("/")
         try:
             repo = f"{parts[3]}/{parts[4]}"
@@ -150,31 +158,62 @@ def fetch_authored_items(token: str, username: str = "zzstoatzz") -> list[IssueR
     return refs
 
 
+# --- tangled tasks ---
+
+
 @task
-def persist_to_duckdb(items: list[IssueOrPR]) -> int:
-    db_path = os.environ.get(
+def fetch_all_tangled_items() -> list[TangledItem]:
+    """Fetch issues, PRs, and comments from the tangled.org PDS."""
+    logger = get_run_logger()
+    with httpx.Client(base_url=PDS_BASE, timeout=30) as client:
+        repo_uris = fetch_repo_at_uris(client)
+        logger.info(f"found {len(repo_uris)} target repos on PDS")
+
+        items: list[TangledItem] = []
+        for collection in TANGLED_COLLECTIONS:
+            batch = fetch_items(client, collection, repo_uris)
+            logger.info(f"{collection}: {len(batch)} records")
+            items.extend(batch)
+
+    return items
+
+
+# --- persist tasks ---
+
+
+def _db_path() -> str:
+    return os.environ.get(
         "ANALYTICS_DB_PATH",
         os.environ.get("PREFECT_LOCAL_STORAGE_PATH", "/tmp") + "/analytics.duckdb",
     )
-    return write_github_issues(items, db_path)
 
 
-def _gh_run_name():
-    import prefect.runtime
-
-    unread = prefect.runtime.flow_run.parameters.get("only_unread", True)
-    return "unread" if unread else "all"
+@task
+def persist_github(items: list[IssueOrPR]) -> int:
+    return write_github_issues(items, _db_path())
 
 
-@flow(name="gh-notifications", flow_run_name=_gh_run_name, log_prints=True)
-def gh_notifications(only_unread: bool = True) -> list[IssueOrPR]:
+@task
+def persist_tangled(items: list[TangledItem]) -> int:
+    return write_tangled_items(items, _db_path())
+
+
+# --- flow ---
+
+
+@flow(name="ingest", log_prints=True)
+def ingest(only_unread: bool = True):
     """
-    Fetch GitHub notifications and persist each issue/PR as a cached JSON result.
-    Cache hit = skips the fetch entirely. Results on disk = DuckDB-queryable.
+    Fetch GitHub and tangled.org data concurrently, then persist sequentially.
     """
     logger = get_run_logger()
 
     token = load_token()
+
+    # kick off tangled fetch immediately (no deps)
+    tangled_future = fetch_all_tangled_items.submit()
+
+    # github fetches need the token
     notif_refs = fetch_notifications(token, only_unread=only_unread)
     authored_refs = fetch_authored_items(token)
 
@@ -187,18 +226,26 @@ def gh_notifications(only_unread: bool = True) -> list[IssueOrPR]:
             seen.add(key)
             refs.append(ref)
 
-    if not refs:
-        logger.info("no items")
-        return []
+    # fetch full issue/PR details (cached)
+    gh_items: list[IssueOrPR] = []
+    if refs:
+        futures = fetch_issue_or_pr.map(refs, unmapped(token))
+        gh_items = [r for r in futures.result() if r is not None]
+    logger.info(f"resolved {len(gh_items)} github issues/PRs")
 
-    futures = fetch_issue_or_pr.map(refs, unmapped(token))
-    items = [r for r in futures.result() if r is not None]
-    logger.info(f"resolved {len(items)} issues/PRs")
+    # wait for tangled fetch
+    tangled_items = tangled_future.result()
+    logger.info(f"fetched {len(tangled_items)} tangled items")
 
-    total = persist_to_duckdb(items)
-    logger.info(f"upserted {len(items)} rows; {total} total in raw_github_issues")
-    return items
+    # sequential writes — same process, no DuckDB lock contention
+    if gh_items:
+        total = persist_github(gh_items)
+        logger.info(f"upserted {len(gh_items)} github rows; {total} total in raw_github_issues")
+
+    if tangled_items:
+        total = persist_tangled(tangled_items)
+        logger.info(f"persisted {len(tangled_items)} tangled rows; {total} total in raw_tangled_items")
 
 
 if __name__ == "__main__":
-    gh_notifications()
+    ingest()

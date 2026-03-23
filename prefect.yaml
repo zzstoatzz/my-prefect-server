@@ -24,19 +24,13 @@ deployments:
     schedules:
       - cron: "*/5 * * * *"
 
-  - name: gh-notifications
-    entrypoint: flows/gh_notifications.py:gh_notifications
+  - name: ingest
+    entrypoint: flows/ingest.py:ingest
     work_pool: *k8s
     schedules:
       - cron: "0 * * * *"  # hourly
     parameters:
       only_unread: true
-
-  - name: tangled-items
-    entrypoint: flows/tangled_items.py:tangled_items
-    work_pool: *k8s
-    schedules:
-      - cron: "2 * * * *"  # after gh-notifications; DuckDB only allows one writer process
 
   - name: enrich
     entrypoint: flows/enrich.py:enrich
@@ -53,7 +47,7 @@ deployments:
         expect:
           - "prefect.flow-run.Completed"
         match_related:
-          prefect.resource.name: "tangled-items"
+          prefect.resource.name: "ingest"
           prefect.resource.role: "deployment"
 
   - name: cleanup
