@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Briefing, BriefingItem } from '$lib/server/briefing';
 	import type { Card } from '$lib/types';
-	import { timeAgo } from '$lib/format';
+	import { hashColor, timeAgo } from '$lib/format';
 	import { ACCENT_STYLES, ICON_PATHS, PRIORITY_LAYOUT } from '$lib/briefing-styles';
 
 	let { briefing, cards }: { briefing: Briefing | null; cards: Card[] } = $props();
@@ -12,11 +12,41 @@
 		return cardMap.get(item.item_id)?.url ?? null;
 	}
 
-	/** "github:prefecthq/prefect#1234" -> "prefect#1234" */
-	function shortLabel(item_id: string): string {
-		const after = item_id.includes(':') ? item_id.split(':')[1] : item_id;
-		const match = after.match(/([^/]+)(#\d+)$/);
-		return match ? `${match[1]}${match[2]}` : after;
+	interface ParsedItemId {
+		source: string;
+		repo: string;
+		shortRepo: string;
+		number: string;
+	}
+
+	/** "github:prefecthq/prefect#1234" -> { source, repo, shortRepo, number } */
+	function parseItemId(item_id: string): ParsedItemId | null {
+		const colonIdx = item_id.indexOf(':');
+		if (colonIdx === -1) return null;
+
+		const source = item_id.slice(0, colonIdx);
+		const rest = item_id.slice(colonIdx + 1);
+
+		const match = rest.match(/^(.+?)#(\d+)$/);
+		if (!match) return null;
+
+		const repo = match[1];
+		const parts = repo.split('/');
+		const shortRepo = parts[parts.length - 1];
+
+		return { source, repo, shortRepo, number: match[2] };
+	}
+
+	/** build repo URL based on source */
+	function repoUrl(parsed: ParsedItemId): string {
+		switch (parsed.source) {
+			case 'github':
+				return `https://github.com/${parsed.repo}`;
+			case 'tangled':
+				return `https://tangled.org/zzstoatzz.io/${parsed.repo}`;
+			default:
+				return '#';
+		}
 	}
 </script>
 
@@ -55,15 +85,45 @@
 						<ul class="space-y-1.5">
 							{#each section.items as item (item.item_id)}
 								{@const url = urlFor(item)}
+								{@const parsed = parseItemId(item.item_id)}
 								{@const highlighted = item.highlight ?? false}
 								<li
-									class="text-sm flex gap-2 {highlighted
+									class="text-sm flex items-center gap-2 {highlighted
 										? `border-l-2 ${accent.highlightBar} pl-2 text-gray-100`
 										: 'text-gray-300'}"
 								>
-									<span class="font-mono text-xs opacity-60 shrink-0 pt-0.5">
-										{shortLabel(item.item_id)}
-									</span>
+									{#if parsed}
+										<a
+											href={repoUrl(parsed)}
+											target="_blank"
+											rel="noopener noreferrer"
+											class="shrink-0"
+										>
+											<span
+												class="inline-block px-2 py-0.5 rounded-full text-xs border {hashColor(parsed.repo)}"
+											>
+												{parsed.shortRepo}
+											</span>
+										</a>
+										{#if url}
+											<a
+												href={url}
+												target="_blank"
+												rel="noopener noreferrer"
+												class="font-mono text-xs opacity-60 shrink-0"
+											>
+												#{parsed.number}
+											</a>
+										{:else}
+											<span class="font-mono text-xs opacity-60 shrink-0">
+												#{parsed.number}
+											</span>
+										{/if}
+									{:else}
+										<span class="font-mono text-xs opacity-60 shrink-0">
+											{item.item_id}
+										</span>
+									{/if}
 									{#if url}
 										<a
 											href={url}

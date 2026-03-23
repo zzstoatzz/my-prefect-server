@@ -119,6 +119,38 @@ def fetch_issue_or_pr(ref: IssueRef, token: str) -> IssueOrPR | None:
 
 
 @task
+def fetch_authored_items(token: str, username: str = "zzstoatzz") -> list[IssueRef]:
+    """Fetch open issues/PRs authored by the user via the search API."""
+    logger = get_run_logger()
+    with httpx.Client(headers=gh_headers(token)) as client:
+        resp = client.get(
+            f"{GITHUB_API}/search/issues",
+            params={"q": f"author:{username} is:open", "per_page": 50, "sort": "updated"},
+        )
+        resp.raise_for_status()
+
+    refs: list[IssueRef] = []
+    for item in resp.json().get("items", []):
+        html_url = item.get("html_url", "")
+        is_pr = "/pull/" in html_url
+        # extract repo from html_url: https://github.com/{owner}/{repo}/issues/{n}
+        parts = html_url.split("/")
+        try:
+            repo = f"{parts[3]}/{parts[4]}"
+            number = int(parts[-1])
+        except (IndexError, ValueError):
+            continue
+        refs.append(IssueRef(
+            repo=repo,
+            number=number,
+            subject_type="PullRequest" if is_pr else "Issue",
+        ))
+
+    logger.info(f"fetched {len(refs)} authored items for {username}")
+    return refs
+
+
+@task
 def persist_to_duckdb(items: list[IssueOrPR]) -> int:
     db_path = os.environ.get(
         "ANALYTICS_DB_PATH",
@@ -136,10 +168,20 @@ def gh_notifications(only_unread: bool = True) -> list[IssueOrPR]:
     logger = get_run_logger()
 
     token = load_token()
-    refs = fetch_notifications(token, only_unread=only_unread)
+    notif_refs = fetch_notifications(token, only_unread=only_unread)
+    authored_refs = fetch_authored_items(token)
+
+    # merge and dedupe by (repo, number)
+    seen: set[tuple[str, int]] = set()
+    refs: list[IssueRef] = []
+    for ref in notif_refs + authored_refs:
+        key = (ref.repo, ref.number)
+        if key not in seen:
+            seen.add(key)
+            refs.append(ref)
 
     if not refs:
-        logger.info("no notifications")
+        logger.info("no items")
         return []
 
     futures = fetch_issue_or_pr.map(refs, unmapped(token))

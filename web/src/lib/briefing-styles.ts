@@ -5,7 +5,7 @@ import type { SectionAccent, SectionIcon, SectionPriority } from '$lib/server/br
  * border-red-500 border-amber-500 border-emerald-500 border-sky-500 border-violet-500
  * text-red-400 text-amber-400 text-emerald-400 text-sky-400 text-violet-400
  * text-red-300 text-amber-300 text-emerald-300 text-sky-300 text-violet-300
- * bg-red-950/20 bg-amber-950/20 bg-emerald-950/20 bg-sky-950/20 bg-violet-950/20
+ * bg-red-950/40 bg-amber-950/40 bg-emerald-950/40 bg-sky-950/40 bg-violet-950/40
  * border-l-2 border-l-3 border-l-4
  * sm:col-span-2
  */
@@ -25,35 +25,35 @@ export const ACCENT_STYLES: Record<
 		headerText: 'text-red-400',
 		summaryText: 'text-red-300/70',
 		highlightBar: 'border-red-500',
-		bgTint: 'bg-red-950/20'
+		bgTint: 'bg-red-950/40'
 	},
 	amber: {
 		border: 'border-amber-500',
 		headerText: 'text-amber-400',
 		summaryText: 'text-amber-300/70',
 		highlightBar: 'border-amber-500',
-		bgTint: 'bg-amber-950/20'
+		bgTint: 'bg-amber-950/40'
 	},
 	emerald: {
 		border: 'border-emerald-500',
 		headerText: 'text-emerald-400',
 		summaryText: 'text-emerald-300/70',
 		highlightBar: 'border-emerald-500',
-		bgTint: 'bg-emerald-950/20'
+		bgTint: 'bg-emerald-950/40'
 	},
 	sky: {
 		border: 'border-sky-500',
 		headerText: 'text-sky-400',
 		summaryText: 'text-sky-300/70',
 		highlightBar: 'border-sky-500',
-		bgTint: 'bg-sky-950/20'
+		bgTint: 'bg-sky-950/40'
 	},
 	violet: {
 		border: 'border-violet-500',
 		headerText: 'text-violet-400',
 		summaryText: 'text-violet-300/70',
 		highlightBar: 'border-violet-500',
-		bgTint: 'bg-violet-950/20'
+		bgTint: 'bg-violet-950/40'
 	}
 };
 
