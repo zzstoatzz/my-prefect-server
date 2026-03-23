@@ -5,6 +5,7 @@ from pathlib import Path
 import duckdb
 from pydantic_ai import Agent
 from pydantic_ai.durable_exec.prefect import PrefectAgent, TaskConfig
+from pydantic_ai.providers.anthropic import AnthropicProvider
 from prefect import flow, task, get_run_logger
 from prefect.blocks.system import Secret
 
@@ -22,20 +23,22 @@ each item note should be ~10 words of useful context.
 the headline should be a single sentence summary.
 """
 
-agent = Agent(
-    "anthropic:claude-haiku-4-5",
-    output_type=Briefing,
-    system_prompt=SYSTEM_PROMPT,
-    name="hub-curator",
-)
-
-prefect_agent = PrefectAgent(
-    agent,
-    model_task_config=TaskConfig(
-        retries=2,
-        retry_delay_seconds=[2.0, 5.0],
-    ),
-)
+def make_agent(api_key: str) -> PrefectAgent[Briefing]:
+    """Build agent after API key is available (provider validates key at init)."""
+    agent = Agent(
+        "anthropic:claude-haiku-4-5",
+        output_type=Briefing,
+        system_prompt=SYSTEM_PROMPT,
+        name="hub-curator",
+        provider=AnthropicProvider(api_key=api_key),
+    )
+    return PrefectAgent(
+        agent,
+        model_task_config=TaskConfig(
+            retries=2,
+            retry_delay_seconds=[2.0, 5.0],
+        ),
+    )
 
 
 @task
@@ -79,9 +82,9 @@ async def curate():
         str(Path(db_path).parent / "briefing.json"),
     )
 
-    # set API key from Prefect Secret
-    api_key = await Secret.load("anthropic-api-key")
-    os.environ["ANTHROPIC_API_KEY"] = api_key.get()
+    # load API key from Prefect Secret, build agent
+    api_key = (await Secret.load("anthropic-api-key")).get()
+    prefect_agent = make_agent(api_key)
 
     items_text = load_items(db_path)
     logger.info(f"loaded {items_text.count(chr(10)) + 1} items for curation")
