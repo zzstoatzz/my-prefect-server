@@ -5,6 +5,7 @@ from pathlib import Path
 import duckdb
 from pydantic_ai import Agent
 from pydantic_ai.durable_exec.prefect import PrefectAgent, TaskConfig
+from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from prefect import flow, task, get_run_logger
 from prefect.blocks.system import Secret
@@ -25,12 +26,12 @@ the headline should be a single sentence summary.
 
 def make_agent(api_key: str) -> PrefectAgent[Briefing]:
     """Build agent after API key is available (provider validates key at init)."""
+    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
     agent = Agent(
-        "anthropic:claude-haiku-4-5",
+        model,
         output_type=Briefing,
         system_prompt=SYSTEM_PROMPT,
         name="hub-curator",
-        provider=AnthropicProvider(api_key=api_key),
     )
     return PrefectAgent(
         agent,
