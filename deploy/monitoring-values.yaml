@@ -78,7 +78,56 @@ grafana:
       allow_loading_unsigned_plugins: motherduck-duckdb-datasource
 
   # plugin not in Grafana registry — pre-installed on node via `just install-grafana-plugin`
-  # mounted as read-only hostPath into grafana's plugin directory
+  # grafana reads a snapshot copy of the DuckDB — never the live file.
+  # a busybox sidecar refreshes the snapshot every 60s so the DuckDB plugin
+  # can't take an exclusive lock on the production database.
+
+  extraContainerVolumeMounts:
+    - name: duckdb-plugin
+      mountPath: /var/lib/grafana/plugins/motherduck-duckdb-datasource
+      readOnly: true
+    - name: analytics-snapshot
+      mountPath: /analytics
+      readOnly: true
+
+  extraInitContainers:
+    # seed the snapshot before grafana starts so the datasource has data on first boot
+    - name: snapshot-seed
+      image: busybox:1
+      command: ["sh", "-c"]
+      args:
+        - |
+          src=/analytics-src/analytics.duckdb
+          dst=/analytics-snap/analytics.duckdb
+          until [ -f "$src" ]; do echo "waiting for $src"; sleep 5; done
+          cp "$src" "$dst"
+      volumeMounts:
+        - name: analytics-duckdb
+          mountPath: /analytics-src
+          readOnly: true
+        - name: analytics-snapshot
+          mountPath: /analytics-snap
+
+  extraContainers:
+    # refresh snapshot every 60s — grafana reads the copy, never the live DB
+    - name: snapshot-sync
+      image: busybox:1
+      command: ["sh", "-c"]
+      args:
+        - |
+          src=/analytics-src/analytics.duckdb
+          dst=/analytics-snap/analytics.duckdb
+          while true; do
+            [ -f "$src" ] && cp "$src" "$dst"
+            sleep 60
+          done
+      volumeMounts:
+        - name: analytics-duckdb
+          mountPath: /analytics-src
+          readOnly: true
+        - name: analytics-snapshot
+          mountPath: /analytics-snap
+
   extraVolumes:
     - name: duckdb-plugin
       hostPath:
@@ -88,13 +137,10 @@ grafana:
       hostPath:
         path: /var/lib/prefect-analytics
         type: DirectoryOrCreate
+    - name: analytics-snapshot
+      emptyDir: {}
 
-  extraVolumeMounts:
-    - name: duckdb-plugin
-      mountPath: /var/lib/grafana/plugins/motherduck-duckdb-datasource
-      readOnly: true
-    - name: analytics-duckdb
-      mountPath: /analytics
+  extraVolumeMounts: []
 
   additionalDataSources:
     - name: DuckDB
