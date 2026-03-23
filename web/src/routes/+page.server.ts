@@ -1,4 +1,5 @@
 import { query } from '$lib/server/db';
+import { loadBriefing } from '$lib/server/briefing';
 import type { Card, DashboardStats } from '$lib/types';
 
 interface ActionRow {
@@ -48,5 +49,7 @@ export async function load() {
 		}
 	}));
 
-	return { stats, cards };
+	const briefing = await loadBriefing();
+
+	return { stats, cards, briefing };
 }

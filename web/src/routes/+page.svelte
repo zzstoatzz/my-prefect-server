@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Briefing from '$lib/components/Briefing.svelte';
 	import StatBar from '$lib/components/StatBar.svelte';
 	import FilterBar from '$lib/components/FilterBar.svelte';
 	import CardTable from '$lib/components/CardTable.svelte';
@@ -7,6 +8,7 @@
 
 	const stats = $derived(data.stats);
 	const cards = $derived(data.cards);
+	const briefing = $derived(data.briefing);
 
 	let search = $state('');
 	let sourceFilter = $state('');
@@ -43,6 +45,12 @@
 			{ value: stats.repos, label: 'repos' }
 		]}
 	/>
+
+	{#if briefing}
+		<div class="mt-8">
+			<Briefing {briefing} {cards} />
+		</div>
+	{/if}
 
 	<div class="mt-10">
 		<FilterBar

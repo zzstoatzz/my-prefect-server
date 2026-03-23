@@ -63,3 +63,9 @@ deployments:
         batch_size: 100
         rate_limit_delay: 0.5
         dry_run: false
+
+  - name: curate
+    entrypoint: flows/curate.py:curate
+    work_pool: *k8s
+    schedules:
+      - cron: "10 * * * *"  # after enrich refreshes the mart
