@@ -67,6 +67,6 @@
 	<!-- relevance -->
 	<td class="px-4 py-3 text-right">
 		<div class="text-gray-300 font-mono text-xs">{card.score.toFixed(1)}</div>
-		<div class="text-gray-500 text-xs">{timeAgo(card.updated)}</div>
+		<div class="text-gray-400 text-xs">{timeAgo(card.updated)}</div>
 	</td>
 </tr>
