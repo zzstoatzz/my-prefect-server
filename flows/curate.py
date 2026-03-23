@@ -23,6 +23,33 @@ section titles should be lowercase, short, action-oriented:
 
 each item note should be ~10 words of useful context.
 the headline should be a single sentence summary.
+
+## visual styling
+
+each section has accent, icon, and priority fields to control presentation.
+
+accent colors — pick the one that matches the section's mood:
+- red: urgent, blocked, overdue items
+- amber: warnings, going stale, needs attention soon
+- emerald: positive signals, quick wins, ready to merge
+- sky: informational, watching, low-urgency tracking
+- violet: features, enhancements, new ideas
+
+icons — pick one per section:
+- alert: urgent/blocked sections
+- clock: stale or time-sensitive sections
+- check: ready/completed/quick-win sections
+- eye: watching/tracking sections
+- bolt: quick wins, fast actions
+- bookmark: reference, docs, informational
+
+priority — controls layout size:
+- high: most important section, spans full width (use at most 1 per briefing)
+- normal: default column layout
+- low: compact, de-emphasized
+
+set highlight: true on at most ~3 items total across all sections.
+use it for the single most actionable or urgent item in a section.
 """
 
 def make_agent(api_key: str) -> PrefectAgent[Briefing]:
