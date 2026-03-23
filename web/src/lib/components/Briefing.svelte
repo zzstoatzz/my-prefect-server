@@ -2,11 +2,19 @@
 	import type { Briefing, BriefingItem } from '$lib/server/briefing';
 	import type { Card } from '$lib/types';
 	import { hashColor, timeAgo } from '$lib/format';
-	import { ACCENT_STYLES, ICON_PATHS, PRIORITY_LAYOUT } from '$lib/briefing-styles';
+	import { ACCENT_STYLES, PRIORITY_LAYOUT } from '$lib/briefing-styles';
 
 	let { briefing, cards }: { briefing: Briefing | null; cards: Card[] } = $props();
 
 	let cardMap = $derived(new Map(cards.map((c) => [c.id, c])));
+
+	/** sections that don't already span full width */
+	let normalSections = $derived(
+		briefing?.sections.filter((s) => (s.priority ?? 'normal') !== 'high') ?? []
+	);
+	let lastNormalTitle = $derived(
+		normalSections.length % 2 === 1 ? normalSections[normalSections.length - 1]?.title : null
+	);
 
 	function urlFor(item: BriefingItem): string | null {
 		return cardMap.get(item.item_id)?.url ?? null;
@@ -58,22 +66,14 @@
 			{#each briefing.sections as section (section.title)}
 				{@const accent = ACCENT_STYLES[section.accent ?? 'sky']}
 				{@const layout = PRIORITY_LAYOUT[section.priority ?? 'normal']}
-				{@const icon = section.icon ? ICON_PATHS[section.icon] : null}
+				{@const isOrphan = section.title === lastNormalTitle}
+				{@const colSpan = layout.colSpan || (isOrphan ? 'sm:col-span-2' : '')}
 
 				<div
-					class="rounded-lg {accent.bgTint} {accent.border} {layout.borderWidth} {layout.padding} {layout.colSpan} space-y-3"
+					class="rounded-lg {accent.bgTint} {accent.border} {layout.borderWidth} {layout.padding} {colSpan} space-y-3"
 				>
 					<div class="flex items-center gap-2">
-						{#if icon}
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								viewBox="0 0 20 20"
-								fill="currentColor"
-								class="h-5 w-5 shrink-0 {accent.headerText}"
-							>
-								<path d={icon} />
-							</svg>
-						{/if}
+						<span class="h-2 w-2 shrink-0 rounded-full {accent.dot}"></span>
 						<h3 class="{layout.titleSize} font-medium {accent.headerText} lowercase">
 							{section.title}
 						</h3>
@@ -89,7 +89,7 @@
 								{@const highlighted = item.highlight ?? false}
 								<li
 									class="text-sm flex items-center gap-2 {highlighted
-										? `border-l-2 ${accent.highlightBar} pl-2 text-gray-100`
+										? 'bg-white/5 rounded px-1.5 py-0.5 -mx-1.5 text-gray-100 font-medium'
 										: 'text-gray-300'}"
 								>
 									{#if parsed}
