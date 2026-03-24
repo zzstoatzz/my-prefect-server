@@ -87,8 +87,9 @@ def load_user_observations(snap_path: str, handle: str) -> str:
     """Read observations for a specific user, formatted as text."""
     db = duckdb.connect(snap_path, read_only=True)
     rows = db.execute(
-        "SELECT content, tags, created_at FROM stg_phi_observations "
-        "WHERE handle = ? ORDER BY created_at DESC",
+        "SELECT DISTINCT ON (observation_id) content, tags, created_at "
+        "FROM raw_phi_observations "
+        "WHERE handle = ? ORDER BY observation_id, fetched_at DESC",
         [handle],
     ).fetchall()
     db.close()
@@ -105,8 +106,10 @@ def load_user_interactions(snap_path: str, handle: str) -> str:
     """Read interactions for a specific user, formatted as text."""
     db = duckdb.connect(snap_path, read_only=True)
     rows = db.execute(
-        "SELECT content, created_at FROM stg_phi_interactions "
-        "WHERE handle = ? ORDER BY created_at DESC LIMIT 20",
+        "SELECT DISTINCT ON (interaction_id) content, created_at "
+        "FROM raw_phi_interactions "
+        "WHERE handle = ? ORDER BY interaction_id, fetched_at DESC "
+        "LIMIT 20",
         [handle],
     ).fetchall()
     db.close()
