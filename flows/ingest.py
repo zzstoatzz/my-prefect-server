@@ -21,8 +21,14 @@ from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 
-from mps.db import write_github_issues, write_tangled_items
+from mps.db import (
+    write_github_issues,
+    write_phi_interactions,
+    write_phi_observations,
+    write_tangled_items,
+)
 from mps.github import IssueOrPR, IssueRef, gh_headers
+from mps.phi import PhiInteraction, PhiObservation, restore_handle
 from mps.tangled import PDS_BASE, TangledItem, fetch_items, fetch_repo_at_uris
 
 GITHUB_API = "https://api.github.com"
@@ -178,6 +184,86 @@ def fetch_all_tangled_items() -> list[TangledItem]:
     return items
 
 
+# --- phi tasks ---
+
+USER_NS_PREFIX = "phi-users-"
+
+
+@task
+def fetch_phi_memory(tpuf_key: str) -> tuple[list[PhiObservation], list[PhiInteraction]]:
+    """Fetch observations and interactions from all phi-users-* TurboPuffer namespaces."""
+    import turbopuffer
+
+    logger = get_run_logger()
+    client = turbopuffer.Turbopuffer(api_key=tpuf_key, region="gcp-us-central1")
+
+    observations: list[PhiObservation] = []
+    interactions: list[PhiInteraction] = []
+
+    page = client.namespaces(prefix=USER_NS_PREFIX)
+    ns_ids = [ns.id for ns in page.namespaces]
+    logger.info(f"found {len(ns_ids)} phi user namespaces")
+
+    for ns_id in ns_ids:
+        handle = restore_handle(ns_id)
+        ns = client.namespace(ns_id)
+
+        # fetch observations
+        try:
+            resp = ns.query(
+                rank_by=("vector", "ANN", [0.5] * 1536),
+                top_k=200,
+                filters={"kind": ["Eq", "observation"]},
+                include_attributes=["content", "tags", "created_at"],
+            )
+            if resp.rows:
+                for row in resp.rows:
+                    observations.append(PhiObservation(
+                        handle=handle,
+                        observation_id=str(row.id),
+                        content=row.content,
+                        tags=getattr(row, "tags", []) or [],
+                        created_at=getattr(row, "created_at", ""),
+                    ))
+        except Exception as e:
+            if "not found" not in str(e).lower():
+                logger.warning(f"failed to fetch observations for {ns_id}: {e}")
+
+        # fetch interactions
+        try:
+            resp = ns.query(
+                rank_by=("vector", "ANN", [0.5] * 1536),
+                top_k=200,
+                filters={"kind": ["Eq", "interaction"]},
+                include_attributes=["content", "created_at"],
+            )
+            if resp.rows:
+                for row in resp.rows:
+                    interactions.append(PhiInteraction(
+                        handle=handle,
+                        interaction_id=str(row.id),
+                        content=row.content,
+                        created_at=getattr(row, "created_at", ""),
+                    ))
+        except Exception as e:
+            if "not found" not in str(e).lower():
+                logger.warning(f"failed to fetch interactions for {ns_id}: {e}")
+
+    logger.info(f"fetched {len(observations)} observations, {len(interactions)} interactions")
+    return observations, interactions
+
+
+@task
+def persist_phi(
+    observations: list[PhiObservation],
+    interactions: list[PhiInteraction],
+) -> tuple[int, int]:
+    db = _db_path()
+    obs_count = write_phi_observations(observations, db) if observations else 0
+    ix_count = write_phi_interactions(interactions, db) if interactions else 0
+    return obs_count, ix_count
+
+
 # --- persist tasks ---
 
 
@@ -204,14 +290,17 @@ def persist_tangled(items: list[TangledItem]) -> int:
 @flow(name="ingest", log_prints=True)
 def ingest(only_unread: bool = True):
     """
-    Fetch GitHub and tangled.org data concurrently, then persist sequentially.
+    Fetch GitHub, tangled.org, and phi memory concurrently, then persist sequentially.
     """
     logger = get_run_logger()
 
     token = load_token()
 
-    # kick off tangled fetch immediately (no deps)
+    # kick off tangled + phi fetches immediately (no deps on github token)
     tangled_future = fetch_all_tangled_items.submit()
+
+    tpuf_key = Secret.load("turbopuffer-api-key").get()
+    phi_future = fetch_phi_memory.submit(tpuf_key)
 
     # github fetches need the token
     notif_refs = fetch_notifications(token, only_unread=only_unread)
@@ -233,9 +322,11 @@ def ingest(only_unread: bool = True):
         gh_items = [r for r in futures.result() if r is not None]
     logger.info(f"resolved {len(gh_items)} github issues/PRs")
 
-    # wait for tangled fetch
+    # wait for tangled + phi fetches
     tangled_items = tangled_future.result()
     logger.info(f"fetched {len(tangled_items)} tangled items")
+
+    phi_observations, phi_interactions = phi_future.result()
 
     # sequential writes — same process, no DuckDB lock contention
     if gh_items:
@@ -245,6 +336,13 @@ def ingest(only_unread: bool = True):
     if tangled_items:
         total = persist_tangled(tangled_items)
         logger.info(f"persisted {len(tangled_items)} tangled rows; {total} total in raw_tangled_items")
+
+    if phi_observations or phi_interactions:
+        obs_total, ix_total = persist_phi(phi_observations, phi_interactions)
+        logger.info(
+            f"persisted {len(phi_observations)} phi observations ({obs_total} total), "
+            f"{len(phi_interactions)} interactions ({ix_total} total)"
+        )
 
 
 if __name__ == "__main__":

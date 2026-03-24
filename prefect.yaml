@@ -73,3 +73,14 @@ deployments:
         match_related:
           prefect.resource.name: "transform"
           prefect.resource.role: "deployment"
+
+  - name: compact
+    entrypoint: flows/compact.py:compact
+    work_pool: *k8s
+    triggers:
+      - type: event
+        expect:
+          - "prefect.flow-run.Completed"
+        match_related:
+          prefect.resource.name: "transform"
+          prefect.resource.role: "deployment"

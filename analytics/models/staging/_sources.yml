@@ -5,3 +5,5 @@ sources:
     tables:
       - name: raw_github_issues
       - name: raw_tangled_items
+      - name: raw_phi_observations
+      - name: raw_phi_interactions

@@ -8,6 +8,8 @@ dependencies = [
     "duckdb>=1.0",
     "pydantic>=2",
     "pydantic-ai-slim[anthropic,prefect]",
+    "turbopuffer",
+    "openai",
 ]
 
 [build-system]
