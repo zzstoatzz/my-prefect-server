@@ -164,7 +164,29 @@ def _summary_id(handle: str) -> str:
     return f"summary-{clean_handle(handle)}"
 
 
-@task
+class BySummaryContent(CachePolicy):
+    """Cache write by handle + summary text hash. Skips embed+upsert when unchanged."""
+
+    def compute_key(
+        self,
+        task_ctx: TaskRunContext,
+        inputs: dict,
+        flow_parameters: dict,
+        **kwargs,
+    ) -> str | None:
+        handle = inputs.get("handle")
+        summary = inputs.get("summary")
+        if not handle or not summary:
+            return None
+        h = hashlib.md5(summary.encode()).hexdigest()[:12]
+        return f"compact-write/{handle}/{h}"
+
+
+@task(
+    cache_policy=BySummaryContent(),
+    cache_expiration=timedelta(hours=4),
+    persist_result=True,
+)
 def write_summary_to_turbopuffer(
     tpuf_key: str,
     openai_key: str,
