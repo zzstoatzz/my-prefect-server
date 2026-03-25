@@ -23,6 +23,7 @@ deployments:
     work_pool: *k8s
     schedules:
       - cron: "*/5 * * * *"
+        active: false
 
   - name: ingest
     entrypoint: flows/ingest.py:ingest
