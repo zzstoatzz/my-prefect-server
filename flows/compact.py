@@ -11,6 +11,7 @@ import hashlib
 import os
 import shutil
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 import duckdb
 import httpx
@@ -49,9 +50,9 @@ class ByObservationsHash(CachePolicy):
     def compute_key(
         self,
         task_ctx: TaskRunContext,
-        inputs: dict,
-        flow_parameters: dict,
-        **kwargs,
+        inputs: dict[str, Any],
+        flow_parameters: dict[str, Any],
+        **kwargs: Any,
     ) -> str | None:
         handle = inputs.get("handle")
         observations_text = inputs.get("observations_text")
@@ -70,7 +71,7 @@ def snapshot_db(db_path: str) -> str:
 
 
 @task
-def load_user_profiles(snap_path: str) -> list[dict]:
+def load_user_profiles(snap_path: str) -> list[dict[str, Any]]:
     """Read per-user profiles from the dbt enrichment model."""
     db = duckdb.connect(snap_path, read_only=True)
     rows = db.execute(
@@ -126,7 +127,7 @@ def load_user_interactions(snap_path: str, handle: str) -> str:
 
 
 @task
-def resolve_bsky_profile(handle: str) -> dict | None:
+def resolve_bsky_profile(handle: str) -> dict[str, str] | None:
     """Fetch display name and bio from the public Bluesky API."""
     try:
         resp = httpx.get(
@@ -145,7 +146,7 @@ def resolve_bsky_profile(handle: str) -> dict | None:
         return None
 
 
-def _format_stats(profile: dict) -> str:
+def _format_stats(profile: dict[str, Any]) -> str:
     tags = ", ".join(profile.get("top_tags") or [])
     return (
         f"observations: {profile['observation_count']}, "
@@ -169,7 +170,7 @@ async def synthesize_summary(
     observations_text: str,
     interactions_text: str,
     api_key: str,
-    bsky_profile: dict | None = None,
+    bsky_profile: dict[str, str] | None = None,
 ) -> str:
     """LLM synthesis of a relationship summary. Cached by observations hash."""
     model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
@@ -203,9 +204,9 @@ class BySummaryContent(CachePolicy):
     def compute_key(
         self,
         task_ctx: TaskRunContext,
-        inputs: dict,
-        flow_parameters: dict,
-        **kwargs,
+        inputs: dict[str, Any],
+        flow_parameters: dict[str, Any],
+        **kwargs: Any,
     ) -> str | None:
         handle = inputs.get("handle")
         summary = inputs.get("summary")

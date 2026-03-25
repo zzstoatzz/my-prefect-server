@@ -14,6 +14,7 @@ Requires:
 import datetime
 import os
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 from prefect import flow, get_run_logger, task, unmapped
@@ -51,9 +52,9 @@ class ByRepoAndNumber(CachePolicy):
     def compute_key(
         self,
         task_ctx: TaskRunContext,
-        inputs: dict,
-        flow_parameters: dict,
-        **kwargs,
+        inputs: dict[str, Any],
+        flow_parameters: dict[str, Any],
+        **kwargs: Any,
     ) -> str | None:
         ref: IssueRef | None = inputs.get("ref")
         if ref is None:

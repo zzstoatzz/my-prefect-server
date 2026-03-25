@@ -6,7 +6,7 @@ Adapted from https://github.com/PrefectHQ/canary-flows/blob/main/flows/database-
 
 import asyncio
 from datetime import datetime, timedelta, timezone
-from typing import Literal
+from typing import Any, Literal
 
 from prefect import flow, get_run_logger, task
 from prefect.client.orchestration import get_client
@@ -55,7 +55,7 @@ class RetentionConfig(BaseModel):
 
 
 @task
-async def delete_old_flow_runs(config: RetentionConfig) -> dict:
+async def delete_old_flow_runs(config: RetentionConfig) -> dict[str, Any]:
     logger = get_run_logger()
     cutoff = datetime.now(timezone.utc) - timedelta(days=config.days_to_keep)
     logger.info(f"cutoff: {cutoff.strftime('%Y-%m-%d %H:%M')} UTC")
@@ -128,7 +128,7 @@ def _cleanup_run_name():
 
 
 @flow(name="cleanup", flow_run_name=_cleanup_run_name, log_prints=True)
-async def cleanup(config: RetentionConfig = RetentionConfig()) -> dict:
+async def cleanup(config: RetentionConfig = RetentionConfig()) -> dict[str, Any]:
     """Delete old terminal flow runs.
 
     Defaults to dry_run=True — set dry_run=False to actually delete.

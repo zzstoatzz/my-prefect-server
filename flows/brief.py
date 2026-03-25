@@ -4,6 +4,7 @@ import shutil
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import duckdb
 from pydantic_ai import Agent
@@ -24,9 +25,9 @@ class ByItemsContent(CachePolicy):
     def compute_key(
         self,
         task_ctx: TaskRunContext,
-        inputs: dict,
-        flow_parameters: dict,
-        **kwargs,
+        inputs: dict[str, Any],
+        flow_parameters: dict[str, Any],
+        **kwargs: Any,
     ) -> str | None:
         items_text = inputs.get("items_text")
         if items_text is None:
