@@ -13,6 +13,7 @@ import shutil
 from datetime import datetime, timedelta, timezone
 
 import duckdb
+import httpx
 import turbopuffer
 from openai import OpenAI
 from pydantic_ai import Agent
@@ -35,6 +36,10 @@ write as notes to phi's future self. use lowercase. be honest about
 uncertainty. if the relationship is thin, say so — a thin summary beats
 a fabricated one. include concrete details (projects, interests, topics)
 not just vibes.
+
+IMPORTANT: use ONLY facts present in the provided data. the user's
+bluesky profile (handle, display name, bio) is included — use that for
+their name and identity. never guess or infer names.
 """
 
 
@@ -120,6 +125,26 @@ def load_user_interactions(snap_path: str, handle: str) -> str:
     return "\n\n".join(lines)
 
 
+@task
+def resolve_bsky_profile(handle: str) -> dict | None:
+    """Fetch display name and bio from the public Bluesky API."""
+    try:
+        resp = httpx.get(
+            "https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile",
+            params={"actor": handle},
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return {
+            "handle": data.get("handle", handle),
+            "display_name": data.get("displayName", ""),
+            "bio": data.get("description", ""),
+        }
+    except Exception:
+        return None
+
+
 def _format_stats(profile: dict) -> str:
     tags = ", ".join(profile.get("top_tags") or [])
     return (
@@ -144,13 +169,21 @@ async def synthesize_summary(
     observations_text: str,
     interactions_text: str,
     api_key: str,
+    bsky_profile: dict | None = None,
 ) -> str:
     """LLM synthesis of a relationship summary. Cached by observations hash."""
     model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
     agent = Agent(model, system_prompt=SYSTEM_PROMPT, name="phi-compactor")
 
+    profile_section = f"handle: @{handle}\n"
+    if bsky_profile:
+        if bsky_profile.get("display_name"):
+            profile_section += f"display name: {bsky_profile['display_name']}\n"
+        if bsky_profile.get("bio"):
+            profile_section += f"bio: {bsky_profile['bio']}\n"
+
     prompt = (
-        f"user: @{handle}\n"
+        f"user profile:\n{profile_section}\n"
         f"stats: {stats_text}\n\n"
         f"observations:\n{observations_text}\n\n"
         f"recent interactions:\n{interactions_text}"
@@ -243,12 +276,14 @@ async def compact():
 
     for profile in profiles:
         handle = profile["handle"]
+        bsky_profile = resolve_bsky_profile(handle)
         obs_text = load_user_observations(snap_path, handle)
         ix_text = load_user_interactions(snap_path, handle)
         stats_text = _format_stats(profile)
 
         summary = await synthesize_summary(
             handle, stats_text, obs_text, ix_text, anthropic_key,
+            bsky_profile=bsky_profile,
         )
         write_summary_to_turbopuffer(tpuf_key, openai_key, handle, summary)
         logger.info(f"@{handle}: compacted {profile['observation_count']} observations")
