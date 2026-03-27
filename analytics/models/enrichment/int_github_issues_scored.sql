@@ -17,6 +17,12 @@ WITH scored AS (
     LEFT JOIN {{ ref('known_contributors') }} kc ON i."user" = kc.login
 )
 SELECT *,
-    ROUND(recency_score * engagement_score * label_multiplier * contributor_weight, 4) AS importance_score
+    -- additive blend: recency is primary signal, engagement boosts
+    ROUND(
+        (0.7 * recency_score + 0.3 * engagement_score)
+        * label_multiplier
+        * contributor_weight,
+        4
+    ) AS importance_score
 FROM scored
 WHERE state = 'open'
