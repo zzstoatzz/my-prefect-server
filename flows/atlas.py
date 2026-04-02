@@ -82,11 +82,15 @@ def deploy_to_pages(site_dir: Path, api_token: str) -> str:
 
     logger.info(f"deploying {len(manifest)} files")
 
-    # create deployment (manifest must be a multipart form field, not JSON body)
+    # create deployment — CF expects multipart/form-data (-F fields in curl)
+    # httpx: files={(name, (None, value))} sends multipart form fields
     resp = httpx.post(
         f"{CF_API}/accounts/{CF_ACCOUNT_ID}/pages/projects/{CF_PROJECT}/deployments",
         headers=headers,
-        data={"manifest": json.dumps(manifest), "branch": "main"},
+        files={
+            "manifest": (None, json.dumps(manifest), "application/json"),
+            "branch": (None, "main"),
+        },
         timeout=60,
     )
     if not resp.is_success:
