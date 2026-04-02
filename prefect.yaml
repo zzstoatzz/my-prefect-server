@@ -86,13 +86,8 @@ deployments:
           prefect.resource.name: "transform"
           prefect.resource.role: "deployment"
 
-  - name: weave
-    entrypoint: flows/weave.py:weave
+  - name: morning
+    entrypoint: flows/morning.py:morning
     work_pool: *k8s
-    triggers:
-      - type: event
-        expect:
-          - "prefect.flow-run.Completed"
-        match_related:
-          prefect.resource.name: "transform"
-          prefect.resource.role: "deployment"
+    schedules:
+      - cron: "0 13 * * *"  # 8am CT daily
