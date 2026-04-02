@@ -91,3 +91,9 @@ deployments:
     work_pool: *k8s
     schedules:
       - cron: "0 13 * * *"  # 8am CT daily
+
+  - name: rebuild-atlas
+    entrypoint: flows/atlas.py:rebuild_atlas
+    work_pool: *k8s
+    schedules:
+      - cron: "0 */6 * * *"  # every 6 hours
