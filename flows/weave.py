@@ -202,7 +202,7 @@ async def identify_tag_merges(
     inventory = "\n".join(tag_lines)
 
     model = AnthropicModel(
-        "claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key)
+        "claude-sonnet-4-6", provider=AnthropicProvider(api_key=api_key)
     )
     agent = Agent(
         model,
@@ -385,7 +385,7 @@ async def discover_tag_relationships(
     inventory = "\n".join(tag_lines)
 
     model = AnthropicModel(
-        "claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key)
+        "claude-sonnet-4-6", provider=AnthropicProvider(api_key=api_key)
     )
     agent = Agent(
         model,
