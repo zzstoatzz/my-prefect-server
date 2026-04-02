@@ -684,8 +684,6 @@ def create_cluster_cards(
             row_tags = list(getattr(row, "tags", []) or [])
             for url in _URL_RE.findall(content):
                 url = url.rstrip(".,;:!?")
-                if url in existing_urls:
-                    continue
                 if url not in url_evidence:
                     url_evidence[url] = {
                         "tags": set(),
@@ -695,36 +693,32 @@ def create_cluster_cards(
                 url_evidence[url]["tags"].update(row_tags)
                 url_evidence[url]["count"] += 1
 
-    # build tag->card mapping for ALL cards (existing + new)
-    # for existing cards, match by URL presence in observations
+    # build tag->card mapping from observation-level associations
     tag_cards: dict[str, list[dict[str, Any]]] = defaultdict(list)
 
-    # also index existing cards by their URL for tag mapping
+    # map existing cards to tags via their URLs
     existing_by_url: dict[str, dict[str, Any]] = {}
     for card in existing_cards:
         val = card.get("value", {})
         if val.get("type") == "URL":
             card_url = val.get("content", {}).get("url", "")
             existing_by_url[card_url] = card
-            # check if this URL appears in any observation evidence
-            for url, evidence in url_evidence.items():
-                if url == card_url:
-                    for tag in evidence["tags"]:
-                        tag_cards[tag].append(card)
-            # also check url_evidence for the already-existing cards
-    for url in existing_urls:
-        if url in url_evidence and url in existing_by_url:
-            for tag in url_evidence[url]["tags"]:
-                if existing_by_url[url] not in tag_cards.get(tag, []):
-                    tag_cards[tag].append(existing_by_url[url])
+            if card_url in url_evidence:
+                for tag in url_evidence[card_url]["tags"]:
+                    tag_cards[tag].append(card)
 
-    if not url_evidence:
+    # find new URLs not yet represented as cards
+    new_urls = {
+        url: ev for url, ev in url_evidence.items() if url not in existing_urls
+    }
+
+    if not new_urls:
         logger.info("no new URLs found in observations")
         return {"cards": existing_cards, "tag_cards": dict(tag_cards)}
 
     # sort by evidence strength
     ranked = sorted(
-        url_evidence.items(),
+        new_urls.items(),
         key=lambda x: x[1]["count"] * len(x[1]["tags"]),
         reverse=True,
     )
