@@ -72,12 +72,18 @@ def deploy_to_pages(site_dir: Path, api_token: str) -> str:
         "CLOUDFLARE_ACCOUNT_ID": CF_ACCOUNT_ID,
     }
 
-    # install node + wrangler if not already available
+    # install node + npm if not available, then install site deps + wrangler
     subprocess.run(
         ["bash", "-c",
          "command -v npx >/dev/null 2>&1 || "
          "(apt-get update -qq && apt-get install -y -qq nodejs npm >/dev/null 2>&1)"],
         env=env, capture_output=True, timeout=120,
+    )
+    # install site dependencies (workers-og) and wrangler
+    subprocess.run(
+        ["npm", "install"],
+        cwd=str(site_dir),
+        env=env, capture_output=True, text=True, timeout=120,
     )
     subprocess.run(
         ["npm", "install", "--global", "wrangler"],
