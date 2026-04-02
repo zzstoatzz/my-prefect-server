@@ -96,9 +96,13 @@ def deploy_to_pages(site_dir: Path, api_token: str) -> str:
     if not resp.is_success:
         logger.error(f"create deployment failed ({resp.status_code}): {resp.text[:500]}")
         resp.raise_for_status()
-    deployment = resp.json()["result"]
-    jwt = deployment["jwt"]
-    logger.info(f"deployment {deployment['id']} created")
+    body = resp.json()
+    deployment = body["result"]
+    logger.info(f"deployment {deployment['id']} created, keys: {list(deployment.keys())}")
+    jwt = deployment.get("jwt") or body.get("jwt")
+    if not jwt:
+        logger.error(f"no jwt in response: {json.dumps(body, indent=2)[:1000]}")
+        raise RuntimeError("no jwt in deployment response")
 
     # check which files need uploading
     jwt_headers = {"Authorization": f"Bearer {jwt}"}
