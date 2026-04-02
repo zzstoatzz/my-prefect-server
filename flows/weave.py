@@ -185,27 +185,21 @@ async def identify_tag_merges(
     tag_embeddings: dict[str, list[float]],
     api_key: str,
 ) -> list[dict[str, Any]]:
-    """Cluster tags by embedding similarity, LLM confirms merges."""
-    tags = list(tag_embeddings.keys())
+    """Give the LLM the full tag inventory and let it propose consolidations."""
+    # format every tag with usage context so the LLM can make informed decisions
+    tag_lines = []
+    for tag in sorted(tag_info.keys()):
+        info = tag_info[tag]
+        users = info.get("users", [])
+        count = info.get("count", 0)
+        episodic = info.get("episodic_count", 0)
+        sample = (info.get("samples") or [""])[0][:120]
+        tag_lines.append(
+            f"  {tag}  (obs={count}, episodic={episodic}, users={len(users)})"
+            f"\n    sample: {sample}"
+        )
 
-    # find high-similarity pairs (>= 0.85) as merge candidates
-    candidates: list[tuple[str, str, float]] = []
-    for i, t1 in enumerate(tags):
-        for t2 in tags[i + 1 :]:
-            sim = cosine_similarity(tag_embeddings[t1], tag_embeddings[t2])
-            if sim >= 0.85:
-                candidates.append((t1, t2, sim))
-
-    if not candidates:
-        return []
-
-    candidates.sort(key=lambda x: -x[2])
-    candidates_text = "\n".join(
-        f"- \"{t1}\" <-> \"{t2}\" (similarity: {sim:.3f})\n"
-        f"  {t1} context: {(tag_info.get(t1) or {}).get('samples', [''])[0][:100]}\n"
-        f"  {t2} context: {(tag_info.get(t2) or {}).get('samples', [''])[0][:100]}"
-        for t1, t2, sim in candidates[:30]  # cap at 30 pairs
-    )
+    inventory = "\n".join(tag_lines)
 
     model = AnthropicModel(
         "claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key)
@@ -213,22 +207,28 @@ async def identify_tag_merges(
     agent = Agent(
         model,
         system_prompt=(
-            "you review tag merge candidates for a memory graph. for each pair, decide:\n"
-            "- MERGE: same concept — pick the canonical form\n"
-            "- RELATE: distinct but related — don't merge\n"
-            "- SKIP: not meaningfully related despite embedding similarity\n\n"
-            "prefer lowercase, hyphenated canonical forms (e.g. 'ai-systems' not 'AI_systems').\n"
-            "group transitive merges (if a merges with b and b merges with c, "
-            "produce one merge with canonical + all aliases).\n"
-            "put RELATE pairs in the 'related' field of the merge they're closest to, "
-            "or omit if they don't belong to any merge group."
+            "you are consolidating the tag vocabulary for phi's memory graph.\n\n"
+            "you will receive the full inventory of tags with usage counts and sample "
+            "observations. your job:\n\n"
+            "1. MERGE tags that are the same concept with different surface forms.\n"
+            "   examples: 'attestation' / 'self-attestation' → canonical: 'attestation'\n"
+            "   'ai_systems' / 'bot' / 'system-improvement' → canonical: 'ai-systems'\n\n"
+            "2. mark tags that are RELATED but distinct — these should link, not merge.\n"
+            "   example: 'epistemology' / 'social-epistemology' → related, not merged\n\n"
+            "rules:\n"
+            "- prefer lowercase, hyphenated canonical forms\n"
+            "- group transitive merges into one entry\n"
+            "- put related (but not merged) tags in the 'related' field\n"
+            "- only merge when you're confident they're the same concept\n"
+            "- it's fine to return zero merges if the tags are already clean\n"
+            "- look for underscored vs hyphenated variants, singular/plural, "
+            "abbreviations, and overlapping concepts"
         ),
         output_type=MergeProposal,
         name="tag-merger",
     )
 
-    result = await agent.run(f"merge candidates:\n{candidates_text}")
-    # serialize to dicts for prefect result persistence
+    result = await agent.run(f"full tag inventory ({len(tag_info)} tags):\n{inventory}")
     return [m.model_dump() for m in result.output.merges]
 
 
@@ -353,49 +353,36 @@ async def discover_tag_relationships(
     merged_aliases: set[str],
     api_key: str,
 ) -> list[dict[str, Any]]:
-    """Score and LLM-confirm relationships between non-merged tags."""
-    tags = [t for t in tag_embeddings if t not in merged_aliases]
+    """Give the LLM the full tag list with co-occurrence context to find relationships."""
+    tags = [t for t in sorted(tag_info.keys()) if t not in merged_aliases]
 
-    # score tag pairs by combined signal
-    scored: list[tuple[str, str, float, str]] = []  # (a, b, score, reason)
-    for i, t1 in enumerate(tags):
-        for t2 in tags[i + 1 :]:
-            sim = cosine_similarity(tag_embeddings[t1], tag_embeddings[t2])
-            if sim < 0.4:
-                continue
+    # precompute co-occurrence hints to give the LLM as context
+    cooccur_hints: dict[str, list[str]] = defaultdict(list)
+    for pair_key, count in cooccurrences.items():
+        t1, t2 = pair_key.split("|", 1)
+        if t1 in merged_aliases or t2 in merged_aliases:
+            continue
+        if count >= 2:
+            cooccur_hints[t1].append(f"{t2} ({count}x)")
+            cooccur_hints[t2].append(f"{t1} ({count}x)")
 
-            # co-occurrence score
-            pair_key = "|".join(sorted([t1, t2]))
-            cooccur = cooccurrences.get(pair_key, 0)
+    # format tag inventory with context
+    tag_lines = []
+    for tag in tags:
+        info = tag_info.get(tag, {})
+        count = info.get("count", 0)
+        episodic = info.get("episodic_count", 0)
+        n_users = len(info.get("users", []))
+        sample = (info.get("samples") or [""])[0][:120]
+        cooccur_str = ""
+        if tag in cooccur_hints:
+            cooccur_str = f"\n    co-occurs with: {', '.join(cooccur_hints[tag][:5])}"
+        tag_lines.append(
+            f"  {tag}  (obs={count}, episodic={episodic}, users={n_users})"
+            f"\n    sample: {sample}{cooccur_str}"
+        )
 
-            # shared users score
-            shared_users = sum(
-                1
-                for tags_list in user_tag_sets.values()
-                if t1 in tags_list and t2 in tags_list
-            )
-
-            # combine signals
-            score = sim * 0.5
-            if cooccur > 0:
-                score += min(cooccur / 5, 0.3)  # cap at 0.3
-            if shared_users > 0:
-                score += min(shared_users / 3, 0.2)  # cap at 0.2
-
-            if score >= 0.5:
-                reason = f"sim={sim:.2f}, cooccur={cooccur}, shared_users={shared_users}"
-                scored.append((t1, t2, score, reason))
-
-    if not scored:
-        return []
-
-    scored.sort(key=lambda x: -x[2])
-    candidates_text = "\n".join(
-        f"- \"{t1}\" <-> \"{t2}\" (score: {score:.2f}, {reason})\n"
-        f"  {t1}: {(tag_info.get(t1) or {}).get('samples', [''])[0][:100]}\n"
-        f"  {t2}: {(tag_info.get(t2) or {}).get('samples', [''])[0][:100]}"
-        for t1, t2, score, reason in scored[:30]
-    )
+    inventory = "\n".join(tag_lines)
 
     model = AnthropicModel(
         "claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key)
@@ -403,21 +390,30 @@ async def discover_tag_relationships(
     agent = Agent(
         model,
         system_prompt=(
-            "you review candidate tag relationships for a memory graph belonging to phi, "
-            "a bluesky bot that remembers conversations.\n\n"
-            "for each pair, decide if there's a genuine conceptual relationship:\n"
+            "you are mapping relationships between tags in phi's memory graph.\n"
+            "phi is a bluesky bot that remembers conversations and builds knowledge.\n\n"
+            "you will receive the full tag inventory with usage counts, sample observations, "
+            "and co-occurrence data. your job: identify genuine conceptual relationships.\n\n"
+            "relationship types:\n"
             "- RELATED: broadly connected concepts\n"
             "- SUBTOPIC: one is a narrower form of the other\n"
-            "- OVERLAPPING: partially shared meaning\n"
-            "- SKIP: co-occurrence is coincidental, not conceptual\n\n"
-            "assign confidence 0.0-1.0. be honest — surface co-occurrence ≠ real relationship.\n"
-            "provide brief evidence for each accepted relationship."
+            "- OVERLAPPING: partially shared meaning but distinct\n\n"
+            "rules:\n"
+            "- assign confidence 0.0-1.0 based on how strong the connection is\n"
+            "- co-occurrence is a signal but not proof — two tags appearing together "
+            "might be coincidental\n"
+            "- look for thematic clusters, not just pairs\n"
+            "- provide brief evidence for each relationship\n"
+            "- be selective — only include relationships you're genuinely confident about\n"
+            "- skip trivially obvious connections (like a tag co-occurring with itself)"
         ),
         output_type=RelationshipProposal,
         name="tag-relator",
     )
 
-    result = await agent.run(f"relationship candidates:\n{candidates_text}")
+    result = await agent.run(
+        f"full tag inventory ({len(tags)} tags after merges):\n{inventory}"
+    )
     return [r.model_dump() for r in result.output.relationships]
 
 
