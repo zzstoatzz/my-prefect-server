@@ -89,7 +89,9 @@ def deploy_to_pages(site_dir: Path, api_token: str) -> str:
         json={"manifest": manifest, "branch": "main"},
         timeout=60,
     )
-    resp.raise_for_status()
+    if not resp.is_success:
+        logger.error(f"create deployment failed ({resp.status_code}): {resp.text[:500]}")
+        resp.raise_for_status()
     deployment = resp.json()["result"]
     jwt = deployment["jwt"]
     logger.info(f"deployment {deployment['id']} created")
@@ -102,7 +104,9 @@ def deploy_to_pages(site_dir: Path, api_token: str) -> str:
         json={"hashes": list(content_by_hash.keys())},
         timeout=30,
     )
-    resp.raise_for_status()
+    if not resp.is_success:
+        logger.error(f"check-missing failed ({resp.status_code}): {resp.text[:500]}")
+        resp.raise_for_status()
     missing = set(resp.json())
     logger.info(f"{len(missing)} files to upload ({len(manifest) - len(missing)} cached)")
 
@@ -112,20 +116,26 @@ def deploy_to_pages(site_dir: Path, api_token: str) -> str:
         for h in missing:
             batch.append((h, ("blob", content_by_hash[h], "application/octet-stream")))
             if len(batch) >= 50:
-                httpx.post(
+                r = httpx.post(
                     f"{CF_API}/pages/assets/upload",
                     headers=jwt_headers,
                     files=batch,
                     timeout=120,
-                ).raise_for_status()
+                )
+                if not r.is_success:
+                    logger.error(f"upload failed ({r.status_code}): {r.text[:500]}")
+                    r.raise_for_status()
                 batch = []
         if batch:
-            httpx.post(
+            r = httpx.post(
                 f"{CF_API}/pages/assets/upload",
                 headers=jwt_headers,
                 files=batch,
                 timeout=120,
-            ).raise_for_status()
+            )
+            if not r.is_success:
+                logger.error(f"upload failed ({r.status_code}): {r.text[:500]}")
+                r.raise_for_status()
 
     url = deployment.get("url", "")
     logger.info(f"deployed: {url}")
