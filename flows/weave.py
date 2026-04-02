@@ -640,11 +640,13 @@ def create_cluster_cards(
     tpuf_key: str,
     tag_info: dict[str, dict],
     existing_cards: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
+) -> dict[str, Any]:
     """Create cosmik URL cards for URLs found in phi's observations.
 
     Scans all observations and episodic memories for URLs, creates cards for
-    those that don't exist yet. Returns the full updated card list.
+    those that don't exist yet. Returns {cards: [...], tag_cards: {tag: [card]}}.
+    The tag_cards mapping is built from observation-level tag associations,
+    which is far more reliable than embedding-based matching.
     """
     logger = get_run_logger()
 
@@ -693,11 +695,34 @@ def create_cluster_cards(
                 url_evidence[url]["tags"].update(row_tags)
                 url_evidence[url]["count"] += 1
 
+    # build tag->card mapping for ALL cards (existing + new)
+    # for existing cards, match by URL presence in observations
+    tag_cards: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    # also index existing cards by their URL for tag mapping
+    existing_by_url: dict[str, dict[str, Any]] = {}
+    for card in existing_cards:
+        val = card.get("value", {})
+        if val.get("type") == "URL":
+            card_url = val.get("content", {}).get("url", "")
+            existing_by_url[card_url] = card
+            # check if this URL appears in any observation evidence
+            for url, evidence in url_evidence.items():
+                if url == card_url:
+                    for tag in evidence["tags"]:
+                        tag_cards[tag].append(card)
+            # also check url_evidence for the already-existing cards
+    for url in existing_urls:
+        if url in url_evidence and url in existing_by_url:
+            for tag in url_evidence[url]["tags"]:
+                if existing_by_url[url] not in tag_cards.get(tag, []):
+                    tag_cards[tag].append(existing_by_url[url])
+
     if not url_evidence:
         logger.info("no new URLs found in observations")
-        return existing_cards
+        return {"cards": existing_cards, "tag_cards": dict(tag_cards)}
 
-    # sort by evidence strength (count * tag breadth)
+    # sort by evidence strength
     ranked = sorted(
         url_evidence.items(),
         key=lambda x: x[1]["count"] * len(x[1]["tags"]),
@@ -706,7 +731,7 @@ def create_cluster_cards(
 
     new_cards = list(existing_cards)
     created = 0
-    for url, evidence in ranked[:20]:  # cap at 20 new cards per run
+    for url, evidence in ranked[:20]:
         tags_str = ", ".join(sorted(evidence["tags"])[:5])
         record = {
             "type": "URL",
@@ -722,11 +747,15 @@ def create_cluster_cards(
         }
         try:
             result = _create_pds_record(session, "network.cosmik.card", record)
-            new_cards.append({
+            card_entry = {
                 "uri": result["uri"],
                 "cid": result["cid"],
                 "value": record,
-            })
+            }
+            new_cards.append(card_entry)
+            # map this card to its observation tags
+            for tag in evidence["tags"]:
+                tag_cards[tag].append(card_entry)
             existing_urls.add(url)
             created += 1
             logger.info(f"created URL card: {url}")
@@ -734,7 +763,7 @@ def create_cluster_cards(
             logger.warning(f"failed to create card for {url}: {e}")
 
     logger.info(f"created {created} new URL cards from observations")
-    return new_cards
+    return {"cards": new_cards, "tag_cards": dict(tag_cards)}
 
 
 @task
@@ -977,17 +1006,11 @@ async def weave():
     existing_conns = _list_cosmik_connections(PHI_DID)
     print(f"phase 4: found {len(existing_cards)} existing cards, {len(existing_conns)} connections")
 
-    # create cards from URLs in observations before trying to link
-    cards = create_cluster_cards(session, tpuf_key, tag_info, existing_cards)
-    print(f"phase 4: {len(cards)} total cards after creation")
-
-    if not cards:
-        print("phase 4: no cosmik cards — skipping promotion")
-        return
-
-    tag_cards = _match_cards_to_tags(cards, tag_info, openai_key)
-    tags_with_cards = [t for t in tag_cards if tag_cards[t]]
-    print(f"phase 4: matched cards to {len(tags_with_cards)} tags")
+    # create cards from URLs in observations + build tag->card mapping
+    card_result = create_cluster_cards(session, tpuf_key, tag_info, existing_cards)
+    cards = card_result["cards"]
+    tag_cards = card_result["tag_cards"]
+    print(f"phase 4: {len(cards)} total cards, {len(tag_cards)} tags with cards")
 
     conn_count = promote_connections(
         session, rel_dicts, tag_cards, tag_info, existing_conns
