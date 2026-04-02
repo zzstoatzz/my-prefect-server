@@ -24,7 +24,7 @@ from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 from prefect.variables import Variable
 
-from mps.phi import TagMerge, TagRelationship
+from mps.phi import TagCluster, TagMerge, TagRelationship
 
 PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
 TAG_REL_NAMESPACE = "phi-tag-relationships"
@@ -336,8 +336,8 @@ def apply_tag_merges(
 # ---------------------------------------------------------------------------
 
 
-class RelationshipProposal(BaseModel):
-    relationships: list[TagRelationship] = Field(default_factory=list)
+class ClusterProposal(BaseModel):
+    clusters: list[TagCluster] = Field(default_factory=list)
 
 
 @task(
@@ -356,10 +356,10 @@ async def discover_tag_relationships(
     api_key: str,
     model_name: str = "claude-sonnet-4-6",
 ) -> list[dict[str, Any]]:
-    """Give the LLM the full tag list with co-occurrence context to find relationships."""
+    """Ask the LLM to identify thematic clusters, then derive pairwise edges."""
     tags = [t for t in sorted(tag_info.keys()) if t not in merged_aliases]
 
-    # precompute co-occurrence hints to give the LLM as context
+    # precompute co-occurrence hints
     cooccur_hints: dict[str, list[str]] = defaultdict(list)
     for pair_key, count in cooccurrences.items():
         t1, t2 = pair_key.split("|", 1)
@@ -393,31 +393,54 @@ async def discover_tag_relationships(
     agent = Agent(
         model,
         system_prompt=(
-            "you are mapping relationships between tags in phi's memory graph.\n"
+            "you are organizing phi's memory tags into thematic clusters.\n"
             "phi is a bluesky bot that remembers conversations and builds knowledge.\n\n"
             "you will receive the full tag inventory with usage counts, sample observations, "
-            "and co-occurrence data. your job: identify genuine conceptual relationships.\n\n"
-            "relationship types:\n"
-            "- RELATED: broadly connected concepts\n"
-            "- SUBTOPIC: one is a narrower form of the other\n"
-            "- OVERLAPPING: partially shared meaning but distinct\n\n"
+            "and co-occurrence data. your job: identify thematic clusters — groups of tags "
+            "that belong to the same area of phi's knowledge or experience.\n\n"
+            "examples of good clusters:\n"
+            "- 'phi's epistemic concerns': epistemology, memory, confabulation, self-attestation\n"
+            "- 'technical interests': programming, ai-systems, infrastructure\n"
+            "- 'social dynamics': community, trust, collaboration\n\n"
             "rules:\n"
-            "- assign confidence 0.0-1.0 based on how strong the connection is\n"
-            "- co-occurrence is a signal but not proof — two tags appearing together "
-            "might be coincidental\n"
-            "- look for thematic clusters, not just pairs\n"
-            "- provide brief evidence for each relationship\n"
-            "- be selective — only include relationships you're genuinely confident about\n"
-            "- skip trivially obvious connections (like a tag co-occurring with itself)"
+            "- a tag can appear in multiple clusters (topics overlap)\n"
+            "- clusters should have 2-8 tags — small enough to be coherent\n"
+            "- assign cohesion 0.0-1.0: how tightly the tags relate to the cluster theme\n"
+            "- name each cluster concisely (2-4 words)\n"
+            "- describe what ties the tags together\n"
+            "- not every tag needs a cluster — singletons with no thematic neighbors are fine to skip\n"
+            "- use the sample observations and co-occurrence data to inform your groupings"
         ),
-        output_type=RelationshipProposal,
-        name="tag-relator",
+        output_type=ClusterProposal,
+        name="tag-clusterer",
     )
 
     result = await agent.run(
         f"full tag inventory ({len(tags)} tags after merges):\n{inventory}"
     )
-    return [r.model_dump() for r in result.output.relationships]
+
+    # derive pairwise relationships from cluster membership
+    relationships: list[dict[str, Any]] = []
+    seen_pairs: set[tuple[str, str]] = set()
+    for cluster in result.output.clusters:
+        members = [t for t in cluster.tags if t in set(tags)]
+        for i, t1 in enumerate(members):
+            for t2 in members[i + 1 :]:
+                pair = tuple(sorted([t1, t2]))
+                if pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
+                relationships.append(
+                    TagRelationship(
+                        tag_a=pair[0],
+                        tag_b=pair[1],
+                        relationship_type="related",
+                        confidence=cluster.cohesion,
+                        evidence=f"[{cluster.name}] {cluster.description}",
+                    ).model_dump()
+                )
+
+    return relationships
 
 
 # ---------------------------------------------------------------------------

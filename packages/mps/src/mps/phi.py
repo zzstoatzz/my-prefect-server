@@ -26,6 +26,17 @@ class TagMerge(BaseModel):
     )
 
 
+class TagCluster(BaseModel):
+    """A thematic grouping of related tags."""
+
+    name: str = Field(description="short name for the cluster theme")
+    description: str = Field(description="what ties these tags together")
+    tags: list[str] = Field(description="member tags")
+    cohesion: float = Field(
+        ge=0.0, le=1.0, description="how tightly related are these tags"
+    )
+
+
 class TagRelationship(BaseModel):
     """A discovered relationship between two distinct tags."""
 
