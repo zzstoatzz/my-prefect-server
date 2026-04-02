@@ -22,6 +22,7 @@ from prefect import flow, get_run_logger, task
 from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
+from prefect.variables import Variable
 
 from mps.phi import TagMerge, TagRelationship
 
@@ -184,6 +185,7 @@ async def identify_tag_merges(
     tag_info: dict[str, dict],
     tag_embeddings: dict[str, list[float]],
     api_key: str,
+    model_name: str = "claude-sonnet-4-6",
 ) -> list[dict[str, Any]]:
     """Give the LLM the full tag inventory and let it propose consolidations."""
     # format every tag with usage context so the LLM can make informed decisions
@@ -202,7 +204,7 @@ async def identify_tag_merges(
     inventory = "\n".join(tag_lines)
 
     model = AnthropicModel(
-        "claude-sonnet-4-6", provider=AnthropicProvider(api_key=api_key)
+        model_name, provider=AnthropicProvider(api_key=api_key)
     )
     agent = Agent(
         model,
@@ -352,6 +354,7 @@ async def discover_tag_relationships(
     user_tag_sets: dict[str, list[str]],
     merged_aliases: set[str],
     api_key: str,
+    model_name: str = "claude-sonnet-4-6",
 ) -> list[dict[str, Any]]:
     """Give the LLM the full tag list with co-occurrence context to find relationships."""
     tags = [t for t in sorted(tag_info.keys()) if t not in merged_aliases]
@@ -385,7 +388,7 @@ async def discover_tag_relationships(
     inventory = "\n".join(tag_lines)
 
     model = AnthropicModel(
-        "claude-sonnet-4-6", provider=AnthropicProvider(api_key=api_key)
+        model_name, provider=AnthropicProvider(api_key=api_key)
     )
     agent = Agent(
         model,
@@ -774,6 +777,8 @@ async def weave():
     tpuf_key = (await Secret.load("turbopuffer-api-key")).get()
     openai_key = (await Secret.load("openai-api-key")).get()
     anthropic_key = (await Secret.load("anthropic-api-key")).get()
+    model_name = await Variable.get("weave-model", default="claude-sonnet-4-6")
+    print(f"using model: {model_name}")
 
     # --- phase 1: collect and deduplicate tags ---
     tag_data = collect_all_tags(tpuf_key)
@@ -791,7 +796,7 @@ async def weave():
 
     tags_text = "\n".join(tags)
     merge_dicts = await identify_tag_merges(
-        tags_text, tag_info, tag_embeddings, anthropic_key
+        tags_text, tag_info, tag_embeddings, anthropic_key, model_name=model_name
     )
 
     # collect all aliases for filtering in phase 2
@@ -816,6 +821,7 @@ async def weave():
         user_tag_sets,
         merged_aliases,
         anthropic_key,
+        model_name=model_name,
     )
     print(f"phase 2: discovered {len(rel_dicts)} tag relationships")
 
