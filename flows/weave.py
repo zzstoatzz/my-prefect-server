@@ -62,7 +62,7 @@ def _rel_id(tag_a: str, tag_b: str) -> str:
 
 
 class ByTagsHash(CachePolicy):
-    """Cache by hash of all tags. Skip LLM if tag set unchanged."""
+    """Cache by hash of all tags, scoped per task. Skip LLM if tag set unchanged."""
 
     def compute_key(
         self,
@@ -75,7 +75,8 @@ class ByTagsHash(CachePolicy):
         if not tags_text:
             return None
         h = hashlib.md5(tags_text.encode()).hexdigest()[:12]
-        return f"weave-tags/{h}"
+        task_key = task_ctx.task.task_key if task_ctx else "unknown"
+        return f"weave-{task_key}/{h}"
 
 
 # ---------------------------------------------------------------------------
