@@ -24,12 +24,14 @@ from prefect.context import TaskRunContext
 
 from mps.db import (
     write_github_issues,
+    write_likes,
     write_phi_interactions,
     write_phi_observations,
     write_tangled_items,
 )
 from mps.github import IssueOrPR, IssueRef, gh_headers
 from mps.phi import PhiInteraction, PhiObservation, restore_handle
+from mps.likes import LikeRecord, fetch_likes
 from mps.tangled import PDS_BASE, TangledItem, fetch_items, fetch_repo_at_uris
 
 GITHUB_API = "https://api.github.com"
@@ -255,6 +257,21 @@ def fetch_phi_memory(tpuf_key: str) -> tuple[list[PhiObservation], list[PhiInter
 
 
 @task
+def fetch_nate_likes() -> list[LikeRecord]:
+    """Fetch recent likes from nate's PDS."""
+    logger = get_run_logger()
+    with httpx.Client(base_url=PDS_BASE, timeout=30) as client:
+        likes = fetch_likes(client)
+    logger.info(f"fetched {len(likes)} likes from PDS")
+    return likes
+
+
+@task
+def persist_likes(items: list[LikeRecord]) -> int:
+    return write_likes(items, _db_path())
+
+
+@task
 def persist_phi(
     observations: list[PhiObservation],
     interactions: list[PhiInteraction],
@@ -297,8 +314,9 @@ def ingest(only_unread: bool = True):
 
     token = load_token()
 
-    # kick off tangled + phi fetches immediately (no deps on github token)
+    # kick off tangled + phi + likes fetches immediately (no deps on github token)
     tangled_future = fetch_all_tangled_items.submit()
+    likes_future = fetch_nate_likes.submit()
 
     tpuf_key = Secret.load("turbopuffer-api-key").get()
     phi_future = fetch_phi_memory.submit(tpuf_key)
@@ -329,6 +347,9 @@ def ingest(only_unread: bool = True):
 
     phi_observations, phi_interactions = phi_future.result()
 
+    likes = likes_future.result()
+    logger.info(f"fetched {len(likes)} likes")
+
     # sequential writes — same process, no DuckDB lock contention
     if gh_items:
         total = persist_github(gh_items)
@@ -337,6 +358,10 @@ def ingest(only_unread: bool = True):
     if tangled_items:
         total = persist_tangled(tangled_items)
         logger.info(f"persisted {len(tangled_items)} tangled rows; {total} total in raw_tangled_items")
+
+    if likes:
+        total = persist_likes(likes)
+        logger.info(f"persisted {len(likes)} likes; {total} total in raw_likes")
 
     if phi_observations or phi_interactions:
         obs_total, ix_total = persist_phi(phi_observations, phi_interactions)

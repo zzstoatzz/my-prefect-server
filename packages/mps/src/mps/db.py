@@ -4,7 +4,37 @@ import datetime
 
 import duckdb
 
+from mps.likes import LikeRecord
 from mps.phi import PhiInteraction, PhiObservation
+
+
+def write_likes(items: list[LikeRecord], db_path: str) -> int:
+    """Upsert like records into raw_likes. Returns total row count."""
+    con = duckdb.connect(db_path)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS raw_likes (
+            at_uri VARCHAR PRIMARY KEY,
+            subject_uri VARCHAR,
+            created_at VARCHAR,
+            fetched_at TIMESTAMP DEFAULT now()
+        )
+    """)
+    rows = [
+        (
+            item.at_uri, item.subject_uri,
+            item.created_at,
+            datetime.datetime.now(datetime.UTC),
+        )
+        for item in items
+    ]
+    if rows:
+        con.executemany(
+            "INSERT OR REPLACE INTO raw_likes VALUES (?, ?, ?, ?)",
+            rows,
+        )
+    count = con.execute("SELECT count(*) FROM raw_likes").fetchone()[0]
+    con.close()
+    return count
 
 
 def write_github_issues(items: list, db_path: str) -> int:
