@@ -18,6 +18,7 @@ from prefect import flow, get_run_logger, task
 from prefect.blocks.system import Secret
 
 REPO_URL = "https://github.com/zzstoatzz/leaflet-search.git"
+CF_ACCOUNT_ID = "8feb33b5fb57ce2bc093bc6f4141f40a"
 CF_PROJECT = "leaflet-search"
 
 
@@ -65,7 +66,11 @@ def deploy_to_pages(site_dir: Path, api_token: str) -> str:
     doesn't handle function bundling, and deploying without it causes 500s.
     """
     logger = get_run_logger()
-    env = {**os.environ, "CLOUDFLARE_API_TOKEN": api_token}
+    env = {
+        **os.environ,
+        "CLOUDFLARE_API_TOKEN": api_token,
+        "CLOUDFLARE_ACCOUNT_ID": CF_ACCOUNT_ID,
+    }
 
     # install node + wrangler if not already available
     subprocess.run(
