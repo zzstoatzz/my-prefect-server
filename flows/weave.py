@@ -7,6 +7,7 @@ Reads from TurboPuffer directly (no DuckDB needed — tags/observations live in 
 """
 
 import hashlib
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -576,6 +577,21 @@ def _create_pds_record(
     return resp.json()
 
 
+def _card_text(card: dict[str, Any]) -> str:
+    """Extract searchable text from a cosmik card (handles both old and new format)."""
+    val = card.get("value", {})
+    if val.get("type") == "NOTE":
+        return val.get("content", {}).get("text", "")[:500]
+    if val.get("type") == "URL":
+        content = val.get("content", {})
+        # new format: metadata nested under content.metadata
+        meta = content.get("metadata", {})
+        title = meta.get("title", "") or content.get("title", "")
+        desc = meta.get("description", "") or content.get("description", "")
+        return f"{title} {desc}".strip() or content.get("url", "")
+    return ""
+
+
 def _match_cards_to_tags(
     cards: list[dict[str, Any]],
     tag_info: dict[str, dict],
@@ -590,22 +606,7 @@ def _match_cards_to_tags(
 
     openai_client = OpenAI(api_key=openai_key)
 
-    # embed card content
-    card_texts = []
-    for card in cards:
-        val = card.get("value", {})
-        if val.get("type") == "NOTE":
-            card_texts.append(val.get("content", {}).get("text", "")[:500])
-        elif val.get("type") == "URL":
-            content = val.get("content", {})
-            card_texts.append(
-                f"{content.get('title', '')} {content.get('description', '')}".strip()
-                or content.get("url", "")
-            )
-        else:
-            card_texts.append("")
-
-    # filter out empty
+    card_texts = [_card_text(c) for c in cards]
     valid = [(i, t) for i, t in enumerate(card_texts) if t]
     if not valid:
         return {}
@@ -615,14 +616,12 @@ def _match_cards_to_tags(
     )
     card_vecs = {valid[j][0]: card_embeddings.data[j].embedding for j in range(len(valid))}
 
-    # embed tags
     tags = list(tag_info.keys())
     tag_embeddings = openai_client.embeddings.create(
         model="text-embedding-3-small", input=tags
     )
     tag_vecs = {tags[j]: tag_embeddings.data[j].embedding for j in range(len(tags))}
 
-    # match: for each tag, find cards with similarity >= 0.5
     result: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for tag, tvec in tag_vecs.items():
         for card_idx, cvec in card_vecs.items():
@@ -630,6 +629,112 @@ def _match_cards_to_tags(
                 result[tag].append(cards[card_idx])
 
     return dict(result)
+
+
+_URL_RE = re.compile(r"https?://[^\s,)>\]]+")
+
+
+@task
+def create_cluster_cards(
+    session: dict[str, Any],
+    tpuf_key: str,
+    tag_info: dict[str, dict],
+    existing_cards: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Create cosmik URL cards for URLs found in phi's observations.
+
+    Scans all observations and episodic memories for URLs, creates cards for
+    those that don't exist yet. Returns the full updated card list.
+    """
+    logger = get_run_logger()
+
+    # index existing card URLs for dedup
+    existing_urls: set[str] = set()
+    for card in existing_cards:
+        val = card.get("value", {})
+        if val.get("type") == "URL":
+            existing_urls.add(val.get("content", {}).get("url", ""))
+
+    # scan turbopuffer for URLs in observation content
+    client = turbopuffer.Turbopuffer(api_key=tpuf_key, region="gcp-us-central1")
+    url_evidence: dict[str, dict[str, Any]] = {}
+
+    ns_ids: list[str] = ["phi-episodic"]
+    page = client.namespaces(prefix="phi-users-")
+    ns_ids.extend(ns.id for ns in page.namespaces)
+
+    for ns_id in ns_ids:
+        ns = client.namespace(ns_id)
+        try:
+            kwargs: dict[str, Any] = {
+                "rank_by": ("vector", "ANN", [0.5] * 1536),
+                "top_k": 200,
+                "include_attributes": ["content", "tags"],
+            }
+            if ns_id.startswith("phi-users-"):
+                kwargs["filters"] = {"kind": ["Eq", "observation"]}
+            response = ns.query(**kwargs)
+        except Exception:
+            continue
+
+        for row in response.rows or []:
+            content = row.content or ""
+            row_tags = list(getattr(row, "tags", []) or [])
+            for url in _URL_RE.findall(content):
+                url = url.rstrip(".,;:!?")
+                if url in existing_urls:
+                    continue
+                if url not in url_evidence:
+                    url_evidence[url] = {
+                        "tags": set(),
+                        "context": content[:300],
+                        "count": 0,
+                    }
+                url_evidence[url]["tags"].update(row_tags)
+                url_evidence[url]["count"] += 1
+
+    if not url_evidence:
+        logger.info("no new URLs found in observations")
+        return existing_cards
+
+    # sort by evidence strength (count * tag breadth)
+    ranked = sorted(
+        url_evidence.items(),
+        key=lambda x: x[1]["count"] * len(x[1]["tags"]),
+        reverse=True,
+    )
+
+    new_cards = list(existing_cards)
+    created = 0
+    for url, evidence in ranked[:20]:  # cap at 20 new cards per run
+        tags_str = ", ".join(sorted(evidence["tags"])[:5])
+        record = {
+            "type": "URL",
+            "content": {
+                "$type": "network.cosmik.card#urlContent",
+                "url": url,
+                "metadata": {
+                    "$type": "network.cosmik.card#urlMetadata",
+                    "description": f"discussed in context of: {tags_str}",
+                },
+            },
+            "createdAt": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            result = _create_pds_record(session, "network.cosmik.card", record)
+            new_cards.append({
+                "uri": result["uri"],
+                "cid": result["cid"],
+                "value": record,
+            })
+            existing_urls.add(url)
+            created += 1
+            logger.info(f"created URL card: {url}")
+        except Exception as e:
+            logger.warning(f"failed to create card for {url}: {e}")
+
+    logger.info(f"created {created} new URL cards from observations")
+    return new_cards
 
 
 @task
@@ -868,12 +973,16 @@ async def weave():
         return
 
     session = _create_bsky_session(bsky_handle, bsky_password)
-    cards = _list_cosmik_cards(PHI_DID)
+    existing_cards = _list_cosmik_cards(PHI_DID)
     existing_conns = _list_cosmik_connections(PHI_DID)
-    print(f"phase 4: found {len(cards)} existing cards, {len(existing_conns)} connections")
+    print(f"phase 4: found {len(existing_cards)} existing cards, {len(existing_conns)} connections")
+
+    # create cards from URLs in observations before trying to link
+    cards = create_cluster_cards(session, tpuf_key, tag_info, existing_cards)
+    print(f"phase 4: {len(cards)} total cards after creation")
 
     if not cards:
-        print("phase 4: no cosmik cards exist yet — skipping promotion")
+        print("phase 4: no cosmik cards — skipping promotion")
         return
 
     tag_cards = _match_cards_to_tags(cards, tag_info, openai_key)
