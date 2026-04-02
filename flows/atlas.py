@@ -82,11 +82,11 @@ def deploy_to_pages(site_dir: Path, api_token: str) -> str:
 
     logger.info(f"deploying {len(manifest)} files")
 
-    # create deployment
+    # create deployment (manifest must be a multipart form field, not JSON body)
     resp = httpx.post(
         f"{CF_API}/accounts/{CF_ACCOUNT_ID}/pages/projects/{CF_PROJECT}/deployments",
-        headers={**headers, "Content-Type": "application/json"},
-        json={"manifest": manifest, "branch": "main"},
+        headers=headers,
+        data={"manifest": json.dumps(manifest), "branch": "main"},
         timeout=60,
     )
     if not resp.is_success:
