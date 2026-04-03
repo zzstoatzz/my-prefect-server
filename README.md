@@ -1,26 +1,31 @@
-personal data pipeline that digests my github and [tangled.org](https://tangled.org) activity, scores items by importance, and generates an LLM-curated briefing. self-hosted on a single hetzner VM (k3s) running prefect OSS.
+personal data pipeline and intelligence layer. digests github, [tangled.org](https://tangled.org), and bluesky activity, scores items, generates LLM-curated briefings, and maintains phi's long-term memory. self-hosted on a single hetzner VM (k3s) running prefect OSS.
 
 [hub](https://hub.waow.tech) · [grafana](https://prefect-metrics.waow.tech/d/executive-overview/executive-overview?orgId=1&from=now-6h&to=now&timezone=browser)
 
 ```
 github API ──┐
-             ├──► ingest ──► raw_github_issues ──┐
-tangled PDS ─┘   (hourly)   raw_tangled_items ──┤
-                                                 ▼
-                                          transform (dbt)
-                                          [on ingest ✓]
-                                                 │
-                                                 ▼
-                                          hub_action_items
-                                            (top 200)
-                                                 │
-                                  ┌──────────────┼──────────┐
-                                  ▼              ▼          ▼
-                                brief       /api/cards   hub UI
-                          [on transform ✓]
-                                  │
-                                  ▼
-                            briefing.json
+             ├──► ingest ──► raw_github_issues    ──┐
+tangled PDS ─┤   (hourly)   raw_tangled_items      ─┤
+bluesky PDS ─┤              raw_likes + raw_liked_posts  │
+phi (tpuf)  ─┘              raw_phi_observations    ─┘
+                                                     │
+                              transform (dbt) ◄──────┘
+                              [on ingest ✓]
+                                    │
+                    ┌───────────────┼───────────────┐
+                    ▼               ▼               ▼
+                  brief          compact       hub UI
+            [on transform ✓]  [on transform ✓]
+                    │               │
+                    ▼               ▼
+              briefing.json   TurboPuffer
+                              (phi-users-*)
+
+                  morning ──► TurboPuffer + semble
+                (daily 8am CT)
+
+              rebuild-atlas ──► Cloudflare Pages
+                (every 6h)
 ```
 
 see [docs/hub.md](docs/hub.md) for the full pipeline breakdown.
