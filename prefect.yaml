@@ -92,6 +92,17 @@ deployments:
     schedules:
       - cron: "0 13 * * *"  # 8am CT daily
 
+  - name: curate
+    entrypoint: flows/curate.py:curate
+    work_pool: *k8s
+    triggers:
+      - type: event
+        expect:
+          - "prefect.flow-run.Completed"
+        match_related:
+          prefect.resource.name: "morning"
+          prefect.resource.role: "deployment"
+
   - name: rebuild-atlas
     entrypoint: flows/atlas.py:rebuild_atlas
     work_pool: *k8s

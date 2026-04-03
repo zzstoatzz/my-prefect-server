@@ -1,12 +1,11 @@
 """
-Morning flow — tag maintenance + agentic semble curation.
+Morning flow — tag maintenance.
 
 Daily at 0 13 * * * (8am CT), 1h before phi's reflection at 14:00 UTC.
 NOT triggered by transform — runs on its own cron.
 
 Phases 1-3: mechanical tag maintenance (dedup, relationships, storage).
-Phase 4: agentic curation — assembles phi's knowledge state, lets an LLM
-decide what (if anything) deserves promotion to semble, then executes.
+Curation is handled by a separate flow (curate.py) triggered on completion.
 """
 
 import hashlib
@@ -14,28 +13,24 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import httpx
 import turbopuffer
 from openai import OpenAI
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
-from prefect import flow, get_run_logger, task
+from prefect import flow, task
 from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 from prefect.variables import Variable
 
 from mps.phi import (
-    CardPlan,
-    CurationPlan,
     TagCluster,
     TagMerge,
     TagRelationship,
 )
 
-PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
 TAG_REL_NAMESPACE = "phi-tag-relationships"
 TAG_REL_SCHEMA = {
     "tag_a": {"type": "string", "filterable": True},
@@ -66,77 +61,6 @@ def _rel_id(tag_a: str, tag_b: str) -> str:
     return f"rel-{pair[0]}-{pair[1]}"
 
 
-def _create_bsky_session(handle: str, password: str) -> dict[str, Any]:
-    """Authenticate with bsky and return session (accessJwt, did)."""
-    resp = httpx.post(
-        "https://bsky.social/xrpc/com.atproto.server.createSession",
-        json={"identifier": handle, "password": password},
-        timeout=15,
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-
-def _list_cosmik_records(did: str, collection: str) -> list[dict[str, Any]]:
-    """Paginate through all records of a given cosmik collection type."""
-    records: list[dict[str, Any]] = []
-    cursor = None
-    while True:
-        params: dict[str, Any] = {
-            "repo": did,
-            "collection": collection,
-            "limit": 100,
-        }
-        if cursor:
-            params["cursor"] = cursor
-        resp = httpx.get(
-            "https://bsky.social/xrpc/com.atproto.repo.listRecords",
-            params=params,
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        records.extend(data.get("records", []))
-        cursor = data.get("cursor")
-        if not cursor:
-            break
-    return records
-
-
-def _list_cosmik_cards(did: str) -> list[dict[str, Any]]:
-    return _list_cosmik_records(did, "network.cosmik.card")
-
-
-def _list_cosmik_connections(did: str) -> list[dict[str, Any]]:
-    return _list_cosmik_records(did, "network.cosmik.connection")
-
-
-def _list_cosmik_collections(did: str) -> list[dict[str, Any]]:
-    return _list_cosmik_records(did, "network.cosmik.collection")
-
-
-def _list_cosmik_collection_links(did: str) -> list[dict[str, Any]]:
-    return _list_cosmik_records(did, "network.cosmik.collectionLink")
-
-
-def _create_pds_record(
-    session: dict[str, Any], collection: str, record: dict[str, Any]
-) -> dict[str, Any]:
-    """Create a record on PDS via XRPC. Returns {uri, cid}."""
-    resp = httpx.post(
-        "https://bsky.social/xrpc/com.atproto.repo.createRecord",
-        headers={"Authorization": f"Bearer {session['accessJwt']}"},
-        json={
-            "repo": session["did"],
-            "collection": collection,
-            "record": record,
-        },
-        timeout=15,
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-
 # ---------------------------------------------------------------------------
 # cache policies
 # ---------------------------------------------------------------------------
@@ -159,23 +83,6 @@ class ByTagsHash(CachePolicy):
         task_key = task_ctx.task.task_key if task_ctx else "unknown"
         return f"morning-{task_key}/{h}"
 
-
-class ByCurationStateHash(CachePolicy):
-    """Cache by hash of the full curation context. Skip LLM if state unchanged."""
-
-    def compute_key(
-        self,
-        task_ctx: TaskRunContext,
-        inputs: dict[str, Any],
-        flow_parameters: dict[str, Any],
-        **kwargs: Any,
-    ) -> str | None:
-        context = inputs.get("context")
-        if not context:
-            return None
-        h = hashlib.md5(context.encode()).hexdigest()[:12]
-        task_key = task_ctx.task.task_key if task_ctx else "unknown"
-        return f"morning-{task_key}/{h}"
 
 
 # ---------------------------------------------------------------------------
@@ -582,453 +489,17 @@ def store_tag_relationships(
 
 
 # ---------------------------------------------------------------------------
-# phase 4: agentic curation
-# ---------------------------------------------------------------------------
-
-
-@task
-def collect_recent_observations(tpuf_key: str, top_k: int = 40) -> list[dict[str, Any]]:
-    """Gather the most recent observations across all user namespaces."""
-    client = turbopuffer.Turbopuffer(api_key=tpuf_key, region="gcp-us-central1")
-    all_obs: list[dict[str, Any]] = []
-
-    page = client.namespaces(prefix="phi-users-")
-    for ns_summary in page.namespaces:
-        handle = ns_summary.id.removeprefix("phi-users-").replace("_", ".")
-        ns = client.namespace(ns_summary.id)
-        try:
-            response = ns.query(
-                rank_by=("created_at", "desc"),
-                top_k=top_k,
-                filters={"kind": ["Eq", "observation"]},
-                include_attributes=["content", "tags", "created_at"],
-            )
-            for row in response.rows or []:
-                all_obs.append({
-                    "handle": handle,
-                    "content": row.content[:400],
-                    "tags": list(getattr(row, "tags", []) or []),
-                    "created_at": getattr(row, "created_at", ""),
-                })
-        except Exception:
-            pass
-
-    # sort by created_at desc, take top_k overall
-    all_obs.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-    return all_obs[:top_k]
-
-
-@task
-def collect_recent_episodic(tpuf_key: str, top_k: int = 20) -> list[dict[str, Any]]:
-    """Gather the most recent episodic memories."""
-    client = turbopuffer.Turbopuffer(api_key=tpuf_key, region="gcp-us-central1")
-    try:
-        ns = client.namespace("phi-episodic")
-        response = ns.query(
-            rank_by=("created_at", "desc"),
-            top_k=top_k,
-            include_attributes=["content", "tags", "created_at", "source"],
-        )
-        return [
-            {
-                "content": row.content[:400],
-                "tags": list(getattr(row, "tags", []) or []),
-                "created_at": getattr(row, "created_at", ""),
-                "source": getattr(row, "source", ""),
-            }
-            for row in (response.rows or [])
-        ]
-    except Exception:
-        return []
-
-
-@task
-def assemble_curation_context(
-    tag_info: dict[str, dict],
-    tag_relationships: list[dict[str, Any]],
-    existing_cards: list[dict[str, Any]],
-    existing_connections: list[dict[str, Any]],
-    existing_collections: list[dict[str, Any]],
-    existing_collection_links: list[dict[str, Any]],
-    recent_observations: list[dict[str, Any]],
-    recent_episodic: list[dict[str, Any]],
-) -> str:
-    """Format all state into a single context string for the curation LLM."""
-    sections: list[str] = []
-
-    # existing cards
-    card_lines = []
-    for card in existing_cards:
-        uri = card.get("uri", "")
-        val = card.get("value", {})
-        ctype = val.get("type", "?")
-        if ctype == "NOTE":
-            text = val.get("content", {}).get("text", "")[:200]
-            card_lines.append(f"  [{ctype}] {uri}\n    {text}")
-        elif ctype == "URL":
-            content = val.get("content", {})
-            url = content.get("url", "")
-            meta = content.get("metadata", {})
-            desc = meta.get("description", "") or meta.get("title", "")
-            card_lines.append(f"  [{ctype}] {uri}\n    {url} — {desc[:150]}")
-        else:
-            card_lines.append(f"  [{ctype}] {uri}")
-    sections.append(
-        f"## existing cards ({len(existing_cards)})\n" + "\n".join(card_lines)
-        if card_lines else "## existing cards (0)\nnone"
-    )
-
-    # existing connections
-    conn_lines = []
-    for conn in existing_connections:
-        val = conn.get("value", {})
-        src = val.get("source", "")
-        tgt = val.get("target", "")
-        note = val.get("note", "")[:100]
-        conn_lines.append(f"  {src} → {tgt}  ({note})")
-    sections.append(
-        f"## existing connections ({len(existing_connections)})\n" + "\n".join(conn_lines)
-        if conn_lines else "## existing connections (0)\nnone"
-    )
-
-    # existing collections
-    coll_lines = []
-    # build link index: collection uri -> list of card uris
-    coll_card_map: dict[str, list[str]] = defaultdict(list)
-    for link in existing_collection_links:
-        val = link.get("value", {})
-        coll_uri = val.get("collection", {}).get("uri", "")
-        card_uri = val.get("card", {}).get("uri", "")
-        if coll_uri and card_uri:
-            coll_card_map[coll_uri].append(card_uri)
-    for coll in existing_collections:
-        uri = coll.get("uri", "")
-        val = coll.get("value", {})
-        name = val.get("name", "")
-        desc = val.get("description", "")[:100]
-        cards_in = coll_card_map.get(uri, [])
-        coll_lines.append(f"  {uri} — {name} ({len(cards_in)} cards): {desc}")
-    sections.append(
-        f"## existing collections ({len(existing_collections)})\n" + "\n".join(coll_lines)
-        if coll_lines else "## existing collections (0)\nnone"
-    )
-
-    # tag inventory (post-merge, with counts)
-    tag_lines = []
-    for tag in sorted(tag_info.keys()):
-        info = tag_info[tag]
-        count = info.get("count", 0)
-        episodic = info.get("episodic_count", 0)
-        n_users = len(info.get("users", []))
-        tag_lines.append(f"  {tag} (obs={count}, episodic={episodic}, users={n_users})")
-    sections.append(
-        f"## tag inventory ({len(tag_info)} tags)\n" + "\n".join(tag_lines)
-    )
-
-    # tag relationships (clusters/edges)
-    if tag_relationships:
-        rel_lines = [
-            f"  {r['tag_a']} — {r['tag_b']} ({r['confidence']:.2f}): {r['evidence'][:80]}"
-            for r in tag_relationships[:30]
-        ]
-        sections.append(
-            f"## tag relationships ({len(tag_relationships)} edges, showing top 30)\n"
-            + "\n".join(rel_lines)
-        )
-
-    # recent observations
-    if recent_observations:
-        obs_lines = []
-        for obs in recent_observations[:20]:
-            tags_str = ", ".join(obs.get("tags", [])[:5])
-            obs_lines.append(
-                f"  [{obs.get('created_at', '?')[:10]}] @{obs['handle']}: "
-                f"{obs['content'][:150]}  tags: [{tags_str}]"
-            )
-        sections.append(
-            f"## recent observations ({len(recent_observations)}, showing top 20)\n"
-            + "\n".join(obs_lines)
-        )
-
-    # recent episodic memories
-    if recent_episodic:
-        ep_lines = []
-        for ep in recent_episodic[:10]:
-            tags_str = ", ".join(ep.get("tags", [])[:5])
-            ep_lines.append(
-                f"  [{ep.get('created_at', '?')[:10]}] {ep['content'][:150]}  tags: [{tags_str}]"
-            )
-        sections.append(
-            f"## recent episodic memories ({len(recent_episodic)}, showing top 10)\n"
-            + "\n".join(ep_lines)
-        )
-
-    return "\n\n".join(sections)
-
-
-@task(
-    cache_policy=ByCurationStateHash(),
-    cache_expiration=timedelta(hours=20),
-    persist_result=True,
-    result_serializer="json",
-)
-async def plan_curation(
-    context: str,
-    api_key: str,
-    model_name: str = "claude-sonnet-4-6",
-) -> dict[str, Any]:
-    """Single LLM call: decide what (if anything) to promote to semble."""
-    model = AnthropicModel(
-        model_name, provider=AnthropicProvider(api_key=api_key)
-    )
-    agent = Agent(
-        model,
-        system_prompt=(
-            "you are phi's curation engine. phi is a bluesky bot that builds knowledge "
-            "through conversations. you decide what knowledge gets promoted to semble — "
-            "phi's curated public knowledge layer (cosmik cards, connections, collections).\n\n"
-            "## what semble is\n"
-            "semble is the pristine, curated output. it holds hard-fought knowledge — "
-            "insights earned through multiple interactions, not surface co-occurrence. "
-            "most days nothing should change.\n\n"
-            "## card types\n"
-            "- NOTE: original insight or synthesis. use when phi has genuinely learned "
-            "something that deserves to be crystallized.\n"
-            "- URL: a resource phi has encountered and finds valuable. only promote URLs "
-            "that appear multiple times across different conversations.\n\n"
-            "## connections\n"
-            "link two cards when there's a meaningful relationship. use descriptive "
-            "connection_type: 'builds-on', 'contrasts', 'related', 'example-of'.\n\n"
-            "## collections\n"
-            "group cards into named themes. only create a collection when there are 3+ "
-            "related cards. you can add cards to existing collections.\n\n"
-            "## rules\n"
-            "- set should_curate=false unless there is genuinely new knowledge worth promoting\n"
-            "- never duplicate existing cards — check the existing cards list carefully\n"
-            "- a card should represent a non-obvious insight, not a factual restatement\n"
-            "- look for patterns across multiple observations/interactions, not single data points\n"
-            "- use ref_key (e.g. 'card-1') on new cards so connections/collections can reference them\n"
-            "- for connections to existing cards, use their at:// URI\n"
-            "- for collections, you can reference existing_collection_uri to add to an existing one\n"
-            "- quality over quantity — one excellent card beats three mediocre ones\n"
-            "- you can also suggest connections between existing cards that aren't yet connected"
-        ),
-        output_type=CurationPlan,
-        name="curation-planner",
-    )
-
-    result = await agent.run(
-        f"here is phi's current knowledge state. decide what, if anything, "
-        f"should be promoted to semble today.\n\n{context}"
-    )
-    return result.output.model_dump()
-
-
-@task
-def execute_curation_plan(
-    session: dict[str, Any],
-    plan: dict[str, Any],
-    existing_cards: list[dict[str, Any]],
-    existing_connections: list[dict[str, Any]],
-) -> dict[str, int]:
-    """Execute the curation plan: create cards, then connections + collections."""
-    logger = get_run_logger()
-
-    if not plan.get("should_curate"):
-        logger.info(f"no curation needed: {plan.get('reasoning', '')}")
-        return {"cards": 0, "connections": 0, "collections": 0}
-
-    logger.info(f"executing curation: {plan.get('reasoning', '')}")
-
-    # index existing card content/URLs for dedup
-    existing_note_texts: set[str] = set()
-    existing_urls: set[str] = set()
-    for card in existing_cards:
-        val = card.get("value", {})
-        if val.get("type") == "NOTE":
-            existing_note_texts.add(val.get("content", {}).get("text", "")[:200])
-        elif val.get("type") == "URL":
-            existing_urls.add(val.get("content", {}).get("url", ""))
-
-    # index existing connections for dedup
-    existing_conn_pairs: set[tuple[str, str]] = set()
-    for conn in existing_connections:
-        val = conn.get("value", {})
-        existing_conn_pairs.add((val.get("source", ""), val.get("target", "")))
-
-    # phase 1: create cards, build ref_key -> {uri, cid} map
-    ref_map: dict[str, dict[str, str]] = {}
-    cards_created = 0
-
-    for card_plan in plan.get("cards", []):
-        card_type = card_plan.get("card_type", "NOTE")
-        ref_key = card_plan.get("ref_key", "")
-
-        if card_type == "NOTE":
-            text = card_plan.get("content", "")
-            if text[:200] in existing_note_texts:
-                logger.info(f"skipping duplicate NOTE card: {ref_key}")
-                continue
-            record = {
-                "type": "NOTE",
-                "content": {
-                    "$type": "network.cosmik.card#noteContent",
-                    "text": text,
-                },
-                "createdAt": datetime.now(timezone.utc).isoformat(),
-            }
-            if card_plan.get("title"):
-                record["content"]["title"] = card_plan["title"]
-
-        elif card_type == "URL":
-            url = card_plan.get("content", "")
-            if url in existing_urls:
-                logger.info(f"skipping duplicate URL card: {ref_key}")
-                continue
-            record = {
-                "type": "URL",
-                "content": {
-                    "$type": "network.cosmik.card#urlContent",
-                    "url": url,
-                    "metadata": {
-                        "$type": "network.cosmik.card#urlMetadata",
-                    },
-                },
-                "createdAt": datetime.now(timezone.utc).isoformat(),
-            }
-            if card_plan.get("title"):
-                record["content"]["metadata"]["title"] = card_plan["title"]
-            if card_plan.get("description"):
-                record["content"]["metadata"]["description"] = card_plan["description"]
-        else:
-            logger.warning(f"unknown card type: {card_type}")
-            continue
-
-        try:
-            result = _create_pds_record(session, "network.cosmik.card", record)
-            ref_map[ref_key] = {"uri": result["uri"], "cid": result["cid"]}
-            cards_created += 1
-            logger.info(f"created {card_type} card: {ref_key} -> {result['uri']}")
-        except Exception as e:
-            logger.warning(f"failed to create card {ref_key}: {e}")
-
-    # helper to resolve ref_key or at:// URI
-    def resolve_ref(ref: str) -> dict[str, str] | None:
-        if ref.startswith("at://"):
-            # find cid from existing cards
-            for card in existing_cards:
-                if card.get("uri") == ref:
-                    return {"uri": ref, "cid": card.get("cid", "")}
-            return {"uri": ref, "cid": ""}
-        return ref_map.get(ref)
-
-    # phase 2: create connections
-    conns_created = 0
-    for conn_plan in plan.get("connections", []):
-        source = resolve_ref(conn_plan.get("source", ""))
-        target = resolve_ref(conn_plan.get("target", ""))
-        if not source or not target:
-            logger.warning(
-                f"skipping connection — unresolved ref: "
-                f"{conn_plan.get('source')} -> {conn_plan.get('target')}"
-            )
-            continue
-
-        pair = (source["uri"], target["uri"])
-        if pair in existing_conn_pairs:
-            logger.info(f"skipping duplicate connection: {pair}")
-            continue
-
-        record = {
-            "source": source["uri"],
-            "target": target["uri"],
-            "connectionType": conn_plan.get("connection_type", "related"),
-        }
-        if conn_plan.get("note"):
-            record["note"] = conn_plan["note"][:1000]
-
-        try:
-            _create_pds_record(session, "network.cosmik.connection", record)
-            existing_conn_pairs.add(pair)
-            conns_created += 1
-            logger.info(f"created connection: {pair}")
-        except Exception as e:
-            logger.warning(f"failed to create connection: {e}")
-
-    # phase 3: create/update collections
-    colls_created = 0
-    for coll_plan in plan.get("collections", []):
-        card_refs = coll_plan.get("card_refs", [])
-        resolved_cards = []
-        for ref in card_refs:
-            resolved = resolve_ref(ref)
-            if resolved:
-                resolved_cards.append(resolved)
-
-        if not resolved_cards:
-            continue
-
-        existing_uri = coll_plan.get("existing_collection_uri")
-        if existing_uri:
-            # add cards to existing collection — need its cid
-            coll_ref = {"uri": existing_uri, "cid": ""}
-        else:
-            # create new collection
-            record = {
-                "name": coll_plan.get("name", "untitled")[:100],
-                "accessType": "OPEN",
-                "createdAt": datetime.now(timezone.utc).isoformat(),
-            }
-            if coll_plan.get("description"):
-                record["description"] = coll_plan["description"][:500]
-
-            try:
-                result = _create_pds_record(
-                    session, "network.cosmik.collection", record
-                )
-                coll_ref = {"uri": result["uri"], "cid": result["cid"]}
-                colls_created += 1
-                logger.info(f"created collection: {coll_plan.get('name')}")
-            except Exception as e:
-                logger.warning(f"failed to create collection: {e}")
-                continue
-
-        # link cards to collection
-        for card_ref in resolved_cards:
-            link_record = {
-                "collection": {"uri": coll_ref["uri"], "cid": coll_ref["cid"]},
-                "card": {"uri": card_ref["uri"], "cid": card_ref["cid"]},
-                "addedBy": session["did"],
-                "addedAt": datetime.now(timezone.utc).isoformat(),
-            }
-            try:
-                _create_pds_record(
-                    session, "network.cosmik.collectionLink", link_record
-                )
-            except Exception as e:
-                logger.warning(f"failed to link card to collection: {e}")
-
-    return {
-        "cards": cards_created,
-        "connections": conns_created,
-        "collections": colls_created,
-    }
-
-
-# ---------------------------------------------------------------------------
 # main flow
 # ---------------------------------------------------------------------------
 
 
 @flow(name="morning", log_prints=True)
 async def morning():
-    """Morning flow: tag maintenance + agentic semble curation.
+    """Morning flow: tag maintenance.
 
-    Runs daily at 8am CT (13:00 UTC). Phases 1-3 clean up the tag graph,
-    phase 4 reasons about what deserves promotion to semble.
+    Runs daily at 8am CT (13:00 UTC). Phases 1-3 clean up the tag graph.
+    Curation is handled by a separate flow triggered on completion.
     """
-    logger = get_run_logger()
-
     tpuf_key = (await Secret.load("turbopuffer-api-key")).get()
     openai_key = (await Secret.load("openai-api-key")).get()
     anthropic_key = (await Secret.load("anthropic-api-key")).get()
@@ -1085,58 +556,6 @@ async def morning():
         print(f"phase 3: stored {stored} relationships in {TAG_REL_NAMESPACE}")
     else:
         print("phase 3: no relationships to store")
-
-    # --- phase 4: agentic curation ---
-    try:
-        bsky_handle = (await Secret.load("atproto-handle")).get()
-        bsky_password = (await Secret.load("atproto-password")).get()
-    except Exception:
-        print("phase 4: skipped — atproto secrets not configured")
-        return
-
-    # gather state from both knowledge layers
-    existing_cards = _list_cosmik_cards(PHI_DID)
-    existing_connections = _list_cosmik_connections(PHI_DID)
-    existing_collections = _list_cosmik_collections(PHI_DID)
-    existing_collection_links = _list_cosmik_collection_links(PHI_DID)
-    recent_obs = collect_recent_observations(tpuf_key)
-    recent_ep = collect_recent_episodic(tpuf_key)
-
-    print(
-        f"phase 4: state — {len(existing_cards)} cards, "
-        f"{len(existing_connections)} connections, "
-        f"{len(existing_collections)} collections, "
-        f"{len(recent_obs)} recent observations, "
-        f"{len(recent_ep)} recent episodic"
-    )
-
-    # assemble context for LLM
-    context = assemble_curation_context(
-        tag_info=tag_info,
-        tag_relationships=rel_dicts,
-        existing_cards=existing_cards,
-        existing_connections=existing_connections,
-        existing_collections=existing_collections,
-        existing_collection_links=existing_collection_links,
-        recent_observations=recent_obs,
-        recent_episodic=recent_ep,
-    )
-
-    # LLM decides what to curate
-    plan = await plan_curation(context, anthropic_key, model_name=model_name)
-
-    if not plan.get("should_curate"):
-        print(f"phase 4: no curation needed — {plan.get('reasoning', '')}")
-        return
-
-    # execute the plan
-    session = _create_bsky_session(bsky_handle, bsky_password)
-    result = execute_curation_plan(session, plan, existing_cards, existing_connections)
-    print(
-        f"phase 4: created {result['cards']} cards, "
-        f"{result['connections']} connections, "
-        f"{result['collections']} collections"
-    )
 
 
 if __name__ == "__main__":
