@@ -20,6 +20,7 @@ from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from prefect import flow, get_run_logger, task
 from prefect.blocks.system import Secret
+from prefect.cache_policies import NONE
 from prefect.variables import Variable
 
 PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
@@ -479,7 +480,7 @@ def fetch_semble_state() -> dict[str, list[dict]]:
     }
 
 
-@task
+@task(cache_policy=NONE)
 async def run_curation_agent(
     state_text: str,
     session: dict[str, Any],
