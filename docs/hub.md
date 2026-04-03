@@ -17,30 +17,30 @@ a single `ingest` flow runs hourly on cron and fetches all data sources concurre
 ## pipeline
 
 ```
-github API ──┐
-             ├──► ingest ──► raw_github_issues    ──┐
-tangled PDS ─┤   (hourly)   raw_tangled_items      ─┤
-bluesky PDS ─┤              raw_likes + raw_liked_posts  │
-phi (tpuf)  ─┘              raw_phi_observations    ─┘
-                                                     │
-                              transform (dbt) ◄──────┘
-                              [on ingest ✓]
-                                    │
-                    ┌───────────────┼───────────────┐
-                    ▼               ▼               ▼
-                  brief          compact       hub UI
-            [on transform ✓]  [on transform ✓]   /api/cards.json
-                    │               │              +page.svelte
-                    ▼               ▼
-              briefing.json   TurboPuffer
-              /api/briefing   (phi-users-*)
-```
+                        data sources
+  ─────────────────────────────────────────────
+  github API        ──┐
+  tangled PDS       ──┤
+  bluesky likes     ──┼──► ingest (hourly) ──► DuckDB
+  phi memory (tpuf) ──┘
+                                                  │
+                                                  ▼
+                                          transform (dbt)
+                                          [on ingest ✓]
+                                                  │
+                        ┌─────────────────────────┼──────────┐
+                        ▼                         ▼          ▼
+                      brief                    compact    hub UI
+                  [on transform ✓]         [on transform ✓]
+                        │                         │
+                        ▼                         ▼
+                  briefing.json              TurboPuffer
+                  /api/briefing              (phi-users-*)
 
-two additional flows run independently:
-
-```
-morning (daily 8am CT) ──► TurboPuffer (tag maintenance) + semble (curation)
-rebuild-atlas (every 6h) ──► Cloudflare Pages (leaflet-search atlas)
+                        standalone flows
+  ─────────────────────────────────────────────
+  morning (daily 8am CT)   ──► TurboPuffer + semble
+  rebuild-atlas (every 6h) ──► Cloudflare Pages
 ```
 
 ## flows

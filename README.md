@@ -3,29 +3,30 @@ personal data pipeline and intelligence layer. digests github, [tangled.org](htt
 [hub](https://hub.waow.tech) · [grafana](https://prefect-metrics.waow.tech/d/executive-overview/executive-overview?orgId=1&from=now-6h&to=now&timezone=browser)
 
 ```
-github API ──┐
-             ├──► ingest ──► raw_github_issues    ──┐
-tangled PDS ─┤   (hourly)   raw_tangled_items      ─┤
-bluesky PDS ─┤              raw_likes + raw_liked_posts  │
-phi (tpuf)  ─┘              raw_phi_observations    ─┘
-                                                     │
-                              transform (dbt) ◄──────┘
-                              [on ingest ✓]
-                                    │
-                    ┌───────────────┼───────────────┐
-                    ▼               ▼               ▼
-                  brief          compact       hub UI
-            [on transform ✓]  [on transform ✓]
-                    │               │
-                    ▼               ▼
-              briefing.json   TurboPuffer
-                              (phi-users-*)
+                        data sources
+  ─────────────────────────────────────────────
+  github API        ──┐
+  tangled PDS       ──┤
+  bluesky likes     ──┼──► ingest (hourly) ──► DuckDB
+  phi memory (tpuf) ──┘
+                                                  │
+                                                  ▼
+                                          transform (dbt)
+                                          [on ingest ✓]
+                                                  │
+                        ┌─────────────────────────┼──────────┐
+                        ▼                         ▼          ▼
+                      brief                    compact    hub UI
+                  [on transform ✓]         [on transform ✓]
+                        │                         │
+                        ▼                         ▼
+                  briefing.json              TurboPuffer
+                                             (phi-users-*)
 
-                  morning ──► TurboPuffer + semble
-                (daily 8am CT)
-
-              rebuild-atlas ──► Cloudflare Pages
-                (every 6h)
+                        standalone flows
+  ─────────────────────────────────────────────
+  morning (daily 8am CT) ──► TurboPuffer + semble
+  rebuild-atlas (every 6h) ──► Cloudflare Pages
 ```
 
 see [docs/hub.md](docs/hub.md) for the full pipeline breakdown.
