@@ -4,7 +4,7 @@ import datetime
 
 import duckdb
 
-from mps.likes import LikeRecord
+from mps.likes import LikeRecord, LikedPost
 from mps.phi import PhiInteraction, PhiObservation
 
 
@@ -33,6 +33,41 @@ def write_likes(items: list[LikeRecord], db_path: str) -> int:
             rows,
         )
     count = con.execute("SELECT count(*) FROM raw_likes").fetchone()[0]
+    con.close()
+    return count
+
+
+def write_liked_posts(items: list[LikedPost], db_path: str) -> int:
+    """Upsert resolved liked posts into raw_liked_posts. Returns total row count."""
+    con = duckdb.connect(db_path)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS raw_liked_posts (
+            subject_uri VARCHAR PRIMARY KEY,
+            author_handle VARCHAR,
+            author_did VARCHAR,
+            text VARCHAR,
+            created_at VARCHAR,
+            liked_at VARCHAR,
+            embed_type VARCHAR,
+            embed_text VARCHAR,
+            fetched_at TIMESTAMP DEFAULT now()
+        )
+    """)
+    rows = [
+        (
+            item.subject_uri, item.author_handle, item.author_did,
+            item.text, item.created_at, item.liked_at,
+            item.embed_type, item.embed_text,
+            datetime.datetime.now(datetime.UTC),
+        )
+        for item in items
+    ]
+    if rows:
+        con.executemany(
+            "INSERT OR REPLACE INTO raw_liked_posts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rows,
+        )
+    count = con.execute("SELECT count(*) FROM raw_liked_posts").fetchone()[0]
     con.close()
     return count
 

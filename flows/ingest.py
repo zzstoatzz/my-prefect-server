@@ -24,6 +24,7 @@ from prefect.context import TaskRunContext
 
 from mps.db import (
     write_github_issues,
+    write_liked_posts,
     write_likes,
     write_phi_interactions,
     write_phi_observations,
@@ -31,7 +32,7 @@ from mps.db import (
 )
 from mps.github import IssueOrPR, IssueRef, gh_headers
 from mps.phi import PhiInteraction, PhiObservation, restore_handle
-from mps.likes import LikeRecord, fetch_likes
+from mps.likes import LikeRecord, LikedPost, fetch_likes, summarize_embed
 from mps.tangled import PDS_BASE, TangledItem, fetch_items, fetch_repo_at_uris
 
 GITHUB_API = "https://api.github.com"
@@ -272,6 +273,85 @@ def persist_likes(items: list[LikeRecord]) -> int:
 
 
 @task
+def resolve_liked_posts(db_path: str) -> list[LikedPost]:
+    """Find recent unresolved likes and batch-resolve post content via public API."""
+    import duckdb
+
+    logger = get_run_logger()
+
+    con = duckdb.connect(db_path)
+    # bootstrap raw_liked_posts if it doesn't exist yet
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS raw_liked_posts (
+            subject_uri VARCHAR PRIMARY KEY,
+            author_handle VARCHAR,
+            author_did VARCHAR,
+            text VARCHAR,
+            created_at VARCHAR,
+            liked_at VARCHAR,
+            embed_type VARCHAR,
+            embed_text VARCHAR,
+            fetched_at TIMESTAMP DEFAULT now()
+        )
+    """)
+    # find likes from last 7 days not yet resolved
+    rows = con.execute("""
+        SELECT l.subject_uri, l.created_at AS liked_at
+        FROM raw_likes l
+        LEFT JOIN raw_liked_posts lp ON l.subject_uri = lp.subject_uri
+        WHERE lp.subject_uri IS NULL
+          AND l.created_at >= (now() - INTERVAL '7 days')::VARCHAR
+        ORDER BY l.created_at DESC
+        LIMIT 200
+    """).fetchall()
+    con.close()
+
+    if not rows:
+        logger.info("no unresolved likes to fetch")
+        return []
+
+    uri_to_liked_at = {row[0]: row[1] for row in rows}
+    uris = list(uri_to_liked_at.keys())
+    logger.info(f"resolving {len(uris)} liked posts via public API")
+
+    posts: list[LikedPost] = []
+    with httpx.Client(timeout=15) as client:
+        # getPosts accepts up to 25 URIs per call
+        for i in range(0, len(uris), 25):
+            batch = uris[i : i + 25]
+            resp = client.get(
+                "https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts",
+                params=[("uris", u) for u in batch],
+            )
+            if resp.status_code != 200:
+                logger.warning(f"getPosts returned {resp.status_code} for batch {i}")
+                continue
+            for post in resp.json().get("posts", []):
+                uri = post.get("uri", "")
+                record = post.get("record", {})
+                author = post.get("author", {})
+                embed_type, embed_text = summarize_embed(post.get("embed") or record.get("embed") or {})
+                posts.append(LikedPost(
+                    subject_uri=uri,
+                    author_handle=author.get("handle", ""),
+                    author_did=author.get("did", ""),
+                    text=record.get("text", ""),
+                    created_at=record.get("createdAt", ""),
+                    liked_at=uri_to_liked_at.get(uri, ""),
+                    embed_type=embed_type,
+                    embed_text=embed_text,
+                ))
+
+    logger.info(f"resolved {len(posts)} liked posts")
+    return posts
+
+
+@task
+def persist_liked_posts(items: list[LikedPost]) -> int:
+    return write_liked_posts(items, _db_path())
+
+
+@task
 def persist_phi(
     observations: list[PhiObservation],
     interactions: list[PhiInteraction],
@@ -362,6 +442,12 @@ def ingest(only_unread: bool = True):
     if likes:
         total = persist_likes(likes)
         logger.info(f"persisted {len(likes)} likes; {total} total in raw_likes")
+
+        # resolve liked post content for recent unresolved likes
+        liked_posts = resolve_liked_posts(_db_path())
+        if liked_posts:
+            lp_total = persist_liked_posts(liked_posts)
+            logger.info(f"resolved {len(liked_posts)} liked posts; {lp_total} total in raw_liked_posts")
 
     if phi_observations or phi_interactions:
         obs_total, ix_total = persist_phi(phi_observations, phi_interactions)

@@ -8,3 +8,4 @@ sources:
       - name: raw_phi_observations
       - name: raw_phi_interactions
       - name: raw_likes
+      - name: raw_liked_posts

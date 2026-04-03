@@ -16,6 +16,47 @@ class LikeRecord:
     created_at: str  # ISO timestamp from like record
 
 
+@dataclass
+class LikedPost:
+    subject_uri: str  # the post URI (primary key)
+    author_handle: str
+    author_did: str
+    text: str
+    created_at: str  # post's creation time
+    liked_at: str  # when nate liked it
+    embed_type: str = ""  # external/images/record/video/""
+    embed_text: str = ""  # link card title+url, image alt, quote text
+
+
+def summarize_embed(embed: dict) -> tuple[str, str]:
+    """Extract type + summary text from a post embed (raw API JSON)."""
+    if not embed:
+        return "", ""
+    typ = embed.get("$type", "")
+    if "external" in typ:
+        ext = embed.get("external", {})
+        title = ext.get("title", "")
+        uri = ext.get("uri", "")
+        desc = ext.get("description", "")
+        parts = [p for p in [title, uri, desc] if p]
+        return "external", " — ".join(parts)
+    if "images" in typ:
+        alts = [img.get("alt", "") for img in embed.get("images", [])]
+        return "images", " | ".join(a for a in alts if a)
+    if "record" in typ:
+        rec = embed.get("record", {})
+        # recordWithMedia wraps record + media
+        if "record" in rec:
+            rec = rec["record"]
+        value = rec.get("value", rec)
+        text = value.get("text", "")
+        return "record", text[:500] if text else ""
+    if "video" in typ:
+        alt = embed.get("alt", "")
+        return "video", alt
+    return "", ""
+
+
 def fetch_likes(client: httpx.Client) -> list[LikeRecord]:
     """Fetch like records from nate's PDS. Cursor-based pagination."""
     cursor: str | None = None
