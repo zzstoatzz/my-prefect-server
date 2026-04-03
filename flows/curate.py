@@ -520,7 +520,7 @@ async def curate():
     openai_key = (await Secret.load("openai-api-key")).get()
     bsky_handle = (await Secret.load("atproto-handle")).get()
     bsky_password = (await Secret.load("atproto-password")).get()
-    model_name = await Variable.get("morning-model", default="claude-sonnet-4-6")
+    model_name = await Variable.get("curate-model", default="claude-haiku-4-5")
     print(f"using model: {model_name}")
 
     # authenticate
