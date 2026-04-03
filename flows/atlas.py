@@ -7,6 +7,9 @@ then deploys the site to Cloudflare Pages via wrangler.
 Requires:
   - Secret block "tpuf-token" (turbopuffer API key)
   - Secret block "cloudflare-api-token" (Pages edit permission)
+  - Secret block "anthropic-api-key" (LLM cluster label refinement)
+  - Secret block "turso-url" (publication metadata)
+  - Secret block "turso-token" (publication metadata)
 """
 
 import os
@@ -34,15 +37,24 @@ def clone_repo(dest: Path) -> Path:
 
 
 @task
-def build_atlas(repo_dir: Path, tpuf_key: str) -> Path:
+def build_atlas(repo_dir: Path, tpuf_key: str, anthropic_key: str = "",
+                turso_url: str = "", turso_token: str = "") -> Path:
     """Run the build-atlas script. Returns path to atlas.json."""
     logger = get_run_logger()
     output = repo_dir / "site" / "atlas.json"
 
+    env = {**os.environ, "TURBOPUFFER_API_KEY": tpuf_key}
+    if anthropic_key:
+        env["ANTHROPIC_API_KEY"] = anthropic_key
+    if turso_url:
+        env["TURSO_URL"] = turso_url
+    if turso_token:
+        env["TURSO_TOKEN"] = turso_token
+
     result = subprocess.run(
         ["uv", "run", "--script", str(repo_dir / "scripts" / "build-atlas"),
          "--output", str(output)],
-        env={**os.environ, "TURBOPUFFER_API_KEY": tpuf_key},
+        env=env,
         capture_output=True,
         text=True,
         timeout=300,
@@ -118,10 +130,17 @@ def rebuild_atlas():
     """Rebuild the 2D semantic map and deploy to Cloudflare Pages."""
     tpuf_key = Secret.load("tpuf-token").get()
     cf_token = Secret.load("cloudflare-api-token").get()
+    anthropic_key = Secret.load("anthropic-api-key").get()
+    try:
+        turso_url = Secret.load("turso-url").get()
+        turso_token = Secret.load("turso-token").get()
+    except ValueError:
+        turso_url = ""
+        turso_token = ""
 
     with tempfile.TemporaryDirectory() as tmpdir:
         repo_dir = clone_repo(Path(tmpdir) / "repo")
-        build_atlas(repo_dir, tpuf_key)
+        build_atlas(repo_dir, tpuf_key, anthropic_key, turso_url, turso_token)
         deploy_to_pages(repo_dir / "site", cf_token)
 
 
