@@ -511,7 +511,7 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
                 rank_by=("created_at", "desc"),
                 top_k=50,
                 filters={"kind": ["Eq", "observation"]},
-                include_attributes=["content", "tags", "created_at", "updated_at"],
+                include_attributes=["content", "tags", "created_at"],
             )
             if not resp.rows:
                 return f"no observations for @{handle}"
@@ -520,11 +520,10 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
                 tags = list(getattr(row, "tags", []) or [])
                 tag_str = f" [{', '.join(tags)}]" if tags else ""
                 created = getattr(row, "created_at", "?")
-                updated = getattr(row, "updated_at", None) or "never"
                 lines.append(
                     f"id={row.id}{tag_str}\n"
                     f"  {row.content}\n"
-                    f"  created: {created} | updated: {updated}"
+                    f"  created: {created}"
                 )
             return f"{len(resp.rows)} observations for @{handle}:\n" + "\n".join(lines)
         except Exception as e:
