@@ -25,15 +25,54 @@ from pdsx._internal.operations import (
     update_record,
 )
 
+Action = Literal["list", "delete", "create", "update"]
+
 
 class PdsRecordsConfig(BaseModel):
-    action: Literal["list", "delete", "create", "update"]
-    collection: str = Field(description="e.g. network.cosmik.connection")
-    repo: str | None = Field(default=None, description="target repo (default: authenticated user)")
-    record: dict[str, Any] | None = Field(default=None, description="for create: the record body")
-    uri: str | None = Field(default=None, description="for update/delete: specific record AT-URI")
-    rkey_filter: str | None = Field(default=None, description="for delete: regex filter on rkey (None = all)")
-    dry_run: bool = Field(default=True, description="delete safety default")
+    """PDS record operations. Fields are shared across actions — unused fields are ignored."""
+
+    action: Action = Field(
+        description="list: enumerate records. delete: remove matching records. create: write new records. update: patch an existing record.",
+        json_schema_extra=dict(position=0),
+    )
+    collection: str = Field(
+        description="NSID of the collection, e.g. network.cosmik.connection",
+        json_schema_extra=dict(position=1),
+    )
+    repo: str | None = Field(
+        default=None,
+        description="target repo DID or handle (default: authenticated user)",
+        json_schema_extra=dict(position=2),
+    )
+
+    # create / update
+    records: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="[create] record bodies to create. ignored for other actions.",
+        json_schema_extra=dict(position=3),
+    )
+    uri: str | None = Field(
+        default=None,
+        description="[update] AT-URI of the record to update",
+        json_schema_extra=dict(position=4),
+    )
+    updates: dict[str, Any] | None = Field(
+        default=None,
+        description="[update] fields to merge into the existing record",
+        json_schema_extra=dict(position=5),
+    )
+
+    # delete
+    rkey_filter: str | None = Field(
+        default=None,
+        description="[delete] regex filter on rkey — only matching records are deleted. omit to match all.",
+        json_schema_extra=dict(position=6),
+    )
+    dry_run: bool = Field(
+        default=True,
+        description="[delete] preview what would be deleted without actually deleting",
+        json_schema_extra=dict(position=7),
+    )
 
 
 async def _paginate_all(
@@ -91,14 +130,18 @@ async def delete_pds_records(client: AsyncClient, config: PdsRecordsConfig) -> i
 
 
 @task(cache_policy=NONE)
-async def create_pds_record(client: AsyncClient, config: PdsRecordsConfig) -> dict[str, str]:
-    """Create a record, return URI + CID."""
-    if not config.record:
-        raise ValueError("config.record is required for create action")
+async def create_pds_records(client: AsyncClient, config: PdsRecordsConfig) -> list[dict[str, str]]:
+    """Create one or more records, return URIs + CIDs."""
+    if not config.records:
+        raise ValueError("config.records is required for create action")
 
-    resp = await create_record(client, config.collection, config.record)
-    print(f"created {resp.uri} (cid={resp.cid})")
-    return {"uri": resp.uri, "cid": resp.cid}
+    results = []
+    for record in config.records:
+        resp = await create_record(client, config.collection, record)
+        print(f"  created {resp.uri} (cid={resp.cid})")
+        results.append({"uri": resp.uri, "cid": resp.cid})
+    print(f"created {len(results)} records")
+    return results
 
 
 @task(cache_policy=NONE)
@@ -106,10 +149,10 @@ async def update_pds_record(client: AsyncClient, config: PdsRecordsConfig) -> di
     """Update a record at the given URI."""
     if not config.uri:
         raise ValueError("config.uri is required for update action")
-    if not config.record:
-        raise ValueError("config.record is required for update action")
+    if not config.updates:
+        raise ValueError("config.updates is required for update action")
 
-    resp = await update_record(client, config.uri, config.record)
+    resp = await update_record(client, config.uri, config.updates)
     print(f"updated {resp.uri} (cid={resp.cid})")
     return {"uri": resp.uri, "cid": resp.cid}
 
@@ -134,7 +177,7 @@ async def pds_records(config: PdsRecordsConfig):
         case "delete":
             await delete_pds_records(client, config)
         case "create":
-            await create_pds_record(client, config)
+            await create_pds_records(client, config)
         case "update":
             await update_pds_record(client, config)
 
