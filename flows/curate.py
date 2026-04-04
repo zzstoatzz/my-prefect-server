@@ -373,8 +373,15 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
         connection_type: str,
         note: str = "",
     ) -> str:
-        """Create a connection between two entities (AT URIs or URLs). connection_type: related, supports, opposes, addresses, helpful, explainer, leads_to, supplements."""
-        record: dict[str, Any] = {"source": source, "target": target, "connectionType": connection_type}
+        """Create a connection between two entities (AT URIs or URLs). connection_type: RELATED, SUPPORTS, OPPOSES, ADDRESSES, HELPFUL, EXPLAINER, LEADS_TO, SUPPLEMENTS."""
+        now = datetime.now(timezone.utc).isoformat()
+        record: dict[str, Any] = {
+            "source": source,
+            "target": target,
+            "connectionType": connection_type.upper(),
+            "createdAt": now,
+            "updatedAt": now,
+        }
         if note:
             record["note"] = note[:1000]
         try:
