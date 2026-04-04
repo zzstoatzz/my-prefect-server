@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 
 from prefect import flow, task
 from prefect.blocks.system import Secret
+from prefect.cache_policies import NONE
 
 from pdsx._internal.auth import login
 from pdsx._internal.operations import (
@@ -51,7 +52,7 @@ async def _paginate_all(
     return all_records
 
 
-@task
+@task(cache_policy=NONE)
 async def list_pds_records(client: AsyncClient, config: PdsRecordsConfig) -> list[dict[str, Any]]:
     """List all records in a collection, print count + sample."""
     records = await _paginate_all(client, config.collection, config.repo)
@@ -63,7 +64,7 @@ async def list_pds_records(client: AsyncClient, config: PdsRecordsConfig) -> lis
     return records
 
 
-@task
+@task(cache_policy=NONE)
 async def delete_pds_records(client: AsyncClient, config: PdsRecordsConfig) -> int:
     """List → optional rkey filter → dry_run preview or delete each."""
     records = await _paginate_all(client, config.collection, config.repo)
@@ -89,7 +90,7 @@ async def delete_pds_records(client: AsyncClient, config: PdsRecordsConfig) -> i
     return deleted
 
 
-@task
+@task(cache_policy=NONE)
 async def create_pds_record(client: AsyncClient, config: PdsRecordsConfig) -> dict[str, str]:
     """Create a record, return URI + CID."""
     if not config.record:
@@ -100,7 +101,7 @@ async def create_pds_record(client: AsyncClient, config: PdsRecordsConfig) -> di
     return {"uri": resp.uri, "cid": resp.cid}
 
 
-@task
+@task(cache_policy=NONE)
 async def update_pds_record(client: AsyncClient, config: PdsRecordsConfig) -> dict[str, str]:
     """Update a record at the given URI."""
     if not config.uri:
