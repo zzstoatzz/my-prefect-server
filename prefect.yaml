@@ -117,7 +117,3 @@ deployments:
         action: list
         collection: network.cosmik.connection
         dry_run: true
-
-  - name: recreate-connections
-    entrypoint: repros/recreate_connections.py:recreate_connections
-    work_pool: *k8s
