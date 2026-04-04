@@ -18,10 +18,12 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
-from prefect import flow, get_run_logger, task
+from prefect import flow, task
 from prefect.blocks.system import Secret
 from prefect.cache_policies import NONE
 from prefect.variables import Variable
+
+from mps.phi import clean_handle
 
 PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
 PDS_BASE = "https://bsky.social"
@@ -58,6 +60,25 @@ if nothing needs doing, say so. don't create for the sake of creating.
 
 current semble state:
 {state}
+"""
+
+OBSERVATION_REVIEW_PROMPT = """\
+now review your private observations — the facts you've extracted from
+conversations with people. use list_users to see who you have memory about,
+then list_user_observations to inspect their observations.
+
+you can use recall to cross-reference against other memory before deciding.
+
+priorities:
+- look for contradictions between observations about the same person
+- look for observations that are clearly stale (someone's role or interest changed)
+- look for near-duplicates that write-time reconciliation missed
+- when in doubt, leave it alone — carrying a marginal observation is better than losing a real one
+
+use deprecate_observation to remove things that are wrong or redundant.
+use update_observation to correct or merge observations.
+
+if everything looks clean, say so. quality over quantity.
 """
 
 
@@ -215,7 +236,7 @@ def _format_semble_state(
 
     # orphaned links (links to collections that don't exist)
     coll_uris = {c.get("uri", "") for c in collections}
-    orphaned = [l for l in collection_links if l.get("value", {}).get("collection", {}).get("uri", "") not in coll_uris]
+    orphaned = [lnk for lnk in collection_links if lnk.get("value", {}).get("collection", {}).get("uri", "") not in coll_uris]
     if orphaned:
         sections.append(f"## orphaned collection links ({len(orphaned)})")
         for link in orphaned:
@@ -339,7 +360,7 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
             try:
                 _create_record(session, "network.cosmik.collectionLink", link_record)
                 linked += 1
-            except Exception as e:
+            except Exception:
                 pass  # log but continue
 
         return f"created collection '{name}' ({coll_uri}) with {linked}/{len(card_uris)} cards linked"
@@ -461,6 +482,111 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
             return "no relevant memories found"
         return "\n".join(results[:15])
 
+    # --- observation curation tools ---
+
+    @agent.tool
+    async def list_users(ctx: RunContext[CurationDeps]) -> str:
+        """List all user namespaces you have memory about."""
+        tpuf = ctx.deps.tpuf_client
+        try:
+            page = tpuf.namespaces(prefix="phi-users-")
+            handles = []
+            for ns_summary in page.namespaces:
+                handle = ns_summary.id.removeprefix("phi-users-").replace("_", ".")
+                handles.append(f"@{handle}")
+            if not handles:
+                return "no user namespaces found"
+            return f"{len(handles)} users:\n" + "\n".join(handles)
+        except Exception as e:
+            return f"failed to list users: {e}"
+
+    @agent.tool
+    async def list_user_observations(ctx: RunContext[CurationDeps], handle: str) -> str:
+        """List all observations for a user. Shows content, tags, timestamps, and row ID."""
+        tpuf = ctx.deps.tpuf_client
+        ns_name = f"phi-users-{clean_handle(handle)}"
+        ns = tpuf.namespace(ns_name)
+        try:
+            resp = ns.query(
+                rank_by=("created_at", "desc"),
+                top_k=50,
+                filters={"kind": ["Eq", "observation"]},
+                include_attributes=["content", "tags", "created_at", "updated_at"],
+            )
+            if not resp.rows:
+                return f"no observations for @{handle}"
+            lines = []
+            for row in resp.rows:
+                tags = list(getattr(row, "tags", []) or [])
+                tag_str = f" [{', '.join(tags)}]" if tags else ""
+                created = getattr(row, "created_at", "?")
+                updated = getattr(row, "updated_at", None) or "never"
+                lines.append(
+                    f"id={row.id}{tag_str}\n"
+                    f"  {row.content}\n"
+                    f"  created: {created} | updated: {updated}"
+                )
+            return f"{len(resp.rows)} observations for @{handle}:\n" + "\n".join(lines)
+        except Exception as e:
+            return f"failed to list observations for @{handle}: {e}"
+
+    @agent.tool
+    async def deprecate_observation(
+        ctx: RunContext[CurationDeps], handle: str, observation_id: str, reason: str
+    ) -> str:
+        """Delete an observation from a user's namespace. Logs the reason."""
+        tpuf = ctx.deps.tpuf_client
+        ns_name = f"phi-users-{clean_handle(handle)}"
+        ns = tpuf.namespace(ns_name)
+        try:
+            ns.write(deletes=[observation_id])
+            return f"deprecated observation {observation_id} for @{handle}: {reason}"
+        except Exception as e:
+            return f"failed to deprecate {observation_id}: {e}"
+
+    @agent.tool
+    async def update_observation(
+        ctx: RunContext[CurationDeps],
+        handle: str,
+        observation_id: str,
+        new_content: str,
+        new_tags: list[str],
+    ) -> str:
+        """Re-embed and overwrite an observation with corrected content. Sets fresh updated_at."""
+        tpuf = ctx.deps.tpuf_client
+        openai = ctx.deps.openai_client
+        ns_name = f"phi-users-{clean_handle(handle)}"
+        ns = tpuf.namespace(ns_name)
+
+        embedding = openai.embeddings.create(
+            model="text-embedding-3-small", input=new_content
+        ).data[0].embedding
+
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            ns.write(
+                upsert_rows=[{
+                    "id": observation_id,
+                    "vector": embedding,
+                    "kind": "observation",
+                    "content": new_content,
+                    "tags": new_tags,
+                    "created_at": now,
+                    "updated_at": now,
+                }],
+                distance_metric="cosine_distance",
+                schema={
+                    "kind": {"type": "string", "filterable": True},
+                    "content": {"type": "string", "full_text_search": True},
+                    "tags": {"type": "[]string", "filterable": True},
+                    "created_at": {"type": "string"},
+                    "updated_at": {"type": "string"},
+                },
+            )
+            return f"updated observation {observation_id} for @{handle}: {new_content[:80]}"
+        except Exception as e:
+            return f"failed to update {observation_id}: {e}"
+
     return agent
 
 
@@ -501,6 +627,25 @@ async def run_curation_agent(
     return result.output.model_dump()
 
 
+@task(cache_policy=NONE)
+async def run_observation_review(
+    session: dict[str, Any],
+    tpuf_client: Any,
+    openai_client: Any,
+    api_key: str,
+    model_name: str,
+) -> dict[str, Any]:
+    """Run the observation review agent loop."""
+    agent = _build_agent(model_name, api_key)
+    deps = CurationDeps(
+        session=session,
+        tpuf_client=tpuf_client,
+        openai_client=openai_client,
+    )
+    result = await agent.run(OBSERVATION_REVIEW_PROMPT, deps=deps)
+    return result.output.model_dump()
+
+
 # ---------------------------------------------------------------------------
 # main flow
 # ---------------------------------------------------------------------------
@@ -513,8 +658,6 @@ async def curate():
     Triggered by morning flow completion. Uses phi's personality and memory
     to make curation decisions as an agentic loop.
     """
-    logger = get_run_logger()
-
     anthropic_key = (await Secret.load("anthropic-api-key")).get()
     tpuf_key = (await Secret.load("turbopuffer-api-key")).get()
     openai_key = (await Secret.load("openai-api-key")).get()
@@ -547,8 +690,8 @@ async def curate():
     tpuf_client = turbopuffer.Turbopuffer(api_key=tpuf_key, region="gcp-us-central1")
     openai_client = OpenAI(api_key=openai_key)
 
-    # run agent
-    result = await run_curation_agent(
+    # phase 1: semble record curation
+    semble_result = await run_curation_agent(
         state_text=state_text,
         session=session,
         tpuf_client=tpuf_client,
@@ -556,8 +699,20 @@ async def curate():
         api_key=anthropic_key,
         model_name=model_name,
     )
+    print(f"semble curation: {semble_result['actions_taken']} actions — {semble_result['summary']}")
 
-    print(f"curation complete: {result['actions_taken']} actions — {result['summary']}")
+    # phase 2: observation review
+    obs_result = await run_observation_review(
+        session=session,
+        tpuf_client=tpuf_client,
+        openai_client=openai_client,
+        api_key=anthropic_key,
+        model_name=model_name,
+    )
+    print(f"observation review: {obs_result['actions_taken']} actions — {obs_result['summary']}")
+
+    total_actions = semble_result["actions_taken"] + obs_result["actions_taken"]
+    print(f"curation complete: {total_actions} total actions")
 
 
 if __name__ == "__main__":

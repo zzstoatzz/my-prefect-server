@@ -257,6 +257,7 @@ def write_summary_to_turbopuffer(
             "content": {"type": "string", "full_text_search": True},
             "tags": {"type": "[]string", "filterable": True},
             "created_at": {"type": "string"},
+            "updated_at": {"type": "string"},
         },
     )
 
@@ -453,6 +454,7 @@ USER_NAMESPACE_SCHEMA = {
     "content": {"type": "string", "full_text_search": True},
     "tags": {"type": "[]string", "filterable": True},
     "created_at": {"type": "string"},
+    "updated_at": {"type": "string"},
 }
 
 
@@ -504,6 +506,7 @@ def write_likes_observations_to_turbopuffer(
                 pass  # proceed with upsert even if delete fails
 
         obs_id = _observation_id(handle, content)
+        now = datetime.now(timezone.utc).isoformat()
         ns.write(
             upsert_rows=[{
                 "id": obs_id,
@@ -511,7 +514,8 @@ def write_likes_observations_to_turbopuffer(
                 "kind": "observation",
                 "content": content,
                 "tags": tags,
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": now,
+                "updated_at": now,
             }],
             distance_metric="cosine_distance",
             schema=USER_NAMESPACE_SCHEMA,
