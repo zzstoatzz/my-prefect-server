@@ -365,6 +365,8 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
 
         return f"created collection '{name}' ({coll_uri}) with {linked}/{len(card_uris)} cards linked"
 
+    VALID_CONNECTION_TYPES = {"RELATED", "SUPPORTS", "OPPOSES", "ADDRESSES", "HELPFUL", "EXPLAINER", "LEADS_TO", "SUPPLEMENTS"}
+
     @agent.tool
     async def create_connection(
         ctx: RunContext[CurationDeps],
@@ -373,12 +375,15 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
         connection_type: str,
         note: str = "",
     ) -> str:
-        """Create a connection between two entities (AT URIs or URLs). connection_type: RELATED, SUPPORTS, OPPOSES, ADDRESSES, HELPFUL, EXPLAINER, LEADS_TO, SUPPLEMENTS."""
+        """Create a connection between two entities (AT URIs or URLs). connection_type must be one of: RELATED, SUPPORTS, OPPOSES, ADDRESSES, HELPFUL, EXPLAINER, LEADS_TO, SUPPLEMENTS."""
+        normalized = connection_type.upper().replace("-", "_")
+        if normalized not in VALID_CONNECTION_TYPES:
+            return f"invalid connection_type: {connection_type!r}. must be one of: {', '.join(sorted(VALID_CONNECTION_TYPES))}"
         now = datetime.now(timezone.utc).isoformat()
         record: dict[str, Any] = {
             "source": source,
             "target": target,
-            "connectionType": connection_type.upper(),
+            "connectionType": normalized,
             "createdAt": now,
             "updatedAt": now,
         }

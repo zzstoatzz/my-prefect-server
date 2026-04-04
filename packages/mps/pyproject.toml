@@ -10,6 +10,7 @@ dependencies = [
     "pydantic-ai-slim[anthropic,prefect]",
     "turbopuffer",
     "openai",
+    "pdsx",
 ]
 
 [build-system]
