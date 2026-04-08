@@ -11,6 +11,8 @@ server:
   env:
     - name: PREFECT_SERVER_UI_SHOW_PROMOTIONAL_CONTENT
       value: "false"
+    - name: PREFECT_SERVER_UI_V2_ENABLED
+      value: "true"
 
   extraEnvVarsCM: prefect-docket-config
 
