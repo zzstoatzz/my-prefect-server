@@ -16,3 +16,17 @@ export interface DashboardStats {
 	with_reactions: number;
 	repos: number;
 }
+
+export interface DiscoveryPoolPost {
+	uri: string;
+	text: string;
+	liked_at: string;
+}
+
+export interface DiscoveryPoolEntry {
+	handle: string;
+	did: string;
+	likes_in_window: number;
+	last_liked_at: string;
+	sample_posts: DiscoveryPoolPost[];
+}
