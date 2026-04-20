@@ -290,6 +290,9 @@ class LikesObservation(BaseModel):
         default=None,
         description="for UPDATE: the old observation content this replaces",
     )
+    # populated post-extraction by the orchestrator from the liked-post URIs
+    # that fed the LLM call. the model itself doesn't see URIs (only text).
+    source_uris: list[str] = Field(default_factory=list)
 
 
 class LikesExtractionResult(BaseModel):
@@ -320,7 +323,7 @@ def load_recent_liked_posts(snap_path: str) -> dict[str, list[dict[str, str]]]:
     db = duckdb.connect(snap_path, read_only=True)
     try:
         rows = db.execute("""
-            SELECT author_handle, author_did, text, created_at,
+            SELECT subject_uri, author_handle, author_did, text, created_at,
                    liked_at, embed_type, embed_text
             FROM raw_liked_posts
             WHERE liked_at >= (now() - INTERVAL '7 days')::VARCHAR
@@ -332,7 +335,7 @@ def load_recent_liked_posts(snap_path: str) -> dict[str, list[dict[str, str]]]:
         return {}
     db.close()
 
-    columns = ["author_handle", "author_did", "text", "created_at",
+    columns = ["subject_uri", "author_handle", "author_did", "text", "created_at",
                "liked_at", "embed_type", "embed_text"]
     by_author: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row in rows:
@@ -451,8 +454,11 @@ def _observation_id(handle: str, content: str) -> str:
 
 USER_NAMESPACE_SCHEMA = {
     "kind": {"type": "string", "filterable": True},
+    "status": {"type": "string", "filterable": True},  # active | superseded
     "content": {"type": "string", "full_text_search": True},
     "tags": {"type": "[]string", "filterable": True},
+    "supersedes": {"type": "string"},  # id of observation this replaces
+    "source_uris": {"type": "[]string"},  # AT-URIs backing the observation
     "created_at": {"type": "string"},
     "updated_at": {"type": "string"},
 }
@@ -512,8 +518,11 @@ def write_likes_observations_to_turbopuffer(
                 "id": obs_id,
                 "vector": embedding,
                 "kind": "observation",
+                "status": "active",
                 "content": content,
                 "tags": tags,
+                "supersedes": "",
+                "source_uris": list(obs.get("source_uris") or []),
                 "created_at": now,
                 "updated_at": now,
             }],
@@ -583,6 +592,18 @@ async def compact():
             obs_dicts = await extract_likes_observations(
                 handle, liked_posts_text, existing, bsky_profile, pubs, anthropic_key,
             )
+
+            # attach the URIs of the liked posts that fed this batch to every
+            # observation. coarse — the LLM doesn't tell us which post produced
+            # which observation, but always-true: each extracted claim was
+            # justified by something in this batch. dedup, preserve order.
+            batch_uris = list(dict.fromkeys(
+                p.get("subject_uri", "") for p in posts if p.get("subject_uri")
+            ))
+            for obs in obs_dicts:
+                if not obs.get("source_uris") and batch_uris:
+                    obs["source_uris"] = batch_uris
+
             all_observations.extend(obs_dicts)
 
         actionable = [o for o in all_observations if o.get("action", "").upper() != "NOOP"]
