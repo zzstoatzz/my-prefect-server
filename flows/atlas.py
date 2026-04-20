@@ -21,7 +21,7 @@ from prefect import flow, get_run_logger, task
 from prefect.blocks.system import Secret
 
 REPO_URL = "https://github.com/zzstoatzz/leaflet-search.git"
-CF_ACCOUNT_ID = "8feb33b5fb57ce2bc093bc6f4141f40a"
+CF_ACCOUNT_ID = "3e9ba01cd687b3c4d29033908177072e"
 CF_PROJECT = "leaflet-search"
 
 
