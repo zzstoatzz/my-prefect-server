@@ -17,9 +17,13 @@ Expected env vars (set by the deployment):
   - TURSO_TOKEN          (block: turso-token, optional)
 """
 
+import io
 import os
+import platform
 import subprocess
 import tempfile
+import urllib.request
+import zipfile
 from pathlib import Path
 
 from prefect import flow, get_run_logger, task
@@ -27,6 +31,45 @@ from prefect import flow, get_run_logger, task
 REPO_URL = "https://github.com/zzstoatzz/leaflet-search.git"
 CF_ACCOUNT_ID = "3e9ba01cd687b3c4d29033908177072e"
 CF_PROJECT = "leaflet-search"
+
+# bun release archives — github.com/oven-sh/bun/releases
+_BUN_ARCH_MAP = {
+    ("Linux", "x86_64"): "linux-x64",
+    ("Linux", "aarch64"): "linux-aarch64",
+    ("Darwin", "x86_64"): "darwin-x64",
+    ("Darwin", "arm64"): "darwin-aarch64",
+}
+
+
+def _install_bun(bun_install: Path) -> Path:
+    """Install bun by downloading the release zip directly.
+
+    Doesn't depend on curl/wget — the prefect worker image (debian-slim)
+    ships neither. Uses Python stdlib only.
+    """
+    key = (platform.system(), platform.machine())
+    arch = _BUN_ARCH_MAP.get(key)
+    if arch is None:
+        raise RuntimeError(f"unsupported platform for bun: {key}")
+
+    url = (
+        "https://github.com/oven-sh/bun/releases/latest/download/"
+        f"bun-{arch}.zip"
+    )
+    with urllib.request.urlopen(url, timeout=60) as r:
+        zip_bytes = r.read()
+
+    bin_dir = bun_install / "bin"
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        # archive layout: bun-{arch}/bun
+        member = f"bun-{arch}/bun"
+        with zf.open(member) as src, (bin_dir / "bun").open("wb") as dst:
+            dst.write(src.read())
+
+    bun_bin = bin_dir / "bun"
+    bun_bin.chmod(0o755)
+    return bun_bin
 
 
 @task
@@ -83,42 +126,29 @@ def deploy_to_pages(site_dir: Path) -> str:
     Reads CLOUDFLARE_API_TOKEN from the inherited environment.
     """
     logger = get_run_logger()
-    # Pin BUN_INSTALL so we know exactly where the installer puts the
-    # binary, then invoke it by absolute path — don't trust PATH lookup
-    # across subprocess boundaries.
-    bun_install = "/tmp/bun"
-    bun_bin = f"{bun_install}/bin/bun"
+    bun_install = Path("/tmp/bun")
+    bun_bin = bun_install / "bin" / "bun"
     env = {
         **os.environ,
         "CLOUDFLARE_ACCOUNT_ID": CF_ACCOUNT_ID,
-        "BUN_INSTALL": bun_install,
+        "BUN_INSTALL": str(bun_install),
         "PATH": f"{bun_install}/bin:{os.environ.get('PATH', '')}",
     }
 
-    # install bun if missing — single self-contained binary
-    if not Path(bun_bin).is_file():
-        install = subprocess.run(
-            ["bash", "-c", "curl -fsSL https://bun.sh/install | bash"],
-            env=env, capture_output=True, text=True, timeout=180, check=True,
-        )
-        if not Path(bun_bin).is_file():
-            logger.error(f"installer stdout:\n{install.stdout}")
-            logger.error(f"installer stderr:\n{install.stderr}")
-            raise RuntimeError(
-                f"bun installer ran but binary missing at {bun_bin} "
-                f"(BUN_INSTALL={bun_install}); see installer output above"
-            )
+    if not bun_bin.is_file():
+        logger.info(f"installing bun -> {bun_bin}")
+        _install_bun(bun_install)
 
     # install site dependencies (workers-og + wrangler from package.json)
     subprocess.run(
-        [bun_bin, "install"],
+        [str(bun_bin), "install"],
         cwd=str(site_dir),
         env=env, capture_output=True, text=True, timeout=180, check=True,
     )
 
     # `bun x wrangler` runs wrangler with bun as its runtime
     result = subprocess.run(
-        [bun_bin, "x", "wrangler", "pages", "deploy", ".",
+        [str(bun_bin), "x", "wrangler", "pages", "deploy", ".",
          f"--project-name={CF_PROJECT}", "--branch=main", "--commit-dirty=true"],
         cwd=str(site_dir),
         env=env,
