@@ -76,34 +76,39 @@ def deploy_to_pages(site_dir: Path, api_token: str) -> str:
     Uses wrangler because the site has Pages Functions (functions/ dir)
     that must be compiled into a _worker.bundle. The raw Direct Upload API
     doesn't handle function bundling, and deploying without it causes 500s.
+
+    Wrangler is invoked via bun (single self-contained binary) instead of
+    Debian's apt-pinned node — apt only ships node v20 on bookworm and
+    current wrangler requires node >=v22. Bun ships its own runtime and
+    matches the JS toolchain convention used elsewhere in the repo.
     """
     logger = get_run_logger()
+    bun_bin = os.path.expanduser("~/.bun/bin")
     env = {
         **os.environ,
         "CLOUDFLARE_API_TOKEN": api_token,
         "CLOUDFLARE_ACCOUNT_ID": CF_ACCOUNT_ID,
+        "PATH": f"{bun_bin}:{os.environ.get('PATH', '')}",
     }
 
-    # install node + npm if not available, then install site deps + wrangler
+    # install bun if not present (single binary, self-contained)
     subprocess.run(
         ["bash", "-c",
-         "command -v npx >/dev/null 2>&1 || "
-         "(apt-get update -qq && apt-get install -y -qq nodejs npm >/dev/null 2>&1)"],
-        env=env, capture_output=True, timeout=120,
-    )
-    # install site dependencies (workers-og) and wrangler
-    subprocess.run(
-        ["npm", "install"],
-        cwd=str(site_dir),
-        env=env, capture_output=True, text=True, timeout=120,
-    )
-    subprocess.run(
-        ["npm", "install", "--global", "wrangler"],
-        env=env, capture_output=True, text=True, timeout=120,
+         "command -v bun >/dev/null 2>&1 || "
+         "curl -fsSL https://bun.sh/install | bash"],
+        env=env, capture_output=True, text=True, timeout=120, check=True,
     )
 
+    # install site dependencies (workers-og + wrangler from package.json)
+    subprocess.run(
+        ["bun", "install"],
+        cwd=str(site_dir),
+        env=env, capture_output=True, text=True, timeout=120, check=True,
+    )
+
+    # bunx wrangler runs wrangler with bun as its runtime
     result = subprocess.run(
-        ["wrangler", "pages", "deploy", ".",
+        ["bunx", "wrangler", "pages", "deploy", ".",
          f"--project-name={CF_PROJECT}", "--branch=main", "--commit-dirty=true"],
         cwd=str(site_dir),
         env=env,
