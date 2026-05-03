@@ -105,7 +105,22 @@ deployments:
 
   - name: rebuild-atlas
     entrypoint: flows/atlas.py:rebuild_atlas
-    work_pool: *k8s
+    # Canary for the job-variable-driven secret pattern: secrets are
+    # injected as env vars (resolved from Secret blocks at deploy time),
+    # so flow code never calls Secret.load() and tasks just inherit env.
+    work_pool:
+      name: kubernetes-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
+        env:
+          TURBOPUFFER_API_KEY: "{{ prefect.blocks.secret.tpuf-token }}"
+          CLOUDFLARE_API_TOKEN: "{{ prefect.blocks.secret.cloudflare-api-token }}"
+          ANTHROPIC_API_KEY: "{{ prefect.blocks.secret.anthropic-api-key }}"
+          TURSO_URL: "{{ prefect.blocks.secret.turso-url }}"
+          TURSO_TOKEN: "{{ prefect.blocks.secret.turso-token }}"
     schedules:
       - cron: "0 */6 * * *"  # every 6 hours
 

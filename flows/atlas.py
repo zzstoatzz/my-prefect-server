@@ -4,12 +4,17 @@ Rebuild the atlas (2D semantic map) and deploy to Cloudflare Pages.
 Clones leaflet-search, runs the build-atlas script (UMAP + HDBSCAN),
 then deploys the site to Cloudflare Pages via wrangler.
 
-Requires:
-  - Secret block "tpuf-token" (turbopuffer API key)
-  - Secret block "cloudflare-api-token" (Pages edit permission)
-  - Secret block "anthropic-api-key" (LLM cluster label refinement)
-  - Secret block "turso-url" (publication metadata)
-  - Secret block "turso-token" (publication metadata)
+Secrets are injected into the pod environment via the deployment's
+``job_variables.env`` in prefect.yaml; the values are sourced from Prefect
+Secret blocks and resolved at ``prefect deploy`` time. Flow code never
+touches the Secret API directly — subprocesses just inherit the env.
+
+Expected env vars (set by the deployment):
+  - TURBOPUFFER_API_KEY  (block: tpuf-token)
+  - CLOUDFLARE_API_TOKEN (block: cloudflare-api-token)
+  - ANTHROPIC_API_KEY    (block: anthropic-api-key)
+  - TURSO_URL            (block: turso-url, optional)
+  - TURSO_TOKEN          (block: turso-token, optional)
 """
 
 import os
@@ -18,7 +23,6 @@ import tempfile
 from pathlib import Path
 
 from prefect import flow, get_run_logger, task
-from prefect.blocks.system import Secret
 
 REPO_URL = "https://github.com/zzstoatzz/leaflet-search.git"
 CF_ACCOUNT_ID = "3e9ba01cd687b3c4d29033908177072e"
@@ -37,24 +41,18 @@ def clone_repo(dest: Path) -> Path:
 
 
 @task
-def build_atlas(repo_dir: Path, tpuf_key: str, anthropic_key: str = "",
-                turso_url: str = "", turso_token: str = "") -> Path:
-    """Run the build-atlas script. Returns path to atlas.json."""
+def build_atlas(repo_dir: Path) -> Path:
+    """Run the build-atlas script. Returns path to atlas.json.
+
+    The script reads TURBOPUFFER_API_KEY, ANTHROPIC_API_KEY, and (optionally)
+    TURSO_URL / TURSO_TOKEN from the inherited environment.
+    """
     logger = get_run_logger()
     output = repo_dir / "site" / "atlas.json"
-
-    env = {**os.environ, "TURBOPUFFER_API_KEY": tpuf_key}
-    if anthropic_key:
-        env["ANTHROPIC_API_KEY"] = anthropic_key
-    if turso_url:
-        env["TURSO_URL"] = turso_url
-    if turso_token:
-        env["TURSO_TOKEN"] = turso_token
 
     result = subprocess.run(
         ["uv", "run", "--script", str(repo_dir / "scripts" / "build-atlas"),
          "--output", str(output)],
-        env=env,
         capture_output=True,
         text=True,
         timeout=300,
@@ -70,7 +68,7 @@ def build_atlas(repo_dir: Path, tpuf_key: str, anthropic_key: str = "",
 
 
 @task
-def deploy_to_pages(site_dir: Path, api_token: str) -> str:
+def deploy_to_pages(site_dir: Path) -> str:
     """Deploy site/ to Cloudflare Pages via wrangler.
 
     Uses wrangler because the site has Pages Functions (functions/ dir)
@@ -81,37 +79,46 @@ def deploy_to_pages(site_dir: Path, api_token: str) -> str:
     Debian's apt-pinned node — apt only ships node v20 on bookworm and
     current wrangler requires node >=v22. Bun ships its own runtime and
     matches the JS toolchain convention used elsewhere in the repo.
+
+    Reads CLOUDFLARE_API_TOKEN from the inherited environment.
     """
     logger = get_run_logger()
     # Pin BUN_INSTALL so we know exactly where the installer puts the
-    # binary — avoids HOME-dependent install paths in the kubernetes pod.
+    # binary, then invoke it by absolute path — don't trust PATH lookup
+    # across subprocess boundaries.
     bun_install = "/tmp/bun"
+    bun_bin = f"{bun_install}/bin/bun"
     env = {
         **os.environ,
-        "CLOUDFLARE_API_TOKEN": api_token,
         "CLOUDFLARE_ACCOUNT_ID": CF_ACCOUNT_ID,
         "BUN_INSTALL": bun_install,
         "PATH": f"{bun_install}/bin:{os.environ.get('PATH', '')}",
     }
 
-    # install bun if not present (single binary, self-contained)
-    subprocess.run(
-        ["bash", "-c",
-         "command -v bun >/dev/null 2>&1 || "
-         "curl -fsSL https://bun.sh/install | bash"],
-        env=env, capture_output=True, text=True, timeout=120, check=True,
-    )
+    # install bun if missing — single self-contained binary
+    if not Path(bun_bin).is_file():
+        install = subprocess.run(
+            ["bash", "-c", "curl -fsSL https://bun.sh/install | bash"],
+            env=env, capture_output=True, text=True, timeout=180, check=True,
+        )
+        if not Path(bun_bin).is_file():
+            logger.error(f"installer stdout:\n{install.stdout}")
+            logger.error(f"installer stderr:\n{install.stderr}")
+            raise RuntimeError(
+                f"bun installer ran but binary missing at {bun_bin} "
+                f"(BUN_INSTALL={bun_install}); see installer output above"
+            )
 
     # install site dependencies (workers-og + wrangler from package.json)
     subprocess.run(
-        ["bun", "install"],
+        [bun_bin, "install"],
         cwd=str(site_dir),
-        env=env, capture_output=True, text=True, timeout=120, check=True,
+        env=env, capture_output=True, text=True, timeout=180, check=True,
     )
 
-    # bunx wrangler runs wrangler with bun as its runtime
+    # `bun x wrangler` runs wrangler with bun as its runtime
     result = subprocess.run(
-        ["bunx", "wrangler", "pages", "deploy", ".",
+        [bun_bin, "x", "wrangler", "pages", "deploy", ".",
          f"--project-name={CF_PROJECT}", "--branch=main", "--commit-dirty=true"],
         cwd=str(site_dir),
         env=env,
@@ -136,20 +143,10 @@ def deploy_to_pages(site_dir: Path, api_token: str) -> str:
 @flow(name="rebuild-atlas", log_prints=True)
 def rebuild_atlas():
     """Rebuild the 2D semantic map and deploy to Cloudflare Pages."""
-    tpuf_key = Secret.load("tpuf-token").get()
-    cf_token = Secret.load("cloudflare-api-token").get()
-    anthropic_key = Secret.load("anthropic-api-key").get()
-    try:
-        turso_url = Secret.load("turso-url").get()
-        turso_token = Secret.load("turso-token").get()
-    except ValueError:
-        turso_url = ""
-        turso_token = ""
-
     with tempfile.TemporaryDirectory() as tmpdir:
         repo_dir = clone_repo(Path(tmpdir) / "repo")
-        build_atlas(repo_dir, tpuf_key, anthropic_key, turso_url, turso_token)
-        deploy_to_pages(repo_dir / "site", cf_token)
+        build_atlas(repo_dir)
+        deploy_to_pages(repo_dir / "site")
 
 
 if __name__ == "__main__":
