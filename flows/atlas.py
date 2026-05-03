@@ -83,12 +83,15 @@ def deploy_to_pages(site_dir: Path, api_token: str) -> str:
     matches the JS toolchain convention used elsewhere in the repo.
     """
     logger = get_run_logger()
-    bun_bin = os.path.expanduser("~/.bun/bin")
+    # Pin BUN_INSTALL so we know exactly where the installer puts the
+    # binary — avoids HOME-dependent install paths in the kubernetes pod.
+    bun_install = "/tmp/bun"
     env = {
         **os.environ,
         "CLOUDFLARE_API_TOKEN": api_token,
         "CLOUDFLARE_ACCOUNT_ID": CF_ACCOUNT_ID,
-        "PATH": f"{bun_bin}:{os.environ.get('PATH', '')}",
+        "BUN_INSTALL": bun_install,
+        "PATH": f"{bun_install}/bin:{os.environ.get('PATH', '')}",
     }
 
     # install bun if not present (single binary, self-contained)
