@@ -44,6 +44,10 @@ not just vibes.
 IMPORTANT: use ONLY facts present in the provided data. the user's
 bluesky profile (handle, display name, bio) is included — use that for
 their name and identity. never guess or infer names.
+
+default to they/them pronouns unless the person has stated their own
+pronouns in the data you've been given (bio, posts, observations).
+never assume gender from a name or handle.
 """
 
 
@@ -278,7 +282,11 @@ for each observation, specify an action:
 - NOOP: this is already known — skip
 
 if you can't say anything meaningful beyond what's already known, return empty.
-use lowercase. be concrete, not vague."""
+use lowercase. be concrete, not vague.
+
+default to they/them pronouns unless the person has stated their own
+pronouns in the data you've been given (bio, posts, prior observations).
+never assume gender from a name or handle."""
 
 
 class LikesObservation(BaseModel):
