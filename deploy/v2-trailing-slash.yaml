@@ -1,0 +1,22 @@
+# Temporary workaround for PrefectHQ/prefect#21912 — the 3.7.0 server
+# redirects neutral entry points to `/v2` (no trailing slash). Starlette's
+# `Mount` only routes paths under `{mount}/`, so a bare `/v2` falls through
+# to the V1 SPA mount at `/` and the V1 bundle is served at the wrong URL.
+#
+# This Middleware rewrites the request URL `/v2` -> `/v2/` before it reaches
+# the prefect server, so the request lands inside the V2 mount and the V2
+# bundle is served correctly.
+#
+# Rollback: kubectl delete -f deploy/v2-trailing-slash.yaml and drop the
+# `traefik.ingress.kubernetes.io/router.middlewares` annotation from
+# deploy/prefect-values.yaml.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: v2-trailing-slash
+  namespace: prefect
+spec:
+  redirectRegex:
+    regex: ^(https?://[^/]+)/v2$
+    replacement: ${1}/v2/
+    permanent: false

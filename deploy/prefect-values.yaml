@@ -52,4 +52,7 @@ ingress:
     pathType: Prefix
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
+    # Workaround for PrefectHQ/prefect#21912 — see deploy/v2-trailing-slash.yaml.
+    # Remove this annotation once a fixed prefect release is pinned above.
+    traefik.ingress.kubernetes.io/router.middlewares: prefect-v2-trailing-slash@kubernetescrd
   tls: true
