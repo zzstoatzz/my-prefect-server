@@ -1,3 +1,10 @@
+global:
+  prefect:
+    image:
+      # 3.7.0 ships the V2 UI bundle with show_promotional_content
+      # gating wired up (added in 3.6.26 + 3.6.28). 3.6.23 didn't.
+      prefectTag: 3.7.0-python3.11
+
 server:
   replicaCount: 1
 
