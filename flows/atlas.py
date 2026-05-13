@@ -133,6 +133,9 @@ def deploy_to_pages(site_dir: Path) -> str:
         "CLOUDFLARE_ACCOUNT_ID": CF_ACCOUNT_ID,
         "BUN_INSTALL": str(bun_install),
         "PATH": f"{bun_install}/bin:{os.environ.get('PATH', '')}",
+        # temporary: make wrangler chatty so we can see what's bailing
+        # after the version banner. drop once the silent-exit bug is fixed.
+        "WRANGLER_LOG": "debug",
     }
 
     if not bun_bin.is_file():
