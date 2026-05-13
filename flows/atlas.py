@@ -158,9 +158,23 @@ def deploy_to_pages(site_dir: Path) -> str:
     )
     for line in result.stdout.strip().splitlines():
         logger.info(line)
+    # always surface stderr — wrangler exits 0 on some failure modes and
+    # writes the actual progress/error narrative to stderr regardless.
+    if result.stderr.strip():
+        for line in result.stderr.strip().splitlines():
+            logger.info(f"[stderr] {line}")
     if result.returncode != 0:
-        logger.error(result.stderr)
-        raise RuntimeError(f"wrangler deploy failed:\n{result.stderr}")
+        raise RuntimeError(f"wrangler deploy failed (exit {result.returncode})")
+
+    # detect silent-no-op: wrangler must report a successful upload+deploy.
+    # without this, a wrangler version banner with no further activity gets
+    # reported as Completed even though nothing reached cloudflare.
+    combined = result.stdout + "\n" + result.stderr
+    if "Deployment complete" not in combined:
+        raise RuntimeError(
+            "wrangler exited 0 but produced no 'Deployment complete' marker — "
+            "nothing reached cloudflare. see stderr above."
+        )
 
     # extract deployment URL from wrangler output
     for line in reversed(result.stdout.strip().splitlines()):
