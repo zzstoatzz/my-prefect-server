@@ -133,9 +133,6 @@ def deploy_to_pages(site_dir: Path) -> str:
         "CLOUDFLARE_ACCOUNT_ID": CF_ACCOUNT_ID,
         "BUN_INSTALL": str(bun_install),
         "PATH": f"{bun_install}/bin:{os.environ.get('PATH', '')}",
-        # temporary: make wrangler chatty so we can see what's bailing
-        # after the version banner. drop once the silent-exit bug is fixed.
-        "WRANGLER_LOG": "debug",
     }
 
     if not bun_bin.is_file():
@@ -149,9 +146,13 @@ def deploy_to_pages(site_dir: Path) -> str:
         env=env, capture_output=True, text=True, timeout=180, check=True,
     )
 
-    # `bun x wrangler` runs wrangler with bun as its runtime
+    # invoke wrangler by its installed path under bun. `bun x wrangler ARGS`
+    # silently drops the ARGS on recent bun (≥1.2) — wrangler then sees no
+    # `--project-name` / asset dir and exits 0 without deploying anything.
+    # running the binary directly avoids that arg-forwarding regression.
+    wrangler_bin = site_dir / "node_modules" / ".bin" / "wrangler"
     result = subprocess.run(
-        [str(bun_bin), "x", "wrangler", "pages", "deploy", ".",
+        [str(bun_bin), str(wrangler_bin), "pages", "deploy", ".",
          f"--project-name={CF_PROJECT}", "--branch=main", "--commit-dirty=true"],
         cwd=str(site_dir),
         env=env,
