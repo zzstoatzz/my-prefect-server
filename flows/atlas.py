@@ -17,13 +17,12 @@ Expected env vars (set by the deployment):
   - TURSO_TOKEN          (block: turso-token, optional)
 """
 
-import io
 import os
 import platform
 import subprocess
+import tarfile
 import tempfile
 import urllib.request
-import zipfile
 from pathlib import Path
 
 from prefect import flow, get_run_logger, task
@@ -32,44 +31,47 @@ REPO_URL = "https://github.com/zzstoatzz/leaflet-search.git"
 CF_ACCOUNT_ID = "3e9ba01cd687b3c4d29033908177072e"
 CF_PROJECT = "leaflet-search"
 
-# bun release archives — github.com/oven-sh/bun/releases
-_BUN_ARCH_MAP = {
+# node distribution — nodejs.org/dist. used to drive wrangler. tried bun
+# initially (single binary, no curl needed) but bun ≥1.2 on linux-x64
+# silently mangles argv when invoking node-shim scripts like wrangler's,
+# producing 0-exit no-op deploys. node has no such problem.
+NODE_VERSION = "22.11.0"
+_NODE_ARCH_MAP = {
     ("Linux", "x86_64"): "linux-x64",
-    ("Linux", "aarch64"): "linux-aarch64",
+    ("Linux", "aarch64"): "linux-arm64",
     ("Darwin", "x86_64"): "darwin-x64",
-    ("Darwin", "arm64"): "darwin-aarch64",
+    ("Darwin", "arm64"): "darwin-arm64",
 }
 
 
-def _install_bun(bun_install: Path) -> Path:
-    """Install bun by downloading the release zip directly.
+def _install_node(node_install: Path) -> Path:
+    """Install node by downloading the official tarball.
 
     Doesn't depend on curl/wget — the prefect worker image (debian-slim)
     ships neither. Uses Python stdlib only.
     """
     key = (platform.system(), platform.machine())
-    arch = _BUN_ARCH_MAP.get(key)
+    arch = _NODE_ARCH_MAP.get(key)
     if arch is None:
-        raise RuntimeError(f"unsupported platform for bun: {key}")
+        raise RuntimeError(f"unsupported platform for node: {key}")
 
-    url = (
-        "https://github.com/oven-sh/bun/releases/latest/download/"
-        f"bun-{arch}.zip"
-    )
-    with urllib.request.urlopen(url, timeout=60) as r:
-        zip_bytes = r.read()
+    name = f"node-v{NODE_VERSION}-{arch}"
+    url = f"https://nodejs.org/dist/v{NODE_VERSION}/{name}.tar.xz"
+    archive_path = node_install / f"{name}.tar.xz"
+    node_install.mkdir(parents=True, exist_ok=True)
+    with urllib.request.urlopen(url, timeout=120) as r, archive_path.open("wb") as dst:
+        while chunk := r.read(1024 * 1024):
+            dst.write(chunk)
 
-    bin_dir = bun_install / "bin"
-    bin_dir.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-        # archive layout: bun-{arch}/bun
-        member = f"bun-{arch}/bun"
-        with zf.open(member) as src, (bin_dir / "bun").open("wb") as dst:
-            dst.write(src.read())
+    # tarfile + lzma both in stdlib; extract straight to node_install
+    with tarfile.open(archive_path, "r:xz") as tar:
+        tar.extractall(node_install)
+    archive_path.unlink()
 
-    bun_bin = bin_dir / "bun"
-    bun_bin.chmod(0o755)
-    return bun_bin
+    node_bin = node_install / name / "bin" / "node"
+    if not node_bin.is_file():
+        raise RuntimeError(f"node extracted but binary missing at {node_bin}")
+    return node_bin
 
 
 @task
@@ -118,42 +120,41 @@ def deploy_to_pages(site_dir: Path) -> str:
     that must be compiled into a _worker.bundle. The raw Direct Upload API
     doesn't handle function bundling, and deploying without it causes 500s.
 
-    Wrangler is invoked via bun (single self-contained binary) instead of
-    Debian's apt-pinned node — apt only ships node v20 on bookworm and
-    current wrangler requires node >=v22. Bun ships its own runtime and
-    matches the JS toolchain convention used elsewhere in the repo.
+    Wrangler is run under node — apt's node is too old (v20 on bookworm,
+    wrangler needs ≥v22) and bun ≥1.2 on linux-x64 silently drops argv
+    when invoking wrangler's node-shim entry, producing 0-exit no-op
+    deploys. `_install_node` fetches the official tarball via stdlib.
 
     Reads CLOUDFLARE_API_TOKEN from the inherited environment.
     """
     logger = get_run_logger()
-    bun_install = Path("/tmp/bun")
-    bun_bin = bun_install / "bin" / "bun"
+    node_install = Path("/tmp/node")
+    arch = _NODE_ARCH_MAP[(platform.system(), platform.machine())]
+    node_bin_dir = node_install / f"node-v{NODE_VERSION}-{arch}" / "bin"
+    node_bin = node_bin_dir / "node"
+    npm_bin = node_bin_dir / "npm"
     env = {
         **os.environ,
         "CLOUDFLARE_ACCOUNT_ID": CF_ACCOUNT_ID,
-        "BUN_INSTALL": str(bun_install),
-        "PATH": f"{bun_install}/bin:{os.environ.get('PATH', '')}",
-        "WRANGLER_LOG": "debug",
+        # put node's bin dir first so wrangler's `#!/usr/bin/env node`
+        # shebang resolves correctly when invoked from node_modules/.bin.
+        "PATH": f"{node_bin_dir}:{os.environ.get('PATH', '')}",
     }
 
-    if not bun_bin.is_file():
-        logger.info(f"installing bun -> {bun_bin}")
-        _install_bun(bun_install)
+    if not node_bin.is_file():
+        logger.info(f"installing node v{NODE_VERSION} -> {node_bin}")
+        _install_node(node_install)
 
     # install site dependencies (workers-og + wrangler from package.json)
     subprocess.run(
-        [str(bun_bin), "install"],
+        [str(npm_bin), "install", "--no-audit", "--no-fund"],
         cwd=str(site_dir),
-        env=env, capture_output=True, text=True, timeout=180, check=True,
+        env=env, capture_output=True, text=True, timeout=240, check=True,
     )
 
-    # invoke wrangler by its installed path under bun. `bun x wrangler ARGS`
-    # silently drops the ARGS on recent bun (≥1.2) — wrangler then sees no
-    # `--project-name` / asset dir and exits 0 without deploying anything.
-    # running the binary directly avoids that arg-forwarding regression.
     wrangler_bin = site_dir / "node_modules" / ".bin" / "wrangler"
     result = subprocess.run(
-        [str(bun_bin), str(wrangler_bin), "pages", "deploy", ".",
+        [str(node_bin), str(wrangler_bin), "pages", "deploy", ".",
          f"--project-name={CF_PROJECT}", "--branch=main", "--commit-dirty=true"],
         cwd=str(site_dir),
         env=env,
