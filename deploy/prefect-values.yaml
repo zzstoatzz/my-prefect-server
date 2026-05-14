@@ -20,12 +20,30 @@ server:
       value: "false"
     - name: PREFECT_SERVER_UI_V2_ENABLED
       value: "true"
+    # also set on the API pod so /api/admin/settings reflects the active
+    # vacuum config. the vacuum service itself only runs in the
+    # backgroundServices pod (see below) but keeping these aligned avoids
+    # confusion when querying the running config.
+    - name: PREFECT_SERVER_SERVICES_DB_VACUUM_ENABLED
+      value: "events,flow_runs"
+    - name: PREFECT_SERVER_SERVICES_DB_VACUUM_RETENTION_PERIOD
+      value: "1209600"  # 14d for flow_runs; events use PREFECT_EVENTS_RETENTION_PERIOD (default 7d)
 
   extraEnvVarsCM: prefect-docket-config
 
 backgroundServices:
   runAsSeparateDeployment: true
   replicaCount: 1
+  env:
+    # vacuum service runs HERE (background services pod). retires the
+    # custom flows/cleanup.py weekly deployment in favor of the built-in
+    # vacuum which also handles orphaned logs / artifacts / stale
+    # artifact collections, and uses end_time rather than start_time so
+    # crashed-before-running flows get cleaned up too.
+    - name: PREFECT_SERVER_SERVICES_DB_VACUUM_ENABLED
+      value: "events,flow_runs"
+    - name: PREFECT_SERVER_SERVICES_DB_VACUUM_RETENTION_PERIOD
+      value: "1209600"  # 14d
   extraEnvVarsCM: prefect-docket-config
 
 postgresql:

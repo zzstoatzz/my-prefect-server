@@ -51,19 +51,6 @@ deployments:
           prefect.resource.name: "ingest"
           prefect.resource.role: "deployment"
 
-  - name: cleanup
-    entrypoint: flows/cleanup.py:cleanup
-    work_pool: *k8s
-    schedules:
-      - cron: "0 2 * * 0"
-    parameters:
-      config:
-        days_to_keep: 30
-        states_to_clean: ["Completed", "Failed", "Cancelled", "Crashed"]
-        batch_size: 100
-        rate_limit_delay: 0.5
-        dry_run: false
-
   - name: brief
     entrypoint: flows/brief.py:brief
     work_pool: *k8s
@@ -102,6 +89,21 @@ deployments:
         match_related:
           prefect.resource.name: "morning"
           prefect.resource.role: "deployment"
+
+  - name: phi-atlas
+    entrypoint: flows/phi_atlas.py:phi_atlas
+    # 2D map of phi's mental landscape. UMAP+HDBSCAN over every PDS record
+    # and TurboPuffer row phi owns. ML deps (numpy/scipy/umap-learn/hdbscan)
+    # live in the [atlas] extra so other flows' pods don't pull them.
+    work_pool:
+      name: kubernetes-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server[atlas] @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
+    schedules:
+      - cron: "0 13 * * *"  # 8am CT daily, alongside morning
 
   - name: rebuild-atlas
     entrypoint: flows/atlas.py:rebuild_atlas
