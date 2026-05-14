@@ -668,9 +668,14 @@ def compute_lifecycle_metadata(
         if tgt:
             connected_uris.add(tgt)
 
-    # group points by fine cluster
+    # group points by fine cluster. HDBSCAN labels noise points with -1 —
+    # those are NOT in any real cluster, just "unclustered" together. We must
+    # not treat -1 as a cluster for composition lookups, or every noise point
+    # would inherit composition from every other noise point.
     by_fine: dict[int, list[AtlasPoint]] = {}
     for p in points:
+        if p.cluster_fine < 0:
+            continue
         by_fine.setdefault(p.cluster_fine, []).append(p)
 
     # compute per-cluster composition flags
@@ -703,8 +708,12 @@ def compute_lifecycle_metadata(
             p.promotion_status = "summarized"
             continue
 
-        # private-working: check the cluster's composition
-        if cluster_has_public.get(p.cluster_fine):
+        # private-working: noise points (cluster -1) have no composition to
+        # inherit from. Fall through to raw — the "no nearby public anchor"
+        # signal, which is what raw means.
+        if p.cluster_fine < 0:
+            p.promotion_status = "raw"
+        elif cluster_has_public.get(p.cluster_fine):
             p.promotion_status = "promoted"
         elif cluster_has_summary.get(p.cluster_fine):
             p.promotion_status = "summarized"
