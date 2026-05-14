@@ -30,10 +30,14 @@ spec:
               readOnly: true
           resources:
             requests:
-              memory: 64Mi
+              # raised from 64Mi: steady-state sits ~190Mi after duckdb mmaps the
+              # analytics db, so 64Mi was a misleading scheduler reservation.
+              memory: 192Mi
               cpu: 50m
             limits:
-              memory: 256Mi
+              # raised from 256Mi: OOMKilled 96× in 16h on traffic spikes — duckdb
+              # queries against the analytics db push transiently past the cap.
+              memory: 768Mi
               cpu: 500m
       volumes:
         - name: analytics
