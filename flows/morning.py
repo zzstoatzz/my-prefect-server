@@ -232,6 +232,7 @@ async def identify_tag_merges(
         ),
         output_type=MergeProposal,
         name="tag-merger",
+        model_settings={"anthropic_cache_instructions": "5m"},
     )
 
     result = await agent.run(f"full tag inventory ({len(tag_info)} tags):\n{inventory}")
@@ -413,6 +414,7 @@ async def discover_tag_relationships(
         ),
         output_type=ClusterProposal,
         name="tag-clusterer",
+        model_settings={"anthropic_cache_instructions": "5m"},
     )
 
     result = await agent.run(

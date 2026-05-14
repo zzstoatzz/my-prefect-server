@@ -181,7 +181,15 @@ async def synthesize_summary(
 ) -> str:
     """LLM synthesis of a relationship summary. Cached by observations hash."""
     model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
-    agent = Agent(model, system_prompt=SYSTEM_PROMPT, name="phi-compactor")
+    # compact iterates over top authors; the SYSTEM_PROMPT is constant across
+    # the per-user loop, so caching it once and reusing on every call is the
+    # biggest single lever for this flow.
+    agent = Agent(
+        model,
+        system_prompt=SYSTEM_PROMPT,
+        name="phi-compactor",
+        model_settings={"anthropic_cache_instructions": "5m"},
+    )
 
     profile_section = f"handle: @{handle}\n"
     if bsky_profile:
@@ -436,6 +444,7 @@ async def extract_likes_observations(
         system_prompt=LIKES_SYSTEM_PROMPT,
         output_type=LikesExtractionResult,
         name="likes-observer",
+        model_settings={"anthropic_cache_instructions": "5m"},
     )
 
     profile_section = f"handle: @{handle}\n"

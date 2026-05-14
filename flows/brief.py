@@ -55,6 +55,10 @@ def make_agent(api_key: str) -> PrefectAgent[Briefing]:
         output_type=Briefing,
         system_prompt=SYSTEM_PROMPT,
         name="hub-curator",
+        # cache the constant SYSTEM_PROMPT — input cache reads are 0.1× input
+        # price; net win whenever a flow run does ≥2 agent.run() calls or two
+        # runs land within the 5m TTL window.
+        model_settings={"anthropic_cache_instructions": "5m"},
     )
     return PrefectAgent(
         agent,

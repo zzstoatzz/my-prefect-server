@@ -258,6 +258,14 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
         output_type=CurationResult,
         deps_type=CurationDeps,
         name="phi-curator",
+        # tool-heavy agent (10+ tools, multi-turn). caching both the system
+        # prompt and the tool-definitions block is the highest-leverage spot
+        # in the whole flow — every turn re-sends both, and every turn is now
+        # a cache hit at 0.1× input price after the first.
+        model_settings={
+            "anthropic_cache_instructions": "5m",
+            "anthropic_cache_tool_definitions": "5m",
+        },
     )
 
     @agent.tool
