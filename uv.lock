@@ -1663,7 +1663,7 @@ name = "my-prefect-server"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "dbt-core" },
+    { name = "dbt-adapters" },
     { name = "dbt-duckdb" },
     { name = "mps" },
     { name = "prefect-dbt" },
@@ -1684,7 +1684,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "dbt-core", specifier = "<1.11.8" },
+    { name = "dbt-adapters", specifier = "<1.24" },
     { name = "dbt-duckdb", specifier = ">=1.9" },
     { name = "hdbscan", marker = "extra == 'atlas'", specifier = ">=0.8" },
     { name = "mps", editable = "packages/mps" },

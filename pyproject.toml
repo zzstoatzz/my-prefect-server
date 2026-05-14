@@ -9,12 +9,17 @@ requires-python = ">=3.13"
 dependencies = [
     "mps",
     "dbt-duckdb>=1.9",
-    # dbt-core 1.11.8+ tightened the ModelLanguage enum to reject 'javascript'
-    # in macro `language=` defaults, which dbt-duckdb 1.10.1 still ships
-    # (for its JS-UDF macros). compile blows up with KeyError: 'javascript'
-    # before any model parsing happens. pin to last known-good until
-    # dbt-duckdb catches up or dbt-core relaxes the check.
-    "dbt-core<1.11.8",
+    # dbt-adapters 1.24.0 started enforcing supported_languages strictness
+    # against dbt-core's ModelLanguage enum (sql/python only). dbt-core's
+    # own function.sql materialization in global_project declares
+    # supported_languages=['sql','python','javascript'], so every parse
+    # now blows up with KeyError: 'javascript' before any model resolution.
+    # bisected: dbt-adapters 1.22.9 OK, 1.24.0 broken. last good transform
+    # run (dancing-porpoise 2026-05-13 20:01 UTC) was on adapters 1.22.x;
+    # 1.24.0 released 2026-05-13 ~21:00 UTC. pin until upstream fixes
+    # dbt-core/global_project/.../function.sql to drop 'javascript' or
+    # adds 'javascript' to ModelLanguage.
+    "dbt-adapters<1.24",
     "prefect-dbt>=0.6",
 ]
 
