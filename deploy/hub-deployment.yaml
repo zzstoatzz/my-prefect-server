@@ -35,9 +35,10 @@ spec:
               memory: 192Mi
               cpu: 50m
             limits:
-              # raised from 256Mi: OOMKilled 96× in 16h on traffic spikes — duckdb
-              # queries against the analytics db push transiently past the cap.
-              memory: 768Mi
+              # 256Mi → 768Mi cut OOM rate from 96/16h to 3/41h, but query
+              # plans on the analytics db still spike past 768Mi every ~14h.
+              # node has 8GB and sits at 44%, so 1.5Gi is well within budget.
+              memory: 1536Mi
               cpu: 500m
       volumes:
         - name: analytics
