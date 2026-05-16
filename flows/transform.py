@@ -32,13 +32,18 @@ def export_hub_db(src: Path, dst: Path) -> int:
     if tmp.exists():
         tmp.unlink()
 
-    # open source READ_ONLY (dbt may also be reading); ATTACH hub as RW.
-    con = duckdb.connect(str(src), read_only=True)
+    # open the new hub file as the RW main connection, then ATTACH source
+    # READ_ONLY (dbt may still be reading it). attaching the other way
+    # around inherits the parent connection's read-only mode and CREATE
+    # TABLE fails with "database does not exist" on the writer side.
+    con = duckdb.connect(str(tmp))
     try:
-        con.execute(f"ATTACH '{tmp}' AS hub")
+        con.execute(f"ATTACH '{src}' AS analytics (READ_ONLY)")
         for tbl in HUB_TABLES:
-            con.execute(f"CREATE OR REPLACE TABLE hub.{tbl} AS SELECT * FROM main.{tbl}")
-        con.execute("DETACH hub")
+            con.execute(
+                f"CREATE OR REPLACE TABLE {tbl} AS SELECT * FROM analytics.main.{tbl}"
+            )
+        con.execute("DETACH analytics")
     finally:
         con.close()
 
