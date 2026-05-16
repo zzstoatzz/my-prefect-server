@@ -1,9 +1,51 @@
+import os
 import subprocess
 from pathlib import Path
 
-from prefect import flow, get_run_logger
+from prefect import flow, get_run_logger, task
 
 ANALYTICS_DIR = Path(__file__).parent.parent / "analytics"
+
+# Tables hub serves. Anything not on this list is dropped from hub.duckdb so
+# the file stays small (hub mmaps everything in it). Keep this in sync with
+# web/src/lib/server/{loaders,discovery}.ts.
+HUB_TABLES = ("hub_action_items", "raw_github_issues", "raw_liked_posts")
+
+
+@task
+def export_hub_db(src: Path, dst: Path) -> int:
+    """Write a hub-only duckdb containing just the tables hub queries.
+
+    Hub used to mount the full analytics.duckdb (~1 GB, mostly
+    raw_phi_observations which hub never queries) and OOMed periodically
+    because duckdb mmaps the whole file. This pulls just the four tables
+    hub actually reads into a separate file (~50–100 MB).
+
+    Atomic via tmp-file + rename: hub's snapshot logic mtime-checks the
+    source path on each request, so the rename triggers a clean refresh
+    on the next request.
+    """
+    import duckdb
+
+    logger = get_run_logger()
+    tmp = dst.with_suffix(dst.suffix + ".new")
+    if tmp.exists():
+        tmp.unlink()
+
+    # open source READ_ONLY (dbt may also be reading); ATTACH hub as RW.
+    con = duckdb.connect(str(src), read_only=True)
+    try:
+        con.execute(f"ATTACH '{tmp}' AS hub")
+        for tbl in HUB_TABLES:
+            con.execute(f"CREATE OR REPLACE TABLE hub.{tbl} AS SELECT * FROM main.{tbl}")
+        con.execute("DETACH hub")
+    finally:
+        con.close()
+
+    os.replace(tmp, dst)
+    size_mb = dst.stat().st_size / 1024 / 1024
+    logger.info(f"wrote {dst} ({size_mb:.1f} MB) with tables: {', '.join(HUB_TABLES)}")
+    return int(size_mb)
 
 
 @flow(name="transform", log_prints=True)
@@ -46,6 +88,10 @@ def transform():
         create_summary_artifact=True,
     )
     orchestrator.run_build()
+
+    src = Path(os.environ.get("ANALYTICS_DB_PATH", "/prefect-analytics/analytics.duckdb"))
+    dst = src.parent / "hub.duckdb"
+    export_hub_db(src, dst)
 
 
 if __name__ == "__main__":

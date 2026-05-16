@@ -23,22 +23,25 @@ spec:
             - containerPort: 3000
           env:
             - name: DUCKDB_PATH
-              value: /analytics/analytics.duckdb
+              # slim hub-only db built by flows/transform.py:export_hub_db.
+              # the full analytics.duckdb (~1 GB, mostly raw_phi_observations
+              # which hub never queries) sits next to it on the same hostPath
+              # for dbt + grafana to keep using.
+              value: /analytics/hub.duckdb
           volumeMounts:
             - name: analytics
               mountPath: /analytics
               readOnly: true
           resources:
             requests:
-              # raised from 64Mi: steady-state sits ~190Mi after duckdb mmaps the
-              # analytics db, so 64Mi was a misleading scheduler reservation.
-              memory: 192Mi
+              memory: 128Mi
               cpu: 50m
             limits:
-              # 256Mi → 768Mi cut OOM rate from 96/16h to 3/41h, but query
-              # plans on the analytics db still spike past 768Mi every ~14h.
-              # node has 8GB and sits at 44%, so 1.5Gi is well within budget.
-              memory: 1536Mi
+              # back down from 1536Mi now that hub mmaps hub.duckdb (~50–100Mi)
+              # instead of analytics.duckdb (~1 GB, mostly raw_phi_observations
+              # that hub never queries). leaves ~3x headroom over the file size
+              # for node runtime + query plans.
+              memory: 384Mi
               cpu: 500m
       volumes:
         - name: analytics

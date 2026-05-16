@@ -1,7 +1,11 @@
 import { DuckDBInstance } from '@duckdb/node-api';
 import { copyFileSync, statSync } from 'fs';
 
-const srcPath = process.env.DUCKDB_PATH ?? '/analytics/analytics.duckdb';
+// hub.duckdb is the slim, hub-only subset built by flows/transform.py's
+// export_hub_db task — contains just hub_action_items, raw_github_issues,
+// and raw_liked_posts. ~50–100 MB instead of ~1 GB for analytics.duckdb,
+// which avoids the OOM-on-mmap pattern hub used to hit.
+const srcPath = process.env.DUCKDB_PATH ?? '/analytics/hub.duckdb';
 const snapPath = '/tmp/hub_analytics_snapshot.duckdb';
 
 let instance: DuckDBInstance | null = null;
