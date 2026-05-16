@@ -105,6 +105,20 @@ deployments:
     schedules:
       - cron: "0 13 * * *"  # 8am CT daily, alongside morning
 
+  - name: docket
+    entrypoint: flows/docket.py:docket
+    # Daily promotion object — consumes the atlas, emits 5-15 candidate
+    # work items. Event-triggered on phi-atlas completion so the docket
+    # exactly tracks the atlas it was derived from. No separate cron.
+    work_pool: *k8s
+    triggers:
+      - type: event
+        expect:
+          - "prefect.flow-run.Completed"
+        match_related:
+          prefect.resource.name: "phi-atlas"
+          prefect.resource.role: "deployment"
+
   - name: rebuild-atlas
     entrypoint: flows/atlas.py:rebuild_atlas
     # Canary for the job-variable-driven secret pattern: secrets are
