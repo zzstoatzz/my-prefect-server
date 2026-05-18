@@ -31,7 +31,7 @@ import duckdb
 import httpx
 from prefect import flow, get_run_logger, task
 from prefect.blocks.system import Secret
-from prefect.cache_policies import NONE, CachePolicy
+from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
@@ -413,7 +413,7 @@ def _candidate_id(ctx: ClusterContext) -> str:
     return f"cand-{hashlib.md5(sig.encode()).hexdigest()[:12]}"
 
 
-@task(cache_policy=NONE)
+@task(cache_policy=ByClusterContentHash())
 async def synthesize_cluster(
     ctx: ClusterContext, anthropic_key: str
 ) -> DocketCandidate | None:
