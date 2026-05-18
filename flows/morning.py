@@ -232,7 +232,12 @@ async def identify_tag_merges(
         ),
         output_type=MergeProposal,
         name="tag-merger",
-        model_settings={"anthropic_cache_instructions": "5m"},
+        # NB: no cache_instructions — this agent is called exactly once per
+        # morning run, and morning runs are 24h apart. The 5m TTL never
+        # bridges that gap, so caching would just pay the +25% write premium
+        # on each call with no read hit ever. Same applies to tag-clusterer
+        # below. (Audit traced the 0.7% Sonnet read ratio on the Default
+        # workspace to exactly this pattern.)
     )
 
     result = await agent.run(f"full tag inventory ({len(tag_info)} tags):\n{inventory}")
@@ -414,7 +419,8 @@ async def discover_tag_relationships(
         ),
         output_type=ClusterProposal,
         name="tag-clusterer",
-        model_settings={"anthropic_cache_instructions": "5m"},
+        # NB: no cache_instructions — see tag-merger above. Single call per
+        # daily run; 5m TTL can't bridge 24h, so caching is net-negative.
     )
 
     result = await agent.run(

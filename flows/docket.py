@@ -427,6 +427,13 @@ async def synthesize_cluster(
         system_prompt=SYNTHESIS_SYSTEM_PROMPT,
         output_type=DocketCandidate,
         name="phi-docket-synth",
+        # The synth runs once per qualifying cluster per docket run — typically
+        # ~12-15 calls within a few minutes. The SYNTHESIS_SYSTEM_PROMPT
+        # (~800 tokens) is identical across them, so a cache write on the
+        # first call → cache reads on the rest. 5m TTL is the right shape
+        # here because the burst is bounded; cross-run reuse doesn't apply
+        # (next docket fires after next atlas, hours later).
+        model_settings={"anthropic_cache_instructions": "5m"},
     )
 
     prompt = _format_cluster_for_prompt(ctx)

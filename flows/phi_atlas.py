@@ -612,6 +612,11 @@ async def label_clusters(
         model,
         system_prompt="you label semantic clusters with short, concrete themes.",
         name="phi-atlas-labeler",
+        # ~110 haiku calls per atlas run (one per cluster) within a few
+        # minutes; identical one-line system prompt. Caching is marginal
+        # in absolute dollars (tiny prompt) but free to enable. 5m TTL
+        # covers the burst.
+        model_settings={"anthropic_cache_instructions": "5m"},
     )
 
     coarse_buckets: dict[int, list[str]] = {}
