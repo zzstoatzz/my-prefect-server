@@ -1,15 +1,20 @@
-"""Regression tests for the docket flow's pure-Python extraction logic.
+"""Regression tests for the docket flow's pure-Python extraction logic
+plus the synthesis-result wrapper invariants and cache-key behavior.
 
-The synthesis step itself is an LLM call — not unit-tested here (covered
-by the manual dry-run against the live atlas). What we DO test:
+The synthesis LLM call itself is not unit-tested (covered by the manual
+dry-run against the live atlas). What we DO test:
 
   - extract_pressure_pool filters to raw points
   - groups by cluster_fine
   - drops noise (cluster_fine < 0)
   - drops below-density clusters
-  - caps total candidates at MAX_CANDIDATES
+  - overselects up to MAX_CLUSTERS_TO_SYNTH (not the final MAX_CANDIDATES)
   - public anchor extraction picks public-layer points in the same coarse cluster
   - cluster ranking by density
+  - DocketSynthesisResult enforces (should_emit, candidate, reject_reason)
+    invariants so the synth can't silently produce filler
+  - ByClusterContentHash includes the rubric hash — rubric edits naturally
+    invalidate cached results without a manual cache clear
 
 These guarantees keep the docket "evidence-first work items" rather than
 "horoscope over noise."
@@ -19,9 +24,18 @@ The pure-Python pieces live in `_extract_pressure_pool_impl` and
 needing a prefect run context.
 """
 
+import pytest
+from pydantic import ValidationError
+
 from flows.docket import (
     MAX_CANDIDATES,
+    MAX_CLUSTERS_TO_SYNTH,
     MIN_CLUSTER_DENSITY,
+    ByClusterContentHash,
+    ClusterContext,
+    DocketCandidate,
+    DocketSynthesisResult,
+    EvidenceRef,
     _extract_pressure_pool_impl,
     _public_anchors_in_coarse,
 )
@@ -141,11 +155,21 @@ def test_clusters_ranked_by_density():
     assert cluster_ids == [10, 20, 30]
 
 
-def test_candidate_cap_respected():
-    """Even if there are more qualifying clusters than MAX_CANDIDATES,
-    only the top MAX_CANDIDATES are returned."""
+def test_extraction_caps_at_synth_cap_not_final_cap():
+    """Extraction overselects — it returns up to MAX_CLUSTERS_TO_SYNTH so
+    the synth gets a wide enough field to reject aggressively. Final
+    MAX_CANDIDATES truncation happens AFTER synthesis, not at extraction.
+
+    This is the load-bearing fix for the "operational clusters crowd out
+    ideational ones" failure mode: dense operational clusters used to
+    consume the entire MAX_CANDIDATES budget at extraction time, leaving
+    no slots for lower-density ideational clusters to be considered.
+    """
+    assert MAX_CLUSTERS_TO_SYNTH > MAX_CANDIDATES, (
+        "overselect-then-filter requires synth cap > final cap"
+    )
     points = []
-    n_clusters = MAX_CANDIDATES + 5
+    n_clusters = MAX_CLUSTERS_TO_SYNTH + 5
     for cid in range(100, 100 + n_clusters):
         for i in range(MIN_CLUSTER_DENSITY):
             points.append(
@@ -157,7 +181,9 @@ def test_candidate_cap_respected():
                 )
             )
     clusters = _extract_pressure_pool_impl(_atlas(points))
-    assert len(clusters) == MAX_CANDIDATES
+    assert len(clusters) == MAX_CLUSTERS_TO_SYNTH
+    # crucially MORE than the final docket cap — the synth needs the room
+    assert len(clusters) > MAX_CANDIDATES
 
 
 def test_cluster_label_pulled_from_atlas():
@@ -285,3 +311,128 @@ def test_anchors_skip_points_without_at_uri():
     ]
     anchors = _public_anchors_in_coarse(_atlas(points), cluster_coarse=1, max_anchors=10)
     assert [a.at_uri for a in anchors] == ["at://x/app.bsky.feed.post/abc"]
+
+
+# ---------------------------------------------------------------------------
+# DocketSynthesisResult — the rejection wrapper's structural invariants
+# ---------------------------------------------------------------------------
+
+
+def _valid_candidate() -> DocketCandidate:
+    return DocketCandidate(
+        id="cand-test",
+        title="something wants to come out",
+        rationale="three specific evidence points say so. it has shape.",
+        suggested_shape="note",
+    )
+
+
+def test_synthesis_result_emit_requires_candidate():
+    """should_emit=True without a candidate is the model trying to silently
+    skip — the validator catches it so we never write an empty docket entry."""
+    with pytest.raises(ValidationError, match="candidate is None"):
+        DocketSynthesisResult(should_emit=True, candidate=None)
+
+
+def test_synthesis_result_reject_requires_reason():
+    """should_emit=False without a reject_reason is the model dodging the
+    diagnostic — every rejection must name why so we can audit the rubric."""
+    with pytest.raises(ValidationError, match="reject_reason is empty"):
+        DocketSynthesisResult(should_emit=False, reject_reason="")
+
+
+def test_synthesis_result_reject_whitespace_reason_rejected():
+    """A whitespace-only reject_reason is not a real reason."""
+    with pytest.raises(ValidationError, match="reject_reason is empty"):
+        DocketSynthesisResult(should_emit=False, reject_reason="   ")
+
+
+def test_synthesis_result_valid_emit():
+    """Happy path: emit=True + candidate is accepted."""
+    result = DocketSynthesisResult(
+        should_emit=True, candidate=_valid_candidate()
+    )
+    assert result.should_emit is True
+    assert result.candidate is not None
+    assert result.reject_reason == ""
+
+
+def test_synthesis_result_valid_reject():
+    """Happy path: emit=False + reason is accepted; candidate stays None."""
+    result = DocketSynthesisResult(
+        should_emit=False, reject_reason="operational status, no promotion pressure"
+    )
+    assert result.should_emit is False
+    assert result.candidate is None
+    assert "operational" in result.reject_reason
+
+
+# ---------------------------------------------------------------------------
+# ByClusterContentHash — rubric hash must participate in the key
+# ---------------------------------------------------------------------------
+
+
+def _make_ctx() -> ClusterContext:
+    return ClusterContext(
+        cluster_fine=1,
+        cluster_coarse=0,
+        cluster_label="test cluster",
+        evidence=[
+            EvidenceRef(atlas_point_id="p-1", kind="observation", snippet="a"),
+            EvidenceRef(atlas_point_id="p-2", kind="observation", snippet="b"),
+        ],
+        anchors=[],
+        tags=["test"],
+    )
+
+
+def test_cache_key_stable_for_same_content_and_rubric():
+    """Same cluster content + same rubric → same cache key. This is what
+    makes the cache useful day-to-day."""
+    policy = ByClusterContentHash()
+    ctx = _make_ctx()
+    key1 = policy.compute_key(None, {"ctx": ctx}, {})  # type: ignore[arg-type]
+    key2 = policy.compute_key(None, {"ctx": ctx}, {})  # type: ignore[arg-type]
+    assert key1 == key2
+    assert key1 is not None
+    assert key1.startswith("docket-synth/")
+
+
+def test_cache_key_changes_when_rubric_changes(monkeypatch):
+    """Edit the rubric → all cached results invalidate naturally, no
+    manual cache clear needed. The cache key must include the rubric hash."""
+    from flows import docket as docket_mod
+
+    policy = ByClusterContentHash()
+    ctx = _make_ctx()
+    key_v1 = policy.compute_key(None, {"ctx": ctx}, {})  # type: ignore[arg-type]
+
+    # Simulate a rubric edit by swapping the module-level RUBRIC_HASH.
+    monkeypatch.setattr(docket_mod, "RUBRIC_HASH", "different")
+    key_v2 = policy.compute_key(None, {"ctx": ctx}, {})  # type: ignore[arg-type]
+
+    assert key_v1 != key_v2, (
+        "rubric edit must invalidate the cache; the cache key needs to "
+        "depend on RUBRIC_HASH or every prompt change will re-serve stale "
+        "candidates from cache."
+    )
+
+
+def test_cache_key_changes_when_cluster_content_changes():
+    """Same rubric, different cluster content → different keys."""
+    policy = ByClusterContentHash()
+    ctx_a = _make_ctx()
+    ctx_b = _make_ctx()
+    ctx_b.evidence.append(
+        EvidenceRef(atlas_point_id="p-3", kind="observation", snippet="c")
+    )
+    key_a = policy.compute_key(None, {"ctx": ctx_a}, {})  # type: ignore[arg-type]
+    key_b = policy.compute_key(None, {"ctx": ctx_b}, {})  # type: ignore[arg-type]
+    assert key_a != key_b
+
+
+def test_cache_key_none_when_no_ctx():
+    """Defensive: if the task is somehow called without a ctx kwarg, the
+    cache policy returns None (Prefect interprets that as no cache)."""
+    policy = ByClusterContentHash()
+    assert policy.compute_key(None, {}, {}) is None  # type: ignore[arg-type]

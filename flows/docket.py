@@ -1,19 +1,27 @@
 """phi-docket — daily promotion object.
 
-The primitive is the docket: 5-15 work-item candidates per day, each naming
+The primitive is the docket: 0-10 work-item candidates per day, each naming
 a piece of promotion pressure with evidence pointers and a suggested action.
-Every other surface (DuckDB archive, [DOCKET] prompt block, /api/docket
-endpoint, /docket cockpit page) is a projection of this object.
+A quiet day is allowed to produce a small (or empty) docket — quality bar
+beats daily quota. Every other surface (DuckDB archive, [DOCKET] prompt
+block, /api/docket endpoint, /docket cockpit page) is a projection of this
+object.
 
-Pipeline:
+Pipeline (overselect-then-filter):
   fetch_atlas          — read io.zzstoatzz.phi.atlas/self + blob
   extract_pressure     — filter to promotion_status='raw', group by fine cluster,
-                         drop noise (-1) and below-density clusters
+                         drop noise (-1) and below-density clusters. Returns up
+                         to MAX_CLUSTERS_TO_SYNTH (wide cast — let the synth
+                         reject aggressively instead of crowding out lower-
+                         density ideational clusters at extraction time).
   synthesize_cluster   — one pydantic-ai call per qualifying cluster, claude-
-                         sonnet-4-6, cached by cluster-content hash. The rubric
-                         is strict: evidence first, anchors second, suggested
-                         action third. Output is a DocketCandidate.
+                         sonnet-4-6, cached by (rubric_hash, cluster_content).
+                         Returns a DocketSynthesisResult; structurally rejects
+                         clusters that aren't actual promotion pressure
+                         (operational status, recurring patterns, no clear
+                         action). The reject_reason is logged for diagnostics.
   upload_docket_to_pds — blob (octet-stream) + io.zzstoatzz.phi.docket/self
+                         (final list capped at MAX_CANDIDATES)
   archive_to_duckdb    — append-only history
 
 Event-triggered on phi-atlas completion (prefect.yaml). No separate cron — the
@@ -33,7 +41,7 @@ from prefect import flow, get_run_logger, task
 from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
@@ -52,7 +60,12 @@ DOCKET_RKEY = "self"
 
 # Synthesis params
 MIN_CLUSTER_DENSITY = 3       # require ≥N raw points in a fine cluster to synthesize
-MAX_CANDIDATES = 15
+# Overselect-then-filter: extract up to MAX_CLUSTERS_TO_SYNTH candidate clusters,
+# let the synth reject aggressively, then cap the final docket at MAX_CANDIDATES.
+# Splitting these constants avoids the failure mode where dense operational
+# clusters crowd out lower-density ideational ones at extraction time.
+MAX_CLUSTERS_TO_SYNTH = 25
+MAX_CANDIDATES = 10
 SYNTHESIS_MODEL = "claude-sonnet-4-6"
 
 # Cap on representative points handed to the LLM per cluster (token discipline)
@@ -91,6 +104,10 @@ class DocketCandidate(BaseModel):
     Read as: 'There is private density here (private_evidence); the public
     state nearby looks like this (existing_public_anchors); the natural shape
     for promoting this would be {suggested_shape}; rationale.'
+
+    Every emitted candidate must commit to a concrete shape — if no shape
+    fits, the synth rejects the cluster via DocketSynthesisResult instead
+    of producing a candidate with a filler shape.
     """
 
     id: str  # "cand-{12-char hash of cluster content}"
@@ -101,9 +118,47 @@ class DocketCandidate(BaseModel):
     related_tags: list[str] = Field(default_factory=list)
     # knownValues-style, NOT a closed enum — extend by adding strings, no
     # lexicon-breaking change. See atproto style guide on enum avoidance.
-    suggested_shape: str = "no-action"
+    # Valid values today: card, url, connection, note, thread, doc.
+    # ('no-action' was removed — rejection happens at the wrapper, not via
+    # a filler shape.)
+    suggested_shape: str = Field(
+        description=(
+            "the most natural surface for promoting this — card/url/connection "
+            "(semble graph), note/thread (bluesky), doc (long-form greengale). "
+            "if none fit, reject the cluster instead of reaching for a generic shape."
+        )
+    )
     atlas_cluster_fine: int = -1
     atlas_cluster_coarse: int = -1
+
+
+class DocketSynthesisResult(BaseModel):
+    """Structural rejection wrapper. The synth either emits a candidate
+    or explains why it didn't — never silently produces filler.
+
+    should_emit=True ⇒ candidate is required.
+    should_emit=False ⇒ reject_reason is required (one short phrase).
+    """
+
+    should_emit: bool
+    reject_reason: str = Field(
+        default="",
+        description=(
+            "one short phrase naming why this cluster doesn't merit "
+            "promotion (e.g. 'operational status, no promotion pressure'; "
+            "'recurring pattern, already metabolized'; 'volume without "
+            "specific action'). required when should_emit=False."
+        ),
+    )
+    candidate: DocketCandidate | None = None
+
+    @model_validator(mode="after")
+    def _check_invariants(self) -> "DocketSynthesisResult":
+        if self.should_emit and self.candidate is None:
+            raise ValueError("should_emit=True but candidate is None")
+        if not self.should_emit and not self.reject_reason.strip():
+            raise ValueError("should_emit=False but reject_reason is empty")
+        return self
 
 
 class Docket(BaseModel):
@@ -298,9 +353,13 @@ def _extract_pressure_pool_impl(atlas: dict[str, Any]) -> list[dict[str, Any]]:
             }
         )
 
-    # rank clusters by raw density (most pressure first) — capped at MAX_CANDIDATES
+    # Rank clusters by raw density (most pressure first), then overselect:
+    # return up to MAX_CLUSTERS_TO_SYNTH so the synth gets a wide enough
+    # field to reject aggressively without crowding out lower-density
+    # ideational clusters. Final docket is capped at MAX_CANDIDATES after
+    # synthesis.
     clusters_out.sort(key=lambda c: -len(c["points"]))
-    return clusters_out[:MAX_CANDIDATES]
+    return clusters_out[:MAX_CLUSTERS_TO_SYNTH]
 
 
 @task
@@ -320,7 +379,8 @@ def extract_pressure_pool(atlas: dict[str, Any]) -> list[dict[str, Any]]:
     clusters_out = _extract_pressure_pool_impl(atlas)
     logger.info(
         f"pressure pool: {len(clusters_out)} qualifying clusters "
-        f"(min_density={MIN_CLUSTER_DENSITY}, cap={MAX_CANDIDATES})"
+        f"(min_density={MIN_CLUSTER_DENSITY}, synth_cap={MAX_CLUSTERS_TO_SYNTH}, "
+        f"final_cap={MAX_CANDIDATES})"
     )
     return clusters_out
 
@@ -331,38 +391,64 @@ def extract_pressure_pool(atlas: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 SYNTHESIS_SYSTEM_PROMPT = """\
-you synthesize one promotion-candidate per cluster of phi's private memory.
+you synthesize one promotion-candidate per cluster of phi's private memory,
+or reject the cluster if it doesn't merit promotion. rejection is a
+first-class outcome, not a failure mode.
 
 phi is a bluesky bot. her atlas surfaces clusters of private signals
 (observations, interactions, episodic notes) that have no public anchor.
-each cluster you're given is one such pocket of pressure.
+each cluster you're given is one such pocket — but not every cluster
+contains actual promotion pressure. some are operational chatter,
+recurring patterns phi has already metabolized, or volume without signal.
 
-your job: produce one DocketCandidate per call. read each cluster as a
-work item, not as a horoscope. the rationale must be specific to THIS
-cluster's evidence, not a generic observation about phi's interests.
+return a DocketSynthesisResult.
 
-rubric, in order of importance:
-  1. evidence first — what specifically is in this cluster? cite the actual
-     content. if you can't ground the candidate in 2-3 specific points,
-     return suggested_shape="no-action".
-  2. existing anchors second — does the candidate already have public state
-     it would build on? if there's an existing card/blog/post that already
-     covers this, suggest "connection" (link the private signals to it)
-     rather than duplicating it as a new artifact.
-  3. suggested action third — pick the most natural surface for what wants
-     to come out:
-       - card     a single observation worth saving publicly (network.cosmik.card NOTE)
-       - url      a URL phi has been pointing at, worth bookmarking publicly
-       - connection  link existing public records (e.g. a note ↔ a blog)
-       - note     a small lowercase bluesky post
-       - thread   a multi-post thread (when the cluster has internal structure)
-       - doc      a long-form greengale blog post (when the cluster is dense
+set should_emit=False (and fill reject_reason) when:
+  - the cluster is operational status — deployment failures, task queues,
+    monitoring alerts, ssl errors, ci issues, infrastructure incidents.
+    that's ops work; it doesn't belong in a promotion docket.
+  - the cluster is a recurring pattern phi has already absorbed (e.g.
+    "quiet likes from followers — pattern holds, no action needed").
+    static state isn't pressure.
+  - the cluster has volume but no specific action — if the most accurate
+    framing would be "worth rereading" or "no clear shape yet," reject it.
+    a phi-rereadable cluster is not a docket candidate.
+  - the evidence doesn't ground a specific work item (you'd have to write
+    a generic-sounding rationale to make the candidate fit).
+  - no shape from {card, url, connection, note, thread, doc} naturally
+    fits. don't reach for a filler shape; reject instead.
+
+reject_reason should be a single short phrase (≤120 chars) — e.g.
+"operational status, no promotion pressure", "recurring pattern already
+metabolized", "volume without specific action", "evidence too thin to
+ground a candidate".
+
+set should_emit=True (and fill candidate) when there is clear promotion
+pressure with a natural shape. then:
+  - evidence first — ground the rationale in 2-3 specific atlas points
+    from the cluster. cite what's actually in the evidence list, not a
+    generic observation about phi's interests.
+  - existing anchors second — if the candidate already has public state
+    it would build on, prefer suggested_shape="connection" (link the
+    private signals to existing record(s)) rather than duplicating.
+  - suggested_shape — pick the most natural surface:
+      card        a single observation worth saving publicly (network.cosmik.card NOTE)
+      url         a URL phi has been pointing at, worth bookmarking publicly
+      connection  link existing public records (e.g. a note ↔ a blog)
+      note        a small lowercase bluesky post
+      thread      a multi-post thread (when the cluster has internal structure)
+      doc         a long-form greengale blog post (when the cluster is dense
                   enough to sustain it)
-       - no-action  the cluster is real but doesn't yet have a clear shape;
-                    phi should reread it but not promote yet
+  - title: single line, phi's voice, lowercase, ≤140 chars, naming the
+    specific thing that wants to come out.
+  - rationale: 1-3 sentences naming what specifically wants to come out
+    and why now."""
 
-title must be a single line, phi's voice, lowercase. rationale must be 1-3
-sentences naming what specifically wants to come out and why now."""
+
+# Hash the rubric so changes to it naturally invalidate the per-cluster
+# cache. Bumping a manual version constant would work too but gets forgotten;
+# hashing the prompt directly is automatic.
+RUBRIC_HASH = hashlib.md5(SYNTHESIS_SYSTEM_PROMPT.encode()).hexdigest()[:8]
 
 
 class ClusterContext(BaseModel):
@@ -377,9 +463,12 @@ class ClusterContext(BaseModel):
 
 
 class ByClusterContentHash(CachePolicy):
-    """Cache one synthesis call per stable cluster content. If the cluster's
-    evidence + anchors don't change, the candidate doesn't need to be
-    regenerated. Mirrors flows/compact.py:ByObservationsHash."""
+    """Cache one synthesis call per (rubric, cluster-content) pair. If the
+    cluster's evidence + anchors don't change AND the rubric hasn't changed,
+    the candidate doesn't need to be regenerated. Including RUBRIC_HASH in
+    the key means any rubric edit naturally invalidates all cached results
+    — no manual cache clear needed. Mirrors flows/compact.py:ByObservationsHash.
+    """
 
     def compute_key(
         self,
@@ -393,6 +482,7 @@ class ByClusterContentHash(CachePolicy):
             return None
         signature = "|".join(
             [
+                RUBRIC_HASH,
                 str(ctx.cluster_fine),
                 str(ctx.cluster_coarse),
                 ctx.cluster_label,
@@ -417,22 +507,27 @@ def _candidate_id(ctx: ClusterContext) -> str:
 async def synthesize_cluster(
     ctx: ClusterContext, anthropic_key: str
 ) -> DocketCandidate | None:
-    """One LLM call → one DocketCandidate. None on synth failure."""
+    """One LLM call → either a DocketCandidate or a structured rejection.
+
+    Returns None when the synth rejected the cluster (logged with reason)
+    or when the call failed (logged as a warning). Callers should drop
+    None and continue.
+    """
     logger = get_run_logger()
     model = AnthropicModel(
         SYNTHESIS_MODEL, provider=AnthropicProvider(api_key=anthropic_key)
     )
-    agent: Agent[None, DocketCandidate] = Agent(
+    agent: Agent[None, DocketSynthesisResult] = Agent(
         model,
         system_prompt=SYNTHESIS_SYSTEM_PROMPT,
-        output_type=DocketCandidate,
+        output_type=DocketSynthesisResult,
         name="phi-docket-synth",
-        # The synth runs once per qualifying cluster per docket run — typically
-        # ~12-15 calls within a few minutes. The SYNTHESIS_SYSTEM_PROMPT
-        # (~800 tokens) is identical across them, so a cache write on the
-        # first call → cache reads on the rest. 5m TTL is the right shape
-        # here because the burst is bounded; cross-run reuse doesn't apply
-        # (next docket fires after next atlas, hours later).
+        # The synth runs once per qualifying cluster per docket run — up to
+        # MAX_CLUSTERS_TO_SYNTH calls within a few minutes. The
+        # SYNTHESIS_SYSTEM_PROMPT (~1.5KB) is identical across them, so a
+        # cache write on the first call → cache reads on the rest. 5m TTL
+        # is the right shape here because the burst is bounded; cross-run
+        # reuse doesn't apply (next docket fires after next atlas, hours later).
         model_settings={"anthropic_cache_instructions": "5m"},
     )
 
@@ -443,7 +538,20 @@ async def synthesize_cluster(
         logger.warning(f"synth failed for cluster {ctx.cluster_fine}: {e}")
         return None
 
-    candidate = result.output
+    synth_result: DocketSynthesisResult = result.output
+
+    if not synth_result.should_emit:
+        # First-class rejection — log the reason for daily diagnostics.
+        logger.info(
+            f"dropping cluster {ctx.cluster_fine} "
+            f"(label={ctx.cluster_label or '(unlabeled)'!r}): "
+            f"{synth_result.reject_reason}"
+        )
+        return None
+
+    # should_emit=True guarantees candidate is not None (model_validator).
+    candidate = synth_result.candidate
+    assert candidate is not None  # narrow for type checkers
     # always overwrite id with our deterministic hash (the LLM might generate
     # a different one) and stamp the cluster ids (the LLM doesn't see them
     # as structured fields, only as labels in the prompt).
@@ -597,6 +705,7 @@ async def docket(dry_run: bool = False) -> dict[str, int]:
     clusters = extract_pressure_pool(atlas)
 
     candidates: list[DocketCandidate] = []
+    rejected = 0
     for c in clusters:
         ctx = ClusterContext(
             cluster_fine=c["cluster_fine"],
@@ -609,8 +718,10 @@ async def docket(dry_run: bool = False) -> dict[str, int]:
         cand = await synthesize_cluster(ctx, anthropic_key)
         if cand:
             candidates.append(cand)
+        else:
+            rejected += 1
 
-    # ensure we don't exceed the cap even with retries
+    # final cap after rejection — quality bar beats daily quota
     candidates = candidates[:MAX_CANDIDATES]
 
     docket_obj = Docket(
@@ -625,7 +736,8 @@ async def docket(dry_run: bool = False) -> dict[str, int]:
     for c in candidates:
         shape_counts[c.suggested_shape] = shape_counts.get(c.suggested_shape, 0) + 1
     logger.info(
-        f"docket: {len(candidates)} candidates, "
+        f"docket: {len(clusters)} clusters synth'd → "
+        f"{len(candidates)} emitted, {rejected} rejected. "
         f"shapes={shape_counts}, atlas_cid={atlas.get('_record_cid', '?')[:12]}..."
     )
 
