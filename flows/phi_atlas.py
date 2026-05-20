@@ -2,7 +2,7 @@
 
 Enumerates every "object of phi's attention" across:
   - TurboPuffer (observations, summaries, interactions, episodic memory)
-  - phi's PDS (goals, active observations, cosmik cards, blog docs, posts)
+  - phi's PDS (goals, cosmik cards, blog docs, posts)
   - per-handle centroids over engaged users
 
 Embeds the content via openai (text-embedding-3-small, cached by content hash),
@@ -71,7 +71,6 @@ KIND_TO_LAYER: dict[str, str] = {
     "summary": "private-working",
     "interaction": "private-working",
     "episodic": "private-working",
-    "active-observation": "active-attention",
     "goal": "durable-intent",
     "note": "public-knowledge",
     "url": "public-knowledge",
@@ -183,8 +182,6 @@ def _list_records(did: str, collection: str) -> list[dict[str, Any]]:
 def _label_from_record(kind: str, value: dict[str, Any]) -> str:
     if kind == "goal":
         return (value.get("title") or value.get("description") or "")[:200]
-    if kind == "active-observation":
-        return (value.get("content") or "")[:200]
     if kind == "post":
         return (value.get("text") or "")[:200]
     if kind == "blog":
@@ -206,8 +203,6 @@ def _embed_text_for_record(kind: str, value: dict[str, Any]) -> str:
         title = value.get("title") or ""
         desc = value.get("description") or ""
         return f"{title}\n{desc}".strip()
-    if kind == "active-observation":
-        return value.get("content") or ""
     if kind == "post":
         return value.get("text") or ""
     if kind == "blog":
@@ -334,8 +329,8 @@ def fetch_tpuf_points(tpuf_key: str) -> list[AtlasPoint]:
 
 @task
 def fetch_pds_points() -> list[AtlasPoint]:
-    """Enumerate phi's PDS records: goals, active observations, cosmik cards,
-    blog docs, and her own posts. Embeddings computed later.
+    """Enumerate phi's PDS records: goals, cosmik cards, blog docs, and her own
+    posts. Embeddings computed later.
     """
     logger = get_run_logger()
     points: list[AtlasPoint] = []
@@ -343,7 +338,6 @@ def fetch_pds_points() -> list[AtlasPoint]:
     # (collection, point_kind_resolver) tuples. resolver returns kind given record value.
     pds_kinds: list[tuple[str, Any]] = [
         ("io.zzstoatzz.phi.goal", lambda _v: "goal"),
-        ("io.zzstoatzz.phi.observation", lambda _v: "active-observation"),
         ("app.greengale.document", lambda _v: "blog"),
         ("app.bsky.feed.post", lambda _v: "post"),
         (

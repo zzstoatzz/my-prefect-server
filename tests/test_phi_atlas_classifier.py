@@ -54,7 +54,6 @@ def test_layer_assignment_from_kind():
         ("summary", "private-working"),
         ("interaction", "private-working"),
         ("episodic", "private-working"),
-        ("active-observation", "active-attention"),
         ("goal", "durable-intent"),
         ("note", "public-knowledge"),
         ("url", "public-knowledge"),
@@ -99,13 +98,6 @@ def test_public_layers_default_to_promoted():
     for p in points:
         assert p.promotion_status == "promoted", f"{p.kind} → {p.promotion_status}"
 
-
-def test_active_attention_is_summarized():
-    """An active-observation is phi actively chewing on something — treat
-    as a working synthesis, not raw."""
-    p = _point("ao-x", "active-observation")
-    compute_lifecycle_metadata.fn([p], [])
-    assert p.promotion_status == "summarized"
 
 
 def test_private_working_promoted_when_clustered_with_public():

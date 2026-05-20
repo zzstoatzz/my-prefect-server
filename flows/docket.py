@@ -94,7 +94,7 @@ class AnchorRef(BaseModel):
     """
 
     at_uri: str
-    kind: str  # note | url | post | blog | goal | active-observation
+    kind: str  # note | url | post | blog | goal
     snippet: str = Field(default="", max_length=240)
 
 
