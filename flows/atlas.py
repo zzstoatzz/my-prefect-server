@@ -19,6 +19,7 @@ Expected env vars (set by the deployment):
 
 import os
 import platform
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -26,6 +27,7 @@ import urllib.request
 from pathlib import Path
 
 from prefect import flow, get_run_logger, task
+from prefect.tasks import exponential_backoff
 
 REPO_URL = "https://github.com/zzstoatzz/leaflet-search.git"
 CF_ACCOUNT_ID = "3e9ba01cd687b3c4d29033908177072e"
@@ -74,9 +76,12 @@ def _install_node(node_install: Path) -> Path:
     return node_bin
 
 
-@task
+@task(retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=10), retry_jitter_factor=1)
 def clone_repo(dest: Path) -> Path:
     """Shallow-clone leaflet-search to get site files + build script."""
+    # idempotent across retries: git clone refuses a non-empty destination
+    if dest.exists():
+        shutil.rmtree(dest)
     subprocess.run(
         ["git", "clone", "--depth", "1", REPO_URL, str(dest)],
         check=True,
@@ -85,7 +90,7 @@ def clone_repo(dest: Path) -> Path:
     return dest
 
 
-@task
+@task(retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=30), retry_jitter_factor=1)
 def build_atlas(repo_dir: Path) -> Path:
     """Run the build-atlas script. Returns path to atlas.json.
 
@@ -100,7 +105,10 @@ def build_atlas(repo_dir: Path) -> Path:
          "--output", str(output)],
         capture_output=True,
         text=True,
-        timeout=300,
+        # headroom: this one budget absorbs the heavy uv dep install
+        # (numpy/scipy/llvmlite/numba), the turbopuffer export, and the
+        # UMAP/HDBSCAN compute. 300s was too tight when turbopuffer is slow.
+        timeout=600,
     )
     if result.returncode != 0:
         raise RuntimeError(f"build-atlas failed:\n{result.stderr}")
@@ -112,7 +120,7 @@ def build_atlas(repo_dir: Path) -> Path:
     return output
 
 
-@task
+@task(retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=15), retry_jitter_factor=1)
 def deploy_to_pages(site_dir: Path) -> str:
     """Deploy site/ to Cloudflare Pages via wrangler.
 
