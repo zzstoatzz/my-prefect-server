@@ -1,76 +1,86 @@
-global:
-  prefect:
-    image:
-      # 3.7.0 ships the V2 UI bundle with show_promotional_content
-      # gating wired up (added in 3.6.26 + 3.6.28). 3.6.23 didn't.
-      prefectTag: 3.7.0-python3.11
+# Values for the zig prefect-server chart at
+# tangled.org/zzstoatzz.io/prefect-server/charts/prefect-server.
+#
+# Topology matches what we ran on the python chart: postgres + redis,
+# basic auth, ingress at DOMAIN_PLACEHOLDER. Differences from the python
+# values that lived here before:
+#
+#   - no `postgresql:` / `redis:` subchart blocks — zig chart is BYO,
+#     so postgres + redis live in deploy/prefect-postgres.yaml +
+#     deploy/prefect-redis.yaml as standalone manifests
+#   - no `uiConfig` / `UI_SHOW_PROMOTIONAL_CONTENT` / `UI_V2_ENABLED` —
+#     the zig server doesn't ship a UI (intentional; hub is the
+#     dashboard)
+#   - no `v2-trailing-slash` middleware annotation — that was a
+#     workaround for PrefectHQ/prefect#21912 in the python UI bundle
+#   - no `extraEnvVarsCM: prefect-docket-config` — the zig server has
+#     docket built in; no env-var bridge needed
+#
+# Operator action before `just deploy`:
+#   - PREFECT_SERVER_CHART_PATH must point at a checkout of the
+#     prefect-server repo (defaults to ../prefect-server in justfile)
 
-server:
-  replicaCount: 1
+image:
+  repository: atcr.io/zzstoatzz.io/prefect-server
+  tag: "latest"
+  pullPolicy: Always
 
-  basicAuth:
-    enabled: true
-    existingSecret: prefect-auth
+config:
+  server:
+    apiHost: "0.0.0.0"
+    port: 4200
+    loggingLevel: "INFO"
+  database:
+    backend: postgres
+    existingSecret: prefect-db-url
+    existingSecretKey: url
+  broker:
+    backend: redis
+    redis:
+      host: prefect-redis
+      port: 6379
+      db: 0
 
-  uiConfig:
-    prefectUiApiUrl: "https://DOMAIN_PLACEHOLDER/api"
+# vacuum knobs preserved from the python values. names + shape now match
+# python prefect itself (we aligned them in the zig server recently).
+extraEnv:
+  - name: PREFECT_SERVER_SERVICES_DB_VACUUM_ENABLED
+    value: "events,flow_runs"
+  - name: PREFECT_SERVER_SERVICES_DB_VACUUM_RETENTION_PERIOD
+    value: "1209600"   # 14d for flow_runs; events use PREFECT_SERVER_EVENTS_RETENTION_PERIOD default 7d
 
-  env:
-    - name: PREFECT_SERVER_UI_SHOW_PROMOTIONAL_CONTENT
-      value: "false"
-    - name: PREFECT_SERVER_UI_V2_ENABLED
-      value: "true"
-    # also set on the API pod so /api/admin/settings reflects the active
-    # vacuum config. the vacuum service itself only runs in the
-    # backgroundServices pod (see below) but keeping these aligned avoids
-    # confusion when querying the running config.
-    - name: PREFECT_SERVER_SERVICES_DB_VACUUM_ENABLED
-      value: "events,flow_runs"
-    - name: PREFECT_SERVER_SERVICES_DB_VACUUM_RETENTION_PERIOD
-      value: "1209600"  # 14d for flow_runs; events use PREFECT_EVENTS_RETENTION_PERIOD (default 7d)
-
-  extraEnvVarsCM: prefect-docket-config
-
-backgroundServices:
-  runAsSeparateDeployment: true
-  replicaCount: 1
-  env:
-    # vacuum service runs HERE (background services pod). retires the
-    # custom flows/cleanup.py weekly deployment in favor of the built-in
-    # vacuum which also handles orphaned logs / artifacts / stale
-    # artifact collections, and uses end_time rather than start_time so
-    # crashed-before-running flows get cleaned up too.
-    - name: PREFECT_SERVER_SERVICES_DB_VACUUM_ENABLED
-      value: "events,flow_runs"
-    - name: PREFECT_SERVER_SERVICES_DB_VACUUM_RETENTION_PERIOD
-      value: "1209600"  # 14d
-  extraEnvVarsCM: prefect-docket-config
-
-postgresql:
+auth:
   enabled: true
-  auth:
-    enablePostgresUser: false
-    database: prefect
-    username: prefect
-  primary:
-    persistence:
-      enabled: true
-      size: 10Gi
+  existingSecret: prefect-auth
 
-redis:
+webserver:
   enabled: true
-  architecture: standalone
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 64Mi }
+    limits:   { cpu: 1,    memory: 256Mi }
+
+services:
+  enabled: true
+  replicas: 1
+  resources:
+    requests: { cpu: 100m, memory: 64Mi }
+    limits:   { cpu: 500m, memory: 128Mi }
+
+service:
+  type: ClusterIP
+  port: 4200
 
 ingress:
   enabled: true
   className: traefik
-  host:
-    hostname: DOMAIN_PLACEHOLDER
-    path: /
-    pathType: Prefix
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    # Workaround for PrefectHQ/prefect#21912 — see deploy/v2-trailing-slash.yaml.
-    # Remove this annotation once a fixed prefect release is pinned above.
-    traefik.ingress.kubernetes.io/router.middlewares: prefect-v2-trailing-slash@kubernetescrd
-  tls: true
+  hosts:
+    - host: DOMAIN_PLACEHOLDER
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: prefect-server-tls
+      hosts: [DOMAIN_PLACEHOLDER]

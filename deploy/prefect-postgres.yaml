@@ -1,0 +1,91 @@
+# Standalone postgres for the zig prefect-server install.
+# Replaces what the bitnami `postgresql` subchart of the python prefect-helm
+# chart used to provide. The zig chart at tangled.org/zzstoatzz.io/prefect-server
+# is deliberately BYO (no subchart sprawl), so postgres lives here.
+#
+# POSTGRES_PASSWORD is injected at install time by `just deploy` from the
+# env var of the same name.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prefect-db-creds
+  namespace: prefect
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: POSTGRES_PASSWORD_PLACEHOLDER
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prefect-db-url
+  namespace: prefect
+type: Opaque
+stringData:
+  # Consumed by the zig chart via config.database.existingSecret (key: url).
+  url: "postgresql://prefect:POSTGRES_PASSWORD_PLACEHOLDER@prefect-postgres:5432/prefect"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prefect-postgres-data
+  namespace: prefect
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prefect-postgres
+  namespace: prefect
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: prefect-postgres }
+  template:
+    metadata:
+      labels: { app: prefect-postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_USER
+              value: prefect
+            - name: POSTGRES_DB
+              value: prefect
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: prefect-db-creds
+                  key: POSTGRES_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports: [{ containerPort: 5432 }]
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec: { command: [pg_isready, -U, prefect, -d, prefect] }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: 1,    memory: 1Gi }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: prefect-postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prefect-postgres
+  namespace: prefect
+spec:
+  selector: { app: prefect-postgres }
+  ports: [{ port: 5432, targetPort: 5432 }]

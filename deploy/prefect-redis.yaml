@@ -1,0 +1,40 @@
+# Standalone redis for the zig prefect-server install.
+# Replaces what the bitnami `redis` subchart of the python prefect-helm
+# chart used to provide. No auth — the service is only reachable via
+# in-cluster DNS in the `prefect` namespace.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prefect-redis
+  namespace: prefect
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: { app: prefect-redis }
+  template:
+    metadata:
+      labels: { app: prefect-redis }
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          args: [redis-server, --appendonly, "no"]
+          ports: [{ containerPort: 6379 }]
+          readinessProbe:
+            exec: { command: [redis-cli, ping] }
+            initialDelaySeconds: 1
+            periodSeconds: 2
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits:   { cpu: 500m, memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prefect-redis
+  namespace: prefect
+spec:
+  selector: { app: prefect-redis }
+  ports: [{ port: 6379, targetPort: 6379 }]

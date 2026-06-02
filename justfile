@@ -66,6 +66,8 @@ deploy:
     #!/usr/bin/env bash
     set -euo pipefail
 
+    # prefect helm repo retained for the prometheus-prefect-exporter chart
+    # only; the server itself comes from our local zig chart now.
     helm repo add prefect https://prefecthq.github.io/prefect-helm
     helm repo add jetstack https://charts.jetstack.io
     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -76,6 +78,16 @@ deploy:
     : "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}"
     : "${LETSENCRYPT_EMAIL:?set LETSENCRYPT_EMAIL}"
     GRAFANA_DOMAIN="${GRAFANA_DOMAIN:-prefect-metrics.waow.tech}"
+    # path to a checkout of tangled.org/zzstoatzz.io/prefect-server.
+    # default sibling-directory layout per [reference_repo_path_convention].
+    CHART_PATH="${PREFECT_SERVER_CHART_PATH:-../prefect-server/charts/prefect-server}"
+
+    if [ ! -f "$CHART_PATH/Chart.yaml" ]; then
+        echo "==> ERROR: prefect-server chart not found at $CHART_PATH"
+        echo "    clone tangled.org/zzstoatzz.io/prefect-server next to this repo,"
+        echo "    or set PREFECT_SERVER_CHART_PATH"
+        exit 1
+    fi
 
     echo "==> creating namespaces"
     kubectl create namespace prefect --dry-run=client -o yaml | kubectl apply -f -
@@ -97,12 +109,18 @@ deploy:
         --from-literal=auth-string="$AUTH_STRING" \
         --dry-run=client -o yaml | kubectl apply -f -
 
-    echo "==> installing prefect server"
+    echo "==> applying standalone postgres + redis (zig chart is BYO)"
+    sed "s|POSTGRES_PASSWORD_PLACEHOLDER|$POSTGRES_PASSWORD|g" deploy/prefect-postgres.yaml \
+        | kubectl apply -f -
+    kubectl apply -f deploy/prefect-redis.yaml
+    kubectl -n prefect wait --for=condition=available --timeout=120s \
+        deployment/prefect-postgres deployment/prefect-redis
+
+    echo "==> installing prefect server (zig chart from $CHART_PATH)"
     sed "s|DOMAIN_PLACEHOLDER|$DOMAIN|g" deploy/prefect-values.yaml \
-        | helm upgrade --install prefect-server prefect/prefect-server \
+        | helm upgrade --install prefect-server "$CHART_PATH" \
             --namespace prefect \
             --values - \
-            --set postgresql.auth.password="$POSTGRES_PASSWORD" \
             --wait --timeout 5m
 
     echo "==> installing monitoring stack"
