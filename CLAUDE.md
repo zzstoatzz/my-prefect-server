@@ -8,12 +8,12 @@ this file is a set of notes for us:
 - query the live server with `just prefect <args>` (e.g. `just prefect flow-run ls`); it injects `PREFECT_API_URL`/`PREFECT_API_AUTH_STRING` from `.env`. raw API: `curl -H "Authorization: Basic $(printf "$AUTH_STRING" | base64)" https://$DOMAIN/api/...`.
 - flow *runtime* secrets (`ANTHROPIC_API_KEY`, `TURBOPUFFER_API_KEY`, `CLOUDFLARE_API_TOKEN`, `TURSO_*`) are NOT in `.env` — they're Prefect Secret blocks, injected into flow pods via `job_variables.env` in `prefect.yaml`, resolved at `prefect deploy` time. flow code never touches the Secret API directly.
 
-## cluster access (kubectl / ssh to the prod node)
+## cluster access
 
-- the prod stack runs on a single Hetzner k3s node: `prefect-server.waow.tech` = `178.156.217.212`, namespace `prefect`. the local orbstack k8s context is an EMPTY copy — don't confuse it for prod.
-- kubectl: needs `kubeconfig.yaml` at the repo root (gitignored). the justfile does `export KUBECONFIG := source_directory()/kubeconfig.yaml`, so `just status` / `just logs` / `just deploy` work once it exists. if it's missing, recreate it: `scp root@178.156.217.212:/etc/rancher/k3s/k3s.yaml kubeconfig.yaml && sed -i '' 's/127.0.0.1/178.156.217.212/g' kubeconfig.yaml` (k3s API 6443 is open to the internet).
-- `just kubeconfig` is the intended path but currently breaks: it calls `just server-ip` which reads terraform output, and there's no local tfstate. use the scp above until tfstate is restored.
-- ssh to the node: `ssh root@178.156.217.212`. authorized keys: `~/.ssh/waow_ed25519` (your key) and `~/.ssh/prefect_cluster` (claude's). NOTE: `infra/main.tf` still provisions from `~/.ssh/id_ed25519.pub`, which no longer exists anywhere — a node rebuild would currently lock everyone out until that's fixed declaratively.
+- the prod stack runs on a single-node k3s cluster in the `prefect` namespace. the local orbstack k8s context is not prod — verify context before acting.
+- kubectl uses `kubeconfig.yaml` at the repo root (gitignored). the justfile exports `KUBECONFIG := source_directory()/kubeconfig.yaml`, so `just status` / `just logs` / deploy recipes target prod only once that file exists.
+- if `kubeconfig.yaml` is missing, restore it out-of-band rather than relying on ambient kubectl context. `just kubeconfig` currently depends on local terraform state, which may not be present.
+- node SSH access exists out-of-band. avoid committing host/IP/key details; check local operator notes or ask the user when needed.
 
 ## conventions
 

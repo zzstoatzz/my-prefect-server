@@ -8,9 +8,8 @@
 #   - no `postgresql:` / `redis:` subchart blocks — zig chart is BYO,
 #     so postgres + redis live in deploy/prefect-postgres.yaml +
 #     deploy/prefect-redis.yaml as standalone manifests
-#   - no `uiConfig` / `UI_SHOW_PROMOTIONAL_CONTENT` / `UI_V2_ENABLED` —
-#     the zig server doesn't ship a UI (intentional; hub is the
-#     dashboard)
+#   - the server image carries only the Prefect React v2 UI bundle, served at
+#     `/` as the only UI. The old UI is not bundled.
 #   - no `v2-trailing-slash` middleware annotation — that was a
 #     workaround for PrefectHQ/prefect#21912 in the python UI bundle
 #   - no `extraEnvVarsCM: prefect-docket-config` — the zig server has
@@ -22,14 +21,17 @@
 
 image:
   repository: atcr.io/zzstoatzz.io/prefect-server
-  tag: "latest"
-  pullPolicy: Always
+  tag: "prod-clean-schema-20260604-1"
+  pullPolicy: IfNotPresent
 
 config:
   server:
     apiHost: "0.0.0.0"
     port: 4200
     loggingLevel: "INFO"
+  ui:
+    staticDir: /app/ui
+    serveBase: /
   database:
     backend: postgres
     existingSecret: prefect-db-url
@@ -82,5 +84,5 @@ ingress:
         - path: /
           pathType: Prefix
   tls:
-    - secretName: prefect-server-tls
+    - secretName: prefect-server.waow.tech-tls
       hosts: [DOMAIN_PLACEHOLDER]

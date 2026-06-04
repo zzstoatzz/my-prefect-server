@@ -33,7 +33,18 @@ destroy:
 
 # get the server IP from terraform
 server-ip:
-    @terraform -chdir=infra output -raw server_ip
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if IP=$(terraform -chdir=infra output -raw server_ip 2>/dev/null) && [ -n "$IP" ]; then
+        printf '%s\n' "$IP"
+        exit 0
+    fi
+    if [ -f kubeconfig.yaml ]; then
+        ruby -ryaml -ruri -e 'puts URI(YAML.load_file("kubeconfig.yaml")["clusters"][0]["cluster"]["server"]).host'
+        exit 0
+    fi
+    echo "no terraform state or kubeconfig.yaml available" >&2
+    exit 1
 
 # ssh into the server
 ssh:
@@ -66,9 +77,6 @@ deploy:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    # prefect helm repo retained for the prometheus-prefect-exporter chart
-    # only; the server itself comes from our local zig chart now.
-    helm repo add prefect https://prefecthq.github.io/prefect-helm
     helm repo add jetstack https://charts.jetstack.io
     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
     helm repo update
@@ -144,12 +152,6 @@ deploy:
             | kubectl label --local -f - grafana_dashboard=1 -o yaml \
             | kubectl apply -f -
     done
-
-    echo "==> installing prefect exporter"
-    helm upgrade --install prometheus-prefect-exporter prefect/prometheus-prefect-exporter \
-        --namespace prefect \
-        --values deploy/exporter-values.yaml \
-        --wait --timeout 2m
 
     echo ""
     echo "done. point DNS:"

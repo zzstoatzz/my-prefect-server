@@ -18,6 +18,8 @@ async def main():
         # 2. patch variables with defaults for volumes, volume_mounts, env
         props = t.setdefault("variables", {}).setdefault("properties", {})
 
+        props.setdefault("namespace", {})["default"] = "prefect"
+
         vols = props.setdefault("volumes", {}).setdefault("default", [])
         # prefect result cache PVC
         pvc_vol = {

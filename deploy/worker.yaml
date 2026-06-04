@@ -31,6 +31,10 @@ spec:
                 secretKeyRef:
                   name: prefect-auth
                   key: auth-string
+            - name: PREFECT_INTEGRATIONS_KUBERNETES_WORKER_API_AUTH_STRING_SECRET_NAME
+              value: prefect-auth
+            - name: PREFECT_INTEGRATIONS_KUBERNETES_WORKER_API_AUTH_STRING_SECRET_KEY
+              value: auth-string
             - name: PREFECT_INTEGRATIONS_KUBERNETES_OBSERVER_NAMESPACES
               value: prefect
 ---
