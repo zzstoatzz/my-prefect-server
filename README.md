@@ -61,6 +61,9 @@ just worker            # deploy the kubernetes worker
 just storage           # create analytics hostPath + results PVC, patch work pool
 ```
 
+Zig server adoption/migration details live in
+[notes/zig-prefect-server-migration.md](notes/zig-prefect-server-migration.md).
+
 after `deploy`, point your DNS:
 - `$DOMAIN` → server IP (`just server-ip`)
 - `$GRAFANA_DOMAIN` → same IP (default: `prefect-metrics.waow.tech`)
