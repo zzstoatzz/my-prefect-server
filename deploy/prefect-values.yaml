@@ -21,8 +21,10 @@
 
 image:
   repository: atcr.io/zzstoatzz.io/prefect-server
-  tag: "prod-clean-schema-20260604-1"
+  tag: "prod-runs-count-20260604"
   pullPolicy: IfNotPresent
+  pullSecrets:
+    - atcr-creds
 
 config:
   server:
