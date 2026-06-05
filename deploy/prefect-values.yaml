@@ -21,7 +21,7 @@
 
 image:
   repository: atcr.io/zzstoatzz.io/prefect-server
-  tag: "ReleaseFast-d2e7494"
+  tag: "ReleaseFast-a7d8c36"
   pullPolicy: IfNotPresent
   pullSecrets:
     - atcr-creds
@@ -52,6 +52,8 @@ extraEnv:
     value: "events,flow_runs"
   - name: PREFECT_SERVER_SERVICES_DB_VACUUM_RETENTION_PERIOD
     value: "1209600"   # 14d for flow_runs; events use PREFECT_SERVER_EVENTS_RETENTION_PERIOD default 7d
+  - name: PREFECT_SERVER_UI_SHOW_PROMOTIONAL_CONTENT
+    value: "false"
 
 auth:
   enabled: true
