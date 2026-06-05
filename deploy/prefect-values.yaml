@@ -21,7 +21,7 @@
 
 image:
   repository: atcr.io/zzstoatzz.io/prefect-server
-  tag: "prod-runs-count-20260604"
+  tag: "prod-task-filters-20260605"
   pullPolicy: IfNotPresent
   pullSecrets:
     - atcr-creds
