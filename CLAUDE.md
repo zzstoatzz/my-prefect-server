@@ -31,3 +31,21 @@ this file is a set of notes for us:
 - per-deployment overrides (e.g. `--python 3.13` for dbt compat) go in `work_pool.job_variables.command`, not at the deployment root
 - requires-python is >=3.13 (not 3.14) so the enrich flow can run dbt under python 3.13
 - we maintain prefect-dbt — never suggest replacing PrefectDbtOrchestrator with subprocess calls
+
+## running flows ad hoc
+
+- Flow files under `flows/` are ordinary Python modules. Most have an
+  `if __name__ == "__main__"` entrypoint, so they can be run directly for
+  local/debug execution, e.g. `uv run python flows/diagnostics.py` or
+  `uv run python flows/phi_atlas.py --dry-run`.
+- Direct local execution is useful for debugging pure Python behavior, but be
+  careful with write paths: default local storage may be `/tmp`, not the
+  production analytics PVC, and flow code that calls `Secret.load(...)` still
+  needs `PREFECT_API_URL`/`PREFECT_API_AUTH_STRING` pointed at the live server.
+- To exercise the real production worker, work pool, pull steps, job variables,
+  PVC mounts, and injected secret-block values, run deployments through the
+  Prefect API: `just prefect deployment run 'diagnostics/diagnostics' --watch`
+  or `just prefect deployment run 'ingest/ingest' --watch`.
+- `prefect.yaml` is the source of truth for deployment schedules, triggers,
+  parameters, and per-deployment job variables. Re-register with
+  `just prefect deploy --all` after dependency or flow changes.
