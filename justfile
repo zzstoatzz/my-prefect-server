@@ -100,6 +100,7 @@ deploy:
     echo "==> creating namespaces"
     kubectl create namespace prefect --dry-run=client -o yaml | kubectl apply -f -
     kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
+    kubectl apply -f deploy/prefect-limits.yaml
 
     echo "==> installing cert-manager"
     helm upgrade --install cert-manager jetstack/cert-manager \
@@ -160,6 +161,7 @@ deploy:
 
 # apply the kubernetes worker
 worker:
+    kubectl apply -f deploy/prefect-limits.yaml
     kubectl apply -f deploy/worker.yaml
 
 # build the Zig Prefect server on the Hetzner node and import it into k3s
@@ -239,6 +241,7 @@ storage: _analytics-dir
     : "${DOMAIN:?set DOMAIN}"
     : "${AUTH_STRING:?set AUTH_STRING}"
     echo "==> creating results PVC"
+    kubectl apply -f deploy/prefect-limits.yaml
     kubectl apply -f deploy/results-pvc.yaml
     echo "==> patching kubernetes-pool base job template"
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \

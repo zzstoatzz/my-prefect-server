@@ -52,6 +52,14 @@ async def main():
         # use python 3.14 base image (uv is pre-installed)
         props.setdefault("image", {})["default"] = "prefecthq/prefect:3-python3.14-kubernetes"
 
+        # Keep flow pods out of Kubernetes BestEffort QoS. Without explicit
+        # memory resources, one heavy Python job can trigger global node OOM
+        # instead of being contained by its own cgroup.
+        props.setdefault("cpu_request", {})["default"] = "250m"
+        props.setdefault("cpu_limit", {})["default"] = "2"
+        props.setdefault("memory_request", {})["default"] = "1536Mi"
+        props.setdefault("memory_limit", {})["default"] = "1536Mi"
+
         # clean up finished job pods after 5 minutes — prevents overlayfs snapshot accumulation
         props.setdefault("finished_job_ttl", {})["default"] = 300
 

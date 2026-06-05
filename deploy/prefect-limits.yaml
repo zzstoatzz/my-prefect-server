@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: prefect-container-defaults
+  namespace: prefect
+spec:
+  limits:
+    - type: Container
+      # Safety net for any pod created in the namespace without explicit
+      # resources. Flow jobs should get their explicit values from the work
+      # pool template, but this keeps accidental BestEffort pods out.
+      defaultRequest:
+        cpu: 100m
+        memory: 512Mi
+      default:
+        cpu: "2"
+        memory: 1536Mi

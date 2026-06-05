@@ -37,6 +37,13 @@ spec:
               value: auth-string
             - name: PREFECT_INTEGRATIONS_KUBERNETES_OBSERVER_NAMESPACES
               value: prefect
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
 ---
 apiVersion: v1
 kind: ServiceAccount
