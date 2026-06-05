@@ -132,11 +132,21 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
         env:
+          OMP_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+          MKL_NUM_THREADS: "1"
+          VECLIB_MAXIMUM_THREADS: "1"
+          NUMBA_NUM_THREADS: "1"
+          MALLOC_ARENA_MAX: "2"
           TURBOPUFFER_API_KEY: "{{ prefect.blocks.secret.tpuf-token }}"
           CLOUDFLARE_API_TOKEN: "{{ prefect.blocks.secret.cloudflare-api-token }}"
           ANTHROPIC_API_KEY: "{{ prefect.blocks.secret.anthropic-api-key }}"
           TURSO_URL: "{{ prefect.blocks.secret.turso-url }}"
           TURSO_TOKEN: "{{ prefect.blocks.secret.turso-token }}"
+        cpu_request: 500m
+        cpu_limit: "2"
+        memory_request: 3Gi
+        memory_limit: 3Gi
     schedules:
       - cron: "0 */6 * * *"  # every 6 hours
 
