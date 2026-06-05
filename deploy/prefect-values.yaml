@@ -21,7 +21,7 @@
 
 image:
   repository: atcr.io/zzstoatzz.io/prefect-server
-  tag: "prod-task-filters-20260605"
+  tag: "ReleaseFast-a510c81"
   pullPolicy: IfNotPresent
   pullSecrets:
     - atcr-creds

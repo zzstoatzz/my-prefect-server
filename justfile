@@ -162,6 +162,76 @@ deploy:
 worker:
     kubectl apply -f deploy/worker.yaml
 
+# build the Zig Prefect server on the Hetzner node and import it into k3s
+publish-server-remote optimize="ReleaseFast":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    SERVER=$(just server-ip)
+    OPTIMIZE="{{ optimize }}"
+    LABEL="$OPTIMIZE"
+
+    ssh root@"$SERVER" "cat > /tmp/prefect-server-build.sh" <<SCRIPT
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if ! command -v zig >/dev/null 2>&1; then
+      echo "==> installing zig 0.16.0 on node"
+      mkdir -p /opt/zig
+      if [ ! -x /opt/zig/zig-x86_64-linux-0.16.0/zig ]; then
+        curl -fsSL https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz \
+          | tar -xJ -C /opt/zig
+      fi
+      ln -sf /opt/zig/zig-x86_64-linux-0.16.0/zig /usr/local/bin/zig
+    fi
+
+    if [ ! -d /opt/prefect-server/.git ]; then
+      echo "==> cloning prefect-server"
+      rm -rf /opt/prefect-server
+      git clone https://tangled.sh/zzstoatzz.io/prefect-server.git /opt/prefect-server
+    fi
+
+    cd /opt/prefect-server
+    git fetch origin main
+    git checkout main
+    git reset --hard origin/main
+
+    TAG=\$(git rev-parse --short HEAD)
+    IMAGE="atcr.io/zzstoatzz.io/prefect-server:${LABEL}-\${TAG}"
+
+    echo "==> building binary (\${TAG}, ${OPTIMIZE})"
+    zig build -Doptimize=${OPTIMIZE} -Dtarget=x86_64-linux-musl
+
+    echo "==> collecting runtime libraries"
+    rm -rf runtime-lib
+    mkdir -p runtime-lib
+    find .zig-cache -name "libfacil.io.so" -exec cp {} runtime-lib/ \; 2>/dev/null || true
+
+    echo "==> building container image (\${IMAGE})"
+    buildah bud -t "\${IMAGE}" -f Dockerfile.runtime .
+
+    echo "==> importing into k3s containerd"
+    buildah push "\${IMAGE}" docker-archive:/tmp/prefect-server.tar:"\${IMAGE}"
+    ctr -n k8s.io images import /tmp/prefect-server.tar
+    rm -f /tmp/prefect-server.tar
+
+    echo "==> updating deployments"
+    kubectl set image deployment/prefect-server-webserver -n prefect prefect-server="\${IMAGE}"
+    kubectl set image deployment/prefect-server-services -n prefect prefect-server="\${IMAGE}"
+    kubectl rollout status deployment/prefect-server-webserver -n prefect --timeout=180s
+    kubectl rollout status deployment/prefect-server-services -n prefect --timeout=180s
+
+    echo "==> deployed \${IMAGE}"
+    SCRIPT
+
+    ssh root@"$SERVER" 'setsid bash /tmp/prefect-server-build.sh >/tmp/prefect-server-deploy.log 2>&1 </dev/null & echo $! >/tmp/prefect-server-deploy.pid'
+    echo "==> build running detached on $SERVER (log: /tmp/prefect-server-deploy.log)"
+    echo "==> safe to disconnect now — reattach with: just server-deploy-logs"
+    ssh root@"$SERVER" 'tail -n +1 -f /tmp/prefect-server-deploy.log & TPID=$!; PID=$(cat /tmp/prefect-server-deploy.pid); while kill -0 "$PID" 2>/dev/null; do sleep 2; done; sleep 1; kill "$TPID" 2>/dev/null' || true
+
+# follow the most recent remote Prefect server deploy log
+server-deploy-logs:
+    SERVER=$(just server-ip); ssh root@"$SERVER" 'tail -n 200 -f /tmp/prefect-server-deploy.log'
+
 # create the analytics hostPath + results PVC and patch the work pool
 storage: _analytics-dir
     #!/usr/bin/env bash
