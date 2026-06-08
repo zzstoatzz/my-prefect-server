@@ -21,7 +21,7 @@
 
 image:
   repository: atcr.io/zzstoatzz.io/prefect-server
-  tag: "ReleaseFast-b7ef753"
+  tag: "ReleaseFast-7b18da4"
   pullPolicy: IfNotPresent
   pullSecrets:
     - atcr-creds
