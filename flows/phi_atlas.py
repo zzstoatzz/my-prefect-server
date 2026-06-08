@@ -942,9 +942,9 @@ async def phi_atlas(dry_run: bool = False) -> dict[str, int]:
     phi_password = (await Secret.load("atproto-password")).get()
 
     # phase A — gather raw points + the cosmik connection graph
-    tpuf_points = fetch_tpuf_points(tpuf_key)
-    pds_points = fetch_pds_points()
-    connections = fetch_cosmik_connections()
+    tpuf_points = fetch_tpuf_points.fn(tpuf_key)
+    pds_points = fetch_pds_points.fn()
+    connections = fetch_cosmik_connections.fn()
     points = tpuf_points + pds_points
     logger.info(
         f"total points: {len(points)} (tpuf={len(tpuf_points)}, pds={len(pds_points)}); "
@@ -952,18 +952,18 @@ async def phi_atlas(dry_run: bool = False) -> dict[str, int]:
     )
 
     # phase B — embed + add handle centroids
-    points = embed_points(points, openai_key)
-    points = compute_handle_centroids(points)
+    points = embed_points.fn(points, openai_key)
+    points = compute_handle_centroids.fn(points)
     logger.info(f"points with vectors: {_embedded_point_count(points)}")
 
     # phase C — reduce + cluster + label
-    points = reduce_to_2d(points)
-    points = cluster_points(points)
-    coarse_labels, fine_labels = await label_clusters(points, anthropic_key)
+    points = reduce_to_2d.fn(points)
+    points = cluster_points.fn(points)
+    coarse_labels, fine_labels = await label_clusters.fn(points, anthropic_key)
 
     # phase D — lifecycle + neighbors
-    points = compute_lifecycle_metadata(points, connections)
-    points = compute_neighbor_ids(points)
+    points = compute_lifecycle_metadata.fn(points, connections)
+    points = compute_neighbor_ids.fn(points)
 
     # phase E — assemble + upload
     point_count = _embedded_point_count(points)
