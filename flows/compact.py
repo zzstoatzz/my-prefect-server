@@ -552,8 +552,8 @@ def write_likes_observations_to_turbopuffer(
         elif action == "UPDATE":
             updated += 1
 
-    logger.info(f"likes observations: {added} added, {updated} updated, "
-                f"{sum(1 for o in observations if o.get('action', '').upper() == 'NOOP')} skipped")
+    skipped = sum(1 for o in observations if o.get("action", "").upper() == "NOOP")
+    logger.info(f"likes observations: {added} added, {updated} updated, {skipped} skipped")
 
 
 @flow(name="compact", log_prints=True)
@@ -573,6 +573,8 @@ async def compact():
     profiles = load_user_profiles(snap_path)
     logger.info(f"found {len(profiles)} users above threshold")
 
+    summaries_written = 0
+    sample_handles: list[str] = []
     for profile in profiles:
         handle = profile["handle"]
         bsky_profile = resolve_bsky_profile(handle)
@@ -585,10 +587,18 @@ async def compact():
             bsky_profile=bsky_profile,
         )
         write_summary_to_turbopuffer(tpuf_key, openai_key, handle, summary)
-        logger.info(f"@{handle}: compacted {profile['observation_count']} observations")
+        summaries_written += 1
+        if len(sample_handles) < 5:
+            sample_handles.append(f"@{handle}:{profile['observation_count']}")
+    if sample_handles:
+        logger.info(
+            f"compacted {summaries_written} user summaries; sample={', '.join(sample_handles)}"
+        )
 
     # --- phase 2: extract observations from liked posts ---
     liked_by_author = load_recent_liked_posts(snap_path)
+    all_observations: list[dict[str, Any]] = []
+    actionable: list[dict[str, Any]] = []
     if liked_by_author:
         # limit to top 15 most-liked unique authors
         top_authors = sorted(
@@ -596,7 +606,6 @@ async def compact():
         )[:15]
         logger.info(f"extracting observations from {len(top_authors)} liked authors")
 
-        all_observations: list[dict[str, Any]] = []
         for handle, posts in top_authors:
             liked_posts_text = _format_liked_posts(posts)
             if not liked_posts_text.strip():

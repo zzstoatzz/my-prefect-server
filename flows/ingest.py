@@ -413,6 +413,10 @@ def ingest(only_unread: bool = True):
         if key not in seen:
             seen.add(key)
             refs.append(ref)
+    logger.info(
+        f"github refs: {len(notif_refs)} notifications, {len(authored_refs)} authored, "
+        f"{len(refs)} unique"
+    )
 
     # fetch full issue/PR details (cached)
     gh_items: list[IssueOrPR] = []

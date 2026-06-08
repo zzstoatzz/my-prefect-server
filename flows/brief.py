@@ -129,13 +129,14 @@ async def brief():
     api_key = (await Secret.load("anthropic-api-key")).get()
 
     items_text = load_items(db_path)
-    logger.info(f"loaded {items_text.count(chr(10)) + 1} items for curation")
+    item_count = 0 if not items_text.strip() else items_text.count(chr(10)) + 1
+    logger.info(f"loaded {item_count} items for curation")
 
     briefing = await generate_briefing(items_text, api_key)
     briefing.generated_at = datetime.now(timezone.utc).isoformat()
 
     write_briefing(briefing, briefing_path)
-    logger.info(f"wrote briefing: {briefing.headline}")
+    logger.info(f"wrote briefing: {briefing.headline} ({briefing_path})")
 
 
 if __name__ == "__main__":
