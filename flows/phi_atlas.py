@@ -24,6 +24,7 @@ blocks at deploy time):
 
 import asyncio
 import gc
+import gzip
 import hashlib
 import json
 import os
@@ -31,7 +32,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import duckdb
 import httpx
 import numpy as np
 import turbopuffer
@@ -39,6 +39,7 @@ from openai import OpenAI
 from prefect import flow, get_run_logger, task
 from prefect.blocks.system import Secret
 from prefect.cache_policies import NONE
+from prefect.exceptions import MissingContextError
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel
@@ -891,34 +892,29 @@ def upload_atlas_to_pds(
     return result
 
 
-# duckdb archive — append-only history
-def _db_path() -> str:
-    return os.environ.get(
-        "ANALYTICS_DB_PATH",
-        os.environ.get("PREFECT_LOCAL_STORAGE_PATH", "/tmp") + "/analytics.duckdb",
-    )
-
-
 @task
-def archive_to_duckdb(atlas_json: str, point_count: int) -> None:
-    """Append the atlas run to raw_phi_atlas_runs for historical analysis."""
-    db = duckdb.connect(_db_path())
-    db.execute(
-        """
-        CREATE TABLE IF NOT EXISTS raw_phi_atlas_runs (
-            generated_at TIMESTAMP,
-            point_count INTEGER,
-            atlas_json VARCHAR,
-            fetched_at TIMESTAMP DEFAULT now()
-        )
-        """
+def archive_atlas_json(atlas_json: str, generated_at: str, point_count: int) -> str:
+    """Archive the atlas JSON without loading DuckDB in this memory-hot pod."""
+    archive_dir = (
+        Path(os.environ.get("PREFECT_LOCAL_STORAGE_PATH", "/tmp")) / "phi-atlas-runs"
     )
-    db.execute(
-        "INSERT INTO raw_phi_atlas_runs (generated_at, point_count, atlas_json) "
-        "VALUES (?, ?, ?)",
-        [datetime.now(UTC), point_count, atlas_json],
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    safe_generated_at = (
+        generated_at.replace(":", "")
+        .replace("+", "")
+        .replace(".", "-")
+        .replace("T", "_")
     )
-    db.close()
+    path = archive_dir / f"{safe_generated_at}_{point_count}.json.gz"
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with gzip.open(tmp_path, "wt", encoding="utf-8") as handle:
+        handle.write(atlas_json)
+    os.replace(tmp_path, path)
+    try:
+        get_run_logger().info(f"archived atlas JSON to {path}")
+    except MissingContextError:
+        pass
+    return str(path)
 
 
 # ---------------------------------------------------------------------------
@@ -989,7 +985,7 @@ async def phi_atlas(dry_run: bool = False) -> dict[str, int]:
     atlas_bytes = atlas_json.encode("utf-8")
     upload_atlas_to_pds(atlas_bytes, atlas.point_count, phi_handle, phi_password)
     del atlas_bytes
-    archive_to_duckdb(atlas_json, atlas.point_count)
+    archive_atlas_json(atlas_json, atlas.generated_at, atlas.point_count)
 
     return {"point_count": atlas.point_count, "dry_run": 0}
 
