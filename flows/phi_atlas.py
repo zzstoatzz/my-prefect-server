@@ -23,6 +23,7 @@ blocks at deploy time):
 """
 
 import asyncio
+import gc
 import hashlib
 import json
 import os
@@ -803,6 +804,7 @@ def _assemble_atlas(
     points: list[AtlasPoint],
     coarse_labels: dict[int, str],
     fine_labels: dict[int, str],
+    point_count: int,
 ) -> Atlas:
     clusters_coarse = _cluster_summaries(points, "cluster_coarse", coarse_labels)
     clusters_fine = _cluster_summaries(
@@ -813,19 +815,29 @@ def _assemble_atlas(
         embedding_model=EMBEDDING_MODEL,
         reducer="umap",
         clusterer="hdbscan",
-        point_count=len([p for p in points if p._vector is not None]),
+        point_count=point_count,
         clusters_coarse=clusters_coarse,
         clusters_fine=clusters_fine,
         points=points,
     )
 
 
-def _atlas_to_json_bytes(atlas: Atlas) -> bytes:
+def _embedded_point_count(points: list[AtlasPoint]) -> int:
+    return sum(1 for p in points if p._vector is not None)
+
+
+def _drop_intermediate_payloads(points: list[AtlasPoint]) -> None:
+    """Release vector/content payloads before JSON upload/archive."""
+    for point in points:
+        point._vector = None
+        point._content = ""
+    gc.collect()
+
+
+def _atlas_to_json(atlas: Atlas) -> str:
     """Serialize atlas to JSON. Private fields on AtlasPoint (_content,
     _vector) are pydantic v2 PrivateAttrs and excluded by model_dump."""
-    return json.dumps(
-        atlas.model_dump(), indent=None, separators=(",", ":")
-    ).encode("utf-8")
+    return json.dumps(atlas.model_dump(), indent=None, separators=(",", ":"))
 
 
 @task
@@ -888,7 +900,7 @@ def _db_path() -> str:
 
 
 @task
-def archive_to_duckdb(atlas_bytes: bytes, point_count: int) -> None:
+def archive_to_duckdb(atlas_json: str, point_count: int) -> None:
     """Append the atlas run to raw_phi_atlas_runs for historical analysis."""
     db = duckdb.connect(_db_path())
     db.execute(
@@ -904,7 +916,7 @@ def archive_to_duckdb(atlas_bytes: bytes, point_count: int) -> None:
     db.execute(
         "INSERT INTO raw_phi_atlas_runs (generated_at, point_count, atlas_json) "
         "VALUES (?, ?, ?)",
-        [datetime.now(UTC), point_count, atlas_bytes.decode("utf-8")],
+        [datetime.now(UTC), point_count, atlas_json],
     )
     db.close()
 
@@ -942,7 +954,7 @@ async def phi_atlas(dry_run: bool = False) -> dict[str, int]:
     # phase B — embed + add handle centroids
     points = embed_points(points, openai_key)
     points = compute_handle_centroids(points)
-    logger.info(f"points with vectors: {sum(1 for p in points if p._vector is not None)}")
+    logger.info(f"points with vectors: {_embedded_point_count(points)}")
 
     # phase C — reduce + cluster + label
     points = reduce_to_2d(points)
@@ -954,12 +966,14 @@ async def phi_atlas(dry_run: bool = False) -> dict[str, int]:
     points = compute_neighbor_ids(points)
 
     # phase E — assemble + upload
-    atlas = _assemble_atlas(points, coarse_labels, fine_labels)
-    atlas_bytes = _atlas_to_json_bytes(atlas)
+    point_count = _embedded_point_count(points)
+    _drop_intermediate_payloads(points)
+    atlas = _assemble_atlas(points, coarse_labels, fine_labels, point_count)
+    atlas_json = _atlas_to_json(atlas)
     logger.info(
         f"atlas: {atlas.point_count} points, "
         f"{len(atlas.clusters_coarse)} coarse / {len(atlas.clusters_fine)} fine clusters, "
-        f"{len(atlas_bytes) / 1024:.0f} KB"
+        f"{len(atlas_json.encode('utf-8')) / 1024:.0f} KB"
     )
 
     # promotion_status distribution — useful for at-a-glance health
@@ -972,8 +986,10 @@ async def phi_atlas(dry_run: bool = False) -> dict[str, int]:
         logger.info("dry-run: skipping PDS upload and DuckDB archive")
         return {"point_count": atlas.point_count, "dry_run": 1}
 
+    atlas_bytes = atlas_json.encode("utf-8")
     upload_atlas_to_pds(atlas_bytes, atlas.point_count, phi_handle, phi_password)
-    archive_to_duckdb(atlas_bytes, atlas.point_count)
+    del atlas_bytes
+    archive_to_duckdb(atlas_json, atlas.point_count)
 
     return {"point_count": atlas.point_count, "dry_run": 0}
 
