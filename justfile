@@ -171,6 +171,24 @@ publish-server-remote optimize="ReleaseFast":
     SERVER=$(just server-ip)
     OPTIMIZE="{{ optimize }}"
     LABEL="$OPTIMIZE"
+    SERVER_SRC="${PREFECT_SERVER_SOURCE:-../prefect-server}"
+    if [ ! -d "$SERVER_SRC/.git" ]; then
+      echo "ABORT: PREFECT_SERVER_SOURCE must point to the prefect-server checkout"
+      echo "current value: $SERVER_SRC"
+      exit 1
+    fi
+    if [ -n "$(git -C "$SERVER_SRC" status --porcelain)" ]; then
+      echo "ABORT: $SERVER_SRC working tree is dirty — refusing to build unreconstructable source"
+      git -C "$SERVER_SRC" status --porcelain
+      exit 1
+    fi
+
+    echo "==> syncing prefect-server source to $SERVER"
+    rsync -az --delete \
+      --exclude='.zig-cache' --exclude='zig-out' --exclude='runtime-lib' \
+      --exclude='.env' \
+      "$SERVER_SRC"/ root@"$SERVER":/opt/prefect-server/
+    ssh root@"$SERVER" 'chown -R root:root /opt/prefect-server'
 
     ssh root@"$SERVER" "cat > /tmp/prefect-server-build.sh" <<SCRIPT
     #!/usr/bin/env bash
@@ -186,16 +204,12 @@ publish-server-remote optimize="ReleaseFast":
       ln -sf /opt/zig/zig-x86_64-linux-0.16.0/zig /usr/local/bin/zig
     fi
 
-    if [ ! -d /opt/prefect-server/.git ]; then
-      echo "==> cloning prefect-server"
-      rm -rf /opt/prefect-server
-      git clone https://tangled.sh/zzstoatzz.io/prefect-server.git /opt/prefect-server
-    fi
-
     cd /opt/prefect-server
-    git fetch origin main
-    git checkout main
-    git reset --hard origin/main
+    if [ -n "\$(git status --porcelain)" ]; then
+      echo "ABORT: /opt/prefect-server working tree is dirty after sync"
+      git status --porcelain
+      exit 1
+    fi
 
     TAG=\$(git rev-parse --short HEAD)
     IMAGE="atcr.io/zzstoatzz.io/prefect-server:${LABEL}-\${TAG}"
