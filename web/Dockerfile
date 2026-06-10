@@ -6,5 +6,5 @@ COPY . .
 RUN bun run build
 EXPOSE 3000
 ENV NODE_ENV=production
-ENV DUCKDB_PATH=/analytics/analytics.duckdb
+ENV DUCKDB_PATH=/analytics/hub.duckdb
 CMD ["bun", "build/index.js"]
