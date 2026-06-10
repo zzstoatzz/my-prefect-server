@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 import datetime as dt
+import fcntl
 import hashlib
 import json
 import os
-import time
 from dataclasses import asdict, is_dataclass
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
-import duckdb
 from genai_prices import calc_price
 from genai_prices.types import Usage
 
@@ -39,11 +39,12 @@ CREATE TABLE IF NOT EXISTS raw_llm_spend (
 """
 
 
-def analytics_db_path() -> str:
-    return os.environ.get(
-        "ANALYTICS_DB_PATH",
-        os.environ.get("PREFECT_LOCAL_STORAGE_PATH", "/tmp") + "/analytics.duckdb",
-    )
+def spend_log_path() -> str:
+    if path := os.environ.get("LLM_SPEND_LOG_PATH"):
+        return path
+    if analytics_db := os.environ.get("ANALYTICS_DB_PATH"):
+        return str(Path(analytics_db).with_name("llm-spend.jsonl"))
+    return os.environ.get("PREFECT_LOCAL_STORAGE_PATH", "/tmp") + "/llm-spend.jsonl"
 
 
 def _runtime_value(module_name: str, attr: str) -> str:
@@ -90,12 +91,6 @@ def _request_count(result: Any) -> int:
     return _int(getattr(raw_usage, "requests", 1)) or 1
 
 
-def _metadata_json(metadata: dict[str, Any] | None) -> str:
-    if not metadata:
-        return "{}"
-    return json.dumps(metadata, default=str, separators=(",", ":"))
-
-
 def _row_id(
     *,
     recorded_at: dt.datetime,
@@ -118,9 +113,23 @@ def _row_id(
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[:32]
 
 
+def _append_jsonl(path: str, event: dict[str, Any]) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    line = json.dumps(event, default=str, separators=(",", ":"), sort_keys=True) + "\n"
+    with target.open("a", encoding="utf-8") as fp:
+        fcntl.flock(fp.fileno(), fcntl.LOCK_EX)
+        try:
+            fp.write(line)
+            fp.flush()
+            os.fsync(fp.fileno())
+        finally:
+            fcntl.flock(fp.fileno(), fcntl.LOCK_UN)
+
+
 def record_usage(
     *,
-    db_path: str | None = None,
+    log_path: str | None = None,
     task_name: str,
     provider: str,
     model: str,
@@ -143,8 +152,8 @@ def record_usage(
             provider_id=provider,
             genai_request_timestamp=recorded_at,
         )
-        row = (
-            _row_id(
+        event = {
+            "id": _row_id(
                 recorded_at=recorded_at,
                 flow_run_id=flow_run_id,
                 task_name=task_name,
@@ -153,43 +162,24 @@ def record_usage(
                 usage=usage,
                 metadata=metadata,
             ),
-            recorded_at,
-            flow_name,
-            flow_run_id,
-            task_name,
-            provider,
-            model,
-            request_count,
-            _int(usage.input_tokens),
-            _int(usage.cache_write_tokens),
-            _int(usage.cache_read_tokens),
-            _int(usage.output_tokens),
-            _int(usage.input_tokens) + _int(usage.output_tokens),
-            _money(price.input_price),
-            _money(price.output_price),
-            _money(price.total_price),
-            _metadata_json(metadata),
-        )
-        path = db_path or analytics_db_path()
-        last_error: Exception | None = None
-        for delay in (0.0, 0.1, 0.3, 0.7):
-            if delay:
-                time.sleep(delay)
-            try:
-                con = duckdb.connect(path)
-                try:
-                    con.execute(RAW_LLM_SPEND_SCHEMA)
-                    con.execute(
-                        "INSERT OR REPLACE INTO raw_llm_spend VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        row,
-                    )
-                    return
-                finally:
-                    con.close()
-            except Exception as exc:
-                last_error = exc
-        if last_error:
-            raise last_error
+            "recorded_at": recorded_at.isoformat(),
+            "flow_name": flow_name,
+            "flow_run_id": flow_run_id,
+            "task_name": task_name,
+            "provider": provider,
+            "model": model,
+            "request_count": request_count,
+            "input_tokens": _int(usage.input_tokens),
+            "cache_write_tokens": _int(usage.cache_write_tokens),
+            "cache_read_tokens": _int(usage.cache_read_tokens),
+            "output_tokens": _int(usage.output_tokens),
+            "total_tokens": _int(usage.input_tokens) + _int(usage.output_tokens),
+            "input_cost_usd": _money(price.input_price),
+            "output_cost_usd": _money(price.output_price),
+            "total_cost_usd": _money(price.total_price),
+            "metadata": metadata or {},
+        }
+        _append_jsonl(log_path or spend_log_path(), event)
     except Exception:
         return
 
@@ -201,10 +191,10 @@ def record_pydantic_ai_result(
     provider: str = "anthropic",
     result: Any,
     metadata: dict[str, Any] | None = None,
-    db_path: str | None = None,
+    log_path: str | None = None,
 ) -> None:
     record_usage(
-        db_path=db_path,
+        log_path=log_path,
         task_name=task_name,
         provider=provider,
         model=model,
@@ -221,7 +211,7 @@ def record_openai_embedding_response(
     response: Any,
     item_count: int | None = None,
     metadata: dict[str, Any] | None = None,
-    db_path: str | None = None,
+    log_path: str | None = None,
 ) -> None:
     response_usage = getattr(response, "usage", None)
     input_tokens = _int(getattr(response_usage, "prompt_tokens", 0) or getattr(response_usage, "total_tokens", 0))
@@ -229,7 +219,7 @@ def record_openai_embedding_response(
     if item_count is not None:
         merged_metadata["item_count"] = item_count
     record_usage(
-        db_path=db_path,
+        log_path=log_path,
         task_name=task_name,
         provider="openai",
         model=model,
