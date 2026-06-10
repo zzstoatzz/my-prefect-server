@@ -321,6 +321,58 @@ build-web:
 push-web: build-web
     docker push atcr.io/zzstoatzz.io/hub:latest
 
+# build the hub image on the Hetzner node and import it into k3s
+publish-web-remote:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    SERVER=$(just server-ip)
+    SRC="${MY_PREFECT_SERVER_SOURCE:-.}"
+    if [ ! -d "$SRC/.git" ]; then
+      echo "ABORT: MY_PREFECT_SERVER_SOURCE must point to this repo checkout"
+      echo "current value: $SRC"
+      exit 1
+    fi
+    if [ -n "$(git -C "$SRC" status --porcelain)" ]; then
+      echo "ABORT: $SRC working tree is dirty — refusing to build unreconstructable source"
+      git -C "$SRC" status --porcelain
+      exit 1
+    fi
+    TAG=$(git -C "$SRC" rev-parse --short HEAD)
+
+    echo "==> syncing hub source to $SERVER"
+    rsync -az --delete \
+      --exclude='.git' --exclude='.venv' --exclude='node_modules' \
+      --exclude='web/node_modules' --exclude='web/.svelte-kit' --exclude='web/build' \
+      --exclude='.env' --exclude='kubeconfig.yaml' \
+      "$SRC"/ root@"$SERVER":/opt/my-prefect-server/
+    ssh root@"$SERVER" 'chown -R root:root /opt/my-prefect-server'
+
+    ssh root@"$SERVER" "cat > /tmp/hub-build.sh" <<'SCRIPT'
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd /opt/my-prefect-server
+    TAG="__HUB_TAG__"
+    IMAGE="atcr.io/zzstoatzz.io/hub:${TAG}"
+
+    echo "==> building hub container image (${IMAGE})"
+    buildah bud -t "$IMAGE" -f web/Dockerfile web
+
+    echo "==> importing into k3s containerd"
+    buildah push "$IMAGE" docker-archive:/tmp/hub.tar:"$IMAGE"
+    ctr -n k8s.io images import /tmp/hub.tar
+    rm -f /tmp/hub.tar
+
+    echo "==> applying hub manifests"
+    kubectl apply -f deploy/hub-deployment.yaml
+    sed "s|HUB_DOMAIN_PLACEHOLDER|hub.waow.tech|g" deploy/hub-ingress.yaml | kubectl apply -f -
+    kubectl set image deployment/hub -n prefect hub="$IMAGE"
+    kubectl rollout status deployment/hub -n prefect --timeout=180s
+    echo "==> deployed $IMAGE"
+    SCRIPT
+    ssh root@"$SERVER" "sed -i 's/__HUB_TAG__/$TAG/g' /tmp/hub-build.sh"
+
+    ssh root@"$SERVER" 'bash /tmp/hub-build.sh'
+
 # apply hub k8s manifests and restart the pod to pull the new image
 deploy-web:
     kubectl apply -f deploy/hub-deployment.yaml
