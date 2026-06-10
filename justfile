@@ -327,7 +327,7 @@ publish-web-remote:
     set -euo pipefail
     SERVER=$(just server-ip)
     SRC="${MY_PREFECT_SERVER_SOURCE:-.}"
-    if [ ! -d "$SRC/.git" ]; then
+    if ! git -C "$SRC" rev-parse --git-dir >/dev/null 2>&1; then
       echo "ABORT: MY_PREFECT_SERVER_SOURCE must point to this repo checkout"
       echo "current value: $SRC"
       exit 1
