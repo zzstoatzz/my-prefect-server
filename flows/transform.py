@@ -9,7 +9,31 @@ ANALYTICS_DIR = Path(__file__).parent.parent / "analytics"
 # Tables hub serves. Anything not on this list is dropped from hub.duckdb so
 # the file stays small (hub mmaps everything in it). Keep this in sync with
 # web/src/lib/server/{loaders,discovery}.ts.
-HUB_TABLES = ("hub_action_items", "raw_github_issues", "raw_liked_posts")
+HUB_TABLES = ("hub_action_items", "raw_github_issues", "raw_liked_posts", "raw_llm_spend")
+
+EMPTY_HUB_TABLES = {
+    "raw_llm_spend": """
+        CREATE OR REPLACE TABLE raw_llm_spend (
+            id VARCHAR,
+            recorded_at TIMESTAMP,
+            flow_name VARCHAR,
+            flow_run_id VARCHAR,
+            task_name VARCHAR,
+            provider VARCHAR,
+            model VARCHAR,
+            request_count INTEGER,
+            input_tokens INTEGER,
+            cache_write_tokens INTEGER,
+            cache_read_tokens INTEGER,
+            output_tokens INTEGER,
+            total_tokens INTEGER,
+            input_cost_usd DOUBLE,
+            output_cost_usd DOUBLE,
+            total_cost_usd DOUBLE,
+            metadata_json VARCHAR
+        )
+    """,
+}
 
 
 @task
@@ -40,9 +64,14 @@ def export_hub_db(src: Path, dst: Path) -> int:
     try:
         con.execute(f"ATTACH '{src}' AS analytics (READ_ONLY)")
         for tbl in HUB_TABLES:
-            con.execute(
-                f"CREATE OR REPLACE TABLE {tbl} AS SELECT * FROM analytics.main.{tbl}"
-            )
+            try:
+                con.execute(
+                    f"CREATE OR REPLACE TABLE {tbl} AS SELECT * FROM analytics.main.{tbl}"
+                )
+            except duckdb.CatalogException:
+                if tbl not in EMPTY_HUB_TABLES:
+                    raise
+                con.execute(EMPTY_HUB_TABLES[tbl])
         con.execute("DETACH analytics")
     finally:
         con.close()

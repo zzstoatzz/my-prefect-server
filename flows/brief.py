@@ -17,6 +17,7 @@ from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 
 from mps.briefing import Briefing
+from mps.spend import record_pydantic_ai_result
 
 @dataclass
 class ByItemsContent(CachePolicy):
@@ -106,6 +107,12 @@ async def generate_briefing(items_text: str, api_key: str) -> Briefing:
     """Call the LLM to curate items into a briefing. Cached by items content hash."""
     prefect_agent = make_agent(api_key)
     result = await prefect_agent.run(f"curate these items:\n\n{items_text}")
+    record_pydantic_ai_result(
+        task_name="generate_briefing",
+        model="claude-haiku-4-5",
+        result=result,
+        metadata={"item_count": 0 if not items_text.strip() else items_text.count(chr(10)) + 1},
+    )
     return result.output
 
 

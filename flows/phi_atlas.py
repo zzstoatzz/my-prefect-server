@@ -46,6 +46,7 @@ from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 
 from mps.phi import clean_handle, restore_handle
+from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 
 # ---------------------------------------------------------------------------
 # constants
@@ -463,6 +464,12 @@ def embed_points(points: list[AtlasPoint], openai_key: str) -> list[AtlasPoint]:
         batch = pending[batch_start : batch_start + EMBED_BATCH_SIZE]
         inputs = [c for _, c in batch]
         resp = client.embeddings.create(model=EMBEDDING_MODEL, input=inputs)
+        record_openai_embedding_response(
+            task_name="embed_points",
+            model=EMBEDDING_MODEL,
+            response=resp,
+            item_count=len(inputs),
+        )
         for (idx, content), data in zip(batch, resp.data):
             vec = list(data.embedding)
             points[idx]._vector = vec
@@ -588,6 +595,11 @@ async def _label_cluster(snippets: list[str], agent: Agent[None, str]) -> str:
     sample = "\n".join(f"- {s[:160]}" for s in snippets[:12])
     try:
         result = await agent.run(CLUSTER_LABEL_PROMPT.format(contents=sample))
+        record_pydantic_ai_result(
+            task_name="label_cluster",
+            model="claude-haiku-4-5",
+            result=result,
+        )
         return result.output.strip().lower()
     except Exception:
         return ""

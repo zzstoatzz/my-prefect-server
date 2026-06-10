@@ -1545,6 +1545,7 @@ version = "0.1.0"
 source = { editable = "packages/mps" }
 dependencies = [
     { name = "duckdb" },
+    { name = "genai-prices" },
     { name = "httpx" },
     { name = "openai" },
     { name = "pdsx" },
@@ -1557,6 +1558,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "duckdb", specifier = ">=1.0" },
+    { name = "genai-prices", specifier = ">=0.0.62" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "openai" },
     { name = "pdsx" },

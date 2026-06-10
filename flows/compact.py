@@ -29,6 +29,7 @@ from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 
 from mps.phi import clean_handle
+from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 
 SYSTEM_PROMPT = """\
 you synthesize relationship summaries for a bluesky bot named phi.
@@ -205,6 +206,12 @@ async def synthesize_summary(
         f"recent interactions:\n{interactions_text}"
     )
     result = await agent.run(prompt)
+    record_pydantic_ai_result(
+        task_name="synthesize_summary",
+        model="claude-haiku-4-5",
+        result=result,
+        metadata={"handle": handle},
+    )
     return result.output
 
 
@@ -244,9 +251,17 @@ def write_summary_to_turbopuffer(
 ):
     """Embed summary and upsert to the user's TurboPuffer namespace as kind=summary."""
     openai_client = OpenAI(api_key=openai_key)
-    embedding = openai_client.embeddings.create(
+    embedding_response = openai_client.embeddings.create(
         model="text-embedding-3-small", input=summary,
-    ).data[0].embedding
+    )
+    record_openai_embedding_response(
+        task_name="write_summary_to_turbopuffer",
+        model="text-embedding-3-small",
+        response=embedding_response,
+        item_count=1,
+        metadata={"handle": handle},
+    )
+    embedding = embedding_response.data[0].embedding
 
     client = turbopuffer.Turbopuffer(api_key=tpuf_key, region="gcp-us-central1")
     ns_name = f"phi-users-{clean_handle(handle)}"
@@ -461,6 +476,12 @@ async def extract_likes_observations(
         f"{publications}"
     )
     result = await agent.run(prompt)
+    record_pydantic_ai_result(
+        task_name="extract_likes_observations",
+        model="claude-haiku-4-5",
+        result=result,
+        metadata={"handle": handle},
+    )
     return [obs.model_dump() for obs in result.output.observations]
 
 
@@ -506,9 +527,17 @@ def write_likes_observations_to_turbopuffer(
         ns_name = f"phi-users-{clean_handle(handle)}"
         ns = client.namespace(ns_name)
 
-        embedding = openai_client.embeddings.create(
+        embedding_response = openai_client.embeddings.create(
             model="text-embedding-3-small", input=content,
-        ).data[0].embedding
+        )
+        record_openai_embedding_response(
+            task_name="write_likes_observations_to_turbopuffer",
+            model="text-embedding-3-small",
+            response=embedding_response,
+            item_count=1,
+            metadata={"handle": handle, "action": action},
+        )
+        embedding = embedding_response.data[0].embedding
 
         if action == "UPDATE" and obs.get("supersedes_content"):
             # find and delete the old observation by semantic similarity

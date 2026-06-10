@@ -24,6 +24,7 @@ from prefect.cache_policies import NONE
 from prefect.variables import Variable
 
 from mps.phi import clean_handle
+from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 
 PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
 PDS_BASE = "https://bsky.social"
@@ -439,9 +440,17 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
         tpuf = ctx.deps.tpuf_client
         openai = ctx.deps.openai_client
 
-        embedding = openai.embeddings.create(
+        embedding_response = openai.embeddings.create(
             model="text-embedding-3-small", input=query
-        ).data[0].embedding
+        )
+        record_openai_embedding_response(
+            task_name="curate.recall",
+            model="text-embedding-3-small",
+            response=embedding_response,
+            item_count=1,
+            metadata={"namespace": namespace},
+        )
+        embedding = embedding_response.data[0].embedding
 
         results: list[str] = []
 
@@ -577,9 +586,17 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
         ns_name = f"phi-users-{clean_handle(handle)}"
         ns = tpuf.namespace(ns_name)
 
-        embedding = openai.embeddings.create(
+        embedding_response = openai.embeddings.create(
             model="text-embedding-3-small", input=new_content
-        ).data[0].embedding
+        )
+        record_openai_embedding_response(
+            task_name="curate.update_observation",
+            model="text-embedding-3-small",
+            response=embedding_response,
+            item_count=1,
+            metadata={"handle": handle},
+        )
+        embedding = embedding_response.data[0].embedding
 
         now = datetime.now(timezone.utc).isoformat()
         try:
@@ -643,6 +660,11 @@ async def run_curation_agent(
     )
     prompt = CURATION_PROMPT.format(state=state_text)
     result = await agent.run(prompt, deps=deps)
+    record_pydantic_ai_result(
+        task_name="run_curation_agent",
+        model=model_name,
+        result=result,
+    )
     return result.output.model_dump()
 
 
@@ -662,6 +684,11 @@ async def run_observation_review(
         openai_client=openai_client,
     )
     result = await agent.run(OBSERVATION_REVIEW_PROMPT, deps=deps)
+    record_pydantic_ai_result(
+        task_name="run_observation_review",
+        model=model_name,
+        result=result,
+    )
     return result.output.model_dump()
 
 

@@ -3,12 +3,14 @@
 	import StatBar from '$lib/components/StatBar.svelte';
 	import FilterBar from '$lib/components/FilterBar.svelte';
 	import CardTable from '$lib/components/CardTable.svelte';
+	import SpendPanel from '$lib/components/SpendPanel.svelte';
 
 	let { data } = $props();
 
 	const stats = $derived(data.stats);
 	const cards = $derived(data.cards);
 	const briefing = $derived(data.briefing);
+	const spend = $derived(data.spend);
 
 	let search = $state('');
 	let sourceFilter = $state('');
@@ -45,6 +47,10 @@
 			{ value: stats.repos, label: 'repos' }
 		]}
 	/>
+
+	<div class="mt-8">
+		<SpendPanel {spend} />
+	</div>
 
 	{#if briefing}
 		<div class="mt-8">

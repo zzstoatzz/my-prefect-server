@@ -30,6 +30,7 @@ from mps.phi import (
     TagMerge,
     TagRelationship,
 )
+from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 
 TAG_REL_NAMESPACE = "phi-tag-relationships"
 TAG_REL_SCHEMA = {
@@ -172,6 +173,12 @@ def embed_tags(openai_key: str, tags: list[str]) -> dict[str, list[float]]:
         return {}
     client = OpenAI(api_key=openai_key)
     response = client.embeddings.create(model="text-embedding-3-small", input=tags)
+    record_openai_embedding_response(
+        task_name="embed_tags",
+        model="text-embedding-3-small",
+        response=response,
+        item_count=len(tags),
+    )
     return {tags[i]: response.data[i].embedding for i in range(len(tags))}
 
 
@@ -241,6 +248,12 @@ async def identify_tag_merges(
     )
 
     result = await agent.run(f"full tag inventory ({len(tag_info)} tags):\n{inventory}")
+    record_pydantic_ai_result(
+        task_name="identify_tag_merges",
+        model=model_name,
+        result=result,
+        metadata={"tag_count": len(tag_info)},
+    )
     return [m.model_dump() for m in result.output.merges]
 
 
@@ -426,6 +439,12 @@ async def discover_tag_relationships(
     result = await agent.run(
         f"full tag inventory ({len(tags)} tags after merges):\n{inventory}"
     )
+    record_pydantic_ai_result(
+        task_name="identify_tag_clusters",
+        model=model_name,
+        result=result,
+        metadata={"tag_count": len(tags)},
+    )
 
     relationships: list[dict[str, Any]] = []
     seen_pairs: set[tuple[str, str]] = set()
@@ -472,6 +491,12 @@ def store_tag_relationships(
     texts = [f"{r['tag_a']} — {r['tag_b']}: {r['evidence']}" for r in relationships]
     embeddings = openai_client.embeddings.create(
         model="text-embedding-3-small", input=texts
+    )
+    record_openai_embedding_response(
+        task_name="store_tag_relationships",
+        model="text-embedding-3-small",
+        response=embeddings,
+        item_count=len(texts),
     )
 
     rows = []

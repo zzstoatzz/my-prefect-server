@@ -46,6 +46,8 @@ from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 
+from mps.spend import record_pydantic_ai_result
+
 # ---------------------------------------------------------------------------
 # constants
 # ---------------------------------------------------------------------------
@@ -534,6 +536,15 @@ async def synthesize_cluster(
     prompt = _format_cluster_for_prompt(ctx)
     try:
         result = await agent.run(prompt)
+        record_pydantic_ai_result(
+            task_name="synthesize_cluster",
+            model=SYNTHESIS_MODEL,
+            result=result,
+            metadata={
+                "cluster_fine": ctx.cluster_fine,
+                "cluster_coarse": ctx.cluster_coarse,
+            },
+        )
     except Exception as e:
         logger.warning(f"synth failed for cluster {ctx.cluster_fine}: {e}")
         return None
