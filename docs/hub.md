@@ -37,10 +37,13 @@ a single `ingest` flow runs hourly on cron and fetches all data sources concurre
                   briefing.json              TurboPuffer
                   /api/briefing              (phi-users-*)
 
+  morning (daily 8am CT) ──► TurboPuffer tag graph ──► curate
+  phi-atlas (daily 8am CT) ──► phi atlas PDS record ──► docket
+
                         standalone flows
   ─────────────────────────────────────────────
-  morning (daily 8am CT)   ──► TurboPuffer + semble
   rebuild-atlas (every 6h) ──► Cloudflare Pages
+  pds-records (ad hoc)     ──► PDS record maintenance
 ```
 
 ## flows
@@ -52,15 +55,21 @@ a single `ingest` flow runs hourly on cron and fetches all data sources concurre
 | `transform` | on `ingest` completion | dbt build: staging → enrichment → mart. concurrency limit 1. runs under python 3.13 (dbt-core compat) |
 | `brief` | on `transform` completion | loads top 200 scored items, sends to claude haiku 4.5 via pydantic-ai, writes `briefing.json`. cached by items content hash (skips LLM when data unchanged) |
 | `compact` | on `transform` completion | synthesizes per-user relationship summaries from phi's observations + interactions. extracts new observations from liked posts (LLM). writes summaries to TurboPuffer (`phi-users-*`). cached by observations content hash |
-| `morning` | cron `0 13 * * *` (8am CT) | tag maintenance (dedup, merge, relationship discovery) + agentic semble curation (promotes observations to public cosmik cards). runs 1h before phi's daily reflection |
+| `morning` | cron `0 13 * * *` (8am CT) | tag maintenance: dedup/merge tags, discover relationships, and store the tag graph in TurboPuffer |
+| `curate` | on `morning` completion | agentic semble maintenance: reviews existing public cosmik state, creates/updates/deletes records, and reviews stale observations |
+| `phi-atlas` | cron `0 13 * * *` (8am CT) | builds phi's 2D mental landscape from PDS records and TurboPuffer rows, embeds missing records, reduces with UMAP/HDBSCAN, labels clusters, uploads the atlas to phi's PDS |
+| `docket` | on `phi-atlas` completion | reads the current atlas and synthesizes 5-15 candidate work items from high-pressure clusters, then uploads/archive the daily docket |
 | `rebuild-atlas` | cron `0 */6 * * *` | rebuilds the leaflet-search 2D semantic map (UMAP + HDBSCAN on TurboPuffer embeddings), deploys to Cloudflare Pages |
-| `cleanup` | cron `0 2 * * 0` | deletes old terminal flow runs (completed, failed, cancelled, crashed) older than 30 days |
+| `pds-records` | ad hoc, no schedule | operator flow for listing/creating/updating/deleting PDS records; default deployment is dry-run list mode |
 
 all flows run in the `kubernetes-pool` work pool. code is pulled at runtime via `git clone` from tangled.sh (github fallback). deps install via `uv run --with 'my-prefect-server @ git+...'`. deployments are registered by CI on every push to main.
 
 ## dbt layer
 
-project lives in `analytics/`. DuckDB database at `/var/lib/prefect-analytics/analytics.duckdb`.
+project lives in `analytics/`. The full DuckDB database is
+`/var/lib/prefect-analytics/analytics.duckdb`. `transform` also exports a slim
+hub-only database at `/var/lib/prefect-analytics/hub.duckdb`, which is what the
+SvelteKit hub mounts and reads.
 
 | model | type | description |
 |---|---|---|
@@ -74,6 +83,7 @@ project lives in `analytics/`. DuckDB database at `/var/lib/prefect-analytics/an
 | `int_tangled_items_scored` | table | scoring: recency (30-day decay) x 0.5 (no engagement data) x contributor weight |
 | `int_phi_user_profiles` | table | aggregates per-user observation + interaction counts for compact flow |
 | `hub_action_items` | mart | union of both scored tables, ordered by `importance_score` desc, limit 200 |
+| `raw_llm_spend` | table | materialized copy of the append-only `llm-spend.jsonl` telemetry log for offline analysis |
 
 contributor weights come from the `known_contributors` seed (zzstoatzz + zzstoatzz.io at 2.0x).
 
@@ -101,18 +111,44 @@ the result: observations from likes are indistinguishable from observations phi 
 
 ## morning
 
-the `morning` flow runs daily at 8am CT (1h before phi's reflection). it has two halves:
+the `morning` flow runs daily at 8am CT (1h before phi's reflection). it owns
+the mechanical tag-graph cleanup:
 
-**tag maintenance (phases 1-3)** — mechanical operations on TurboPuffer:
 1. collect all tags across all `phi-users-*` namespaces
 2. embed tags and identify near-duplicates via LLM (e.g., "atproto" / "at protocol" / "AT Protocol")
 3. apply merges: rewrite tags in TurboPuffer, discover inter-tag relationships, store in `phi-tag-relationships` namespace
 
-**agentic curation (phase 4)** — assembles phi's recent observations, episodic knowledge, existing cosmik cards, and tag relationships into a context bundle. sends to an LLM that decides what (if anything) deserves promotion to semble as a public cosmik card. executes the plan: creates `network.cosmik.card` records on phi's PDS, which semble's firehose subscriber auto-indexes for semantic search.
+`curate` is a separate deployment triggered by `morning` completion. It
+assembles phi's recent observations, episodic knowledge, existing cosmik state,
+and tag relationships into an agent loop that can maintain public cosmik cards,
+connections, collections, and stale observations.
 
 ## atlas
 
 the `rebuild-atlas` flow runs every 6h. it clones leaflet-search, runs the build-atlas script (PCA → UMAP → HDBSCAN on TurboPuffer document embeddings), produces `atlas.json`, and deploys the static site to Cloudflare Pages via wrangler.
+
+## phi atlas and docket
+
+`phi-atlas` runs daily alongside `morning`. It combines phi-owned PDS records
+and TurboPuffer memory rows into a single 2D map, using cached embeddings where
+possible and only embedding records that are missing vectors. It archives the
+generated atlas JSON and uploads the current atlas to phi's PDS.
+
+`docket` is event-triggered from `phi-atlas`. It reads the atlas, selects
+high-pressure clusters, asks an LLM for candidate work items, and archives the
+result in DuckDB while publishing the current docket back to PDS.
+
+## spend tracking
+
+LLM calls are recorded by shared helpers in `packages/mps/src/mps/spend.py`.
+The helper writes an append-only JSONL file next to the analytics DB
+(`llm-spend.jsonl` by default). `transform` materializes that log into
+`raw_llm_spend` for analysis, while the hub reads the live JSONL file directly
+for near-live totals.
+
+The landing page shows compact 24h/7d spend, recent calls, and top flows. Tiny
+nonzero costs are displayed with enough decimal places to avoid misleading
+`$0.00` rows for cheap embedding calls.
 
 ## frontend
 
@@ -126,13 +162,22 @@ SvelteKit app in `web/`. bun runtime, node adapter, port 3000.
 | `/api/cards.json` | JSON array of scored action items from `hub_action_items` |
 | `/api/briefing.json` | curated briefing object from `briefing.json` on disk |
 | `/api/stats.json` | aggregate counts from `raw_github_issues` (tracked, open, with_reactions, repos) |
+| `/api/spend.json` | live LLM spend summary from `llm-spend.jsonl` |
 
 the frontend reads DuckDB through a snapshot copy (`/tmp/hub_analytics_snapshot.duckdb`) that refreshes when the source file's mtime changes. all queries are read-only.
 
 ### deployment
 
 ```bash
-just web    # build + push + deploy
+just publish-web-remote    # build on the Hetzner node + deploy
 ```
 
-this runs: docker build (bun image) → push to `atcr.io/zzstoatzz.io/hub:latest` → apply k8s manifests → rolling restart. the hub pod mounts the analytics PVC at `/analytics` and reads `DUCKDB_PATH=/analytics/analytics.duckdb`.
+this rsyncs the clean repo to the Hetzner node, builds
+`atcr.io/zzstoatzz.io/hub:<git-sha>` there with buildah, imports it into k3s
+containerd, applies the hub manifests, sets the deployment image, and waits for
+rollout. The hub pod mounts the analytics hostPath at `/analytics`, reads
+`DUCKDB_PATH=/analytics/hub.duckdb`, and reads live spend from
+`/analytics/llm-spend.jsonl`.
+
+`just web` remains as the older local Docker build/push path, but the normal
+production path is `publish-web-remote`.

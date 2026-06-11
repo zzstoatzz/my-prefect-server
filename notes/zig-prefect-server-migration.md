@@ -40,15 +40,15 @@ does not include the same subchart stack.
 
 | Area | Python Helm chart | Zig chart/current repo |
 |---|---|---|
-| Server image | `prefecthq/prefect:*` | `atcr.io/zzstoatzz.io/prefect-server:latest` |
+| Server image | `prefecthq/prefect:*` | pinned `atcr.io/zzstoatzz.io/prefect-server:ReleaseFast-<sha>` |
 | API process | Python Prefect API | Zig API binary |
 | Background services | Python `backgroundServices` deployment | Zig `services` deployment |
 | Postgres | Bitnami subchart option | Bring your own Postgres manifest/secret |
 | Redis | Bitnami subchart option | Bring your own Redis manifest/service |
 | Docket | Python env URL, easy to miss in HA | Built into the zig services path, configured by broker/backend values |
-| UI bundle | Bundled in Python server | Not bundled by the zig server |
+| UI bundle | Bundled in Python server | Prefect React v2 bundle mounted in the Zig image |
 | Worker | Python worker | Still Python worker |
-| Prometheus exporter | External chart | Still external chart, points at the same API URL |
+| Prometheus/Grafana | External monitoring stack | kube-prometheus-stack dashboards scrape kube/pod metrics and the Zig server metrics endpoint |
 
 In this repo, Postgres and Redis are deliberately plain standalone manifests
 instead of chart dependencies. That avoids Helm subchart ownership issues and
@@ -64,8 +64,10 @@ The important local files are:
   secret.
 - `deploy/prefect-redis.yaml` — standalone Redis.
 - `deploy/worker.yaml` — Python Kubernetes worker pointed at the in-cluster API.
-- `deploy/exporter-values.yaml` — Prometheus exporter pointed at the in-cluster
-  API.
+- `deploy/prefect-limits.yaml` — namespace safety net for flow pod resource
+  defaults.
+- `deploy/dashboards/*.json` and `deploy/monitoring-values.yaml` — Grafana and
+  Prometheus configuration.
 - `justfile` — install order and environment variables.
 
 The chart path defaults to the sibling checkout. If the repo is not laid out
@@ -80,11 +82,13 @@ The deployed image is currently:
 ```yaml
 image:
   repository: atcr.io/zzstoatzz.io/prefect-server
-  tag: "latest"
+  tag: "ReleaseFast-7bc8061"
 ```
 
-Pinning this to a digest or release tag is possible if reproducibility matters
-more than tracking the latest server build.
+`just publish-server-remote` builds the server on the Hetzner node and updates
+the live deployments to `ReleaseFast-<git-sha>`. Keep this values file pinned to
+the same tag after a successful rollout so a later `just deploy` cannot roll the
+server backward.
 
 ## Database And Redis Details
 
@@ -154,21 +158,21 @@ server is swapped under the API surface; the execution runtime remains Python.
 
 ## UI Surface
 
-The zig server does not serve the Prefect SPA bundle from `/`. The current repo
-uses the separate hub UI as the operational dashboard, and links directly to the
-Prefect server domain when needed.
+The current Zig server image carries only the Prefect React v2 UI bundle. The
+old UI is intentionally not bundled. In `deploy/prefect-values.yaml`, the chart
+sets:
 
-The zig server has implemented the UI-oriented API routes needed by the Prefect
-v2 SPA for common navigation and actions, but hosting the SPA is still a
-separate choice. If a browser-facing Prefect UI is required, the options are:
+```yaml
+config:
+  ui:
+    staticDir: /app/ui
+    serveBase: /
+```
 
-- continue to serve/use a Python-hosted Prefect UI pointed at the zig API;
-- run a separate static UI bundle/proxy when that is available;
-- keep using this repo's hub UI for the operational view and use the Prefect CLI
-  for server mutations.
-
-The important operational detail is that clients and workers should target
-`/api`; do not rely on `/` serving the Python UI after the server swap.
+So `https://$DOMAIN/` serves the Prefect v2 SPA and `/api` remains the API base.
+The root `/ui-settings` endpoint returns the UI settings object with
+`default_ui: "v2"` and `auth: "BASIC"` when server auth is enabled. Clients and
+workers should still target `/api`.
 
 ## Data Migration Notes
 
@@ -210,9 +214,10 @@ needs `PREFECT_SERVER_DOCKET_URL` wired to Redis for proper HA background
 coordination. That was a Python Helm chart footgun.
 
 For the zig server, Docket is part of the server implementation. The current
-`prefect-server` repo pins its zig `docket` dependency to the `v0.0.1` release
-tag and the benchmark docs were refreshed against that release. The chart values
-do not need the old Python `extraEnvVarsCM: prefect-docket-config` workaround.
+`prefect-server` repo pins its zig `docket` dependency to a fixed commit in
+`build.zig.zon`; this deployment is on a server build that includes Redis
+reconnect handling for dropped service-worker sockets. The chart values do not
+need the old Python `extraEnvVarsCM: prefect-docket-config` workaround.
 
 The practical verification is logs, not just pod readiness:
 

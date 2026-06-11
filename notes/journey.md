@@ -1,5 +1,12 @@
 # self-hosted prefect on hetzner: build notes
 
+> Historical build log. This captures the path from the first Python Prefect
+> Helm deployment to the current system, so early sections intentionally mention
+> resources that no longer exist (Python API replicas, Bitnami subcharts,
+> prefect-exporter, `PREFECT_SERVER_DOCKET_URL`, and old `enrich`/`curate`
+> names). For current operator truth, use `README.md`, `docs/hub.md`,
+> `CLAUDE.md`, and `notes/zig-prefect-server-migration.md`.
+
 these notes capture the full journey of deploying a self-hosted Prefect OSS server from scratch. the goal is to feed these back into the Prefect docs as an end-to-end guide.
 
 ## starting point

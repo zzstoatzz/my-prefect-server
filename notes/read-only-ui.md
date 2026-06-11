@@ -1,5 +1,12 @@
 # read-only public UI: thinking it through
 
+> Historical design note. This is not the current production auth shape.
+> Production currently keeps the Zig server's Prefect-compatible BasicAuth
+> enabled (`deploy/prefect-values.yaml` -> `auth.enabled: true`) and serves the
+> bundled Prefect v2 UI at `/`. Unauthenticated `/api/*` calls return 401 and
+> `/ui-settings` reports `auth: "BASIC"`. Keep this note only as the reasoning
+> record for the abandoned Traefik-only/read-only UI idea.
+
 ## what we want
 
 anyone can open `prefect-server.waow.tech` and browse the UI, see flow runs, logs, deployments. they cannot trigger runs, delete anything, or write. admin users still have full access by supplying credentials.

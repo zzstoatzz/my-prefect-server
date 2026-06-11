@@ -1,5 +1,13 @@
 # phi-atlas — unified embedding + nightly UMAP for phi's mind
 
+> Current status: implemented as the `phi-atlas/phi-atlas` deployment in
+> `prefect.yaml`, scheduled daily at 8am CT. The flow lives in
+> `flows/phi_atlas.py`, uses the `[atlas]` optional dependency set, archives
+> generated atlas JSON, and uploads the current atlas to phi's PDS. The
+> `docket/docket` deployment is event-triggered from `phi-atlas` completion and
+> synthesizes daily candidate work items from the atlas. The notes below are the
+> original design contract and remain useful for intent/front-end alignment.
+
 ## context
 
 phi's web frontend is being redesigned around a metroid-prime-style "cockpit" with three lenses (mind / output / tools). the **mind** lens is an Atlas-style 2D map (canonical reference: `leaflet-search/site/atlas.{js,css,html}` + the `rebuild-atlas` flow here) showing every "object of phi's attention" — concepts, goals, handles she's engaged with, discovery candidates — colored by kind, clustered by semantic similarity, multi-scale legible via zoom.

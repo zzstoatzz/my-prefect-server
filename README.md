@@ -23,10 +23,13 @@ personal data pipeline and intelligence layer. digests github, [tangled.org](htt
                   briefing.json              TurboPuffer
                                              (phi-users-*)
 
+  morning (daily 8am CT) ──► TurboPuffer tags ──► curate
+  phi-atlas (daily 8am CT) ──► phi atlas PDS record ──► docket
+
                         standalone flows
   ─────────────────────────────────────────────
-  morning (daily 8am CT) ──► TurboPuffer + semble
   rebuild-atlas (every 6h) ──► Cloudflare Pages
+  pds-records (ad hoc) ──► PDS record maintenance
 ```
 
 see [docs/hub.md](docs/hub.md) for the full pipeline breakdown.
@@ -38,7 +41,7 @@ see [docs/hub.md](docs/hub.md) for the full pipeline breakdown.
 
 - [terraform](https://developer.hashicorp.com/terraform/install)
 - [just](https://just.systems)
-- [uv](https://docs.astral.sh/uv) (Python 3.14+)
+- [uv](https://docs.astral.sh/uv) (Python 3.13+; the worker image is Python 3.14, while dbt runs under a per-deployment Python 3.13 override)
 - a hetzner cloud API token
 - a domain with DNS you control
 
@@ -92,8 +95,12 @@ flow deployments are registered automatically on every push to main via `.tangle
 ### hub (sveltekit frontend)
 
 ```bash
-just web    # build + push + deploy hub.waow.tech
+just publish-web-remote    # build hub on the Hetzner node + deploy hub.waow.tech
 ```
+
+`just web` still exists as the legacy local Docker build/push path, but normal
+operations use `publish-web-remote` so linux/amd64 images are built on the
+node and imported into k3s directly.
 
 ### analytics (dbt + duckdb)
 
