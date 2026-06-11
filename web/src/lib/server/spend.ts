@@ -17,9 +17,16 @@ const spendLogPath = process.env.LLM_SPEND_LOG_PATH ?? '/analytics/llm-spend.jso
 const emptySpend: SpendSummary = {
 	total_24h: 0,
 	total_7d: 0,
+	total_30d: 0,
 	total_all: 0,
 	requests_24h: 0,
+	requests_7d: 0,
+	requests_30d: 0,
+	requests_all: 0,
+	by_flow_24h: [],
 	by_flow_7d: [],
+	by_flow_30d: [],
+	by_flow_all: [],
 	recent: []
 };
 
@@ -49,6 +56,7 @@ function summarize(events: SpendEvent[]): SpendSummary {
 	const now = Date.now();
 	const dayAgo = now - 24 * 60 * 60 * 1000;
 	const weekAgo = now - 7 * 24 * 60 * 60 * 1000;
+	const monthAgo = now - 30 * 24 * 60 * 60 * 1000;
 	const byId = new Map<string, SpendEvent>();
 
 	for (const event of events) {
@@ -56,15 +64,46 @@ function summarize(events: SpendEvent[]): SpendSummary {
 		byId.set(id, event);
 	}
 
-	const byFlow = new Map<
-		string,
-		{ flow_name: string; cost_usd: number; input_tokens: number; output_tokens: number; requests: number }
-	>();
+	type FlowRow = {
+		flow_name: string;
+		cost_usd: number;
+		input_tokens: number;
+		output_tokens: number;
+		requests: number;
+	};
+	const byFlow24h = new Map<string, FlowRow>();
+	const byFlow7d = new Map<string, FlowRow>();
+	const byFlow30d = new Map<string, FlowRow>();
+	const byFlowAll = new Map<string, FlowRow>();
 	let total_24h = 0;
 	let total_7d = 0;
+	let total_30d = 0;
 	let total_all = 0;
 	let requests_24h = 0;
+	let requests_7d = 0;
+	let requests_30d = 0;
+	let requests_all = 0;
 	const recentRows: Array<SpendEvent & { timestamp: number }> = [];
+
+	function addFlowRow(map: Map<string, FlowRow>, event: SpendEvent, cost: number, requests: number) {
+		const flowName = event.flow_name?.trim() || 'unknown';
+		const row = map.get(flowName) ?? {
+			flow_name: flowName,
+			cost_usd: 0,
+			input_tokens: 0,
+			output_tokens: 0,
+			requests: 0
+		};
+		row.cost_usd += cost;
+		row.input_tokens += numberValue(event.input_tokens);
+		row.output_tokens += numberValue(event.output_tokens);
+		row.requests += requests;
+		map.set(flowName, row);
+	}
+
+	function topFlows(map: Map<string, FlowRow>): FlowRow[] {
+		return [...map.values()].sort((a, b) => b.cost_usd - a.cost_usd).slice(0, 8);
+	}
 
 	for (const event of byId.values()) {
 		const timestamp = Date.parse(event.recorded_at ?? '');
@@ -72,40 +111,43 @@ function summarize(events: SpendEvent[]): SpendSummary {
 
 		const cost = numberValue(event.total_cost_usd);
 		const requests = numberValue(event.request_count);
-		const inputTokens = numberValue(event.input_tokens);
-		const outputTokens = numberValue(event.output_tokens);
 		total_all += cost;
+		requests_all += requests;
+		addFlowRow(byFlowAll, event, cost, requests);
 		recentRows.push({ ...event, timestamp });
 
 		if (timestamp >= dayAgo) {
 			total_24h += cost;
 			requests_24h += requests;
+			addFlowRow(byFlow24h, event, cost, requests);
 		}
 
 		if (timestamp >= weekAgo) {
 			total_7d += cost;
-			const flowName = event.flow_name?.trim() || 'unknown';
-			const row = byFlow.get(flowName) ?? {
-				flow_name: flowName,
-				cost_usd: 0,
-				input_tokens: 0,
-				output_tokens: 0,
-				requests: 0
-			};
-			row.cost_usd += cost;
-			row.input_tokens += inputTokens;
-			row.output_tokens += outputTokens;
-			row.requests += requests;
-			byFlow.set(flowName, row);
+			requests_7d += requests;
+			addFlowRow(byFlow7d, event, cost, requests);
+		}
+
+		if (timestamp >= monthAgo) {
+			total_30d += cost;
+			requests_30d += requests;
+			addFlowRow(byFlow30d, event, cost, requests);
 		}
 	}
 
 	return {
 		total_24h,
 		total_7d,
+		total_30d,
 		total_all,
 		requests_24h,
-		by_flow_7d: [...byFlow.values()].sort((a, b) => b.cost_usd - a.cost_usd).slice(0, 8),
+		requests_7d,
+		requests_30d,
+		requests_all,
+		by_flow_24h: topFlows(byFlow24h),
+		by_flow_7d: topFlows(byFlow7d),
+		by_flow_30d: topFlows(byFlow30d),
+		by_flow_all: topFlows(byFlowAll),
 		recent: recentRows
 			.sort((a, b) => b.timestamp - a.timestamp)
 			.slice(0, 12)

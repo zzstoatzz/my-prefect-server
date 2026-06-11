@@ -61,7 +61,7 @@ EMBEDDING_MODEL = "text-embedding-3-small"
 EMBEDDING_DIM = 1536
 EMBED_BATCH_SIZE = 128
 
-# UMAP / HDBSCAN parameters — see PHI-ATLAS.md "open questions" for tuning rationale
+# UMAP / HDBSCAN parameters — see docs/phi-atlas.md "open questions" for tuning rationale
 UMAP_MIN_NEIGHBORS = 5
 UMAP_MAX_NEIGHBORS = 30
 HDBSCAN_COARSE_MIN_CLUSTER = 20
@@ -526,7 +526,7 @@ def reduce_to_2d(points: list[AtlasPoint]) -> list[AtlasPoint]:
         return points
 
     n = len(vectors)
-    # n_neighbors scaling per PHI-ATLAS.md open question 5
+    # n_neighbors scaling per docs/phi-atlas.md open question 5
     n_neighbors = int(max(UMAP_MIN_NEIGHBORS, min(UMAP_MAX_NEIGHBORS, np.sqrt(n))))
     logger.info(f"UMAP: n={n}, n_neighbors={n_neighbors}")
 

@@ -38,9 +38,16 @@ export interface SpendRecentRun {
 export interface SpendSummary {
 	total_24h: number;
 	total_7d: number;
+	total_30d: number;
 	total_all: number;
 	requests_24h: number;
+	requests_7d: number;
+	requests_30d: number;
+	requests_all: number;
+	by_flow_24h: SpendByFlow[];
 	by_flow_7d: SpendByFlow[];
+	by_flow_30d: SpendByFlow[];
+	by_flow_all: SpendByFlow[];
 	recent: SpendRecentRun[];
 }
 

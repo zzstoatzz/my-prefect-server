@@ -133,6 +133,7 @@ the `rebuild-atlas` flow runs every 6h. it clones leaflet-search, runs the build
 and TurboPuffer memory rows into a single 2D map, using cached embeddings where
 possible and only embedding records that are missing vectors. It archives the
 generated atlas JSON and uploads the current atlas to phi's PDS.
+The original design contract lives in [phi-atlas.md](phi-atlas.md).
 
 `docket` is event-triggered from `phi-atlas`. It reads the atlas, selects
 high-pressure clusters, asks an LLM for candidate work items, and archives the
