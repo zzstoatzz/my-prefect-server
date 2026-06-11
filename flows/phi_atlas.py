@@ -45,6 +45,8 @@ from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 
+from mps.atproto import create_bsky_session
+from mps.observability import configure_logfire
 from mps.phi import clean_handle, restore_handle
 from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 
@@ -138,16 +140,6 @@ class Atlas(BaseModel):
 # ---------------------------------------------------------------------------
 # atproto helpers (mirror flows/curate.py)
 # ---------------------------------------------------------------------------
-
-
-def _create_bsky_session(handle: str, password: str) -> dict[str, Any]:
-    resp = httpx.post(
-        f"{PDS_BASE}/xrpc/com.atproto.server.createSession",
-        json={"identifier": handle, "password": password},
-        timeout=15,
-    )
-    resp.raise_for_status()
-    return resp.json()
 
 
 def _list_records(did: str, collection: str) -> list[dict[str, Any]]:
@@ -345,7 +337,11 @@ def fetch_pds_points() -> list[AtlasPoint]:
         ("app.bsky.feed.post", lambda _v: "post"),
         (
             "network.cosmik.card",
-            lambda v: "note" if v.get("type") == "NOTE" else ("url" if v.get("type") == "URL" else None),
+            lambda v: (
+                "note"
+                if v.get("type") == "NOTE"
+                else ("url" if v.get("type") == "URL" else None)
+            ),
         ),
     ]
 
@@ -370,7 +366,9 @@ def fetch_pds_points() -> list[AtlasPoint]:
                 id=pid,
                 kind=kind,
                 label=label,
-                created_at=value.get("createdAt", "") or value.get("publishedAt", "") or "",
+                created_at=value.get("createdAt", "")
+                or value.get("publishedAt", "")
+                or "",
                 refs={"at_uri": uri, "cid": r.get("cid", ""), "collection": collection},
             )
             point._content = embed_text
@@ -631,7 +629,9 @@ async def label_clusters(
     fine_buckets: dict[int, list[str]] = {}
     for p in points:
         if p.cluster_coarse >= 0:
-            coarse_buckets.setdefault(p.cluster_coarse, []).append(p._content or p.label)
+            coarse_buckets.setdefault(p.cluster_coarse, []).append(
+                p._content or p.label
+            )
         if p.cluster_fine >= 0:
             fine_buckets.setdefault(p.cluster_fine, []).append(p._content or p.label)
 
@@ -866,7 +866,7 @@ def upload_atlas_to_pds(
     regardless of the stored mime type.
     """
     logger = get_run_logger()
-    session = _create_bsky_session(handle, password)
+    session = create_bsky_session(handle, password)
     headers = {"Authorization": f"Bearer {session['accessJwt']}"}
 
     # upload blob
@@ -941,6 +941,7 @@ async def phi_atlas(dry_run: bool = False) -> dict[str, int]:
     Set dry_run=True to compute and print a summary without writing to PDS
     or DuckDB. Useful for local validation.
     """
+    configure_logfire("prefect-flow-phi-atlas")
     logger = get_run_logger()
 
     tpuf_key = (await Secret.load("turbopuffer-api-key")).get()

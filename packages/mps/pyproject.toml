@@ -12,6 +12,7 @@ dependencies = [
     "openai",
     "pdsx",
     "genai-prices>=0.0.62",
+    "logfire>=4.36.0",
 ]
 
 [build-system]

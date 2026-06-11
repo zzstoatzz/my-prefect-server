@@ -37,10 +37,18 @@ a single `ingest` flow runs hourly on cron and fetches all data sources concurre
                   briefing.json              TurboPuffer
                   /api/briefing              (phi-users-*)
 
-  morning (daily 8am CT) ──► TurboPuffer tag graph ──► curate
-  phi-atlas (daily 8am CT) ──► phi atlas PDS record ──► docket
+                        phi identity flows
+  ─────────────────────────────────────────────
+  morning (daily 8am CT)   ──► TurboPuffer
+          │
+          ▼
+  curate                   ──► Semble API
+  phi-atlas (daily 8am CT) ──► PDS atlas blob
+          │
+          ▼
+  docket                   ──► PDS docket blob
 
-                        standalone flows
+                        publication flows
   ─────────────────────────────────────────────
   rebuild-atlas (every 6h) ──► Cloudflare Pages
   pds-records (ad hoc)     ──► PDS record maintenance
@@ -55,10 +63,10 @@ a single `ingest` flow runs hourly on cron and fetches all data sources concurre
 | `transform` | on `ingest` completion | dbt build: staging → enrichment → mart. concurrency limit 1. runs under python 3.13 (dbt-core compat) |
 | `brief` | on `transform` completion | loads top 200 scored items, sends to claude haiku 4.5 via pydantic-ai, writes `briefing.json`. cached by items content hash (skips LLM when data unchanged) |
 | `compact` | on `transform` completion | synthesizes per-user relationship summaries from phi's observations + interactions. extracts new observations from liked posts (LLM). writes summaries to TurboPuffer (`phi-users-*`). cached by observations content hash |
-| `morning` | cron `0 13 * * *` (8am CT) | tag maintenance: dedup/merge tags, discover relationships, and store the tag graph in TurboPuffer |
-| `curate` | on `morning` completion | agentic semble maintenance: reviews existing public cosmik state, creates/updates/deletes records, and reviews stale observations |
-| `phi-atlas` | cron `0 13 * * *` (8am CT) | builds phi's 2D mental landscape from PDS records and TurboPuffer rows, embeds missing records, reduces with UMAP/HDBSCAN, labels clusters, uploads the atlas to phi's PDS |
-| `docket` | on `phi-atlas` completion | reads the current atlas and synthesizes 5-15 candidate work items from high-pressure clusters, then uploads/archive the daily docket |
+| `morning` | cron `0 13 * * *` (8am CT) | tag maintenance (dedup, merge, relationship discovery) in TurboPuffer. runs 1h before phi's daily reflection |
+| `curate` | on `morning` completion | agentic Semble curation. reviews phi's public knowledge graph and private observations, writes Semble URL cards/collections/connections through `semble-api`, and blocks unindexed standalone note cards |
+| `phi-atlas` | cron `0 13 * * *` (8am CT) | builds phi's daily private/public semantic atlas from TurboPuffer + PDS records, writes `io.zzstoatzz.phi.atlas/self` |
+| `docket` | on `phi-atlas` completion | synthesizes promotion-pressure candidates from the atlas and writes `io.zzstoatzz.phi.docket/self` |
 | `rebuild-atlas` | cron `0 */6 * * *` | rebuilds the leaflet-search 2D semantic map (UMAP + HDBSCAN on TurboPuffer embeddings), deploys to Cloudflare Pages |
 | `pds-records` | ad hoc, no schedule | operator flow for listing/creating/updating/deleting PDS records; default deployment is dry-run list mode |
 
@@ -109,19 +117,18 @@ the `compact` flow fires in parallel with `brief` when `transform` completes. it
 
 the result: observations from likes are indistinguishable from observations phi creates during conversations — same schema, same namespaces, same reconciliation logic.
 
-## morning
+## morning and phi identity
 
 the `morning` flow runs daily at 8am CT (1h before phi's reflection). it owns
-the mechanical tag-graph cleanup:
+the mechanical TurboPuffer tag-graph cleanup:
 
 1. collect all tags across all `phi-users-*` namespaces
 2. embed tags and identify near-duplicates via LLM (e.g., "atproto" / "at protocol" / "AT Protocol")
 3. apply merges: rewrite tags in TurboPuffer, discover inter-tag relationships, store in `phi-tag-relationships` namespace
 
-`curate` is a separate deployment triggered by `morning` completion. It
-assembles phi's recent observations, episodic knowledge, existing cosmik state,
-and tag relationships into an agent loop that can maintain public cosmik cards,
-connections, collections, and stale observations.
+`curate` is a separate event-triggered flow after `morning`. it reviews phi's Semble records and private observations with an agent, then mutates Semble through `semble-api` instead of hand-rolled PDS writes. URL cards, notes attached to URLs, collections, collection links, and connections go through Semble's API; standalone note cards are intentionally blocked because they are public PDS records that Semble does not index.
+
+`phi-atlas` is a separate daily flow that maps phi's private memory and public PDS records into `io.zzstoatzz.phi.atlas/self`. `docket` runs after `phi-atlas` and writes `io.zzstoatzz.phi.docket/self`, a small daily set of promotion-pressure candidates. those `io.zzstoatzz.phi.*` records stay as raw PDS writes because they are phi-owned records, not Semble graph mutations.
 
 ## atlas
 

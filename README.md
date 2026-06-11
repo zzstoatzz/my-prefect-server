@@ -23,10 +23,18 @@ personal data pipeline and intelligence layer. digests github, [tangled.org](htt
                   briefing.json              TurboPuffer
                                              (phi-users-*)
 
-  morning (daily 8am CT) ──► TurboPuffer tags ──► curate
-  phi-atlas (daily 8am CT) ──► phi atlas PDS record ──► docket
+                        phi identity flows
+  ─────────────────────────────────────────────
+  morning (daily 8am CT) ──► TurboPuffer
+          │
+          ▼
+  curate  ─────────────────► Semble API
+  phi-atlas (daily 8am CT) ─► PDS atlas blob
+          │
+          ▼
+  docket  ─────────────────► PDS docket blob
 
-                        standalone flows
+                        publication flows
   ─────────────────────────────────────────────
   rebuild-atlas (every 6h) ──► Cloudflare Pages
   pds-records (ad hoc) ──► PDS record maintenance

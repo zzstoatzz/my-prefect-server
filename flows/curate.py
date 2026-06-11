@@ -9,7 +9,7 @@ inspect, recall, and iterate rather than single-shot plan + execute.
 """
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, get_args
 
 import httpx
 import turbopuffer
@@ -22,7 +22,18 @@ from prefect import flow, task
 from prefect.blocks.system import Secret
 from prefect.cache_policies import NONE
 from prefect.variables import Variable
+from semble import AsyncSemble
+from semble.records import (
+    CARD_TYPE_NOTE,
+    CARD_TYPE_URL,
+    RECORD_TYPE_CARD,
+    RECORD_TYPE_COLLECTION,
+    RECORD_TYPE_COLLECTION_LINK,
+)
+from semble.types import ConnectionType
 
+from mps.atproto import create_bsky_session
+from mps.observability import configure_logfire
 from mps.phi import clean_handle
 from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 
@@ -55,7 +66,8 @@ priorities:
 - merge overlapping collections into coherent ones
 - create meaningful collections from ungrouped cards that belong together
 - connect related cards that aren't linked yet
-- create notes when you notice a pattern worth crystallizing
+- save urls with notes when you notice a pattern worth crystallizing
+- do not create standalone notes; unanchored notes are not indexed by semble
 
 if nothing needs doing, say so. don't create for the sake of creating.
 
@@ -89,7 +101,7 @@ if everything looks clean, say so. quality over quantity.
 
 
 class CurationDeps(BaseModel, arbitrary_types_allowed=True):
-    session: dict[str, Any] = Field(description="atproto session with accessJwt and did")
+    semble: Any = Field(description="semble api client authenticated as phi")
     tpuf_client: Any = Field(description="turbopuffer client")
     openai_client: Any = Field(description="openai client for embeddings")
 
@@ -97,23 +109,17 @@ class CurationDeps(BaseModel, arbitrary_types_allowed=True):
 
 
 class CurationResult(BaseModel):
-    summary: str = Field(description="brief summary of what you did (or why you did nothing)")
-    actions_taken: int = Field(default=0, description="number of create/delete/modify actions")
+    summary: str = Field(
+        description="brief summary of what you did (or why you did nothing)"
+    )
+    actions_taken: int = Field(
+        default=0, description="number of create/delete/modify actions"
+    )
 
 
 # ---------------------------------------------------------------------------
 # atproto helpers
 # ---------------------------------------------------------------------------
-
-
-def _create_bsky_session(handle: str, password: str) -> dict[str, Any]:
-    resp = httpx.post(
-        f"{PDS_BASE}/xrpc/com.atproto.server.createSession",
-        json={"identifier": handle, "password": password},
-        timeout=15,
-    )
-    resp.raise_for_status()
-    return resp.json()
 
 
 def _list_records(did: str, collection: str) -> list[dict[str, Any]]:
@@ -137,32 +143,6 @@ def _list_records(did: str, collection: str) -> list[dict[str, Any]]:
     return records
 
 
-def _create_record(session: dict[str, Any], collection: str, record: dict[str, Any]) -> dict[str, Any]:
-    resp = httpx.post(
-        f"{PDS_BASE}/xrpc/com.atproto.repo.createRecord",
-        headers={"Authorization": f"Bearer {session['accessJwt']}"},
-        json={"repo": session["did"], "collection": collection, "record": record},
-        timeout=15,
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-
-def _delete_record(session: dict[str, Any], uri: str) -> None:
-    parts = uri.replace("at://", "").split("/")
-    if len(parts) < 3:
-        raise ValueError(f"invalid AT URI: {uri}")
-    collection = parts[1]
-    rkey = parts[2]
-    resp = httpx.post(
-        f"{PDS_BASE}/xrpc/com.atproto.repo.deleteRecord",
-        headers={"Authorization": f"Bearer {session['accessJwt']}"},
-        json={"repo": session["did"], "collection": collection, "rkey": rkey},
-        timeout=15,
-    )
-    resp.raise_for_status()
-
-
 # ---------------------------------------------------------------------------
 # state formatting
 # ---------------------------------------------------------------------------
@@ -182,10 +162,10 @@ def _format_semble_state(
         uri = card.get("uri", "")
         val = card.get("value", {})
         ctype = val.get("type", "?")
-        if ctype == "NOTE":
+        if ctype == CARD_TYPE_NOTE:
             text = val.get("content", {}).get("text", "")[:200]
             card_lines.append(f"  [{ctype}] {uri}\n    {text}")
-        elif ctype == "URL":
+        elif ctype == CARD_TYPE_URL:
             content = val.get("content", {})
             url = content.get("url", "")
             meta = content.get("metadata", {})
@@ -195,7 +175,8 @@ def _format_semble_state(
             card_lines.append(f"  [{ctype}] {uri}")
     sections.append(
         f"## cards ({len(cards)})\n" + "\n".join(card_lines)
-        if card_lines else "## cards (0)\nnone"
+        if card_lines
+        else "## cards (0)\nnone"
     )
 
     # connections
@@ -209,7 +190,8 @@ def _format_semble_state(
         conn_lines.append(f"  {src} → {tgt}  [{ctype}] {note}")
     sections.append(
         f"## connections ({len(connections)})\n" + "\n".join(conn_lines)
-        if conn_lines else "## connections (0)\nnone"
+        if conn_lines
+        else "## connections (0)\nnone"
     )
 
     # collections + links
@@ -232,18 +214,117 @@ def _format_semble_state(
             coll_lines.append(f"    - {card_uri}")
     sections.append(
         f"## collections ({len(collections)})\n" + "\n".join(coll_lines)
-        if coll_lines else "## collections (0)\nnone"
+        if coll_lines
+        else "## collections (0)\nnone"
     )
 
     # orphaned links (links to collections that don't exist)
     coll_uris = {c.get("uri", "") for c in collections}
-    orphaned = [lnk for lnk in collection_links if lnk.get("value", {}).get("collection", {}).get("uri", "") not in coll_uris]
+    orphaned = [
+        lnk
+        for lnk in collection_links
+        if lnk.get("value", {}).get("collection", {}).get("uri", "") not in coll_uris
+    ]
     if orphaned:
         sections.append(f"## orphaned collection links ({len(orphaned)})")
         for link in orphaned:
             sections.append(f"  {link.get('uri', '')}")
 
     return "\n\n".join(sections)
+
+
+# ---------------------------------------------------------------------------
+# semble-api adapters
+# ---------------------------------------------------------------------------
+
+
+def _at_uri_parts(uri: str) -> tuple[str, str, str]:
+    parts = uri.replace("at://", "").split("/")
+    if len(parts) < 3:
+        raise ValueError(f"invalid AT URI: {uri}")
+    return parts[0], parts[1], parts[2]
+
+
+def _raw_record_by_uri(collection: str, uri: str) -> dict[str, Any] | None:
+    for record in _list_records(PHI_DID, collection):
+        if record.get("uri") == uri:
+            return record
+    return None
+
+
+def _url_from_card_uri(uri: str) -> str | None:
+    record = _raw_record_by_uri(RECORD_TYPE_CARD, uri)
+    if not record:
+        return None
+    value = record.get("value", {})
+    if value.get("type") == CARD_TYPE_URL:
+        content = value.get("content", {})
+        return value.get("url") or content.get("url")
+    return None
+
+
+async def _list_all_url_cards(semble: AsyncSemble):
+    page_no = 1
+    cards = []
+    while True:
+        page = await semble.cards.list_mine(page=page_no, limit=100)
+        cards.extend(page.items)
+        pagination = page.pagination
+        if not pagination or not pagination.has_more:
+            return cards
+        page_no += 1
+
+
+async def _list_all_collections(semble: AsyncSemble):
+    page_no = 1
+    collections = []
+    while True:
+        page = await semble.collections.list_mine(page=page_no, limit=100)
+        collections.extend(page.items)
+        pagination = page.pagination
+        if not pagination or not pagination.has_more:
+            return collections
+        page_no += 1
+
+
+async def _card_id_for_uri(semble: AsyncSemble, uri: str) -> str | None:
+    raw_url = _url_from_card_uri(uri)
+    for card in await _list_all_url_cards(semble):
+        if card.id and (card.uri == uri or (raw_url and card.url == raw_url)):
+            return card.id
+    return None
+
+
+async def _collection_id_for_uri(semble: AsyncSemble, uri: str) -> str | None:
+    for collection in await _list_all_collections(semble):
+        if collection.id and collection.uri == uri:
+            return collection.id
+    return None
+
+
+async def _connection_id_for_uri(semble: AsyncSemble, uri: str) -> str | None:
+    page_no = 1
+    while True:
+        page = await semble.connections.list_by_user(PHI_DID, page=page_no, limit=100)
+        for view in page.items:
+            connection = view.connection
+            extra_uri = getattr(connection, "uri", None) or getattr(
+                connection, "model_extra", {}
+            ).get("uri")
+            if connection.id and extra_uri == uri:
+                return connection.id
+        pagination = page.pagination
+        if not pagination or not pagination.has_more:
+            return None
+        page_no += 1
+
+
+async def _connection_endpoint_value(uri_or_url: str) -> str | None:
+    if uri_or_url.startswith("http://") or uri_or_url.startswith("https://"):
+        return uri_or_url
+    if uri_or_url.startswith("at://"):
+        return _url_from_card_uri(uri_or_url)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -270,13 +351,15 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
     )
 
     @agent.tool
-    async def list_semble_records(ctx: RunContext[CurationDeps], record_type: str) -> str:
+    async def list_semble_records(
+        ctx: RunContext[CurationDeps], record_type: str
+    ) -> str:
         """List all records of a given type. record_type: 'card', 'connection', 'collection', or 'collectionLink'."""
         collection_map = {
-            "card": "network.cosmik.card",
+            "card": RECORD_TYPE_CARD,
             "connection": "network.cosmik.connection",
-            "collection": "network.cosmik.collection",
-            "collectionLink": "network.cosmik.collectionLink",
+            "collection": RECORD_TYPE_COLLECTION,
+            "collectionLink": RECORD_TYPE_COLLECTION_LINK,
         }
         collection = collection_map.get(record_type)
         if not collection:
@@ -303,10 +386,14 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
                 else:
                     lines.append(f"[{ctype}] {uri}")
             elif record_type == "connection":
-                lines.append(f"{val.get('source', '')} → {val.get('target', '')} [{val.get('connectionType', '')}] {val.get('note', '')[:80]}")
+                lines.append(
+                    f"{val.get('source', '')} → {val.get('target', '')} [{val.get('connectionType', '')}] {val.get('note', '')[:80]}"
+                )
                 lines.append(f"  uri: {uri}")
             elif record_type == "collection":
-                lines.append(f"{val.get('name', '')} — {val.get('description', '')[:100]}")
+                lines.append(
+                    f"{val.get('name', '')} — {val.get('description', '')[:100]}"
+                )
                 lines.append(f"  uri: {uri}")
             elif record_type == "collectionLink":
                 coll_uri = val.get("collection", {}).get("uri", "")
@@ -319,10 +406,76 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
     async def delete_record(ctx: RunContext[CurationDeps], uri: str) -> str:
         """Delete a record by its AT URI. Works for any record type (card, connection, collection, collectionLink)."""
         try:
-            _delete_record(ctx.deps.session, uri)
-            return f"deleted: {uri}"
+            _, collection, _ = _at_uri_parts(uri)
+            if collection == RECORD_TYPE_CARD:
+                card_id = await _card_id_for_uri(ctx.deps.semble, uri)
+                if not card_id:
+                    return f"could not resolve card id for {uri}"
+                await ctx.deps.semble.cards.remove_from_library(card_id)
+                return f"removed card from library: {uri}"
+            if collection == RECORD_TYPE_COLLECTION:
+                collection_id = await _collection_id_for_uri(ctx.deps.semble, uri)
+                if not collection_id:
+                    return f"could not resolve collection id for {uri}"
+                await ctx.deps.semble.collections.delete(collection_id)
+                return f"deleted collection: {uri}"
+            if collection == "network.cosmik.connection":
+                connection_id = await _connection_id_for_uri(ctx.deps.semble, uri)
+                if not connection_id:
+                    return (
+                        f"could not resolve connection id for {uri}; "
+                        "semble-api does not expose uri-based connection deletes yet"
+                    )
+                await ctx.deps.semble.connections.delete(connection_id)
+                return f"deleted connection: {uri}"
+            if collection == RECORD_TYPE_COLLECTION_LINK:
+                link = _raw_record_by_uri(collection, uri)
+                if not link:
+                    return f"could not resolve collection link {uri}"
+                value = link.get("value", {})
+                card_uri = value.get("card", {}).get("uri", "")
+                collection_uri = value.get("collection", {}).get("uri", "")
+                card_id = await _card_id_for_uri(ctx.deps.semble, card_uri)
+                collection_id = await _collection_id_for_uri(
+                    ctx.deps.semble, collection_uri
+                )
+                if not card_id or not collection_id:
+                    return f"could not resolve linked card/collection ids for {uri}"
+                await ctx.deps.semble.cards.update_url_associations(
+                    card_id,
+                    remove_from_collections=[collection_id],
+                )
+                return f"removed collection link: {uri}"
+            return f"unsupported record collection for sdk delete: {collection}"
         except Exception as e:
             return f"failed to delete {uri}: {e}"
+
+    @agent.tool
+    async def add_url_card(
+        ctx: RunContext[CurationDeps],
+        url: str,
+        note: str = "",
+        collection_uris: list[str] | None = None,
+    ) -> str:
+        """Save a URL to phi's semble library, optionally with an indexed note and collection AT URIs."""
+        collection_ids: list[str] = []
+        for collection_uri in collection_uris or []:
+            collection_id = await _collection_id_for_uri(
+                ctx.deps.semble, collection_uri
+            )
+            if collection_id:
+                collection_ids.append(collection_id)
+        try:
+            result = await ctx.deps.semble.cards.add_url(
+                url,
+                note=note or None,
+                collection_ids=collection_ids or None,
+            )
+            return f"saved url card: {result.url_card_id}" + (
+                f" with note {result.note_card_id}" if result.note_card_id else ""
+            )
+        except Exception as e:
+            return f"failed to save url card: {e}"
 
     @agent.tool
     async def create_collection(
@@ -332,49 +485,38 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
         card_uris: list[str],
     ) -> str:
         """Create a new collection and link cards to it. card_uris should be AT URIs of existing cards."""
-        session = ctx.deps.session
-
-        # create collection
-        record = {
-            "name": name[:100],
-            "description": description[:500],
-            "accessType": "OPEN",
-            "createdAt": datetime.now(timezone.utc).isoformat(),
-        }
         try:
-            result = _create_record(session, "network.cosmik.collection", record)
+            result = await ctx.deps.semble.collections.create(
+                name[:100],
+                description=description[:500],
+                access_type="OPEN",
+            )
         except Exception as e:
             return f"failed to create collection: {e}"
 
-        coll_uri = result["uri"]
-        coll_cid = result["cid"]
+        if not result.collection_id:
+            return f"created collection '{name}', but api returned no collection id"
+
         linked = 0
-
-        # link each card
         for card_uri in card_uris:
-            # look up card cid
-            card_cid = ""
-            cards = _list_records(PHI_DID, "network.cosmik.card")
-            for c in cards:
-                if c.get("uri") == card_uri:
-                    card_cid = c.get("cid", "")
-                    break
-
-            link_record = {
-                "collection": {"uri": coll_uri, "cid": coll_cid},
-                "card": {"uri": card_uri, "cid": card_cid},
-                "addedBy": session["did"],
-                "addedAt": datetime.now(timezone.utc).isoformat(),
-            }
+            card_id = await _card_id_for_uri(ctx.deps.semble, card_uri)
+            if not card_id:
+                continue
             try:
-                _create_record(session, "network.cosmik.collectionLink", link_record)
+                await ctx.deps.semble.cards.update_url_associations(
+                    card_id,
+                    add_to_collections=[result.collection_id],
+                )
                 linked += 1
             except Exception:
-                pass  # log but continue
+                pass
 
-        return f"created collection '{name}' ({coll_uri}) with {linked}/{len(card_uris)} cards linked"
+        return (
+            f"created collection '{name}' ({result.collection_id}) "
+            f"with {linked}/{len(card_uris)} cards linked"
+        )
 
-    VALID_CONNECTION_TYPES = {"RELATED", "SUPPORTS", "OPPOSES", "ADDRESSES", "HELPFUL", "EXPLAINER", "LEADS_TO", "SUPPLEMENTS"}
+    VALID_CONNECTION_TYPES = set(get_args(ConnectionType))
 
     @agent.tool
     async def create_connection(
@@ -384,23 +526,30 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
         connection_type: str,
         note: str = "",
     ) -> str:
-        """Create a connection between two entities (AT URIs or URLs). connection_type must be one of: RELATED, SUPPORTS, OPPOSES, ADDRESSES, HELPFUL, EXPLAINER, LEADS_TO, SUPPLEMENTS."""
+        """Create a connection between two URL cards or URLs. connection_type must be one of: RELATED, SUPPORTS, OPPOSES, ADDRESSES, HELPFUL, EXPLAINER, LEADS_TO, SUPPLEMENT."""
         normalized = connection_type.upper().replace("-", "_")
+        if normalized == "SUPPLEMENTS":
+            normalized = "SUPPLEMENT"
         if normalized not in VALID_CONNECTION_TYPES:
             return f"invalid connection_type: {connection_type!r}. must be one of: {', '.join(sorted(VALID_CONNECTION_TYPES))}"
-        now = datetime.now(timezone.utc).isoformat()
-        record: dict[str, Any] = {
-            "source": source,
-            "target": target,
-            "connectionType": normalized,
-            "createdAt": now,
-            "updatedAt": now,
-        }
-        if note:
-            record["note"] = note[:1000]
+        source_value = await _connection_endpoint_value(source)
+        target_value = await _connection_endpoint_value(target)
+        if not source_value or not target_value:
+            return (
+                "connections through semble-api currently require URL cards or raw URLs"
+            )
         try:
-            result = _create_record(ctx.deps.session, "network.cosmik.connection", record)
-            return f"connected {source} → {target} [{connection_type}]: {result['uri']}"
+            result = await ctx.deps.semble.connections.create(
+                source_type="URL",
+                source_value=source_value,
+                target_type="URL",
+                target_value=target_value,
+                connection_type=normalized,  # type: ignore[arg-type]
+                note=note[:1000] or None,
+            )
+            return (
+                f"connected {source} -> {target} [{normalized}]: {result.connection_id}"
+            )
         except Exception as e:
             return f"failed to create connection: {e}"
 
@@ -410,31 +559,25 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
         text: str,
         parent_card_uri: str = "",
     ) -> str:
-        """Create a NOTE card. Write as yourself — first person, your voice.
-        parent_card_uri is optional; if provided, the note is attached to that card."""
-        record: dict[str, Any] = {
-            "type": "NOTE",
-            "content": {
-                "$type": "network.cosmik.card#noteContent",
-                "text": text,
-            },
-            "createdAt": datetime.now(timezone.utc).isoformat(),
-        }
-        if parent_card_uri:
-            # look up cid
-            cards = _list_records(PHI_DID, "network.cosmik.card")
-            for c in cards:
-                if c.get("uri") == parent_card_uri:
-                    record["parentCard"] = {"uri": parent_card_uri, "cid": c.get("cid", "")}
-                    break
+        """Attach a note to an existing URL card. Standalone notes are intentionally blocked."""
+        if not parent_card_uri:
+            return (
+                "blocked: standalone NOTE cards are not indexed by semble. "
+                "use add_url_card(url, note=...) or pass parent_card_uri for an existing URL card."
+            )
+        card_id = await _card_id_for_uri(ctx.deps.semble, parent_card_uri)
+        if not card_id:
+            return f"could not resolve URL card id for {parent_card_uri}"
         try:
-            result = _create_record(ctx.deps.session, "network.cosmik.card", record)
-            return f"note created: {result['uri']}"
+            await ctx.deps.semble.cards.update_url_associations(card_id, note=text)
+            return f"attached note to {parent_card_uri}"
         except Exception as e:
             return f"failed to create note: {e}"
 
     @agent.tool
-    async def recall(ctx: RunContext[CurationDeps], query: str, namespace: str = "") -> str:
+    async def recall(
+        ctx: RunContext[CurationDeps], query: str, namespace: str = ""
+    ) -> str:
         """Search your private memory (TurboPuffer). Leave namespace empty for broad search,
         or pass a handle like 'zzstoatzz.io' to search a specific user's namespace."""
         tpuf = ctx.deps.tpuf_client
@@ -550,9 +693,7 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
                 tag_str = f" [{', '.join(tags)}]" if tags else ""
                 created = getattr(row, "created_at", "?")
                 lines.append(
-                    f"id={row.id}{tag_str}\n"
-                    f"  {row.content}\n"
-                    f"  created: {created}"
+                    f"id={row.id}{tag_str}\n  {row.content}\n  created: {created}"
                 )
             return f"{len(resp.rows)} observations for @{handle}:\n" + "\n".join(lines)
         except Exception as e:
@@ -601,15 +742,17 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
         now = datetime.now(timezone.utc).isoformat()
         try:
             ns.write(
-                upsert_rows=[{
-                    "id": observation_id,
-                    "vector": embedding,
-                    "kind": "observation",
-                    "content": new_content,
-                    "tags": new_tags,
-                    "created_at": now,
-                    "updated_at": now,
-                }],
+                upsert_rows=[
+                    {
+                        "id": observation_id,
+                        "vector": embedding,
+                        "kind": "observation",
+                        "content": new_content,
+                        "tags": new_tags,
+                        "created_at": now,
+                        "updated_at": now,
+                    }
+                ],
                 distance_metric="cosine_distance",
                 schema={
                     "kind": {"type": "string", "filterable": True},
@@ -635,17 +778,17 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
 def fetch_semble_state() -> dict[str, list[dict]]:
     """Pre-fetch all semble records."""
     return {
-        "cards": _list_records(PHI_DID, "network.cosmik.card"),
+        "cards": _list_records(PHI_DID, RECORD_TYPE_CARD),
         "connections": _list_records(PHI_DID, "network.cosmik.connection"),
-        "collections": _list_records(PHI_DID, "network.cosmik.collection"),
-        "collection_links": _list_records(PHI_DID, "network.cosmik.collectionLink"),
+        "collections": _list_records(PHI_DID, RECORD_TYPE_COLLECTION),
+        "collection_links": _list_records(PHI_DID, RECORD_TYPE_COLLECTION_LINK),
     }
 
 
 @task(cache_policy=NONE)
 async def run_curation_agent(
     state_text: str,
-    session: dict[str, Any],
+    semble_client: Any,
     tpuf_client: Any,
     openai_client: Any,
     api_key: str,
@@ -654,7 +797,7 @@ async def run_curation_agent(
     """Run the curation agent loop."""
     agent = _build_agent(model_name, api_key)
     deps = CurationDeps(
-        session=session,
+        semble=semble_client,
         tpuf_client=tpuf_client,
         openai_client=openai_client,
     )
@@ -670,7 +813,7 @@ async def run_curation_agent(
 
 @task(cache_policy=NONE)
 async def run_observation_review(
-    session: dict[str, Any],
+    semble_client: Any,
     tpuf_client: Any,
     openai_client: Any,
     api_key: str,
@@ -679,7 +822,7 @@ async def run_observation_review(
     """Run the observation review agent loop."""
     agent = _build_agent(model_name, api_key)
     deps = CurationDeps(
-        session=session,
+        semble=semble_client,
         tpuf_client=tpuf_client,
         openai_client=openai_client,
     )
@@ -704,16 +847,19 @@ async def curate():
     Triggered by morning flow completion. Uses phi's personality and memory
     to make curation decisions as an agentic loop.
     """
+    configure_logfire("prefect-flow-curate")
+
     anthropic_key = (await Secret.load("anthropic-api-key")).get()
     tpuf_key = (await Secret.load("turbopuffer-api-key")).get()
     openai_key = (await Secret.load("openai-api-key")).get()
+    semble_key = (await Secret.load("semble-api-key")).get()
     bsky_handle = (await Secret.load("atproto-handle")).get()
     bsky_password = (await Secret.load("atproto-password")).get()
     model_name = await Variable.get("curate-model", default="claude-haiku-4-5")
     print(f"using model: {model_name}")
 
     # authenticate
-    session = _create_bsky_session(bsky_handle, bsky_password)
+    session = create_bsky_session(bsky_handle, bsky_password)
     print(f"authenticated as {session['did']}")
 
     # pre-fetch all semble state
@@ -735,30 +881,34 @@ async def curate():
     # initialize clients for agent tools
     tpuf_client = turbopuffer.Turbopuffer(api_key=tpuf_key, region="gcp-us-central1")
     openai_client = OpenAI(api_key=openai_key)
+    async with AsyncSemble(api_key=semble_key) as semble_client:
+        # phase 1: semble record curation
+        semble_result = await run_curation_agent(
+            state_text=state_text,
+            semble_client=semble_client,
+            tpuf_client=tpuf_client,
+            openai_client=openai_client,
+            api_key=anthropic_key,
+            model_name=model_name,
+        )
+        print(
+            f"semble curation: {semble_result['actions_taken']} actions — {semble_result['summary']}"
+        )
 
-    # phase 1: semble record curation
-    semble_result = await run_curation_agent(
-        state_text=state_text,
-        session=session,
-        tpuf_client=tpuf_client,
-        openai_client=openai_client,
-        api_key=anthropic_key,
-        model_name=model_name,
-    )
-    print(f"semble curation: {semble_result['actions_taken']} actions — {semble_result['summary']}")
+        # phase 2: observation review
+        obs_result = await run_observation_review(
+            semble_client=semble_client,
+            tpuf_client=tpuf_client,
+            openai_client=openai_client,
+            api_key=anthropic_key,
+            model_name=model_name,
+        )
+        print(
+            f"observation review: {obs_result['actions_taken']} actions — {obs_result['summary']}"
+        )
 
-    # phase 2: observation review
-    obs_result = await run_observation_review(
-        session=session,
-        tpuf_client=tpuf_client,
-        openai_client=openai_client,
-        api_key=anthropic_key,
-        model_name=model_name,
-    )
-    print(f"observation review: {obs_result['actions_taken']} actions — {obs_result['summary']}")
-
-    total_actions = semble_result["actions_taken"] + obs_result["actions_taken"]
-    print(f"curation complete: {total_actions} total actions")
+        total_actions = semble_result["actions_taken"] + obs_result["actions_taken"]
+        print(f"curation complete: {total_actions} total actions")
 
 
 if __name__ == "__main__":

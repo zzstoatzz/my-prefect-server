@@ -25,6 +25,8 @@ from pdsx._internal.operations import (
     update_record,
 )
 
+from mps.observability import configure_logfire
+
 Action = Literal["list", "delete", "create", "update"]
 
 
@@ -82,7 +84,9 @@ async def _paginate_all(
     all_records: list[dict[str, Any]] = []
     cursor = None
     while True:
-        resp = await list_records(client, collection, limit=100, repo=repo, cursor=cursor)
+        resp = await list_records(
+            client, collection, limit=100, repo=repo, cursor=cursor
+        )
         for r in resp.records:
             all_records.append({"uri": r.uri, "cid": r.cid, "value": r.value})
         cursor = resp.cursor
@@ -92,7 +96,9 @@ async def _paginate_all(
 
 
 @task(cache_policy=NONE)
-async def list_pds_records(client: AsyncClient, config: PdsRecordsConfig) -> list[dict[str, Any]]:
+async def list_pds_records(
+    client: AsyncClient, config: PdsRecordsConfig
+) -> list[dict[str, Any]]:
     """List all records in a collection, print count + sample."""
     records = await _paginate_all(client, config.collection, config.repo)
     print(f"found {len(records)} records in {config.collection}")
@@ -130,7 +136,9 @@ async def delete_pds_records(client: AsyncClient, config: PdsRecordsConfig) -> i
 
 
 @task(cache_policy=NONE)
-async def create_pds_records(client: AsyncClient, config: PdsRecordsConfig) -> list[dict[str, str]]:
+async def create_pds_records(
+    client: AsyncClient, config: PdsRecordsConfig
+) -> list[dict[str, str]]:
     """Create one or more records, return URIs + CIDs."""
     if not config.records:
         raise ValueError("config.records is required for create action")
@@ -145,7 +153,9 @@ async def create_pds_records(client: AsyncClient, config: PdsRecordsConfig) -> l
 
 
 @task(cache_policy=NONE)
-async def update_pds_record(client: AsyncClient, config: PdsRecordsConfig) -> dict[str, str]:
+async def update_pds_record(
+    client: AsyncClient, config: PdsRecordsConfig
+) -> dict[str, str]:
     """Update a record at the given URI."""
     if not config.uri:
         raise ValueError("config.uri is required for update action")
@@ -164,6 +174,8 @@ async def pds_records(config: PdsRecordsConfig):
     Parameterized by action, collection, and optional filters.
     Credentials from prefect secrets. pdsx handles auth + PDS discovery.
     """
+    configure_logfire("prefect-flow-pds-records")
+
     handle = (await Secret.load("atproto-handle")).get()
     password = (await Secret.load("atproto-password")).get()
 

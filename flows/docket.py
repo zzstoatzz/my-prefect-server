@@ -46,6 +46,8 @@ from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 
+from mps.atproto import create_bsky_session
+from mps.observability import configure_logfire
 from mps.spend import record_pydantic_ai_result
 
 # ---------------------------------------------------------------------------
@@ -61,7 +63,7 @@ DOCKET_COLLECTION = "io.zzstoatzz.phi.docket"
 DOCKET_RKEY = "self"
 
 # Synthesis params
-MIN_CLUSTER_DENSITY = 3       # require ≥N raw points in a fine cluster to synthesize
+MIN_CLUSTER_DENSITY = 3  # require ≥N raw points in a fine cluster to synthesize
 # Overselect-then-filter: extract up to MAX_CLUSTERS_TO_SYNTH candidate clusters,
 # let the synth reject aggressively, then cap the final docket at MAX_CANDIDATES.
 # Splitting these constants avoids the failure mode where dense operational
@@ -178,16 +180,6 @@ class Docket(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _create_bsky_session(handle: str, password: str) -> dict[str, Any]:
-    resp = httpx.post(
-        f"{PDS_BASE}/xrpc/com.atproto.server.createSession",
-        json={"identifier": handle, "password": password},
-        timeout=15,
-    )
-    resp.raise_for_status()
-    return resp.json()
-
-
 def _get_record(repo: str, collection: str, rkey: str) -> dict[str, Any] | None:
     """Read a single record from a public PDS via the entryway. Returns
     a plain dict with uri/cid/value, or None if not found."""
@@ -230,9 +222,7 @@ def fetch_atlas() -> dict[str, Any]:
     logger = get_run_logger()
     record = _get_record(PHI_DID, ATLAS_COLLECTION, ATLAS_RKEY)
     if record is None:
-        raise RuntimeError(
-            "no atlas record on PDS yet — phi-atlas flow must run first"
-        )
+        raise RuntimeError("no atlas record on PDS yet — phi-atlas flow must run first")
     value = record.get("value") or {}
     blob = value.get("blob") or {}
     # blob ref shape: {"$type": "blob", "ref": {"$link": "bafy..."}, "mimeType": ..., "size": ...}
@@ -292,11 +282,11 @@ def _public_anchors_in_coarse(
     return out
 
 
-def _evidence_from_cluster(points: list[dict[str, Any]], max_n: int) -> list[EvidenceRef]:
+def _evidence_from_cluster(
+    points: list[dict[str, Any]], max_n: int
+) -> list[EvidenceRef]:
     """Top-N evidence refs from a cluster, ordered by recency."""
-    sorted_pts = sorted(
-        points, key=lambda p: p.get("created_at") or "", reverse=True
-    )
+    sorted_pts = sorted(points, key=lambda p: p.get("created_at") or "", reverse=True)
     return [
         EvidenceRef(
             atlas_point_id=p.get("id") or "",
@@ -335,7 +325,9 @@ def _extract_pressure_pool_impl(atlas: dict[str, Any]) -> list[dict[str, Any]]:
             if cc is None or cc < 0:
                 continue
             coarse_counts[cc] = coarse_counts.get(cc, 0) + 1
-        coarse = max(coarse_counts.items(), key=lambda kv: kv[1])[0] if coarse_counts else -1
+        coarse = (
+            max(coarse_counts.items(), key=lambda kv: kv[1])[0] if coarse_counts else -1
+        )
 
         # union of tags, deduped, ordered by frequency
         tag_counts: dict[str, int] = {}
@@ -351,7 +343,9 @@ def _extract_pressure_pool_impl(atlas: dict[str, Any]) -> list[dict[str, Any]]:
                 "cluster_label": _cluster_label(atlas, cf),
                 "points": cluster_points,
                 "tags": tags,
-                "anchors": _public_anchors_in_coarse(atlas, coarse, MAX_ANCHORS_PER_CLUSTER),
+                "anchors": _public_anchors_in_coarse(
+                    atlas, coarse, MAX_ANCHORS_PER_CLUSTER
+                ),
             }
         )
 
@@ -608,9 +602,7 @@ def _docket_to_bytes(docket: Docket) -> bytes:
 
 
 @task
-def upload_docket_to_pds(
-    docket: Docket, handle: str, password: str
-) -> dict[str, Any]:
+def upload_docket_to_pds(docket: Docket, handle: str, password: str) -> dict[str, Any]:
     """Blob upload + putRecord. Same pattern as phi_atlas.upload_atlas_to_pds.
 
     octet-stream content-type per the carried PDS bug — bsky atproto-pds
@@ -618,7 +610,7 @@ def upload_docket_to_pds(
     Consumers parse as JSON regardless.
     """
     logger = get_run_logger()
-    session = _create_bsky_session(handle, password)
+    session = create_bsky_session(handle, password)
     headers = {"Authorization": f"Bearer {session['accessJwt']}"}
     docket_bytes = _docket_to_bytes(docket)
 
@@ -631,9 +623,7 @@ def upload_docket_to_pds(
     blob_resp.raise_for_status()
     blob_ref = blob_resp.json()["blob"]
     blob_cid = blob_ref.get("ref", {}).get("$link", "?")
-    logger.info(
-        f"uploaded docket blob: {len(docket_bytes)} bytes, cid={blob_cid}"
-    )
+    logger.info(f"uploaded docket blob: {len(docket_bytes)} bytes, cid={blob_cid}")
 
     record = {
         "generatedAt": docket.generated_at,
@@ -706,6 +696,7 @@ async def docket(dry_run: bool = False) -> dict[str, int]:
     dry_run=True skips PDS write + DuckDB archive — useful for local
     validation against the live atlas.
     """
+    configure_logfire("prefect-flow-docket")
     logger = get_run_logger()
 
     anthropic_key = (await Secret.load("anthropic-api-key")).get()
