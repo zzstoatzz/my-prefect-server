@@ -4,6 +4,7 @@
 .terraform/
 .terraform.lock.hcl
 kubeconfig.yaml
+kubeconfig.yaml.bak
 .venv/
 __pycache__/
 *.pyc
