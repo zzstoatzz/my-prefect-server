@@ -192,8 +192,10 @@ deployments:
           # hetzner is NOT here: its tokens are project-scoped (one per cloud
           # project), so the flow loads the `hetzner-tokens` Secret block (a
           # dict of {name: token}) and merges them. add a project = add a key.
-          # optional knobs for connectors that lack a usage API:
-          # CLOUDFLARE_FIXED_USD: "1.00"   # domains / paid plans
+          # CF billing API is 403 for this token (no Billing:Read scope) and
+          # mostly deprecated anyway, so the known Workers Paid plan is a fixed
+          # input. update if the subscription changes.
+          CLOUDFLARE_FIXED_USD: "5.00"   # workers paid plan
           # NEON_PLAN_USD: "5.00"          # monthly plan base (default 5)
           # FLY_ORG_SLUG: "personal"
     parameters:
