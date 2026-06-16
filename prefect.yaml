@@ -168,3 +168,36 @@ deployments:
         action: list
         collection: network.cosmik.connection
         dry_run: true
+
+  - name: costs
+    entrypoint: flows/costs.py:costs
+    # provider billing tokens injected from Secret blocks (resolved at deploy
+    # time); connectors read os.environ. atproto creds load via Secret.load in
+    # the flow, matching pds-records. CLOUDFLARE_API_TOKEN block already exists;
+    # create fly-api-token / hcloud-token / neon-api-key blocks before deploying.
+    work_pool:
+      name: kubernetes-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
+        env:
+          CLOUDFLARE_API_TOKEN: "{{ prefect.blocks.secret.cloudflare-api-token }}"
+          # account-scoped CF tokens can't list /accounts; account id isn't
+          # secret (it's in dashboard URLs / wrangler.jsonc), so inline it.
+          CLOUDFLARE_ACCOUNT_ID: "3e9ba01cd687b3c4d29033908177072e"
+          FLY_API_TOKEN: "{{ prefect.blocks.secret.fly-api-token }}"
+          NEON_API_KEY: "{{ prefect.blocks.secret.neon-api-key }}"
+          # hetzner is NOT here: its tokens are project-scoped (one per cloud
+          # project), so the flow loads the `hetzner-tokens` Secret block (a
+          # dict of {name: token}) and merges them. add a project = add a key.
+          # optional knobs for connectors that lack a usage API:
+          # CLOUDFLARE_FIXED_USD: "1.00"   # domains / paid plans
+          # NEON_PLAN_USD: "5.00"          # monthly plan base (default 5)
+          # FLY_ORG_SLUG: "personal"
+    parameters:
+      config:
+        dry_run: false
+    schedules:
+      - cron: "0 8 * * *"  # daily at 08:00 UTC

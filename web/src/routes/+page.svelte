@@ -4,6 +4,7 @@
 	import FilterBar from '$lib/components/FilterBar.svelte';
 	import CardTable from '$lib/components/CardTable.svelte';
 	import SpendPanel from '$lib/components/SpendPanel.svelte';
+	import CostPanel from '$lib/components/CostPanel.svelte';
 
 	let { data } = $props();
 
@@ -11,6 +12,7 @@
 	const cards = $derived(data.cards);
 	const briefing = $derived(data.briefing);
 	const spend = $derived(data.spend);
+	const infraCosts = $derived(data.infraCosts);
 
 	let search = $state('');
 	let sourceFilter = $state('');
@@ -50,6 +52,10 @@
 
 	<div class="mt-8">
 		<SpendPanel {spend} />
+	</div>
+
+	<div class="mt-8">
+		<CostPanel costs={infraCosts} />
 	</div>
 
 	{#if briefing}

@@ -51,6 +51,35 @@ export interface SpendSummary {
 	recent: SpendRecentRun[];
 }
 
+// infra costs — io.zzstoatzz.cost.snapshot, read from the public PDS.
+// all amounts are integer USD cents.
+export interface CostRollup {
+	key: string;
+	amount: number;
+	estimated: boolean;
+}
+
+export interface CostLineItem {
+	provider: string;
+	project: string;
+	service: string;
+	amount: number;
+	estimated: boolean;
+	usage?: string;
+	note?: string;
+}
+
+export interface InfraCostSnapshot {
+	generatedAt: string;
+	periodStart?: string;
+	periodEnd?: string;
+	currency: string;
+	total: number;
+	byProvider: CostRollup[];
+	byProject: CostRollup[];
+	lineItems: CostLineItem[];
+}
+
 export interface DiscoveryPoolPost {
 	uri: string;
 	text: string;
