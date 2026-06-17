@@ -150,8 +150,12 @@ def transform():
 
     # compile manifest.json so PrefectDbtOrchestrator can parse the project
     logger.info("compiling dbt project...")
+    # pin the nested dbt venv to stable 3.13 — without --python, uv picks the
+    # newest matching requires-python (3.14), where dbt-common→mashumaro and
+    # rpds-py's resolution break. (the outer flow's --python only covers this
+    # process, not this nested `uv run`.)
     result = subprocess.run(
-        ["uv", "run", "dbt", "compile",
+        ["uv", "run", "--python", "3.13.11", "dbt", "compile",
          "--project-dir", str(ANALYTICS_DIR),
          "--profiles-dir", str(ANALYTICS_DIR / "profiles")],
         capture_output=True, text=True,
