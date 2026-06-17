@@ -20,7 +20,15 @@ definitions:
 deployments:
   - name: diagnostics
     entrypoint: flows/diagnostics.py:diagnostics
-    work_pool: *k8s
+    # retargeted to the home box (heavypad) via the process work pool — canary
+    # proving the home worker pulls code + executes flows. revert to *k8s anytime.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
     schedules:
       - cron: "*/5 * * * *"
         active: false

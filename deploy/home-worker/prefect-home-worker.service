@@ -1,0 +1,24 @@
+[Unit]
+Description=Prefect worker on heavypad (prod home-pool, process)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=stoat
+Group=stoat
+WorkingDirectory=/home/stoat
+# prod API URL + auth string (PREFECT_API_URL, PREFECT_API_AUTH_STRING), 0600
+EnvironmentFile=/home/stoat/.config/prod-worker/env
+# uv must be on PATH: the process worker spawns `uv run ...` per flow run
+Environment=PATH=/home/stoat/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=UV_CACHE_DIR=/home/stoat/.cache/uv
+# prefect pinned to the server version (3.7.2) to avoid client/server skew
+ExecStart=/home/stoat/.local/bin/uv run --with prefect==3.7.2 prefect worker start --pool home-pool --type process --name heavypad
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
