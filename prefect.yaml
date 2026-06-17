@@ -16,6 +16,20 @@ definitions:
           uv run
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
+    # home box (heavypad) process pool. persistent analytics paths replace the
+    # k8s PVC so DuckDB / spend-log / local-storage coordinate across flow runs
+    # (process flow runs execute in an ephemeral /tmp dir, so these MUST be set).
+    home: &home
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
+        env:
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
 
 deployments:
   - name: diagnostics
@@ -35,7 +49,7 @@ deployments:
 
   - name: ingest
     entrypoint: flows/ingest.py:ingest
-    work_pool: *k8s
+    work_pool: *home
     schedules:
       - cron: "0 * * * *"  # hourly
     parameters:
@@ -44,14 +58,16 @@ deployments:
   - name: transform
     entrypoint: flows/transform.py:transform
     work_pool:
-      name: kubernetes-pool
+      name: home-pool
       job_variables:
         command: >-
           uv run --python 3.13
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
-        memory_request: 2Gi
-        memory_limit: 3Gi
+        env:
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
     concurrency_limit: 1
     triggers:
       - type: event
@@ -63,7 +79,7 @@ deployments:
 
   - name: brief
     entrypoint: flows/brief.py:brief
-    work_pool: *k8s
+    work_pool: *home
     triggers:
       - type: event
         expect:
@@ -74,15 +90,7 @@ deployments:
 
   - name: compact
     entrypoint: flows/compact.py:compact
-    work_pool:
-      name: kubernetes-pool
-      job_variables:
-        command: >-
-          uv run
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
-          prefect flow-run execute
-        memory_request: 2Gi
-        memory_limit: 3Gi
+    work_pool: *home
     triggers:
       - type: event
         expect:
@@ -93,13 +101,13 @@ deployments:
 
   - name: morning
     entrypoint: flows/morning.py:morning
-    work_pool: *k8s
+    work_pool: *home
     schedules:
       - cron: "0 13 * * *"  # 8am CT daily
 
   - name: curate
     entrypoint: flows/curate.py:curate
-    work_pool: *k8s
+    work_pool: *home
     triggers:
       - type: event
         expect:
@@ -114,12 +122,16 @@ deployments:
     # and TurboPuffer row phi owns. ML deps (numpy/scipy/umap-learn/hdbscan)
     # live in the [atlas] extra so other flows' pods don't pull them.
     work_pool:
-      name: kubernetes-pool
+      name: home-pool
       job_variables:
         command: >-
           uv run
           --with 'my-prefect-server[atlas] @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
+        env:
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
     schedules:
       - cron: "0 13 * * *"  # 8am CT daily, alongside morning
 
@@ -128,7 +140,7 @@ deployments:
     # Daily promotion object — consumes the atlas, emits 5-15 candidate
     # work items. Event-triggered on phi-atlas completion so the docket
     # exactly tracks the atlas it was derived from. No separate cron.
-    work_pool: *k8s
+    work_pool: *home
     triggers:
       - type: event
         expect:
@@ -143,7 +155,7 @@ deployments:
     # injected as env vars (resolved from Secret blocks at deploy time),
     # so flow code never calls Secret.load() and tasks just inherit env.
     work_pool:
-      name: kubernetes-pool
+      name: home-pool
       job_variables:
         command: >-
           uv run
@@ -161,16 +173,15 @@ deployments:
           ANTHROPIC_API_KEY: "{{ prefect.blocks.secret.anthropic-api-key }}"
           TURSO_URL: "{{ prefect.blocks.secret.turso-url }}"
           TURSO_TOKEN: "{{ prefect.blocks.secret.turso-token }}"
-        cpu_request: 500m
-        cpu_limit: "2"
-        memory_request: 3Gi
-        memory_limit: 3Gi
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
     schedules:
       - cron: "0 */6 * * *"  # every 6 hours
 
   - name: pds-records
     entrypoint: flows/pds_records.py:pds_records
-    work_pool: *k8s
+    work_pool: *home
     parameters:
       config:
         action: list
