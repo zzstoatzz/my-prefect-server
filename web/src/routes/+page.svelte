@@ -3,8 +3,7 @@
 	import StatBar from '$lib/components/StatBar.svelte';
 	import FilterBar from '$lib/components/FilterBar.svelte';
 	import CardTable from '$lib/components/CardTable.svelte';
-	import SpendPanel from '$lib/components/SpendPanel.svelte';
-	import CostPanel from '$lib/components/CostPanel.svelte';
+	import CostsPanel from '$lib/components/CostsPanel.svelte';
 
 	let { data } = $props();
 
@@ -51,11 +50,7 @@
 	/>
 
 	<div class="mt-8">
-		<SpendPanel {spend} />
-	</div>
-
-	<div class="mt-8">
-		<CostPanel costs={infraCosts} />
+		<CostsPanel {spend} costs={infraCosts} />
 	</div>
 
 	{#if briefing}
