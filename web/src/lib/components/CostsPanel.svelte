@@ -21,9 +21,18 @@
 	const PALETTE = ['#22d3ee', '#a78bfa', '#34d399', '#fbbf24', '#f472b6', '#60a5fa', '#fb923c', '#4ade80', '#e879f9', '#2dd4bf', '#f87171', '#94a3b8'];
 	const REPO: Record<string, string> = {
 		relays: 'relay', 'plyr.fm': 'plyr.fm', typeahead: 'typeahead', prefect: 'my-prefect-server',
-		'standard.site': 'leaflet-search', trending: 'coral', bufo: 'find-bufo', labelz: 'labelz'
+		'standard.site': 'leaflet-search', trending: 'coral', bufo: 'find-bufo', labelz: 'labelz',
+		phi: 'bot'
 	};
 	const repoUrl = (key: string) => (REPO[key] ? `https://tangled.org/zzstoatzz.io/${REPO[key]}` : null);
+
+	// LLM flows are Prefect flows defined in this repo's flows/ dir; link each to
+	// its source. Most map name→name.py; a few have differently-named files.
+	const FLOW_FILE: Record<string, string> = {
+		'rebuild-atlas': 'atlas.py', 'phi-atlas': 'phi_atlas.py', 'pds-records': 'pds_records.py'
+	};
+	const flowUrl = (name: string) =>
+		`https://tangled.org/zzstoatzz.io/my-prefect-server/blob/main/flows/${FLOW_FILE[name] ?? name.replace(/-/g, '_') + '.py'}`;
 
 	// ── persisted ui state (collapsed by default) ───────────────────────────
 	type View = 'project' | 'provider';
@@ -144,7 +153,13 @@
 					{#each topFlows as f, i (f.flow_name)}
 						<div>
 							<div class="flex items-baseline justify-between gap-3 text-sm">
-								<span class="truncate text-gray-200"><span class="mr-1.5 text-xs text-gray-600">{i + 1}</span>{f.flow_name}</span>
+								<span class="truncate">
+									<span class="mr-1.5 text-xs text-gray-600">{i + 1}</span><a
+										href={flowUrl(f.flow_name)}
+										target="_blank"
+										rel="noopener"
+										class="text-gray-200 underline-offset-2 hover:text-white hover:underline">{f.flow_name}</a>
+								</span>
 								<span class="shrink-0 font-medium tabular-nums text-gray-50">{dollars(f.cost_usd)}</span>
 							</div>
 							<div class="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-800">
