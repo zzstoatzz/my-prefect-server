@@ -183,8 +183,10 @@ deployments:
     # time); connectors read os.environ. atproto creds load via Secret.load in
     # the flow, matching pds-records. CLOUDFLARE_API_TOKEN block already exists;
     # create fly-api-token / hcloud-token / neon-api-key blocks before deploying.
+    # runs on the home box (heavypad) — decoupled from the hub (writes to PDS,
+    # which the hub reads via API), so safe to migrate independently.
     work_pool:
-      name: kubernetes-pool
+      name: home-pool
       job_variables:
         command: >-
           uv run
@@ -201,9 +203,9 @@ deployments:
           # project), so the flow loads the `hetzner-tokens` Secret block (a
           # dict of {name: token}) and merges them. add a project = add a key.
           # CF billing API is 403 for this token (no Billing:Read scope) and
-          # mostly deprecated anyway, so the known Workers Paid plan is a fixed
-          # input. update if the subscription changes.
-          CLOUDFLARE_FIXED_USD: "5.00"   # workers paid plan
+          # mostly deprecated anyway, so fixed costs are explicit resource
+          # lines. Keep these resource-shaped so project attribution works.
+          CLOUDFLARE_FIXED_COSTS_JSON: '{"plyr.fm":{"amount":1.00,"project":"plyr.fm","note":"plyr.fm domain registration"},"workers-paid-plan":{"amount":4.00,"project":"shared","note":"Cloudflare Workers Paid plan"}}'
           # NEON_PLAN_USD: "5.00"          # monthly plan base (default 5)
           # FLY_ORG_SLUG: "personal"
     parameters:

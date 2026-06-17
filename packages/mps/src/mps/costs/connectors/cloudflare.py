@@ -1,22 +1,26 @@
 """Cloudflare connector.
 
 Most of your Cloudflare usage is free tier; the cost that actually accrues is R2
-storage. We query stored bytes via the GraphQL analytics API and price it at the
-standard storage rate ($0.015/GB-month), then add a configurable fixed amount for
-domain registrations / paid plans that have no usage API.
+storage plus a few fixed subscriptions/registrations. We query stored bytes per
+R2 bucket via the GraphQL analytics API, apply the 10 GB account-level free tier,
+then allocate the paid storage back across buckets. Fixed costs can be supplied
+as resource-shaped JSON so project attribution has something real to match.
 
 Auth: CLOUDFLARE_API_TOKEN (already a secret block in prefect.yaml).
 Optional: CLOUDFLARE_ACCOUNT_ID (else the first account is used),
-          CLOUDFLARE_FIXED_USD (domains/plans, default 0).
+          CLOUDFLARE_FIXED_COSTS_JSON, or legacy CLOUDFLARE_FIXED_USD.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
+from typing import Any
 
 import httpx
 
+from mps.costs.projects import project_for
 from mps.costs.types import LineItem, Period
 
 REST = "https://api.cloudflare.com/client/v4"
@@ -24,15 +28,17 @@ GRAPHQL = "https://api.cloudflare.com/client/v4/graphql"
 PROVIDER = "cloudflare"
 
 _R2_GB_MONTH_USD = 0.015
+_R2_FREE_GB = 10.0
 
 _R2_STORAGE_QUERY = """
 query ($account: String!, $start: Time!, $end: Time!) {
   viewer {
     accounts(filter: {accountTag: $account}) {
       r2StorageAdaptiveGroups(
-        limit: 1
+        limit: 1000
         filter: {datetime_geq: $start, datetime_leq: $end}
       ) {
+        dimensions { bucketName }
         max { payloadSize metadataSize }
       }
     }
@@ -53,7 +59,9 @@ async def _account_id(client: httpx.AsyncClient) -> str | None:
     return accounts[0]["id"] if accounts else None
 
 
-async def _r2_stored_bytes(client: httpx.AsyncClient, account: str, period: Period) -> int:
+async def _r2_stored_bytes_by_bucket(
+    client: httpx.AsyncClient, account: str, period: Period
+) -> dict[str, int]:
     resp = await client.post(
         GRAPHQL,
         json={
@@ -72,12 +80,133 @@ async def _r2_stored_bytes(client: httpx.AsyncClient, account: str, period: Peri
         raise RuntimeError(f"r2 storage query failed: {errors}")
     accounts = (body.get("data", {}) or {}).get("viewer", {}).get("accounts", [])
     if not accounts:
-        return 0  # genuinely no account data
+        return {}  # genuinely no account data
     groups = accounts[0].get("r2StorageAdaptiveGroups", [])
     if not groups:
-        return 0  # genuinely no stored objects
-    mx = groups[0].get("max", {})
-    return int(mx.get("payloadSize", 0)) + int(mx.get("metadataSize", 0))
+        return {}  # genuinely no stored objects
+
+    buckets: dict[str, int] = {}
+    for group in groups:
+        name = ((group.get("dimensions") or {}).get("bucketName") or "unknown-r2-bucket").strip()
+        mx = group.get("max", {}) or {}
+        stored = int(mx.get("payloadSize", 0) or 0) + int(mx.get("metadataSize", 0) or 0)
+        buckets[name] = buckets.get(name, 0) + stored
+    return buckets
+
+
+def _allocate_cents(total_cents: int, weights: dict[str, int]) -> dict[str, int]:
+    total_weight = sum(weights.values())
+    if total_cents <= 0 or total_weight <= 0:
+        return {}
+
+    allocations: dict[str, int] = {}
+    remainders: list[tuple[int, str]] = []
+    assigned = 0
+    for key, weight in weights.items():
+        raw = total_cents * weight
+        cents, remainder = divmod(raw, total_weight)
+        allocations[key] = cents
+        assigned += cents
+        remainders.append((remainder, key))
+
+    for _, key in sorted(remainders, reverse=True)[: total_cents - assigned]:
+        allocations[key] += 1
+    return {key: cents for key, cents in allocations.items() if cents > 0}
+
+
+def _r2_line_items(stored_by_bucket: dict[str, int]) -> list[LineItem]:
+    total_bytes = sum(stored_by_bucket.values())
+    if total_bytes <= 0:
+        return []
+
+    total_gb = total_bytes / 1_000_000_000
+    billable_gb = max(0.0, total_gb - _R2_FREE_GB)
+    total_cents = round(billable_gb * _R2_GB_MONTH_USD * 100)
+    allocations = _allocate_cents(total_cents, stored_by_bucket)
+
+    items: list[LineItem] = []
+    for bucket, cents in sorted(allocations.items()):
+        gb = stored_by_bucket[bucket] / 1_000_000_000
+        items.append(
+            LineItem(
+                provider=PROVIDER,
+                project=project_for(bucket),
+                service=f"r2:{bucket}",
+                amount=cents,
+                estimated=True,
+                usage=f"{gb:.2f} GB stored",
+                note=(
+                    "allocated share of R2 storage after 10 GB account free tier; "
+                    "class A/B ops & egress not counted"
+                ),
+            )
+        )
+    return items
+
+
+def _fixed_line_items() -> list[LineItem]:
+    raw = os.environ.get("CLOUDFLARE_FIXED_COSTS_JSON")
+    if raw:
+        return _fixed_line_items_from_json(raw)
+
+    fixed = float(os.environ.get("CLOUDFLARE_FIXED_USD", "0"))
+    if fixed <= 0:
+        return []
+    return [
+        LineItem(
+            provider=PROVIDER,
+            project="shared",
+            service="domains-and-plans",
+            amount=round(fixed * 100),
+            estimated=False,
+            note="fixed domain registrations / paid plans (CLOUDFLARE_FIXED_USD)",
+        )
+    ]
+
+
+def _fixed_line_items_from_json(raw: str) -> list[LineItem]:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("CLOUDFLARE_FIXED_COSTS_JSON is not valid JSON") from exc
+
+    if not isinstance(data, dict):
+        raise RuntimeError("CLOUDFLARE_FIXED_COSTS_JSON must be an object")
+
+    items: list[LineItem] = []
+    for service, spec in data.items():
+        if isinstance(spec, int | float):
+            amount = float(spec)
+            project = project_for(service)
+            note = "fixed Cloudflare cost (CLOUDFLARE_FIXED_COSTS_JSON)"
+        elif isinstance(spec, dict):
+            amount = _amount_from_spec(service, spec)
+            project = str(spec.get("project") or project_for(service))
+            note = str(spec.get("note") or "fixed Cloudflare cost (CLOUDFLARE_FIXED_COSTS_JSON)")
+        else:
+            raise RuntimeError(f"Cloudflare fixed cost {service!r} must be a number or object")
+
+        if amount <= 0:
+            continue
+        items.append(
+            LineItem(
+                provider=PROVIDER,
+                project=project,
+                service=str(service),
+                amount=round(amount * 100),
+                estimated=False,
+                note=note,
+            )
+        )
+    return items
+
+
+def _amount_from_spec(service: str, spec: dict[str, Any]) -> float:
+    if "amount" in spec:
+        return float(spec["amount"])
+    if "usd" in spec:
+        return float(spec["usd"])
+    raise RuntimeError(f"Cloudflare fixed cost {service!r} needs amount or usd")
 
 
 class CloudflareConnector:
@@ -102,39 +231,14 @@ class CloudflareConnector:
             # if we can't read it, OMIT r2 (never invent a $0 line) and warn —
             # but still report the real fixed costs below.
             try:
-                stored = await _r2_stored_bytes(client, account, period)
-                gb = stored / 1_000_000_000
-                cents = round(gb * _R2_GB_MONTH_USD * 100)
-                if cents > 0:
-                    items.append(
-                        LineItem(
-                            provider=PROVIDER,
-                            project="shared",
-                            service="r2-storage",
-                            amount=cents,
-                            estimated=True,
-                            usage=f"{gb:.2f} GB stored",
-                            note="r2 storage at $0.015/GB-mo; class A/B ops & egress not counted",
-                        )
-                    )
+                items.extend(_r2_line_items(await _r2_stored_bytes_by_bucket(client, account, period)))
             except Exception as exc:
                 print(
                     f"  cloudflare: R2 storage UNMEASURED ({exc}); "
                     "add 'Account Analytics: Read' to the token to include it"
                 )
 
-        fixed = float(os.environ.get("CLOUDFLARE_FIXED_USD", "0"))
-        if fixed > 0:
-            items.append(
-                LineItem(
-                    provider=PROVIDER,
-                    project="shared",
-                    service="domains-and-plans",
-                    amount=round(fixed * 100),
-                    estimated=False,
-                    note="fixed domain registrations / paid plans (CLOUDFLARE_FIXED_USD)",
-                )
-            )
+        items.extend(_fixed_line_items())
         return items
 
 

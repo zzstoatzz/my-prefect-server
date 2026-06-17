@@ -17,6 +17,17 @@ _RESOURCE_PATTERNS: dict[str, str] = {
     "moderation": "plyr.fm",
     "transcoder": "plyr.fm",
     "audd": "plyr.fm",
+    "plyr.fm": "plyr.fm",
+    "audio-prod": "plyr.fm",
+    "audio-staging": "plyr.fm",
+    "audio-dev": "plyr.fm",
+    "audio-private-prod": "plyr.fm",
+    "audio-private-staging": "plyr.fm",
+    "audio-private-dev": "plyr.fm",
+    "images-prod": "plyr.fm",
+    "images-staging": "plyr.fm",
+    "images-dev": "plyr.fm",
+    "plyr-stats": "plyr.fm",
     # typeahead
     "typeahead": "typeahead",
     # standard.site index

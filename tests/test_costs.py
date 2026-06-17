@@ -16,6 +16,11 @@ def test_project_mapping_longest_match_wins():
     # specific name beats the generic "plyr" substring
     assert project_for("plyr-transcoder") == "plyr.fm"
     assert project_for("plyr") == "plyr.fm"
+    assert project_for("audio-prod") == "plyr.fm"
+    assert project_for("audio-private-staging") == "plyr.fm"
+    assert project_for("images-dev") == "plyr.fm"
+    assert project_for("plyr-stats") == "plyr.fm"
+    assert project_for("plyr.fm") == "plyr.fm"
     assert project_for("relay.waow") == "relays"  # not plyr's relay-api
     assert project_for("relay-api-staging") == "plyr.fm"
     assert project_for("leaflet-search-tap") == "standard.site"
@@ -101,13 +106,66 @@ def test_cloudflare_degrades_when_r2_unmeasurable(monkeypatch, capsys):
     async def boom(*_args, **_kwargs):
         raise RuntimeError("not authorized for that account")
 
-    monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_stored_bytes", boom)
+    monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_stored_bytes_by_bucket", boom)
 
     items = asyncio.run(CloudflareConnector().collect(Period.trailing_month()))
 
     assert [i.service for i in items] == ["domains-and-plans"]
     assert items[0].amount == 100 and items[0].estimated is False
     assert "UNMEASURED" in capsys.readouterr().out
+
+
+def test_cloudflare_r2_allocates_paid_storage_by_bucket(monkeypatch):
+    """R2's 10 GB account free tier is applied once, then paid storage is
+    attributed back to bucket-shaped line items."""
+    import asyncio
+
+    from mps.costs.connectors.cloudflare import CloudflareConnector
+
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "dummy")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct123")
+    monkeypatch.delenv("CLOUDFLARE_FIXED_USD", raising=False)
+    monkeypatch.delenv("CLOUDFLARE_FIXED_COSTS_JSON", raising=False)
+
+    async def fake_buckets(*_args, **_kwargs):
+        return {
+            "audio-prod": 15_000_000_000,
+            "misc-bucket": 5_000_000_000,
+        }
+
+    monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_stored_bytes_by_bucket", fake_buckets)
+
+    items = asyncio.run(CloudflareConnector().collect(Period.trailing_month()))
+
+    assert [(i.service, i.project, i.amount) for i in items] == [
+        ("r2:audio-prod", "plyr.fm", 11),
+        ("r2:misc-bucket", UNATTRIBUTED, 4),
+    ]
+
+
+def test_cloudflare_fixed_costs_json_splits_resources(monkeypatch):
+    import asyncio
+
+    from mps.costs.connectors.cloudflare import CloudflareConnector
+
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "dummy")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct123")
+    monkeypatch.setenv(
+        "CLOUDFLARE_FIXED_COSTS_JSON",
+        '{"plyr.fm": 1.0, "workers-paid-plan": {"amount": 4.0, "project": "shared"}}',
+    )
+
+    async def no_buckets(*_args, **_kwargs):
+        return {}
+
+    monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_stored_bytes_by_bucket", no_buckets)
+
+    items = asyncio.run(CloudflareConnector().collect(Period.trailing_month()))
+
+    assert [(i.service, i.project, i.amount) for i in items] == [
+        ("plyr.fm", "plyr.fm", 100),
+        ("workers-paid-plan", "shared", 400),
+    ]
 
 
 def test_hetzner_merges_project_tokens_and_dedupes(monkeypatch):
