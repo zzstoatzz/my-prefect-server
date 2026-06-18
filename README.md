@@ -1,6 +1,25 @@
-personal data pipeline and intelligence layer. digests github, [tangled.org](https://tangled.org), and bluesky activity, scores items, generates LLM-curated briefings, and maintains phi's long-term memory. self-hosted on a single hetzner VM (k3s) running prefect OSS.
+personal data pipeline and intelligence layer. digests github, [tangled.org](https://tangled.org), and bluesky activity, scores items, generates LLM-curated briefings, and maintains phi's long-term memory. self-hosted across two machines joined by Tailscale: a hetzner VM (k3s) runs the prefect control plane and serves the public edge, while **all flow execution runs on a home Linux box** that polls outbound — the home box does the compute, the VM serves the bytes.
 
 [hub](https://hub.waow.tech) · [grafana](https://prefect-metrics.waow.tech/d/executive-overview/executive-overview?orgId=1&from=now-6h&to=now&timezone=browser)
+
+```
+                        where it runs
+  ─────────────────────────────────────────────
+   home box ("heavypad")                       hetzner VM (k3s, EU)
+   i9 · 24c · 64GB · 1TB SSD + 2TB NVMe        the public edge + control plane
+   ──────────────────────────────────         ────────────────────────────────
+   • home-pool worker runs ALL flow            • prefect server (control plane)
+     execution — outbound poll, no ingress     • hub.waow.tech + grafana (public, TLS)
+   • owns the analytics DuckDB +               • serves bytes, not compute
+     llm-spend.jsonl (the source of truth)
+
+   home box ──► rsync hub.duckdb + llm-spend.jsonl every 3m, over tailscale ──► VM
+   so the edge serves fresh data WITHOUT shipping heavy pages from home (a page
+   from home behind the EU edge meant a US→EU→US round trip; the data is ~4MB).
+
+   principle: home = compute & state factory; VM = public edge & bandwidth.
+   relays, the PDS, and user-facing products stay cloud.
+```
 
 ```
                         data sources
@@ -71,6 +90,16 @@ just deploy            # cert-manager, prefect server, monitoring, dashboards
 just worker            # deploy the kubernetes worker
 just storage           # create analytics hostPath + results PVC, patch work pool
 ```
+
+### home worker (where flows actually run)
+
+The steps above stand up the control plane + public edge on the VM. Flow
+**execution** runs on the home box via a systemd `home-pool` worker that polls
+the server outbound over Tailscale (no ingress, no port-forward) — see
+[deploy/home-worker/](deploy/home-worker/). Deployments target `home-pool`; the
+k8s worker (`just worker`) remains as a fallback pool. The hub reads analytics
+synced from the home box every few minutes — see
+[deploy/hub-data-sync/](deploy/hub-data-sync/).
 
 Zig server adoption/migration details live in
 [notes/zig-prefect-server-migration.md](notes/zig-prefect-server-migration.md).
