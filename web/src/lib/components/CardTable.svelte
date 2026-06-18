@@ -5,8 +5,12 @@
 
 	let { cards }: { cards: Card[] } = $props();
 
+	const PAGE = 40;
+
 	let sortCol: string = $state('score');
 	let sortDir: 'asc' | 'desc' = $state('desc');
+	let visible = $state(PAGE);
+	let sentinel = $state<HTMLDivElement | null>(null);
 
 	let sorted: Card[] = $derived.by(() => {
 		const copy = [...cards];
@@ -25,6 +29,39 @@
 					return 0;
 			}
 		});
+	});
+
+	// render only the top `visible` rows; reveal the rest on demand. the full set
+	// is already in memory — this shrinks the SSR/DOM payload so the page hydrates
+	// fast (and the cost panel becomes interactive immediately) instead of waiting
+	// on hundreds of rendered rows.
+	const shown = $derived(sorted.slice(0, visible));
+	const remaining = $derived(Math.max(0, sorted.length - visible));
+
+	// snap back to the first page when the filtered set changes (re-sorting keeps
+	// the user's current depth, just reorders it).
+	$effect(() => {
+		void cards;
+		visible = PAGE;
+	});
+
+	function showMore() {
+		visible = Math.min(sorted.length, visible + PAGE);
+	}
+
+	// progressively reveal as the sentinel scrolls into view; the button below
+	// is the keyboard / no-JS fallback.
+	$effect(() => {
+		const el = sentinel;
+		if (!el || typeof IntersectionObserver === 'undefined') return;
+		const io = new IntersectionObserver(
+			(entries) => {
+				if (remaining > 0 && entries.some((e) => e.isIntersecting)) showMore();
+			},
+			{ rootMargin: '600px' }
+		);
+		io.observe(el);
+		return () => io.disconnect();
 	});
 
 	function toggle(col: string) {
@@ -84,7 +121,7 @@
 			</tr>
 		</thead>
 		<tbody>
-			{#each sorted as card (card.id)}
+			{#each shown as card (card.id)}
 				<CardRow {card} />
 			{/each}
 		</tbody>
@@ -117,7 +154,21 @@
 			</svg>
 		</button>
 	</div>
-	{#each sorted as card (card.id)}
+	{#each shown as card (card.id)}
 		<MobileCard {card} />
 	{/each}
+</div>
+
+<!-- reveal more of the sorted list on demand. the sentinel is a stable node
+	 (observer created once); scrolling it into view auto-loads, and the button
+	 is the keyboard / no-JS fallback. -->
+<div bind:this={sentinel} class="mt-4 flex justify-center">
+	{#if remaining > 0}
+		<button
+			onclick={showMore}
+			class="rounded-md border border-gray-800 bg-gray-900 px-4 py-2 text-sm text-gray-300 transition-colors hover:bg-gray-800 hover:text-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/50"
+		>
+			show {Math.min(PAGE, remaining)} more · {remaining} hidden
+		</button>
+	{/if}
 </div>
