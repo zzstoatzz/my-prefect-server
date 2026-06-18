@@ -50,6 +50,12 @@ deployments:
   - name: ingest
     entrypoint: flows/ingest.py:ingest
     work_pool: *home
+    # if a worker outage stacks a backlog, run one and CANCEL the rest instead of
+    # grinding through dozens of stale runs. requires prefect-server >= b3e154a
+    # (the Zig server now persists + enforces collision_strategy). reused below.
+    concurrency_limit: &cancel_new
+      limit: 1
+      collision_strategy: CANCEL_NEW
     schedules:
       - cron: "0 * * * *"  # hourly
     parameters:
@@ -68,7 +74,7 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-    concurrency_limit: 1
+    concurrency_limit: *cancel_new
     triggers:
       - type: event
         expect:
@@ -102,6 +108,7 @@ deployments:
   - name: morning
     entrypoint: flows/morning.py:morning
     work_pool: *home
+    concurrency_limit: *cancel_new
     schedules:
       - cron: "0 13 * * *"  # 8am CT daily
 
@@ -132,6 +139,7 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+    concurrency_limit: *cancel_new
     schedules:
       - cron: "0 13 * * *"  # 8am CT daily, alongside morning
 
@@ -176,6 +184,7 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+    concurrency_limit: *cancel_new
     schedules:
       - cron: "0 */6 * * *"  # every 6 hours
 
@@ -222,6 +231,7 @@ deployments:
     parameters:
       config:
         dry_run: false
+    concurrency_limit: *cancel_new
     schedules:
       - cron: "0 8 * * *"  # daily at 08:00 UTC
 
@@ -268,7 +278,7 @@ deployments:
           # thing that angers a residential ISP). rclone inherits this env var —
           # no --bwlimit arg needed. tune to ~half the uplink; 10M = ~80 Mbit/s.
           RCLONE_BWLIMIT: "10M"
-    concurrency_limit: 1
+    concurrency_limit: *cancel_new
     schedules:
       # every 3 days, not daily — ~thirds the monthly bandwidth (~170GB/mo). The
       # snapshot tolerates days of staleness because the live overlay covers
