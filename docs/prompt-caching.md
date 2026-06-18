@@ -2,29 +2,24 @@
 
 The hub's cost panel shows a call count that dwarfs the dollar figure: several
 thousand LLM calls in a window, total spend in the low single digits. That's
-not a bug. This note explains the three things that make it so, in order of how
-much they actually matter, so the figure reads as expected rather than
-suspicious. Prompt caching is the deliberate, code-level part of the strategy —
-but it's the smallest of the three levers, and it's worth being honest about
-that.
+not a bug. This note explains it in order of what actually drives the number,
+and is honest about prompt caching: it's the deliberate, code-level lever, but
+it's the smallest of the factors and on most flows it isn't even engaging.
 
-## 1. cheap model + small outputs (the dominant factor)
+## 1. cheap model + high call volume (the dominant factor)
 
 Most calls run on **claude-haiku-4-5** at **$1 / $5 per million input/output
-tokens** — the cheapest current model. The flows are extraction, labeling, and
-synthesis: they read a moderate prompt and emit a *small* structured result, so
-cost is overwhelmingly **input-side**, and input on haiku is cheap. A 7-day
-window typically looks like:
+tokens** — the cheapest current model — and most are *small, high-frequency*
+requests, not big ones. So the bill is driven by **how many calls** there are,
+not by per-call size, and the per-call cost on haiku is tiny.
 
-- claude-haiku-4-5 — the bulk of calls, a few dollars
-- claude-sonnet-4-6 — a few dozen docket-synthesis calls (`$3/$15` per Mtok), ~$1
-- text-embedding-3-small — ~2k embedding calls, cents in total
+`compact` is the clearest case and the single biggest line item: ~3,800 calls
+in a 7-day window (≈10× any other flow) averaging only ~1.2k input tokens each.
+Its cost is **call-count-driven** — nothing about caching can touch that. The
+sonnet flows (`docket`, `morning`) and embeddings (`text-embedding-3-small`,
+cents in total) round out the rest.
 
-Embeddings are the clearest case: thousands of calls, total cost in the cents,
-because the per-call token count is tiny. The panel shows enough decimal places
-to keep these from rendering as a misleading `$0.00`.
-
-## 2. prompt caching (a real ~10% input discount, not a 10× one)
+## 2. prompt caching — a real win where it engages, a no-op where it can't
 
 Anthropic prices the prompt side in three tiers:
 
@@ -34,70 +29,95 @@ Anthropic prices the prompt side in three tiers:
 | **cache read** (prefix served from cache) | **0.1×** |
 | cache write (prefix written to cache) | 1.25× (5-minute TTL), 2× (1-hour) |
 
-Every LLM flow makes many calls in a burst that share a byte-identical prefix —
-the same system prompt, and for the tool-heavy `curate` agent the same
-tool-definition block. The first call *writes* that prefix to cache (paying the
-1.25×/2× premium once); the rest *read* it at 0.1× within the TTL. Break-even is
-~2 reads (1.25× write + 0.1× read = 1.35× < 2× for two uncached prompts), and
-our bursts comfortably clear that.
+The catch that explains the panel's modest hit rate: **the minimum cacheable
+size applies to the cached *prefix*, not the whole request.** For
+`anthropic_cache_instructions` the prefix is the system prompt; for
+`anthropic_cache_tool_definitions` it's the tool-definition block. If that
+prefix is below the model's floor, the setting is a **silent no-op** — zero
+cache writes, no error.
 
-**But the realized cache-hit rate is modest — typically ~10–15% of prompt
-tokens, not ~90%.** The cached prefix is the *constant* part (system prompt,
-tool defs); the *volatile* per-call input (conversation histories fed to
-`compact`, cluster contents fed to the labelers and `docket`) is large by
-comparison and is never cacheable. So caching shaves roughly a tenth off the
-input bill — genuinely worth having, free to enable, but not the reason the
-total is small. The panel surfaces the realized rate
-(`cache_read_tokens / (input + cache_read + cache_write)`) so this stays honest:
-if it reads ~11%, that's expected, not a sign the cache is broken.
+The floors are model-specific:
 
-To move that number up you'd shrink the volatile portion (or cache more of it),
-not add more breakpoints to the already-cached prefix.
+| model | min cacheable prefix |
+|---|--:|
+| claude-haiku-4-5 | 4096 tokens |
+| claude-sonnet-4-6 | 2048 tokens |
+| claude-sonnet-4-5 | 1024 tokens |
+
+So a window-wide hit rate of ~10–13% is **correct-low**, not broken. It breaks
+down into three cases:
+
+**a. cached prefix under the floor (configured, but a no-op).** The haiku flows
+set `anthropic_cache_instructions: "5m"`, but their system prompt sits under the
+4096-token haiku floor, so nothing is cached — regardless of total request size:
+
+- `compact` (~1.2k tok/call) — the *whole* request is sub-floor; caching is
+  structurally unavailable and no prefix engineering changes that.
+- `phi_atlas` (~750 tok/call, a one-line label prompt) — same, trivially.
+- `brief` (~16k tok/call) — the request is large, but the large part is the
+  day's items (volatile, unique per call, never cacheable); the *constant*
+  system-prompt prefix is what would be cached, and it's under the floor.
+
+**b. clears the floor but caching never engages (not configured).** `morning`
+runs on sonnet-4-6 at ~15k tok/call — comfortably over the 2048 floor — yet
+writes zero cache, because it sets no `anthropic_cache_*` at all. (The phi bot's
+`phi-extractor`, sonnet with no cache settings, is the same class.) These are
+the only ones worth a code change: add `anthropic_cache_instructions` if the
+system prompt clears the floor.
+
+**c. eligible and engaged (caching works).** Where the cached prefix clears the
+floor *and* caching is configured, it pays off:
+
+- `curate` (haiku) caches instructions **and** its 10+ tool definitions — the
+  tool-defs block pushes the prefix over 4096 → ~26% hit.
+- `docket` (sonnet-4-6, ~3.3k tok/call) clears the 2048 floor → ~30% hit.
+- the phi bot's main agent (sonnet, ~26k tok/call, tool defs cached at 1h)
+  runs ~4:1 read:write — comfortably past the ~2× write-premium break-even.
+
+Net: caching is genuinely net-positive everywhere it engages; the aggregate is
+low because the highest-*volume* flows are sub-floor haiku where it can't.
 
 ## where caching is configured
 
 We don't hand-place `cache_control` breakpoints — pydantic-ai's
-`AnthropicModelSettings` do it. Each LLM flow opts in where the leverage is:
+`AnthropicModelSettings` do it.
 
-| flow (`flows/…`) | model | caches | TTL | why |
-|---|---|---|---|---|
-| `brief.py` | claude-haiku-4-5 | instructions | 5m | constant `SYSTEM_PROMPT`; ≥2 `agent.run()` per run, or two runs inside the window |
-| `compact.py` | claude-haiku-4-5 | instructions | 5m | relationship-summary + likes-extraction bursts share one system prompt |
-| `phi_atlas.py` | claude-haiku-4-5 | instructions | 5m | ~110 cluster-label calls/run, identical one-line prompt; marginal $ but free |
-| `docket.py` | claude-sonnet-4-6 | instructions | 5m | one synth call per qualifying cluster; ~1.5KB prompt reused across the burst |
-| `curate.py` | claude-haiku-4-5 | instructions **+ tool definitions** | 5m | tool-heavy multi-turn agent (10+ tools); every turn re-sends both blocks, so every turn after the first is a cache hit |
+| flow (`flows/…`) | model | sets cache | realized | note |
+|---|---|---|--:|---|
+| `compact.py` | haiku-4-5 | instructions | 0% | prefix < 4096 floor (whole request ~1.2k) |
+| `brief.py` | haiku-4-5 | instructions | 0% | system prompt < floor; big volatile payload |
+| `phi_atlas.py` | haiku-4-5 | instructions | 0% | one-line prompt, sub-floor |
+| `morning.py` | sonnet-4-6 | **none** | 0% | clears floor but caching not configured |
+| `docket.py` | sonnet-4-6 | instructions | ~30% | ~3.3k/call clears the 2048 floor |
+| `curate.py` | haiku-4-5 | instructions **+ tool defs** | ~26% | tool-defs block lifts prefix over 4096 |
 
-The sibling **phi** bot (`zzstoatzz.io/bot`, the `phi` row in the panel)
-caches its ~30 tool definitions (~12k tokens) at a **1-hour** TTL via
-`anthropic_cache_tool_definitions="1h"` — the longer window covers notification
-bursts and tool-call loops across a single active period (it intentionally does
-*not* bridge the 4-hour cycle cadence). Its system prompt isn't cached yet
-because dynamic per-run context (notifications, episodic recall, per-author
-memory) is injected into the system prompt and would invalidate any prefix
-cache every run; a planned refactor moves that state into the user message to
-unlock system-prompt caching.
+The sibling **phi** bot (`zzstoatzz.io/bot`, the `phi` row in the panel) caches
+its ~30 tool definitions (~12k tokens) at a **1-hour** TTL via
+`anthropic_cache_tool_definitions="1h"`, covering tool-call loops and
+notification bursts within an active period. Its system prompt isn't cached yet
+because dynamic per-run context is injected into it and would invalidate the
+prefix every run; a planned refactor moves that state into the user message.
 
-### the prefix invariant (why the cache works at all)
+### the prefix invariant (why caching works at all)
 
-Caching is a **prefix match**: any byte change anywhere in the cached prefix
-invalidates everything after it. Render order is `tools` → `system` →
-`messages`, so caching instructions covers tools too when tools come first. The
-rule: keep the system prompt and tool list **stable** (cached), and put
-everything that varies between calls — the question, retrieved rows, timestamps,
-IDs — *after* the breakpoint. The classic silent cache-killers (a
-`datetime.now()` in the system prompt, unsorted `json.dumps`, a per-user tool
-set, swapping models mid-run) all live on the volatile side here, which is what
-keeps even the modest read rate from collapsing to zero.
+Caching is a **prefix match**: any byte change in the cached prefix invalidates
+everything after it. Render order is `tools` → `system` → `messages`, so caching
+instructions covers tools too when tools come first. Keep the system prompt and
+tool list **stable** (cached) and put everything that varies between calls — the
+question, retrieved rows, timestamps, IDs — *after* the breakpoint. The classic
+silent killers (a `datetime.now()` in the system prompt, unsorted `json.dumps`,
+a per-user tool set, swapping models mid-run) all live on the volatile side
+here, which is what keeps the engaged flows from collapsing to zero.
 
-## 3. measurement (so none of the above is a guess)
+## measurement (so none of the above is a guess)
 
 `packages/mps/src/mps/spend.py` records `cache_read_tokens`,
 `cache_write_tokens`, `provider`, `model`, and the per-tier costs on every call
-(pulled from pydantic-ai's usage object). The hub reads the live
-`llm-spend.jsonl` and the cost panel renders the per-window model breakdown and
-the realized cache-hit rate. If reads ever drop to zero across a window where
-you'd expect hits, a prefix invalidator has crept in — diff the rendered prompt
-bytes between two calls of the same flow.
+(from pydantic-ai's usage object). The hub reads the live `llm-spend.jsonl` and
+the panel renders the per-window model breakdown and the realized cache-hit rate
+(`cache_read / (input + cache_read + cache_write)`). A flow with cache settings
+but **zero writes** is sitting under its model's floor; a flow with no settings
+that you'd expect to cache is case (b) above.
 
-Pricing tiers and prefix mechanics are Anthropic's; see
+Pricing tiers, the per-model floors, and prefix mechanics are Anthropic's; see
 <https://platform.claude.com/docs/en/build-with-claude/prompt-caching>.
