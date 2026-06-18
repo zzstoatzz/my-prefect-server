@@ -255,9 +255,10 @@ deployments:
           INDEXER_HOME: /home/stoat/typeahead-index
           INDEX_BUILD_ROOT: /home/stoat/typeahead-index/build
           # publish to prod. INDEX_ALLOW_PROD arms the overwrite of latest.json.
-          # TEMP: local channel for first validation run (no R2 upload) — REVERT to prod.
-          INDEX_CHANNEL: local
-          INDEX_ALLOW_PROD: "0"
+          # (local-channel dry-run validated the full path 2026-06-18 — run e3b70e03
+          # Completed, built a full 10GB snapshot; now publishing for real.)
+          INDEX_CHANNEL: prod
+          INDEX_ALLOW_PROD: "1"
           # 0 = full corpus. The binary DEFAULTS to a 1000-actor sample, which
           # the App B floor guard rejects — must be explicit (as the old Fly
           # machine was).
