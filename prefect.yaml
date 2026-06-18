@@ -241,10 +241,12 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
         env:
-          # turso-url block holds the full libsql:// URL; the flow strips the
-          # scheme to the bare host the indexer's TursoClient expects.
-          TURSO_URL: "{{ prefect.blocks.secret.turso-url }}"
-          TURSO_AUTH_TOKEN: "{{ prefect.blocks.secret.turso-token }}"
+          # typeahead-specific turso blocks — the shared `turso-url`/`turso-token`
+          # blocks point at the LEAFLET db (they're the atlas flow's). These hold
+          # the full libsql:// URL; the flow strips the scheme to the bare host
+          # the indexer's TursoClient expects.
+          TURSO_URL: "{{ prefect.blocks.secret.typeahead-turso-url }}"
+          TURSO_AUTH_TOKEN: "{{ prefect.blocks.secret.typeahead-turso-token }}"
           INDEX_R2_ENDPOINT: "{{ prefect.blocks.secret.index-r2-endpoint }}"
           INDEX_R2_BUCKET: "{{ prefect.blocks.secret.index-r2-bucket }}"
           INDEX_R2_ACCESS_KEY_ID: "{{ prefect.blocks.secret.index-r2-access-key-id }}"
