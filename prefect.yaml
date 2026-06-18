@@ -224,3 +224,39 @@ deployments:
         dry_run: false
     schedules:
       - cron: "0 8 * * *"  # daily at 08:00 UTC
+
+  - name: typeahead-index
+    entrypoint: flows/typeahead_index.py:typeahead_index
+    # the typeahead snapshot builder (Zig MODE=indexer), lifted off Fly onto the
+    # home box. Pure batch: reads Turso → builds prefix index on the NVMe →
+    # uploads to R2 → exits; App B promotes it. No SLA — a late/failed run just
+    # serves the prior snapshot. host prereqs (zig 0.16 + rclone) installed by
+    # typeahead deploy/home-indexer/install.sh. concurrency 1 so builds never
+    # overlap. 09:00 UTC sits clear of the 6h rebuild-atlas marks + the 13:00 cluster.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
+        env:
+          # turso-url block holds the full libsql:// URL; the flow strips the
+          # scheme to the bare host the indexer's TursoClient expects.
+          TURSO_URL: "{{ prefect.blocks.secret.turso-url }}"
+          TURSO_AUTH_TOKEN: "{{ prefect.blocks.secret.turso-token }}"
+          INDEX_R2_ENDPOINT: "{{ prefect.blocks.secret.index-r2-endpoint }}"
+          INDEX_R2_BUCKET: "{{ prefect.blocks.secret.index-r2-bucket }}"
+          INDEX_R2_ACCESS_KEY_ID: "{{ prefect.blocks.secret.index-r2-access-key-id }}"
+          INDEX_R2_SECRET_ACCESS_KEY: "{{ prefect.blocks.secret.index-r2-secret-access-key }}"
+          # persistent NVMe paths — process runs execute in ephemeral /tmp.
+          INDEXER_HOME: /home/stoat/typeahead-index
+          INDEX_BUILD_ROOT: /home/stoat/typeahead-index/build
+          # publish to prod. INDEX_ALLOW_PROD arms the overwrite of latest.json.
+          INDEX_CHANNEL: prod
+          INDEX_ALLOW_PROD: "1"
+          INDEXER_VERSION: heavypad
+    concurrency_limit: 1
+    schedules:
+      - cron: "0 9 * * *"  # daily at 09:00 UTC
+        active: false       # flip on after a clean manual prod build validates
