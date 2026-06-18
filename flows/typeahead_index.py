@@ -34,12 +34,12 @@ from pathlib import Path
 from prefect import flow, get_run_logger, task
 from prefect.tasks import exponential_backoff
 
-# GitHub is the canonical source for this deployment (matches the worker's own
-# `--with git+https://github.com/...` pull, and is the more universally-reachable
-# mirror); tangled is the fallback. The point is the binary is always rebuilt
-# from a REMOTE source, never from anything pre-staged on the build host.
-REPO_URL = "https://github.com/zzstoatzz/typeahead.git"
-REPO_URL_FALLBACK = "https://tangled.sh/zzstoatzz.io/typeahead.git"
+# typeahead's canonical remote is tangled (there is NO github mirror yet —
+# unlike my-prefect-server). The github URL is a fallback for if/when a mirror
+# is pushed. The point either way: the binary is always rebuilt from a REMOTE
+# source, never from anything pre-staged on the build host.
+REPO_URL = "https://tangled.sh/zzstoatzz.io/typeahead.git"
+REPO_URL_FALLBACK = "https://github.com/zzstoatzz/typeahead.git"
 
 # persistent working root for the repo + build artifacts. process flow runs
 # execute in an ephemeral /tmp, so this MUST be a real persistent path — the
@@ -130,6 +130,14 @@ def run_indexer(binary: Path) -> None:
     channel = os.environ.get("INDEX_CHANNEL", "local")
     logger.info(f"MODE=indexer channel={channel} build_root={build_root}")
     env = {**os.environ, "MODE": "indexer", "INDEX_BUILD_ROOT": build_root}
+    # tell the binary where rclone is (it shells out for the R2 upload). Resolve
+    # the absolute path here rather than relying on the binary PATH-searching —
+    # install.sh puts rclone under ~/.local/bin, not the /usr/local/bin the Fly
+    # image uses. Fail loudly if it's missing (the upload would fail anyway).
+    rclone = shutil.which("rclone")
+    if not rclone:
+        raise RuntimeError("rclone not found on PATH — run typeahead deploy/home-indexer/install.sh")
+    env["INDEX_RCLONE_BIN"] = rclone
     # the shared `turso-url` block holds the full libsql:// URL (atlas's client
     # wants it), but the indexer's TursoClient wants a BARE host. Normalize here
     # so one block serves both.
