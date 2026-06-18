@@ -1,0 +1,31 @@
+# Routes hub.waow.tech to the hub container running on heavypad (the home box)
+# over the tailnet, instead of the in-cluster pod. The in-cluster hub read its
+# DuckDB + spend-log from this node's hostPath, which went stale once the flows
+# moved to heavypad and started writing there. heavypad's hub reads the live
+# data. The k3s node joined the tailnet as `hetzner-edge`; pods can reach
+# heavypad's tailnet IP (verified: pod -> 100.96.216.23:3000 = 200).
+#
+# Revert: point deploy/hub-ingress.yaml's backend back to `hub` and scale the
+# hub deployment up.
+apiVersion: v1
+kind: Service
+metadata:
+  name: hub-remote
+  namespace: prefect
+spec:
+  ports:
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: hub-remote
+  namespace: prefect
+subsets:
+  - addresses:
+      - ip: 100.96.216.23 # heavypad, over the tailnet
+    ports:
+      - port: 3000
+        protocol: TCP

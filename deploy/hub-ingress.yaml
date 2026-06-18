@@ -18,7 +18,9 @@ spec:
           - path: /
             pathType: Prefix
             backend:
+              # hub-remote -> heavypad over the tailnet (see hub-remote.yaml).
+              # was `hub` (the in-cluster pod, now retired — read stale data).
               service:
-                name: hub
+                name: hub-remote
                 port:
                   number: 3000
