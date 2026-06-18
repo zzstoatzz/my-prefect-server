@@ -38,7 +38,7 @@ from prefect.tasks import exponential_backoff
 # unlike my-prefect-server). The github URL is a fallback for if/when a mirror
 # is pushed. The point either way: the binary is always rebuilt from a REMOTE
 # source, never from anything pre-staged on the build host.
-REPO_URL = "https://tangled.sh/zzstoatzz.io/typeahead.git"
+REPO_URL = "https://tangled.org/zzstoatzz.io/typeahead.git"
 REPO_URL_FALLBACK = "https://github.com/zzstoatzz/typeahead.git"
 
 # persistent working root for the repo + build artifacts. process flow runs
