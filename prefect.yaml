@@ -262,7 +262,14 @@ deployments:
           # machine was).
           INDEX_SAMPLE_LIMIT: "0"
           INDEXER_VERSION: heavypad
+          # cap the ~8.6GB R2 upload so it never saturates the home uplink (the
+          # thing that angers a residential ISP). rclone inherits this env var —
+          # no --bwlimit arg needed. tune to ~half the uplink; 10M = ~80 Mbit/s.
+          RCLONE_BWLIMIT: "10M"
     concurrency_limit: 1
     schedules:
-      - cron: "0 9 * * *"  # daily at 09:00 UTC
-        active: false       # flip on after a clean manual prod build validates
+      # every 3 days, not daily — ~thirds the monthly bandwidth (~170GB/mo). The
+      # snapshot tolerates days of staleness because the live overlay covers
+      # recently-ingested actors.
+      - cron: "0 9 */3 * *"  # 09:00 UTC, every 3rd day-of-month
+        active: false         # flip on after a clean manual prod build validates
