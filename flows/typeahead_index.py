@@ -39,9 +39,14 @@ from prefect.tasks import exponential_backoff
 REPO_URL = "https://tangled.sh/zzstoatzz.io/typeahead.git"
 REPO_URL_FALLBACK = "https://github.com/zzstoatzz/typeahead.git"
 
-# persistent working root on heavypad's NVMe. process flow runs execute in an
-# ephemeral /tmp, so the repo + build artifacts MUST live on a real path.
-INDEXER_HOME = Path(os.environ.get("INDEXER_HOME", "/home/stoat/typeahead-index"))
+# persistent working root for the repo + build artifacts. process flow runs
+# execute in an ephemeral /tmp, so this MUST be a real persistent path — the
+# deployment sets INDEXER_HOME to wherever the host has disk (e.g. an NVMe
+# mount). No machine-specific path is baked into this code: the fallback is
+# under the runtime user's home, so this flow reinstantiates on any host that
+# has the deployment's env + the install.sh prereqs. Nothing here assumes a
+# particular box.
+INDEXER_HOME = Path(os.environ.get("INDEXER_HOME") or (Path.home() / ".typeahead-index"))
 REPO_DIR = INDEXER_HOME / "repo"
 
 
