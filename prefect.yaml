@@ -257,6 +257,10 @@ deployments:
           # publish to prod. INDEX_ALLOW_PROD arms the overwrite of latest.json.
           INDEX_CHANNEL: prod
           INDEX_ALLOW_PROD: "1"
+          # 0 = full corpus. The binary DEFAULTS to a 1000-actor sample, which
+          # the App B floor guard rejects — must be explicit (as the old Fly
+          # machine was).
+          INDEX_SAMPLE_LIMIT: "0"
           INDEXER_VERSION: heavypad
     concurrency_limit: 1
     schedules:
