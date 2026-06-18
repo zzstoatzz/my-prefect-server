@@ -290,3 +290,13 @@ deployments:
         # NOTE: prefect 3.7.2 won't overwrite an existing deployment's schedule, so
         # activating requires delete+recreate of the deployment (not just redeploy).
         active: true
+
+  - name: indexer-watchdog
+    entrypoint: flows/indexer_watchdog.py:indexer_watchdog
+    # daily check that typeahead-index actually ran — pings the discord-alerts
+    # block if no Completed run in >84h (the silent-no-run case that a failure
+    # state-hook can't catch). cheap API query; no special env needed.
+    work_pool: *home
+    schedules:
+      - cron: "0 12 * * *"  # daily 12:00 UTC (after any 09:00 build finishes)
+        active: true
