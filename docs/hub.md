@@ -154,9 +154,15 @@ The helper writes an append-only JSONL file next to the analytics DB
 `raw_llm_spend` for analysis, while the hub reads the live JSONL file directly
 for near-live totals.
 
-The landing page shows compact 24h/7d spend, recent calls, and top flows. Tiny
-nonzero costs are displayed with enough decimal places to avoid misleading
-`$0.00` rows for cheap embedding calls.
+The landing page shows compact 24h/7d spend, recent calls, top flows, the
+models in use, and the prompt-cache hit rate for the window. Tiny nonzero costs
+are displayed with enough decimal places to avoid misleading `$0.00` rows for
+cheap embedding calls.
+
+The call count usually dwarfs the dollar figure because every LLM flow uses
+prompt caching (cache reads bill at 0.1× input price). The panel's "why so
+cheap?" link and [docs/prompt-caching.md](./prompt-caching.md) explain the
+strategy and where each flow configures it.
 
 ## frontend
 

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
-	import type { CostRollup, InfraCostSnapshot, SpendByFlow, SpendSummary } from '$lib/types';
+	import type { CostRollup, InfraCostSnapshot, SpendByFlow, SpendByModel, SpendSummary } from '$lib/types';
 
 	let { spend, costs }: { spend: SpendSummary; costs: InfraCostSnapshot | null } = $props();
 
@@ -33,6 +33,12 @@
 	};
 	const flowUrl = (name: string) =>
 		`https://tangled.org/zzstoatzz.io/my-prefect-server/blob/main/flows/${FLOW_FILE[name] ?? name.replace(/-/g, '_') + '.py'}`;
+
+	// why thousands of calls cost a few dollars: prompt caching. cache reads bill
+	// at 0.1× input price, so the dollar figure is meant to look tiny next to the
+	// call count. this doc explains the strategy.
+	const cacheDocUrl = 'https://tangled.org/zzstoatzz.io/my-prefect-server/blob/main/docs/prompt-caching.md';
+	const pct = new Intl.NumberFormat('en-US', { style: 'percent', maximumFractionDigits: 0 });
 
 	// ── persisted ui state (collapsed by default) ───────────────────────────
 	type View = 'project' | 'provider';
@@ -66,6 +72,14 @@
 	);
 	const topFlows = $derived(flows.slice(0, 5));
 	const flowMax = $derived(Math.max(0, ...topFlows.map((f) => f.cost_usd)));
+
+	const models = $derived<SpendByModel[]>(
+		(win === '24h' ? spend.by_model_24h : win === '7d' ? spend.by_model_7d : win === '30d' ? spend.by_model_30d : spend.by_model_all) ?? []
+	);
+	const cache = $derived(win === '24h' ? spend.cache_24h : win === '7d' ? spend.cache_7d : win === '30d' ? spend.cache_30d : spend.cache_all);
+	// fraction of prompt (input-side) tokens served from cache at 0.1× price
+	const cachePromptTokens = $derived((cache?.input_tokens ?? 0) + (cache?.cache_read_tokens ?? 0) + (cache?.cache_write_tokens ?? 0));
+	const cacheHitRate = $derived(cachePromptTokens > 0 ? (cache?.cache_read_tokens ?? 0) / cachePromptTokens : 0);
 
 	const windows: Win[] = ['24h', '7d', '30d', 'all'];
 </script>
@@ -138,6 +152,12 @@
 						<p class="text-xs font-medium uppercase tracking-wider text-gray-400">llm api · {win}</p>
 						<p class="mt-1 text-2xl font-semibold leading-none text-gray-50 tabular-nums">{dollars(llmTotal)}</p>
 						<p class="mt-1 text-[11px] text-gray-500">{compact.format(llmCalls)} calls · live</p>
+						{#if cachePromptTokens > 0}
+							<p class="mt-1 text-[11px] text-gray-500">
+								<span class="font-medium tabular-nums text-emerald-300/90">{pct.format(cacheHitRate)}</span> prompt-cache hit ·
+								<a href={cacheDocUrl} target="_blank" rel="noopener" class="underline-offset-2 hover:text-gray-200 hover:underline">how this adds up</a>
+							</p>
+						{/if}
 					</div>
 					<div class="flex rounded-md border border-gray-800 bg-gray-950/70 p-0.5">
 						{#each windows as w (w)}
@@ -147,6 +167,19 @@
 						{/each}
 					</div>
 				</div>
+
+				{#if models.length}
+					<p class="mt-3 mb-2 text-[11px] uppercase tracking-wider text-gray-500">models</p>
+					<div class="flex flex-wrap gap-1.5">
+						{#each models as m (m.provider + ':' + m.model)}
+							<span
+								class="rounded-full border border-gray-800 bg-gray-950/60 px-2 py-0.5 text-[11px] text-gray-300"
+								title={`${m.provider} · ${compact.format(m.requests)} calls · ${dollars(m.cost_usd)}`}
+								>{m.model} <span class="tabular-nums text-gray-500">{dollars(m.cost_usd)}</span></span
+							>
+						{/each}
+					</div>
+				{/if}
 
 				<p class="mt-3 mb-2 text-[11px] uppercase tracking-wider text-gray-500">top flows</p>
 				<div class="space-y-2">

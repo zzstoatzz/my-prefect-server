@@ -6,9 +6,12 @@ interface SpendEvent {
 	recorded_at?: string;
 	flow_name?: string;
 	task_name?: string;
+	provider?: string;
 	model?: string;
 	request_count?: number;
 	input_tokens?: number;
+	cache_read_tokens?: number;
+	cache_write_tokens?: number;
 	output_tokens?: number;
 	total_cost_usd?: number;
 }
@@ -27,6 +30,14 @@ const emptySpend: SpendSummary = {
 	by_flow_7d: [],
 	by_flow_30d: [],
 	by_flow_all: [],
+	by_model_24h: [],
+	by_model_7d: [],
+	by_model_30d: [],
+	by_model_all: [],
+	cache_24h: { input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 },
+	cache_7d: { input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 },
+	cache_30d: { input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 },
+	cache_all: { input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 },
 	recent: []
 };
 
@@ -75,6 +86,19 @@ function summarize(events: SpendEvent[]): SpendSummary {
 	const byFlow7d = new Map<string, FlowRow>();
 	const byFlow30d = new Map<string, FlowRow>();
 	const byFlowAll = new Map<string, FlowRow>();
+
+	type ModelRow = { provider: string; model: string; cost_usd: number; requests: number };
+	const byModel24h = new Map<string, ModelRow>();
+	const byModel7d = new Map<string, ModelRow>();
+	const byModel30d = new Map<string, ModelRow>();
+	const byModelAll = new Map<string, ModelRow>();
+
+	type CacheAcc = { input_tokens: number; cache_read_tokens: number; cache_write_tokens: number };
+	const cache_24h: CacheAcc = { input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 };
+	const cache_7d: CacheAcc = { input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 };
+	const cache_30d: CacheAcc = { input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 };
+	const cache_all: CacheAcc = { input_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 };
+
 	let total_24h = 0;
 	let total_7d = 0;
 	let total_30d = 0;
@@ -105,6 +129,26 @@ function summarize(events: SpendEvent[]): SpendSummary {
 		return [...map.values()].sort((a, b) => b.cost_usd - a.cost_usd).slice(0, 8);
 	}
 
+	function addModelRow(map: Map<string, ModelRow>, event: SpendEvent, cost: number, requests: number) {
+		const provider = event.provider?.trim() || 'unknown';
+		const model = event.model?.trim() || 'unknown';
+		const key = `${provider}:${model}`;
+		const row = map.get(key) ?? { provider, model, cost_usd: 0, requests: 0 };
+		row.cost_usd += cost;
+		row.requests += requests;
+		map.set(key, row);
+	}
+
+	function topModels(map: Map<string, ModelRow>): ModelRow[] {
+		return [...map.values()].sort((a, b) => b.cost_usd - a.cost_usd).slice(0, 6);
+	}
+
+	function addCache(acc: CacheAcc, event: SpendEvent) {
+		acc.input_tokens += numberValue(event.input_tokens);
+		acc.cache_read_tokens += numberValue(event.cache_read_tokens);
+		acc.cache_write_tokens += numberValue(event.cache_write_tokens);
+	}
+
 	for (const event of byId.values()) {
 		const timestamp = Date.parse(event.recorded_at ?? '');
 		if (!Number.isFinite(timestamp)) continue;
@@ -114,24 +158,32 @@ function summarize(events: SpendEvent[]): SpendSummary {
 		total_all += cost;
 		requests_all += requests;
 		addFlowRow(byFlowAll, event, cost, requests);
+		addModelRow(byModelAll, event, cost, requests);
+		addCache(cache_all, event);
 		recentRows.push({ ...event, timestamp });
 
 		if (timestamp >= dayAgo) {
 			total_24h += cost;
 			requests_24h += requests;
 			addFlowRow(byFlow24h, event, cost, requests);
+			addModelRow(byModel24h, event, cost, requests);
+			addCache(cache_24h, event);
 		}
 
 		if (timestamp >= weekAgo) {
 			total_7d += cost;
 			requests_7d += requests;
 			addFlowRow(byFlow7d, event, cost, requests);
+			addModelRow(byModel7d, event, cost, requests);
+			addCache(cache_7d, event);
 		}
 
 		if (timestamp >= monthAgo) {
 			total_30d += cost;
 			requests_30d += requests;
 			addFlowRow(byFlow30d, event, cost, requests);
+			addModelRow(byModel30d, event, cost, requests);
+			addCache(cache_30d, event);
 		}
 	}
 
@@ -148,6 +200,14 @@ function summarize(events: SpendEvent[]): SpendSummary {
 		by_flow_7d: topFlows(byFlow7d),
 		by_flow_30d: topFlows(byFlow30d),
 		by_flow_all: topFlows(byFlowAll),
+		by_model_24h: topModels(byModel24h),
+		by_model_7d: topModels(byModel7d),
+		by_model_30d: topModels(byModel30d),
+		by_model_all: topModels(byModelAll),
+		cache_24h,
+		cache_7d,
+		cache_30d,
+		cache_all,
 		recent: recentRows
 			.sort((a, b) => b.timestamp - a.timestamp)
 			.slice(0, 12)
