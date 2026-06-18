@@ -274,9 +274,9 @@ deployments:
       # snapshot tolerates days of staleness because the live overlay covers
       # recently-ingested actors.
       - cron: "0 9 */3 * *"  # 09:00 UTC, every 3rd day-of-month
-        # INACTIVE until the R2 publish path is validated. local-channel runs proved
-        # build->index end-to-end (run e3b70e03, 2026-06-18, 10GB snapshot), but the
-        # prod R2 upload + latest.json publish from heavypad is still UNVALIDATED.
-        # do a staging-channel run first; only then flip active:true (and delete+
-        # recreate the deployment so the 3.7.2 server actually applies the schedule).
-        active: false
+        # ACTIVE 2026-06-18: the full path is validated end-to-end — local run
+        # e3b70e03 proved build->index, and a staging run published a 10GB snapshot
+        # to R2 (staging/heavypad-validation/b1781771245-1b0a + its latest pointer).
+        # NOTE: prefect 3.7.2 won't overwrite an existing deployment's schedule, so
+        # activating requires delete+recreate of the deployment (not just redeploy).
+        active: true
