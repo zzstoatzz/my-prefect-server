@@ -34,10 +34,12 @@ from pathlib import Path
 from prefect import flow, get_run_logger, task
 from prefect.tasks import exponential_backoff
 
-# tangled is primary; github is the fetch-fallback mirror (same hashes — see
-# the typeahead Dockerfile note about tangled.org 502s / IPv6 truncation).
-REPO_URL = "https://tangled.sh/zzstoatzz.io/typeahead.git"
-REPO_URL_FALLBACK = "https://github.com/zzstoatzz/typeahead.git"
+# GitHub is the canonical source for this deployment (matches the worker's own
+# `--with git+https://github.com/...` pull, and is the more universally-reachable
+# mirror); tangled is the fallback. The point is the binary is always rebuilt
+# from a REMOTE source, never from anything pre-staged on the build host.
+REPO_URL = "https://github.com/zzstoatzz/typeahead.git"
+REPO_URL_FALLBACK = "https://tangled.sh/zzstoatzz.io/typeahead.git"
 
 # persistent working root for the repo + build artifacts. process flow runs
 # execute in an ephemeral /tmp, so this MUST be a real persistent path — the
