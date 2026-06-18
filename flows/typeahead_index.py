@@ -146,22 +146,7 @@ def run_indexer(binary: Path) -> None:
     _stream([str(binary)], binary.parent, env, timeout=7200)
 
 
-def _discord_alert(flow, flow_run, state):
-    """State hook → Discord on a failed/crashed build. Best-effort: alerting must
-    never itself raise. Reusable shape — load the `discord-alerts` DiscordWebhook
-    block and .notify(). (No native server automation action for this, so it lives
-    in flow code; see indexer_watchdog.py for the silent-no-run counterpart.)"""
-    from prefect.blocks.notifications import DiscordWebhook
-    try:
-        DiscordWebhook.load("discord-alerts").notify(
-            body=f"❌ **{flow.name}** run `{flow_run.name}` ended **{state.name}**\n{state.message or '(no state message)'}",
-            subject=f"{flow.name} {state.name}",
-        )
-    except Exception as e:  # noqa: BLE001 — never let alerting break the run
-        print(f"discord alert failed: {e}")
-
-
-@flow(name="typeahead-index", log_prints=True, on_failure=[_discord_alert], on_crashed=[_discord_alert])
+@flow(name="typeahead-index", log_prints=True)
 def typeahead_index():
     repo = clone_repo()
     binary = build_binary(repo)
