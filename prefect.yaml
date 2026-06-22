@@ -165,8 +165,13 @@ deployments:
     work_pool:
       name: home-pool
       job_variables:
+        # pin 3.13: the atlas build (umap/numba/pydantic-core) has no working
+        # py3.14 wheels, and atlas.py's `uv run --script` subprocess inherits
+        # this interpreter — so the flow must launch under 3.13, not the
+        # worker's default 3.14. (numpy<2.2 pin lives in leaflet-search's
+        # build-atlas script; both are required.)
         command: >-
-          uv run
+          uv run --python 3.13.11
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
         env:
