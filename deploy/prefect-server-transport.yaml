@@ -1,0 +1,9 @@
+apiVersion: traefik.io/v1alpha1
+kind: ServersTransport
+metadata:
+  name: prefect-server-short-idle
+  namespace: prefect
+spec:
+  maxIdleConnsPerHost: 32
+  forwardingTimeouts:
+    idleConnTimeout: 15s

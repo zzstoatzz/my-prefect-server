@@ -202,10 +202,11 @@ database:
 - work pools, work queues, and base job templates;
 - event/log history.
 
-This repo already has scripts for patching the Kubernetes work pool after deploy
-(`just storage` -> `scripts/patch_work_pool.py`). A fresh-server cutover should
-include that step before expecting flow run jobs to land in the `prefect`
-namespace.
+This repo keeps the Kubernetes work pool base job template as checked-in JSON at
+`deploy/work-pools/kubernetes-pool-base-job-template.json`. A fresh-server
+cutover should run `just storage` before expecting flow run jobs to land in the
+`prefect` namespace; that creates the shared storage resources and applies the
+work pool template with `prefect work-pool update --base-job-template`.
 
 ## Docket/Background Services
 

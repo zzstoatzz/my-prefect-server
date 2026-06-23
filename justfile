@@ -252,7 +252,7 @@ publish-server-remote optimize="ReleaseFast":
 server-deploy-logs:
     SERVER=$(just server-ip); ssh root@"$SERVER" 'tail -n 200 -f /tmp/prefect-server-deploy.log'
 
-# create the analytics hostPath + results PVC and patch the work pool
+# create the analytics hostPath + results PVC and reconcile the Kubernetes work pool
 storage: _analytics-dir
     #!/usr/bin/env bash
     set -euo pipefail
@@ -261,9 +261,19 @@ storage: _analytics-dir
     echo "==> creating results PVC"
     kubectl apply -f deploy/prefect-limits.yaml
     kubectl apply -f deploy/results-pvc.yaml
-    echo "==> patching kubernetes-pool base job template"
+    just work-pool
+
+# apply declarative Prefect work-pool templates stored in deploy/work-pools
+work-pool:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${DOMAIN:?set DOMAIN}"
+    : "${AUTH_STRING:?set AUTH_STRING}"
+    echo "==> applying kubernetes-pool base job template"
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
-        uv run --with prefect python scripts/patch_work_pool.py
+        uv run --with prefect prefect work-pool update \
+            kubernetes-pool \
+            --base-job-template deploy/work-pools/kubernetes-pool-base-job-template.json
 
 _analytics-dir:
     ssh root@$(just server-ip) "mkdir -p /var/lib/prefect-analytics"

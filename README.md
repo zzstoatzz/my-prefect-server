@@ -88,7 +88,7 @@ just infra             # create the VM
 just kubeconfig        # wait for k3s, fetch kubeconfig
 just deploy            # cert-manager, prefect server, monitoring, dashboards
 just worker            # deploy the kubernetes worker
-just storage           # create analytics hostPath + results PVC, patch work pool
+just storage           # create analytics hostPath + results PVC, apply work pool template
 ```
 
 ### home worker (where flows actually run)

@@ -117,8 +117,15 @@ grafana:
         - |
           src=/analytics-src/analytics.duckdb
           dst=/analytics-snap/analytics.duckdb
+          last_sig=
           while true; do
-            [ -f "$src" ] && cp "$src" "$dst"
+            if [ -f "$src" ]; then
+              sig="$(stat -c '%s:%Y' "$src" 2>/dev/null || echo missing)"
+              if [ "$sig" != "$last_sig" ]; then
+                cp "$src" "$dst.tmp" && mv "$dst.tmp" "$dst"
+                last_sig="$sig"
+              fi
+            fi
             sleep 60
           done
       volumeMounts:
@@ -127,6 +134,11 @@ grafana:
           readOnly: true
         - name: analytics-snapshot
           mountPath: /analytics-snap
+      resources:
+        requests:
+          memory: 16Mi
+        limits:
+          memory: 128Mi
 
   extraVolumes:
     - name: duckdb-plugin

@@ -21,7 +21,7 @@
 
 image:
   repository: atcr.io/zzstoatzz.io/prefect-server
-  tag: "ReleaseFast-7bc8061"
+  tag: "ReleaseFast-85c3429"
   pullPolicy: IfNotPresent
   pullSecrets:
     - atcr-creds
@@ -76,6 +76,8 @@ services:
 service:
   type: ClusterIP
   port: 4200
+  annotations:
+    traefik.ingress.kubernetes.io/service.serverstransport: prefect-prefect-server-short-idle@kubernetescrd
 
 ingress:
   enabled: true
