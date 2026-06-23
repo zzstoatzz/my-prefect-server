@@ -12,6 +12,10 @@ export KUBECONFIG := source_directory() / "kubeconfig.yaml"
 sync:
     uv sync
 
+# build the local Zig Prefect worker guard
+guard optimize="ReleaseSafe":
+    zig build --build-file tools/prefect-worker-guard/build.zig -Doptimize={{ optimize }}
+
 # run a prefect CLI command against the remote server
 prefect *args:
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \

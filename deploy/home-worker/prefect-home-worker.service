@@ -13,8 +13,16 @@ EnvironmentFile=/home/stoat/.config/prod-worker/env
 # uv must be on PATH: the process worker spawns `uv run ...` per flow run
 Environment=PATH=/home/stoat/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=UV_CACHE_DIR=/home/stoat/.cache/uv
-# prefect pinned to the server version (3.7.2) to avoid client/server skew
-ExecStart=/home/stoat/.local/bin/uv run --with prefect==3.7.2 prefect worker start --pool home-pool --type process --name heavypad
+# prefect-worker-guard starts the pinned Prefect worker command from
+# /etc/prefect-worker-guard.env and restarts its process group on local
+# resource-threshold breaches.
+ExecStart=/usr/local/bin/prefect-worker-guard --config /etc/prefect-worker-guard.env
+KillMode=control-group
+MemoryAccounting=yes
+MemoryHigh=24G
+MemoryMax=36G
+MemorySwapMax=2G
+TasksMax=1200
 Restart=always
 RestartSec=5
 StandardOutput=journal

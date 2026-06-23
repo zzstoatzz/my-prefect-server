@@ -28,9 +28,17 @@ sudo systemctl restart prefect-home-worker
 ```
 
 ## notes
+- `prefect-home-worker` now runs `/usr/local/bin/prefect-worker-guard`, which
+  babysits the real `prefect worker start ...` command in
+  `/etc/prefect-worker-guard.env`.
 - `prefect` is pinned to the server version (3.7.2) to avoid client/server skew.
 - The unit sets `PATH` to include `~/.local/bin` because the process worker spawns
   `uv run …` for each flow run.
+- The unit is cgroup-limited (`MemoryHigh=24G`, `MemoryMax=36G`, `TasksMax=1200`)
+  and `KillMode=control-group` so leaked flow-run children cannot consume the
+  whole laptop. `Restart=always` brings the guard back if systemd kills it.
+- The guard checks the unit's systemd counters every 30 seconds and cycles the
+  worker process group if memory exceeds 24 GiB or task count exceeds 1000.
 - Retargeting a deployment onto `home-pool`: on the current (3.7.2) server, changing a
   deployment's work pool via `prefect deploy` leaves the old `work_queue_id` — delete and
   recreate the deployment so it binds to `home-pool`'s queue.
