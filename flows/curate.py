@@ -9,14 +9,14 @@ inspect, recall, and iterate rather than single-shot plan + execute.
 """
 
 from datetime import datetime, timezone
-from typing import Any, get_args
+from typing import Any, cast, get_args
 
 import httpx
 import turbopuffer
 from openai import OpenAI
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
-from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from prefect import flow, task
 from prefect.blocks.system import Secret
@@ -344,10 +344,14 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
         # prompt and the tool-definitions block is the highest-leverage spot
         # in the whole flow — every turn re-sends both, and every turn is now
         # a cache hit at 0.1× input price after the first.
-        model_settings={
+        model_settings=cast(AnthropicModelSettings, {
+            # Automatic caching lets Anthropic choose the moving cache point for
+            # multi-turn agent history; the explicit breakpoints below keep the
+            # stable prompt/tool prefixes cacheable when they clear the floor.
+            "anthropic_cache": "5m",
             "anthropic_cache_instructions": "5m",
             "anthropic_cache_tool_definitions": "5m",
-        },
+        }),
     )
 
     @agent.tool
