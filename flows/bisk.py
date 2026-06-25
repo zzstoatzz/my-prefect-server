@@ -248,7 +248,12 @@ def bisk_snapshot() -> None:
     snapshot = {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "graceLimit": GRACE_LIMIT,
-        "pool": sorted(pool.keys()),
+        # pool carries identities (not just dids) so the client can offer a
+        # cmd-k search across the whole run, not only the windowed posters.
+        "pool": [
+            {"did": did, "handle": pr["handle"], "displayName": pr.get("displayName")}
+            for did, pr in sorted(pool.items())
+        ],
         "live": window_bisks(pool),
         "coop": all_time_coop(),
     }
