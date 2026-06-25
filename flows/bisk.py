@@ -44,7 +44,11 @@ TOPCHICKEN = "did:plc:bty3nc67lteylmmb7hvgxeu5"
 # exists to fix. instrumentation has improved; the eyewall is wider now.
 ENHANCED_GRACE_LIMIT = 10_000
 GRACE_LIMIT = ENHANCED_GRACE_LIMIT  # legacy alias; kept so the snapshot field reads true
-WINDOW = timedelta(hours=24)
+# topchicken's pinned spec: "top liked post in 24 hour period with 12 hour
+# outcome" — a 24h window plus a 12h tail so likes keep landing before a post is
+# scored. a strict 24h createdAt filter drops slow-burn winners (e.g. a post that
+# wins ~35h after posting), so we look back 36h to match the real mechanic.
+WINDOW = timedelta(hours=36)
 
 CONSTELLATION = "https://constellation.microcosm.blue/xrpc"
 SLINGSHOT = "https://slingshot.microcosm.blue/xrpc"
