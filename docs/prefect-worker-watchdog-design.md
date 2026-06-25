@@ -44,10 +44,6 @@ rail.
 - `TasksMax=800`
 - guard restart at `MEMORY_SOFT_BYTES=12884901888` (12 GiB)
 - guard restart at `TASKS_SOFT=500`
-- guard restart after `WORKER_OFFLINE_CHECKS_SOFT=3` consecutive Prefect API
-  checks report the worker is not `ONLINE`
-- guard restart after `API_FAILURE_CHECKS_SOFT=10` consecutive Prefect API
-  checks fail
 
 These are health-trip thresholds, not an estimate that the worker legitimately
 needs 12 GiB. On 2026-06-24, live operation with multiple flow children,
@@ -62,19 +58,18 @@ leaking processes, relying on another flow to repair it is circular.
 On 2026-06-25 the systemd unit and guard stayed alive while the Prefect worker
 stopped heartbeating. The cgroup was below the memory/task thresholds, so the
 resource-only guard never intervened and `home-pool` stayed `NOT_READY` until a
-manual recycle. The guard now treats the server-side worker status as another
-health input: if the API says `heavypad` is no longer `ONLINE`, the local
-process group is restarted.
+manual recycle. That control-plane liveness signal should be handled by
+Prefect's Foreman status transition events and automations, not by adding
+Prefect API polling to the local guard.
 
 ## future direction
 
-The next version should become Prefect-aware:
+The next version should improve local process awareness:
 
-- query the Prefect API for active runs assigned to the worker or work pool;
-- detect "Prefect says no active runs, but local descendants remain";
+- track child counts and oldest descendant age directly;
+- detect stale or orphaned local descendants without querying Prefect;
 - emit Prefect events such as `prefect.worker.resource-observed`,
   `prefect.worker.resource-threshold-exceeded`, and
   `prefect.worker.orphaned-processes-detected`;
-- track child counts and oldest descendant age directly;
 - eventually subsume enough worker behavior that the guard can become a native
   worker runtime instead of a wrapper around `prefect worker start`.

@@ -43,10 +43,8 @@ sudo systemctl restart prefect-home-worker
   remain in the low single-digit GiB range with a few hundred tasks. Crossing
   either threshold means the process worker is probably leaking descendants or
   wedged, and should be restarted before it reaches the old emergency shape.
-- The guard also asks the Prefect API whether `heavypad` is still `ONLINE`.
-  Three consecutive offline checks cycle the local worker process group. Ten
-  consecutive API check failures do the same, which gives transient server or
-  network blips room to clear without leaving the worker wedged forever.
+- The guard does not poll the Prefect API. Control-plane liveness belongs to
+  Prefect's worker heartbeat, Foreman status transitions, and automations.
 - Retargeting a deployment onto `home-pool`: on the current (3.7.2) server, changing a
   deployment's work pool via `prefect deploy` leaves the old `work_queue_id` — delete and
   recreate the deployment so it binds to `home-pool`'s queue.
