@@ -220,6 +220,21 @@ def all_time_coop() -> list[dict]:
                 pr = profs.get(w["did"], {})
                 w["handle"] = pr.get("handle", w["did"])
                 w["avatar"] = pr.get("avatar")
+
+            # the winning bisk was usually posted a day or two before its crowning
+            # (posts keep earning likes). show *its* date, not the crowning date,
+            # so the UI label matches the post you actually open.
+            uris = [w["uri"] for w in winners]
+            posted: dict[str, str] = {}
+            for i in range(0, len(uris), 25):
+                body = await _get(
+                    client, f"{BSKY}/app.bsky.feed.getPosts", {"uris": uris[i : i + 25]}
+                )
+                for p in body.get("posts", []):
+                    posted[p["uri"]] = p.get("record", {}).get("createdAt", "")
+            for w in winners:
+                w["postedAt"] = posted.get(w["uri"], w["crownedAt"])
+
             winners.sort(key=lambda w: w["crownedAt"], reverse=True)
             print(f"coop: {len(winners)} crownings on the account")
             return winners
