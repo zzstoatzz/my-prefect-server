@@ -6,7 +6,8 @@ compute the current standings here and publish a static snapshot the static site
 adopts (the leaflet-search builder pattern; see flows/typeahead_index.py for the
 sibling R2-snapshot flow).
 
-  - pool  = dave's follows ∪ dave's followers, minus the 7k "Grace Limit"
+  - pool  = dave's follows ∪ dave's followers, under the Enhanced Grace Limit
+            (the 7k Grace Limit, recalibrated EF-scale-style; see ENHANCED_GRACE_LIMIT)
   - live  = each pool member's own posts in the trailing 24h, sized by current
             likes. getAuthorFeed hydrates likeCount for free — one call per
             member, no per-post backlink lookups.
@@ -34,7 +35,15 @@ from prefect import flow, task
 
 DAVE = "did:plc:hovt6k22s64dq63jjmoyibk3"
 TOPCHICKEN = "did:plc:bty3nc67lteylmmb7hvgxeu5"
-GRACE_LIMIT = 7000
+
+# the Enhanced Grace Limit (EGL). much like the Fujita scale was retired in 2007
+# for the Enhanced Fujita scale — after meteorologists conceded F5 didn't capture
+# the full fury of a really committed tornado — the original 7k Grace Limit has
+# been recalibrated. the legacy reading clocked Grace herself (7,136) just outside
+# her own namesake cap, which is the kind of measurement error the EF revision
+# exists to fix. instrumentation has improved; the eyewall is wider now.
+ENHANCED_GRACE_LIMIT = 10_000
+GRACE_LIMIT = ENHANCED_GRACE_LIMIT  # legacy alias; kept so the snapshot field reads true
 WINDOW = timedelta(hours=24)
 
 CONSTELLATION = "https://constellation.microcosm.blue/xrpc"
@@ -114,9 +123,12 @@ def build_pool() -> dict[str, dict]:
             pool = {
                 did: pr
                 for did, pr in profs.items()
-                if pr.get("followersCount", 0) < GRACE_LIMIT
+                if pr.get("followersCount", 0) < ENHANCED_GRACE_LIMIT
             }
-            print(f"pool: {len(pool)} under the Grace Limit (of {len(union)} in graph)")
+            print(
+                f"pool: {len(pool)} under the Enhanced Grace Limit "
+                f"(EGL, {ENHANCED_GRACE_LIMIT:,} followers) of {len(union)} in graph"
+            )
             return pool
 
     return asyncio.run(run())
