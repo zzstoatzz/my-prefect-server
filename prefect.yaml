@@ -295,3 +295,33 @@ deployments:
         # NOTE: prefect 3.7.2 won't overwrite an existing deployment's schedule, so
         # activating requires delete+recreate of the deployment (not just redeploy).
         active: true
+
+  - name: bisk-snapshot
+    entrypoint: flows/bisk.py:bisk_snapshot
+    # the bisk.social standings builder (https://tangled.org/zzstoatzz.io/bisk).
+    # pure batch: reconstructs the pool + the trailing-24h like standings off the
+    # open network → publishes a small bisk.json to R2 → exits; the static site
+    # adopts it (same builder→snapshot shape as typeahead-index, but tiny). uses a
+    # dedicated R2 token scoped to the `bisk` bucket only (bisk-r2-* blocks). boto3
+    # pulled in for the R2 put. no SLA — a late run just serves the prior snapshot.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with boto3
+          prefect flow-run execute
+        env:
+          # project-scoped: a token minted for the `bisk` bucket only (object rw),
+          # not shared with typeahead's index-r2-* creds.
+          BISK_R2_ENDPOINT: "{{ prefect.blocks.secret.bisk-r2-endpoint }}"
+          BISK_R2_ACCESS_KEY_ID: "{{ prefect.blocks.secret.bisk-r2-access-key-id }}"
+          BISK_R2_SECRET_ACCESS_KEY: "{{ prefect.blocks.secret.bisk-r2-secret-access-key }}"
+          BISK_R2_BUCKET: bisk
+    concurrency_limit: *cancel_new
+    schedules:
+      # every 10 min — the live overlay (spacedust) covers the gaps between
+      # snapshots, so the baseline only needs to be roughly fresh.
+      - cron: "*/10 * * * *"
+        active: true
