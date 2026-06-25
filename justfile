@@ -16,6 +16,10 @@ sync:
 guard optimize="ReleaseSafe":
     zig build --build-file tools/prefect-worker-guard/build.zig -Doptimize={{ optimize }}
 
+# build the HeavyPad Linux Zig Prefect worker guard from macOS
+guard-linux optimize="ReleaseSafe":
+    zig build --build-file tools/prefect-worker-guard/build.zig -Dtarget=x86_64-linux-gnu -Doptimize={{ optimize }}
+
 # run a prefect CLI command against the remote server
 prefect *args:
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
@@ -163,11 +167,6 @@ deploy:
     echo "  $DOMAIN -> $(just server-ip)"
     echo "  $GRAFANA_DOMAIN -> $(just server-ip)"
 
-# apply the kubernetes worker
-worker:
-    kubectl apply -f deploy/prefect-limits.yaml
-    kubectl apply -f deploy/worker.yaml
-
 # build the Zig Prefect server on the Hetzner node and import it into k3s
 publish-server-remote optimize="ReleaseFast":
     #!/usr/bin/env bash
@@ -294,7 +293,7 @@ status:
     @echo "==> pods (monitoring)"
     @kubectl get pods -n monitoring
 
-# tail logs for a component (server, background-services, worker)
+# tail logs for a component (server, background-services, etc.)
 logs component="prefect-server":
     kubectl logs -n prefect -l app.kubernetes.io/name={{component}} -f
 

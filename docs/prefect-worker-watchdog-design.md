@@ -38,15 +38,33 @@ rail.
 
 ## HeavyPad thresholds
 
-- `MemoryHigh=24G`
-- `MemoryMax=36G`
+- `MemoryHigh=12G`
+- `MemoryMax=18G`
 - `MemorySwapMax=2G`
-- `TasksMax=1200`
-- guard restart at `MEMORY_SOFT_BYTES=25769803776` (24 GiB)
-- guard restart at `TASKS_SOFT=1000`
+- `TasksMax=800`
+- guard restart at `MEMORY_SOFT_BYTES=12884901888` (12 GiB)
+- guard restart at `TASKS_SOFT=500`
+- guard restart after `WORKER_OFFLINE_CHECKS_SOFT=3` consecutive Prefect API
+  checks report the worker is not `ONLINE`
+- guard restart after `API_FAILURE_CHECKS_SOFT=10` consecutive Prefect API
+  checks fail
+
+These are health-trip thresholds, not an estimate that the worker legitimately
+needs 12 GiB. On 2026-06-24, live operation with multiple flow children,
+including `rebuild-atlas`, sat around 3-4 GiB. The earlier 900-task shape was
+already an incident: a process-worker descendant leak below the previous
+24 GiB / 1000-task restart line. The guard should intervene before the worker
+gets anywhere near that shape again.
 
 The guard is intentionally outside Prefect. If the worker is the component
 leaking processes, relying on another flow to repair it is circular.
+
+On 2026-06-25 the systemd unit and guard stayed alive while the Prefect worker
+stopped heartbeating. The cgroup was below the memory/task thresholds, so the
+resource-only guard never intervened and `home-pool` stayed `NOT_READY` until a
+manual recycle. The guard now treats the server-side worker status as another
+health input: if the API says `heavypad` is no longer `ONLINE`, the local
+process group is restarted.
 
 ## future direction
 

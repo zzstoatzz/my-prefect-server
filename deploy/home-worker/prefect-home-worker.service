@@ -19,10 +19,10 @@ Environment=UV_CACHE_DIR=/home/stoat/.cache/uv
 ExecStart=/usr/local/bin/prefect-worker-guard --config /etc/prefect-worker-guard.env
 KillMode=control-group
 MemoryAccounting=yes
-MemoryHigh=24G
-MemoryMax=36G
+MemoryHigh=12G
+MemoryMax=18G
 MemorySwapMax=2G
-TasksMax=1200
+TasksMax=800
 Restart=always
 RestartSec=5
 StandardOutput=journal

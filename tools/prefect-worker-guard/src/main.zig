@@ -14,12 +14,16 @@ const Config = struct {
     memory_hard_bytes: ?u64 = null,
     tasks_soft: ?u64 = null,
     tasks_hard: ?u64 = null,
+    worker_offline_checks_soft: ?u64 = null,
+    api_failure_checks_soft: ?u64 = null,
     systemd_unit: ?[]const u8 = null,
 };
 
 const Snapshot = struct {
     memory_current_bytes: ?u64 = null,
     tasks_current: ?u64 = null,
+    worker_online: ?bool = null,
+    api_check_failed: bool = false,
 };
 
 const RestartReason = struct {
@@ -80,8 +84,9 @@ fn printUsage(err: anyerror) !void {
     std.debug.print("  WORKER_COMMAND=/path/to/uv\\0run\\0--with\\0prefect==3.7.2\\0prefect\\0worker\\0start\\0...\n", .{});
     std.debug.print("  WORKER_NAME=heavypad\n  WORK_POOL_NAME=home-pool\n  SYSTEMD_UNIT=prefect-home-worker.service\n", .{});
     std.debug.print("  CHECK_INTERVAL_SECONDS=30\n  GRACEFUL_SHUTDOWN_SECONDS=60\n", .{});
-    std.debug.print("  MEMORY_SOFT_BYTES=25769803776\n  MEMORY_HARD_BYTES=38654705664\n", .{});
-    std.debug.print("  TASKS_SOFT=1000\n  TASKS_HARD=1200\n", .{});
+    std.debug.print("  MEMORY_SOFT_BYTES=12884901888\n  MEMORY_HARD_BYTES=19327352832\n", .{});
+    std.debug.print("  TASKS_SOFT=500\n  TASKS_HARD=800\n", .{});
+    std.debug.print("  WORKER_OFFLINE_CHECKS_SOFT=3\n  API_FAILURE_CHECKS_SOFT=10\n", .{});
 }
 
 fn loadConfig(gpa: std.mem.Allocator, io: std.Io, path: []const u8) !Config {
@@ -119,6 +124,10 @@ fn loadConfig(gpa: std.mem.Allocator, io: std.Io, path: []const u8) !Config {
             config.tasks_soft = try parsePositiveU64(value);
         } else if (std.mem.eql(u8, key, "TASKS_HARD")) {
             config.tasks_hard = try parsePositiveU64(value);
+        } else if (std.mem.eql(u8, key, "WORKER_OFFLINE_CHECKS_SOFT")) {
+            config.worker_offline_checks_soft = try parsePositiveU64(value);
+        } else if (std.mem.eql(u8, key, "API_FAILURE_CHECKS_SOFT")) {
+            config.api_failure_checks_soft = try parsePositiveU64(value);
         } else if (std.mem.eql(u8, key, "SYSTEMD_UNIT")) {
             config.systemd_unit = value;
         } else {
@@ -179,6 +188,8 @@ fn runGuard(gpa: std.mem.Allocator, io: std.Io, config: *const Config) !void {
             return err;
         };
         logEvent("worker-started", config, pid, pgid, null, null);
+        var consecutive_offline_checks: u64 = 0;
+        var consecutive_api_failures: u64 = 0;
 
         while (true) {
             sleepSeconds(io, config.check_interval_seconds);
@@ -192,7 +203,14 @@ fn runGuard(gpa: std.mem.Allocator, io: std.Io, config: *const Config) !void {
             }
 
             const snapshot = collectSnapshot(gpa, io, config, pgid);
-            if (restartReason(config, snapshot)) |reason| {
+            if (snapshot.worker_online) |online| {
+                consecutive_api_failures = 0;
+                consecutive_offline_checks = if (online) 0 else consecutive_offline_checks + 1;
+            } else if (snapshot.api_check_failed) {
+                consecutive_api_failures += 1;
+            }
+
+            if (restartReason(config, snapshot, consecutive_offline_checks, consecutive_api_failures)) |reason| {
                 logEvent("resource-threshold-exceeded", config, pid, pgid, snapshot, null);
                 logRestart(config, pid, pgid, reason);
                 terminateGroup(io, pgid, config.graceful_shutdown_seconds);
@@ -222,6 +240,10 @@ fn spawnWorker(io: std.Io, config: *const Config) !std.process.Child {
     });
 }
 
+fn getenv(name: [*:0]const u8) ?[]const u8 {
+    return if (std.c.getenv(name)) |ptr| std.mem.span(ptr) else null;
+}
+
 fn processAlive(pid: posix.pid_t) bool {
     const rc = std.c.kill(pid, @enumFromInt(0));
     if (rc == 0) return true;
@@ -233,17 +255,26 @@ fn processAlive(pid: posix.pid_t) bool {
 }
 
 fn collectSnapshot(gpa: std.mem.Allocator, io: std.Io, config: *const Config, pgid: posix.pid_t) Snapshot {
+    var snapshot = Snapshot{};
+
     if (builtin.os.tag == .linux) {
         if (config.systemd_unit) |unit| {
-            return .{
-                .memory_current_bytes = readSystemdProperty(gpa, io, unit, "MemoryCurrent") catch null,
-                .tasks_current = readSystemdProperty(gpa, io, unit, "TasksCurrent") catch null,
-            };
+            snapshot.memory_current_bytes = readSystemdProperty(gpa, io, unit, "MemoryCurrent") catch null;
+            snapshot.tasks_current = readSystemdProperty(gpa, io, unit, "TasksCurrent") catch null;
         }
     }
 
     _ = pgid;
-    return .{};
+    if (config.worker_offline_checks_soft != null or config.api_failure_checks_soft != null) {
+        const status = readWorkerOnline(gpa, io, config) catch null;
+        if (status) |online| {
+            snapshot.worker_online = online;
+        } else {
+            snapshot.api_check_failed = true;
+        }
+    }
+
+    return snapshot;
 }
 
 fn readSystemdProperty(gpa: std.mem.Allocator, io: std.Io, unit: []const u8, property: []const u8) !u64 {
@@ -265,7 +296,68 @@ fn readSystemdProperty(gpa: std.mem.Allocator, io: std.Io, unit: []const u8, pro
     return try std.fmt.parseInt(u64, value, 10);
 }
 
-fn restartReason(config: *const Config, snapshot: Snapshot) ?RestartReason {
+fn readWorkerOnline(gpa: std.mem.Allocator, io: std.Io, config: *const Config) !bool {
+    const api_url = getenv("PREFECT_API_URL") orelse return error.MissingPrefectApiUrl;
+    const auth = getenv("PREFECT_API_AUTH_STRING") orelse return error.MissingPrefectApiAuthString;
+
+    const trimmed_api_url = std.mem.trim(u8, api_url, "/");
+    const url = try std.fmt.allocPrint(gpa, "{s}/work_pools/{s}/workers/filter", .{ trimmed_api_url, config.work_pool_name });
+    defer gpa.free(url);
+
+    const body = try std.fmt.allocPrint(gpa, "{{\"workers\":{{\"name\":{{\"any_\":[\"{s}\"]}}}},\"limit\":1}}", .{config.worker_name});
+    defer gpa.free(body);
+
+    const encoded_auth_len = std.base64.standard.Encoder.calcSize(auth.len);
+    const encoded_auth = try gpa.alloc(u8, encoded_auth_len);
+    defer gpa.free(encoded_auth);
+    _ = std.base64.standard.Encoder.encode(encoded_auth, auth);
+
+    const auth_header = try std.fmt.allocPrint(gpa, "Authorization: Basic {s}", .{encoded_auth});
+    defer gpa.free(auth_header);
+
+    const argv = [_][]const u8{
+        "/usr/bin/curl",
+        "-fsS",
+        "--max-time",
+        "10",
+        "-H",
+        auth_header,
+        "-H",
+        "Content-Type: application/json",
+        "-d",
+        body,
+        url,
+    };
+    const result = std.process.run(gpa, io, .{
+        .argv = &argv,
+        .stdout_limit = .limited(64 * 1024),
+        .stderr_limit = .limited(16 * 1024),
+    }) catch return error.CurlFailed;
+    defer gpa.free(result.stdout);
+    defer gpa.free(result.stderr);
+
+    switch (result.term) {
+        .exited => |code| if (code != 0) return error.CurlFailed,
+        else => return error.CurlFailed,
+    }
+
+    const parsed = std.json.parseFromSlice(std.json.Value, gpa, result.stdout, .{}) catch return error.InvalidWorkerResponse;
+    defer parsed.deinit();
+
+    switch (parsed.value) {
+        .array => |workers| {
+            if (workers.items.len == 0) return false;
+            const worker = workers.items[0];
+            if (worker != .object) return error.InvalidWorkerResponse;
+            const status = worker.object.get("status") orelse return error.InvalidWorkerResponse;
+            if (status != .string) return error.InvalidWorkerResponse;
+            return std.mem.eql(u8, status.string, "ONLINE");
+        },
+        else => return error.InvalidWorkerResponse,
+    }
+}
+
+fn restartReason(config: *const Config, snapshot: Snapshot, offline_checks: u64, api_failure_checks: u64) ?RestartReason {
     if (snapshot.memory_current_bytes) |observed| {
         if (config.memory_hard_bytes) |limit| {
             if (observed > limit) return .{ .threshold_name = "memory_hard_bytes", .threshold_value = limit, .observed_value = observed };
@@ -281,6 +373,12 @@ fn restartReason(config: *const Config, snapshot: Snapshot) ?RestartReason {
         if (config.tasks_soft) |limit| {
             if (observed > limit) return .{ .threshold_name = "tasks_soft", .threshold_value = limit, .observed_value = observed };
         }
+    }
+    if (config.worker_offline_checks_soft) |limit| {
+        if (offline_checks >= limit) return .{ .threshold_name = "worker_offline_checks", .threshold_value = limit, .observed_value = offline_checks };
+    }
+    if (config.api_failure_checks_soft) |limit| {
+        if (api_failure_checks >= limit) return .{ .threshold_name = "api_failure_checks", .threshold_value = limit, .observed_value = api_failure_checks };
     }
     return null;
 }
@@ -322,6 +420,8 @@ fn logEvent(
 
     if (snap.memory_current_bytes) |memory| std.debug.print(",\"memory_current_bytes\":{}", .{memory});
     if (snap.tasks_current) |tasks| std.debug.print(",\"tasks_current\":{}", .{tasks});
+    if (snap.worker_online) |online| std.debug.print(",\"worker_online\":{}", .{online});
+    if (snap.api_check_failed) std.debug.print(",\"api_check_failed\":true", .{});
     if (term) |t| switch (t) {
         .exited => |code| std.debug.print(",\"exit_code\":{}", .{code}),
         .signal => |sig| std.debug.print(",\"signal\":{}", .{@intFromEnum(sig)}),
