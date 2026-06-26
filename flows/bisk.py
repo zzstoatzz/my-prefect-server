@@ -151,9 +151,11 @@ def window_bisks(pool: dict[str, dict]) -> list[dict]:
     now = datetime.now(timezone.utc)
     anchor = now.replace(hour=CROWN_HOUR_UTC, minute=0, second=0, microsecond=0)
     next_crowning = anchor + timedelta(days=1) if now >= anchor else anchor
-    window_end = next_crowning - OUTCOME_LAG          # likes still landing until here
-    window_start = window_end - timedelta(hours=24)   # the 24h period being judged
-    print(f"window: [{window_start:%Y-%m-%d %H:%M} .. {window_end:%H:%M} UTC] for crowning {next_crowning:%Y-%m-%d %H:%M}")
+    # the next crowning judges the 24h period ending OUTCOME_LAG before it; that
+    # period starts 36h before the crowning. show everything since then, up to
+    # now, so the live race stays fresh AND rolls over each day at the crowning.
+    window_start = next_crowning - OUTCOME_LAG - timedelta(hours=24)
+    print(f"window: since {window_start:%Y-%m-%d %H:%M} UTC (rolls at crowning {next_crowning:%Y-%m-%d %H:%M})")
 
     async def run() -> list[dict]:
         bisks: list[dict] = []
@@ -179,7 +181,7 @@ def window_bisks(pool: dict[str, dict]) -> list[dict]:
                         when = datetime.fromisoformat(created.replace("Z", "+00:00"))
                     except ValueError:
                         continue
-                    if not (window_start <= when < window_end) or post.get("likeCount", 0) < 1:
+                    if when < window_start or post.get("likeCount", 0) < 1:
                         continue
                     bisks.append(
                         {
