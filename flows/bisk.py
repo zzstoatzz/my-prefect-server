@@ -44,12 +44,11 @@ TOPCHICKEN = "did:plc:bty3nc67lteylmmb7hvgxeu5"
 # exists to fix. instrumentation has improved; the eyewall is wider now.
 ENHANCED_GRACE_LIMIT = 10_000
 GRACE_LIMIT = ENHANCED_GRACE_LIMIT  # legacy alias; kept so the snapshot field reads true
-# topchicken's pinned spec: "top liked post in 24 hour period with 12 hour
-# outcome". it crowns once a day around this UTC hour; the window each crowning
-# judges is the 24h period ending OUTCOME_LAG before the crowning (so likes have
-# time to land). these define the discrete daily window the live view mirrors.
-CROWN_HOUR_UTC = 13
-OUTCOME_LAG = timedelta(hours=12)
+# the live race is a strict trailing 24h window: a bisk older than this drops
+# off, so the top chicken is always a recent post and the race keeps moving.
+# (the all-time view uses topchicken's own crownings, so its fidelity is
+# unaffected by this window.)
+WINDOW = timedelta(hours=24)
 
 CONSTELLATION = "https://constellation.microcosm.blue/xrpc"
 SLINGSHOT = "https://slingshot.microcosm.blue/xrpc"
@@ -148,14 +147,8 @@ def window_bisks(pool: dict[str, dict]) -> list[dict]:
     before it. we mirror that discrete window so the live race resets each day
     instead of letting yesterday's popular post linger in a rolling lookback.
     """
-    now = datetime.now(timezone.utc)
-    anchor = now.replace(hour=CROWN_HOUR_UTC, minute=0, second=0, microsecond=0)
-    next_crowning = anchor + timedelta(days=1) if now >= anchor else anchor
-    # the next crowning judges the 24h period ending OUTCOME_LAG before it; that
-    # period starts 36h before the crowning. show everything since then, up to
-    # now, so the live race stays fresh AND rolls over each day at the crowning.
-    window_start = next_crowning - OUTCOME_LAG - timedelta(hours=24)
-    print(f"window: since {window_start:%Y-%m-%d %H:%M} UTC (rolls at crowning {next_crowning:%Y-%m-%d %H:%M})")
+    window_start = datetime.now(timezone.utc) - WINDOW
+    print(f"window: posts since {window_start:%Y-%m-%d %H:%M} UTC (trailing 24h)")
 
     async def run() -> list[dict]:
         bisks: list[dict] = []
