@@ -223,28 +223,38 @@ def all_time_coop() -> list[dict]:
                     }
                 )
             profs = await _profiles(client, list({w["did"] for w in winners}))
-            for w in winners:
-                pr = profs.get(w["did"], {})
-                w["handle"] = pr.get("handle", w["did"])
-                w["avatar"] = pr.get("avatar")
 
-            # the winning bisk was usually posted a day or two before its crowning
-            # (posts keep earning likes). show *its* date, not the crowning date,
-            # so the UI label matches the post you actually open.
+            # resolve each winning bisk. getPosts returns the post's own
+            # createdAt (for an accurate label) and its author — and, crucially,
+            # OMITS posts that no longer exist (deleted, or the author
+            # deactivated). we drop those: a winner you can't open or read is
+            # worse than not showing it (an absent author also has no handle, so
+            # it would render as a raw DID).
             uris = [w["uri"] for w in winners]
-            posted: dict[str, str] = {}
+            live_posts: dict[str, dict] = {}
             for i in range(0, len(uris), 25):
                 body = await _get(
                     client, f"{BSKY}/app.bsky.feed.getPosts", {"uris": uris[i : i + 25]}
                 )
                 for p in body.get("posts", []):
-                    posted[p["uri"]] = p.get("record", {}).get("createdAt", "")
-            for w in winners:
-                w["postedAt"] = posted.get(w["uri"], w["crownedAt"])
+                    live_posts[p["uri"]] = p
 
-            winners.sort(key=lambda w: w["crownedAt"], reverse=True)
-            print(f"coop: {len(winners)} crownings on the account")
-            return winners
+            kept = []
+            for w in winners:
+                post = live_posts.get(w["uri"])
+                if post is None:
+                    continue  # post/author gone — skip rather than show a dead 404
+                author = post.get("author", {})
+                pr = profs.get(w["did"], {})
+                w["handle"] = pr.get("handle") or author.get("handle") or w["did"]
+                w["avatar"] = pr.get("avatar") or author.get("avatar")
+                w["postedAt"] = post.get("record", {}).get("createdAt", w["crownedAt"])
+                kept.append(w)
+
+            dropped = len(winners) - len(kept)
+            kept.sort(key=lambda w: w["crownedAt"], reverse=True)
+            print(f"coop: {len(kept)} viewable crownings ({dropped} dropped: gone/deactivated)")
+            return kept
 
     return asyncio.run(run())
 
