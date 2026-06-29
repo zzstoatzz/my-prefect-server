@@ -28,6 +28,10 @@ const RestartReason = struct {
     observed_value: u64,
 };
 
+const JournalRestart = struct {
+    pattern: []const u8,
+};
+
 const WorkerState = struct {
     child: *std.process.Child,
     done: std.atomic.Value(bool) = .init(false),
@@ -172,6 +176,7 @@ fn runGuard(gpa: std.mem.Allocator, io: std.Io, config: *const Config) !void {
         child.* = try spawnWorker(io, config);
         const pid = child.id.?;
         const pgid = pid;
+        const started_at = unixSeconds();
         var state = WorkerState{ .child = child };
         var waiter = std.Thread.spawn(.{}, waitForWorker, .{ io, &state }) catch |err| {
             child.kill(io);
@@ -192,6 +197,16 @@ fn runGuard(gpa: std.mem.Allocator, io: std.Io, config: *const Config) !void {
             }
 
             const snapshot = collectSnapshot(gpa, io, config, pgid);
+            if (journalRestartReason(gpa, io, config, started_at)) |reason| {
+                logEvent("journal-restart-signal", config, pid, pgid, snapshot, null);
+                logJournalRestart(config, pid, pgid, reason);
+                terminateGroup(io, pgid, config.graceful_shutdown_seconds);
+                while (!state.done.load(.acquire)) sleepSeconds(io, 1);
+                waiter.join();
+                gpa.destroy(child);
+                break;
+            }
+
             if (restartReason(config, snapshot)) |reason| {
                 logEvent("resource-threshold-exceeded", config, pid, pgid, snapshot, null);
                 logRestart(config, pid, pgid, reason);
@@ -285,6 +300,57 @@ fn restartReason(config: *const Config, snapshot: Snapshot) ?RestartReason {
     return null;
 }
 
+fn journalRestartReason(gpa: std.mem.Allocator, io: std.Io, config: *const Config, started_at: i64) ?JournalRestart {
+    const unit = config.systemd_unit orelse return null;
+    if (builtin.os.tag != .linux) return null;
+
+    var since_buf: [64]u8 = undefined;
+    const since = std.fmt.bufPrint(&since_buf, "@{}", .{started_at}) catch return null;
+    const argv = [_][]const u8{
+        "journalctl",
+        "-u",
+        unit,
+        "--since",
+        since,
+        "-n",
+        "300",
+        "--no-pager",
+        "-o",
+        "cat",
+    };
+    const result = std.process.run(gpa, io, .{
+        .argv = &argv,
+        .stdout_limit = .limited(256 * 1024),
+        .stderr_limit = .limited(16 * 1024),
+    }) catch return null;
+    defer gpa.free(result.stdout);
+    defer gpa.free(result.stderr);
+
+    switch (result.term) {
+        .exited => |code| if (code != 0) return null,
+        else => return null,
+    }
+
+    const fatal_patterns = [_][]const u8{
+        "WorkerChannelProtocolHandler._heartbeat_loop",
+        "keepalive ping timeout",
+    };
+    for (fatal_patterns) |pattern| {
+        if (std.mem.indexOf(u8, result.stdout, pattern) != null) {
+            return .{ .pattern = pattern };
+        }
+    }
+    return null;
+}
+
+fn unixSeconds() i64 {
+    var ts: posix.timespec = undefined;
+    switch (posix.errno(posix.system.clock_gettime(.REALTIME, &ts))) {
+        .SUCCESS => return @intCast(ts.sec),
+        else => return 0,
+    }
+}
+
 fn terminateGroup(io: std.Io, pgid: posix.pid_t, graceful_seconds: u64) void {
     const group_pid = -pgid;
     posix.kill(group_pid, posix.SIG.TERM) catch {};
@@ -336,6 +402,13 @@ fn logRestart(config: *const Config, pid: posix.pid_t, pgid: posix.pid_t, reason
     std.debug.print(
         "{{\"event\":\"prefect.worker.restart-requested\",\"worker_name\":\"{s}\",\"work_pool_name\":\"{s}\",\"worker_pid\":{},\"process_group_id\":{},\"threshold_name\":\"{s}\",\"threshold_value\":{},\"observed_value\":{}}}\n",
         .{ config.worker_name, config.work_pool_name, pid, pgid, reason.threshold_name, reason.threshold_value, reason.observed_value },
+    );
+}
+
+fn logJournalRestart(config: *const Config, pid: posix.pid_t, pgid: posix.pid_t, reason: JournalRestart) void {
+    std.debug.print(
+        "{{\"event\":\"prefect.worker.restart-requested\",\"worker_name\":\"{s}\",\"work_pool_name\":\"{s}\",\"worker_pid\":{},\"process_group_id\":{},\"threshold_name\":\"worker_channel_journal_pattern\",\"pattern\":\"{s}\"}}\n",
+        .{ config.worker_name, config.work_pool_name, pid, pgid, reason.pattern },
     );
 }
 
