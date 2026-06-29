@@ -43,12 +43,18 @@ sudo systemctl restart prefect-home-worker
   remain in the low single-digit GiB range with a few hundred tasks. Crossing
   either threshold means the process worker is probably leaking descendants or
   wedged, and should be restarted before it reaches the old emergency shape.
+- The worker starts with Prefect's local `--with-healthcheck` endpoint enabled.
+  The guard checks `http://127.0.0.1:8080/health` and restarts the process group
+  after three consecutive failures past startup grace. This catches the
+  dead-but-running case where the OS process is alive but the worker has stopped
+  successfully polling for runs.
 - The guard also scans the local systemd journal for worker-channel heartbeat
   failures from the current worker process generation. If Prefect's websocket
   heartbeat loop dies but the worker process stays alive, the guard restarts the
   process group instead of leaving an OFFLINE worker that still looks alive to
   systemd.
-- The guard does not poll the Prefect API. Control-plane liveness belongs to
+- The guard does not poll the Prefect API. It uses Prefect's local worker
+  health endpoint for polling liveness and leaves control-plane notifications to
   Prefect's worker heartbeat, Foreman status transitions, and automations.
 - Retargeting a deployment onto `home-pool`: on the current (3.7.2) server, changing a
   deployment's work pool via `prefect deploy` leaves the old `work_queue_id` — delete and

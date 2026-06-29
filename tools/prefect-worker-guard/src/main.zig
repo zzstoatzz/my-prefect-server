@@ -15,6 +15,9 @@ const Config = struct {
     tasks_soft: ?u64 = null,
     tasks_hard: ?u64 = null,
     systemd_unit: ?[]const u8 = null,
+    healthcheck_url: ?[]const u8 = null,
+    healthcheck_startup_grace_seconds: u64 = 120,
+    healthcheck_unhealthy_retries: u64 = 3,
 };
 
 const Snapshot = struct {
@@ -86,6 +89,8 @@ fn printUsage(err: anyerror) !void {
     std.debug.print("  CHECK_INTERVAL_SECONDS=30\n  GRACEFUL_SHUTDOWN_SECONDS=60\n", .{});
     std.debug.print("  MEMORY_SOFT_BYTES=12884901888\n  MEMORY_HARD_BYTES=19327352832\n", .{});
     std.debug.print("  TASKS_SOFT=500\n  TASKS_HARD=800\n", .{});
+    std.debug.print("  HEALTHCHECK_URL=http://127.0.0.1:8080/health\n", .{});
+    std.debug.print("  HEALTHCHECK_STARTUP_GRACE_SECONDS=120\n  HEALTHCHECK_UNHEALTHY_RETRIES=3\n", .{});
 }
 
 fn loadConfig(gpa: std.mem.Allocator, io: std.Io, path: []const u8) !Config {
@@ -125,6 +130,12 @@ fn loadConfig(gpa: std.mem.Allocator, io: std.Io, path: []const u8) !Config {
             config.tasks_hard = try parsePositiveU64(value);
         } else if (std.mem.eql(u8, key, "SYSTEMD_UNIT")) {
             config.systemd_unit = value;
+        } else if (std.mem.eql(u8, key, "HEALTHCHECK_URL")) {
+            config.healthcheck_url = value;
+        } else if (std.mem.eql(u8, key, "HEALTHCHECK_STARTUP_GRACE_SECONDS")) {
+            config.healthcheck_startup_grace_seconds = try parsePositiveU64(value);
+        } else if (std.mem.eql(u8, key, "HEALTHCHECK_UNHEALTHY_RETRIES")) {
+            config.healthcheck_unhealthy_retries = try parsePositiveU64(value);
         } else {
             return error.UnknownConfigKey;
         }
@@ -177,6 +188,7 @@ fn runGuard(gpa: std.mem.Allocator, io: std.Io, config: *const Config) !void {
         const pid = child.id.?;
         const pgid = pid;
         const started_at = unixSeconds();
+        var unhealthy_checks: u64 = 0;
         var state = WorkerState{ .child = child };
         var waiter = std.Thread.spawn(.{}, waitForWorker, .{ io, &state }) catch |err| {
             child.kill(io);
@@ -197,6 +209,22 @@ fn runGuard(gpa: std.mem.Allocator, io: std.Io, config: *const Config) !void {
             }
 
             const snapshot = collectSnapshot(gpa, io, config, pgid);
+            if (healthcheckUnhealthy(gpa, io, config, started_at)) {
+                unhealthy_checks += 1;
+                logHealthcheckFailure(config, pid, pgid, unhealthy_checks);
+                if (unhealthy_checks >= config.healthcheck_unhealthy_retries) {
+                    logEvent("healthcheck-failed", config, pid, pgid, snapshot, null);
+                    logHealthcheckRestart(config, pid, pgid, unhealthy_checks);
+                    terminateGroup(io, pgid, config.graceful_shutdown_seconds);
+                    while (!state.done.load(.acquire)) sleepSeconds(io, 1);
+                    waiter.join();
+                    gpa.destroy(child);
+                    break;
+                }
+            } else {
+                unhealthy_checks = 0;
+            }
+
             if (journalRestartReason(gpa, io, config, started_at)) |reason| {
                 logEvent("journal-restart-signal", config, pid, pgid, snapshot, null);
                 logJournalRestart(config, pid, pgid, reason);
@@ -298,6 +326,35 @@ fn restartReason(config: *const Config, snapshot: Snapshot) ?RestartReason {
         }
     }
     return null;
+}
+
+fn healthcheckUnhealthy(gpa: std.mem.Allocator, io: std.Io, config: *const Config, started_at: i64) bool {
+    const url = config.healthcheck_url orelse return false;
+
+    const now = unixSeconds();
+    if (now > started_at and @as(u64, @intCast(now - started_at)) < config.healthcheck_startup_grace_seconds) {
+        return false;
+    }
+
+    const argv = [_][]const u8{
+        "curl",
+        "-fsS",
+        "--max-time",
+        "5",
+        url,
+    };
+    const result = std.process.run(gpa, io, .{
+        .argv = &argv,
+        .stdout_limit = .limited(4096),
+        .stderr_limit = .limited(4096),
+    }) catch return true;
+    defer gpa.free(result.stdout);
+    defer gpa.free(result.stderr);
+
+    return switch (result.term) {
+        .exited => |code| code != 0,
+        else => true,
+    };
 }
 
 fn journalRestartReason(gpa: std.mem.Allocator, io: std.Io, config: *const Config, started_at: i64) ?JournalRestart {
@@ -409,6 +466,20 @@ fn logJournalRestart(config: *const Config, pid: posix.pid_t, pgid: posix.pid_t,
     std.debug.print(
         "{{\"event\":\"prefect.worker.restart-requested\",\"worker_name\":\"{s}\",\"work_pool_name\":\"{s}\",\"worker_pid\":{},\"process_group_id\":{},\"threshold_name\":\"worker_channel_journal_pattern\",\"pattern\":\"{s}\"}}\n",
         .{ config.worker_name, config.work_pool_name, pid, pgid, reason.pattern },
+    );
+}
+
+fn logHealthcheckFailure(config: *const Config, pid: posix.pid_t, pgid: posix.pid_t, failure_count: u64) void {
+    std.debug.print(
+        "{{\"event\":\"prefect.worker.healthcheck-failure-observed\",\"worker_name\":\"{s}\",\"work_pool_name\":\"{s}\",\"worker_pid\":{},\"process_group_id\":{},\"failure_count\":{}}}\n",
+        .{ config.worker_name, config.work_pool_name, pid, pgid, failure_count },
+    );
+}
+
+fn logHealthcheckRestart(config: *const Config, pid: posix.pid_t, pgid: posix.pid_t, failure_count: u64) void {
+    std.debug.print(
+        "{{\"event\":\"prefect.worker.restart-requested\",\"worker_name\":\"{s}\",\"work_pool_name\":\"{s}\",\"worker_pid\":{},\"process_group_id\":{},\"threshold_name\":\"local_worker_healthcheck\",\"observed_value\":{}}}\n",
+        .{ config.worker_name, config.work_pool_name, pid, pgid, failure_count },
     );
 }
 

@@ -13,6 +13,8 @@ EnvironmentFile=/home/stoat/.config/prod-worker/env
 # uv must be on PATH: the process worker spawns `uv run ...` per flow run
 Environment=PATH=/home/stoat/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=UV_CACHE_DIR=/home/stoat/.cache/uv
+Environment=PREFECT_WORKER_WEBSERVER_HOST=127.0.0.1
+Environment=PREFECT_WORKER_WEBSERVER_PORT=8080
 # prefect-worker-guard starts the pinned Prefect worker command from
 # /etc/prefect-worker-guard.env and restarts its process group on local
 # resource-threshold breaches.

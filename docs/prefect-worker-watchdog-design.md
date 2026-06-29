@@ -28,10 +28,11 @@ The guard:
 1. Starts the configured worker command as a child process.
 2. Places the worker in its own process group.
 3. Periodically reads systemd cgroup counters for the owning unit.
-4. Emits machine-readable journal logs.
-5. Sends `SIGTERM`, then `SIGKILL` after a grace window, when memory or task
-   thresholds are exceeded.
-6. Starts a fresh worker process after a restart.
+4. Checks Prefect's local worker health endpoint when enabled.
+5. Emits machine-readable journal logs.
+6. Sends `SIGTERM`, then `SIGKILL` after a grace window, when memory, tasks, or
+   local worker health thresholds are exceeded.
+7. Starts a fresh worker process after a restart.
 
 systemd remains the outer supervisor, cgroup owner, logger, and final OOM safety
 rail.
@@ -58,9 +59,16 @@ leaking processes, relying on another flow to repair it is circular.
 On 2026-06-25 the systemd unit and guard stayed alive while the Prefect worker
 stopped heartbeating. The cgroup was below the memory/task thresholds, so the
 resource-only guard never intervened and `home-pool` stayed `NOT_READY` until a
-manual recycle. That control-plane liveness signal should be handled by
-Prefect's Foreman status transition events and automations, not by adding
-Prefect API polling to the local guard.
+manual recycle. On 2026-06-29 this repeated in a slightly different shape: the
+process worker was still alive, but the server considered `heavypad` offline and
+scheduled runs backed up.
+
+The fix is to enable Prefect's documented local worker healthcheck with
+`--with-healthcheck` and have the guard check `http://127.0.0.1:8080/health`.
+That endpoint tracks successful polling activity and returns 503 when the worker
+has stopped polling within Prefect's configured window. This gives the local
+supervisor an authoritative worker-liveness signal without polling the Prefect
+API.
 
 ## future direction
 
