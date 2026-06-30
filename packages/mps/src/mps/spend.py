@@ -6,6 +6,7 @@ import datetime as dt
 import fcntl
 import hashlib
 import json
+import logging
 import os
 from dataclasses import asdict, is_dataclass
 from decimal import Decimal
@@ -14,6 +15,43 @@ from typing import Any
 
 from genai_prices import calc_price
 from genai_prices.types import Usage
+
+logger = logging.getLogger(__name__)
+
+# Models genai-prices does not yet know, mapped to a priced sibling. The row
+# still records the real model string; only the price lookup uses the alias.
+# claude-sonnet-5 shares cache structure and standard ($3/$15) pricing with
+# claude-sonnet-4-6, so this is exact post-intro and conservative during the
+# introductory window. Drop entries here once genai-prices ships the model.
+_PRICING_ALIASES: dict[str, str] = {
+    "claude-sonnet-5": "claude-sonnet-4-6",
+    "anthropic:claude-sonnet-5": "claude-sonnet-4-6",
+}
+
+
+class _ZeroPrice:
+    """Sentinel so an unknown model records token usage at zero cost rather
+    than dropping the whole row (record_usage swallows exceptions)."""
+
+    input_price = Decimal(0)
+    output_price = Decimal(0)
+    total_price = Decimal(0)
+
+
+def _calc_price(usage: Usage, model: str, provider: str, ts: dt.datetime) -> Any:
+    """calc_price with an alias fallback. Never raises: an unknown model is
+    logged and priced at zero so its tokens are still recorded."""
+    priced_model = _PRICING_ALIASES.get(model, model)
+    try:
+        return calc_price(usage, priced_model, provider_id=provider, genai_request_timestamp=ts)
+    except LookupError:
+        logger.warning(
+            "no price for model=%r provider=%r; recording usage at $0 — add a "
+            "_PRICING_ALIASES entry or upgrade genai-prices",
+            model,
+            provider,
+        )
+        return _ZeroPrice()
 
 
 RAW_LLM_SPEND_SCHEMA = """
@@ -146,12 +184,7 @@ def record_usage(
         recorded_at = dt.datetime.now(dt.UTC)
         flow_name = current_flow_name()
         flow_run_id = current_flow_run_id()
-        price = calc_price(
-            usage,
-            model,
-            provider_id=provider,
-            genai_request_timestamp=recorded_at,
-        )
+        price = _calc_price(usage, model, provider, recorded_at)
         event = {
             "id": _row_id(
                 recorded_at=recorded_at,
