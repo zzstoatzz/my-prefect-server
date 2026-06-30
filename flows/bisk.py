@@ -44,11 +44,20 @@ TOPCHICKEN = "did:plc:bty3nc67lteylmmb7hvgxeu5"
 # exists to fix. instrumentation has improved; the eyewall is wider now.
 ENHANCED_GRACE_LIMIT = 10_000
 GRACE_LIMIT = ENHANCED_GRACE_LIMIT  # legacy alias; kept so the snapshot field reads true
-# the live race is a strict trailing 24h window: a bisk older than this drops
-# off, so the top chicken is always a recent post and the race keeps moving.
-# (the all-time view uses topchicken's own crownings, so its fidelity is
-# unaffected by this window.)
-WINDOW = timedelta(hours=24)
+# topchicken runs a discrete daily round: trading locks at 12:00 UTC and the
+# winner is crowned ~13:05 UTC (see topchicken.cee.wtf). the live race must mirror
+# that exact round — open from the most recent 12:00 UTC lock to now — NOT a
+# rolling trailing-24h window. a rolling window keeps the just-crowned post in the
+# race for ~24h after it has already won, so the site shows yesterday's top chicken
+# as today's leader. anchoring to the lock resets the race the moment a round ends.
+# (the all-time view uses topchicken's own crownings, so it's unaffected by this.)
+LOCK_HOUR_UTC = 12
+
+
+def round_start(now: datetime) -> datetime:
+    """the open of the round currently being judged: the most recent 12:00 UTC."""
+    lock = now.replace(hour=LOCK_HOUR_UTC, minute=0, second=0, microsecond=0)
+    return lock if now >= lock else lock - timedelta(days=1)
 
 CONSTELLATION = "https://constellation.microcosm.blue/xrpc"
 SLINGSHOT = "https://slingshot.microcosm.blue/xrpc"
@@ -140,15 +149,15 @@ def build_pool() -> dict[str, dict]:
 
 @task(log_prints=True)
 def window_bisks(pool: dict[str, dict]) -> list[dict]:
-    """the pool's bisks in topchicken's *current* daily window, with live likes.
+    """the pool's bisks in topchicken's *current* daily round, with live likes.
 
-    topchicken crowns once a day (~13:00 UTC) on a "24 hour period with 12 hour
-    outcome": the window judged by the next crowning is the 24h period ending 12h
-    before it. we mirror that discrete window so the live race resets each day
-    instead of letting yesterday's popular post linger in a rolling lookback.
+    the round opens at the most recent 12:00 UTC lock and is judged at the next
+    one; mirroring that discrete window (rather than a rolling 24h lookback) is
+    what makes the live race reset each day instead of letting the just-crowned
+    post linger as leader for another ~24h.
     """
-    window_start = datetime.now(timezone.utc) - WINDOW
-    print(f"window: posts since {window_start:%Y-%m-%d %H:%M} UTC (trailing 24h)")
+    window_start = round_start(datetime.now(timezone.utc))
+    print(f"round: posts since {window_start:%Y-%m-%d %H:%M} UTC (open since the 12:00 UTC lock)")
 
     async def run() -> list[dict]:
         bisks: list[dict] = []
