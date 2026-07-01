@@ -70,12 +70,19 @@ has stopped polling within Prefect's configured window. This gives the local
 supervisor an authoritative worker-liveness signal without polling the Prefect
 API.
 
+On 2026-07-01, we found a separate failure mode: local `prefect flow-run execute`
+descendants can remain alive after the server has already marked their flow run
+terminal. The guard now scans only the worker's own process group for descendants
+with `PREFECT__FLOW_RUN_ID`, checks that run's state through the Prefect API, and
+terminates just those descendant PIDs when the server reports `COMPLETED`,
+`FAILED`, `CRASHED`, or `CANCELLED`. It never uses process-group termination for
+this targeted cleanup path.
+
 ## future direction
 
 The next version should improve local process awareness:
 
 - track child counts and oldest descendant age directly;
-- detect stale or orphaned local descendants without querying Prefect;
 - emit Prefect events such as `prefect.worker.resource-observed`,
   `prefect.worker.resource-threshold-exceeded`, and
   `prefect.worker.orphaned-processes-detected`;
