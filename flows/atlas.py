@@ -120,6 +120,32 @@ def build_atlas(repo_dir: Path) -> Path:
     return output
 
 
+@task(retries=1, retry_delay_seconds=30)
+def build_facts(repo_dir: Path) -> Path:
+    """Regenerate site/facts.json (corpus factoids for the wrapped page).
+
+    Runs leaflet-search's scripts/build-facts, which reads TURSO_URL /
+    TURSO_TOKEN from the inherited environment and writes display-ready
+    factoids next to the site files, so the subsequent Pages deploy ships
+    fresh facts. Paced queries — well under the atlas build's cost.
+    """
+    logger = get_run_logger()
+    output = repo_dir / "site" / "facts.json"
+    result = subprocess.run(
+        ["uv", "run", "--script", str(repo_dir / "scripts" / "build-facts")],
+        cwd=str(repo_dir),
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"build-facts failed:\n{result.stderr}")
+    for line in result.stdout.strip().splitlines():
+        logger.info(line)
+    logger.info(f"facts.json: {output.stat().st_size / 1024:.1f} KB")
+    return output
+
+
 @task(retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=15), retry_jitter_factor=1)
 def deploy_to_pages(site_dir: Path) -> str:
     """Deploy site/ to Cloudflare Pages via wrangler.
@@ -204,6 +230,12 @@ def rebuild_atlas():
     with tempfile.TemporaryDirectory() as tmpdir:
         repo_dir = clone_repo(Path(tmpdir) / "repo")
         build_atlas(repo_dir)
+        # facts are a garnish: a failure shouldn't block the atlas deploy —
+        # the repo checkout already carries the last committed facts.json
+        try:
+            build_facts(repo_dir)
+        except Exception as e:
+            get_run_logger().warning(f"build-facts failed, deploying with committed facts.json: {e}")
         deploy_to_pages(repo_dir / "site")
 
 
