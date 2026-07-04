@@ -6,7 +6,7 @@ this file is a set of notes for us:
 - `.env` keys: `HCLOUD_TOKEN`, `POSTGRES_PASSWORD`, `AUTH_STRING`, `DOMAIN`, `LETSENCRYPT_EMAIL` (+ optional `GRAFANA_DOMAIN`). the live server is `DOMAIN=prefect-server.waow.tech`.
 - `AUTH_STRING` (`user:pass`) is the Prefect API admin credential. The Zig server's Prefect-compatible BasicAuth is enabled via the `prefect-auth` secret; unauthenticated `/api/*` calls return `Unauthorized`, while `/ui-settings` reports `auth: "BASIC"` for the bundled Prefect v2 UI login flow. Use `AUTH_STRING` for CLI/API queries.
 - query the live server with `just prefect <args>` (e.g. `just prefect flow-run ls`); it injects `PREFECT_API_URL`/`PREFECT_API_AUTH_STRING` from `.env`. raw API: `curl -H "Authorization: Basic $(printf "$AUTH_STRING" | base64)" https://$DOMAIN/api/...`.
-- flow *runtime* secrets (`ANTHROPIC_API_KEY`, `TURBOPUFFER_API_KEY`, `CLOUDFLARE_API_TOKEN`, `TURSO_*`) are NOT in `.env` — they're Prefect Secret blocks, injected into flow pods via `job_variables.env` in `prefect.yaml`, resolved at `prefect deploy` time. flow code never touches the Secret API directly.
+- flow *runtime* secrets (`ANTHROPIC_API_KEY`, `TURBOPUFFER_API_KEY`, `CLOUDFLARE_API_TOKEN`, `TURSO_*`) are NOT in `.env` — they're Prefect Secret blocks, injected into flow runs via `job_variables.env` in `prefect.yaml`, resolved at `prefect deploy` time. flow code never touches the Secret API directly.
 
 ## cluster access
 
@@ -24,6 +24,7 @@ this file is a set of notes for us:
 - push to configured remotes. This repo currently has `origin` (tangled.org);
   if a `github` mirror remote is present in a checkout, push that too.
 - after server restart, re-fetch kubeconfig with `just kubeconfig`
+- **flow execution runs on the `home-pool` *process* worker on the home box (heavypad)** — a systemd unit polling the server outbound over Tailscale (`deploy/home-worker/`). the `kubernetes-pool` bullets below describe the retained-but-unused k8s fallback path (no k8s worker runs in normal operation), and the analytics paths are hostPaths under `/home/stoat/prefect-analytics`, not a k8s PVC.
 - flow code never goes in worker images or ConfigMaps — it's pulled at runtime via `git_clone`
 - worker image is `prefecthq/prefect:3-python3.14-kubernetes` (the `-kubernetes` tag matters; uv is pre-installed)
 - `PREFECT_INTEGRATIONS_KUBERNETES_OBSERVER_NAMESPACES=prefect` is what makes namespace-scoped RBAC work
@@ -41,10 +42,10 @@ this file is a set of notes for us:
   `uv run python flows/phi_atlas.py --dry-run`.
 - Direct local execution is useful for debugging pure Python behavior, but be
   careful with write paths: default local storage may be `/tmp`, not the
-  production analytics PVC, and flow code that calls `Secret.load(...)` still
+  production analytics dir (`/home/stoat/prefect-analytics` on the home box), and flow code that calls `Secret.load(...)` still
   needs `PREFECT_API_URL`/`PREFECT_API_AUTH_STRING` pointed at the live server.
-- To exercise the real production worker, work pool, pull steps, job variables,
-  PVC mounts, and injected secret-block values, run deployments through the
+- To exercise the real production worker (home-pool), pull steps, job variables,
+  and injected secret-block values, run deployments through the
   Prefect API: `just prefect deployment run 'diagnostics/diagnostics' --watch`
   or `just prefect deployment run 'ingest/ingest' --watch`.
 - `prefect.yaml` is the source of truth for deployment schedules, triggers,

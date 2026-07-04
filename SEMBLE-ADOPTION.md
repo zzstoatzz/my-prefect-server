@@ -1,5 +1,10 @@
 # adopting semble-api in the flows
 
+> **Historical planning note (2026-06-11), now shipped.** the semble-api adoption, the
+> shared `create_bsky_session` helper (`packages/mps/src/mps/atproto.py`), and logfire
+> instrumentation described below have since landed. The "machinery today" table
+> describes the *pre-adoption* state.
+
 2026-06-11. the bot adopted [`semble-api`](https://pypi.org/project/semble-api/) today — typed sdk over all ~50 `network.cosmik.*` endpoints, hosted code-mode mcp at `https://semble.fastmcp.app/mcp`, records models maintained against the lexicon (see `bot/SEMBLE-API-HANDOFF.md` and the sdk's `docs/agent-surfaces.md`, sibling repos). **these flows are now the last place phi's identity writes through hand-rolled machinery.** the periodic/separate execution is intentional and stays; the write path, record shapes, and telemetry must be the same machinery the bot uses.
 
 per agent-surfaces: these flows are *your own python → sdk*. not the mcp — that's for agents choosing tools; flows are deterministic code.

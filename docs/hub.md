@@ -69,8 +69,11 @@ a single `ingest` flow runs hourly on cron and fetches all data sources concurre
 | `docket` | on `phi-atlas` completion | synthesizes promotion-pressure candidates from the atlas and writes `io.zzstoatzz.phi.docket/self` |
 | `rebuild-atlas` | cron `0 */6 * * *` | rebuilds the leaflet-search 2D semantic map (UMAP + HDBSCAN on TurboPuffer embeddings), deploys to Cloudflare Pages |
 | `pds-records` | ad hoc, no schedule | operator flow for listing/creating/updating/deleting PDS records; default deployment is dry-run list mode |
+| `costs` | cron `0 8 * * *` (daily 08:00 UTC) | collects provider billing (neon/cloudflare/hetzner/fly connectors), writes an `io.zzstoatzz.cost.snapshot` PDS record, surfaced at hub.waow.tech |
+| `typeahead-index` | cron `0 9 */3 * *` (every 3rd day) | builds the typeahead prefix-index snapshot on the home box (zig batch job), publishes it to R2, rewrites `latest.json`. no ingress, no SLA |
+| `bisk-snapshot` | cron `*/10 * * * *` | computes the authoritative bisk.social standings and publishes a static snapshot to R2 for the edge site to adopt |
 
-all flows run in the `kubernetes-pool` work pool. code is pulled at runtime via `git clone` from tangled.sh (github fallback). deps install via `uv run --with 'my-prefect-server @ git+...'`. deployments are registered by CI on every push to main.
+all flows run on the `home-pool` process worker on the home box (heavypad); `kubernetes-pool` is retained as an unused fallback. code is pulled at runtime via `git clone` from tangled.sh (github fallback). deps install via `uv run --with 'my-prefect-server @ git+...'`. deployments are registered by CI on every push to main (`.tangled/workflows/deploy.yml`).
 
 ## dbt layer
 
@@ -91,7 +94,7 @@ SvelteKit hub mounts and reads.
 | `int_tangled_items_scored` | table | scoring: recency (30-day decay) x 0.5 (no engagement data) x contributor weight |
 | `int_phi_user_profiles` | table | aggregates per-user observation + interaction counts for compact flow |
 | `hub_action_items` | mart | union of both scored tables, ordered by `importance_score` desc, limit 200 |
-| `raw_llm_spend` | table | materialized copy of the append-only `llm-spend.jsonl` telemetry log for offline analysis |
+| `raw_llm_spend` | not a dbt model | materialized directly by `transform.py` from the append-only `llm-spend.jsonl` telemetry log (listed here for completeness) |
 
 contributor weights come from the `known_contributors` seed (zzstoatzz + zzstoatzz.io at 2.0x).
 

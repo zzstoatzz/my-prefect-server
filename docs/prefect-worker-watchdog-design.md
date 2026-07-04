@@ -83,8 +83,8 @@ this targeted cleanup path.
 The next version should improve local process awareness:
 
 - track child counts and oldest descendant age directly;
-- emit Prefect events such as `prefect.worker.resource-observed`,
-  `prefect.worker.resource-threshold-exceeded`, and
-  `prefect.worker.orphaned-processes-detected`;
+- emit the remaining planned Prefect event `prefect.worker.orphaned-processes-detected`
+  (the guard already logs `resource-observed` / `resource-threshold-exceeded` as journal
+  events and emits the `prefect.worker.restart-requested` Prefect event);
 - eventually subsume enough worker behavior that the guard can become a native
   worker runtime instead of a wrapper around `prefect worker start`.

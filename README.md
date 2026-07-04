@@ -55,8 +55,15 @@ personal data pipeline and intelligence layer. digests github, [tangled.org](htt
 
                         publication flows
   ─────────────────────────────────────────────
-  rebuild-atlas (every 6h) ──► Cloudflare Pages
-  pds-records (ad hoc) ──► PDS record maintenance
+  rebuild-atlas   (every 6h)  ──► Cloudflare Pages
+  typeahead-index (every 3d)  ──► R2  (prefix-index snapshot, built at home)
+  bisk-snapshot   (every 10m) ──► R2  (bisk.social standings snapshot)
+  pds-records     (ad hoc)    ──► PDS record maintenance
+
+                        cost tracking + health
+  ─────────────────────────────────────────────
+  costs       (daily 08:00 UTC) ──► PDS cost snapshot ──► hub.waow.tech
+  diagnostics (every 5m)        ──► liveness canary (prints host/python/pid)
 ```
 
 see [docs/hub.md](docs/hub.md) for the full pipeline breakdown.
@@ -86,9 +93,8 @@ uv sync                # install workspace (mps + root)
 just init              # terraform init
 just infra             # create the VM
 just kubeconfig        # wait for k3s, fetch kubeconfig
-just deploy            # cert-manager, prefect server, monitoring, dashboards
-just worker            # deploy the kubernetes worker
-just storage           # create analytics hostPath + results PVC, apply work pool template
+just deploy            # cert-manager, prefect server (zig chart), postgres+redis, monitoring, dashboards
+just storage           # create analytics hostPath + results PVC, apply kubernetes-pool base job template
 ```
 
 ### home worker (where flows actually run)
@@ -96,9 +102,10 @@ just storage           # create analytics hostPath + results PVC, apply work poo
 The steps above stand up the control plane + public edge on the VM. Flow
 **execution** runs on the home box via a systemd `home-pool` worker that polls
 the server outbound over Tailscale (no ingress, no port-forward) — see
-[deploy/home-worker/](deploy/home-worker/). Deployments target `home-pool`; the
-k8s worker (`just worker`) remains as a fallback pool. The hub reads analytics
-synced from the home box every few minutes — see
+[deploy/home-worker/](deploy/home-worker/). All deployments target `home-pool`;
+`kubernetes-pool` survives only as a defined fallback (its base job template is
+applied by `just storage`) — no k8s worker runs in normal operation. The hub
+reads analytics synced from the home box every few minutes — see
 [deploy/hub-data-sync/](deploy/hub-data-sync/).
 
 Zig server adoption/migration details live in

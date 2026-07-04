@@ -6,6 +6,13 @@ descriptive: the current deploy path already uses the zig chart, but the details
 below are the things to know if another environment is still on the Python
 `prefect/prefect-server` Helm chart or if this deployment needs to be rebuilt.
 
+> **Execution topology (current):** the k3s node runs the zig **server + public edge**
+> only. All flow deployments now execute on the **`home-pool` process worker** on the
+> home box (heavypad), which polls the server outbound over Tailscale
+> (`deploy/home-worker/`). The `kubernetes-pool`, the k8s worker, and the "a Kubernetes
+> Job is created in the `prefect` namespace" validation step below are **retained but
+> unused** — read them only if rebuilding the k8s fallback path.
+
 ## Current Shape In This Repo
 
 `just deploy` installs the server from a sibling checkout:
@@ -63,7 +70,8 @@ The important local files are:
 - `deploy/prefect-postgres.yaml` — standalone DB, DB password secret, and DB URL
   secret.
 - `deploy/prefect-redis.yaml` — standalone Redis.
-- `deploy/worker.yaml` — Python Kubernetes worker pointed at the in-cluster API.
+- `deploy/home-worker/` — the current worker (a systemd **process** worker on the home
+  box). The old in-cluster `deploy/worker.yaml` Kubernetes worker is gone.
 - `deploy/prefect-limits.yaml` — namespace safety net for flow pod resource
   defaults.
 - `deploy/dashboards/*.json` and `deploy/monitoring-values.yaml` — Grafana and
@@ -82,7 +90,7 @@ The deployed image is currently:
 ```yaml
 image:
   repository: atcr.io/zzstoatzz.io/prefect-server
-  tag: "ReleaseFast-7bc8061"
+  tag: "ReleaseFast-<sha>"  # current tag lives in deploy/prefect-values.yaml (bumped every publish-server-remote)
 ```
 
 `just publish-server-remote` builds the server on the Hetzner node and updates

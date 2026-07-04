@@ -1,5 +1,9 @@
 # EU migration playbook
 
+> **Historical (completed 2026-06-16).** This migration is done — the node runs in
+> Hetzner **EU (fsn1)** now. Retained as the executed playbook; the present-tense
+> "currently in Ashburn" statements below describe the *pre-migration* state, not today.
+
 This repo currently runs a single-node k3s Prefect control plane on Hetzner in
 Ashburn. The cost review shows the main problem is location pricing: the same
 `cpx31` class box is about 3.6x cheaper in Hetzner EU. A move to `fsn1`,
