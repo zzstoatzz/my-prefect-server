@@ -132,7 +132,7 @@ deployments:
       name: home-pool
       job_variables:
         command: >-
-          uv run
+          uv run --python 3.13.11
           --with 'my-prefect-server[atlas] @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
         env:

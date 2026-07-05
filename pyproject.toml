@@ -34,6 +34,10 @@ atlas = [
     "scipy>=1.11",
     "umap-learn>=0.5",
     "hdbscan>=0.8",
+    # without a floor, uv satisfies numba's numpy<2.5 cap by backtracking
+    # numba to 0.53 (py<3.10 only) instead of downgrading numpy — the
+    # resulting sdist build crashed phi-atlas daily from 2026-06-22.
+    "numba>=0.60",
 ]
 
 [tool.hatch.build.targets.wheel]
