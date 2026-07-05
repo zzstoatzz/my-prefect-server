@@ -1742,6 +1742,7 @@ dependencies = [
 [package.optional-dependencies]
 atlas = [
     { name = "hdbscan" },
+    { name = "numba" },
     { name = "numpy" },
     { name = "scipy" },
     { name = "umap-learn" },
@@ -1760,6 +1761,7 @@ requires-dist = [
     { name = "hdbscan", marker = "extra == 'atlas'", specifier = ">=0.8" },
     { name = "logfire", specifier = ">=4.36.0" },
     { name = "mps", editable = "packages/mps" },
+    { name = "numba", marker = "extra == 'atlas'", specifier = ">=0.60" },
     { name = "numpy", marker = "extra == 'atlas'", specifier = ">=1.26" },
     { name = "prefect", specifier = ">=3.7.3" },
     { name = "prefect-dbt", specifier = ">=0.6" },
