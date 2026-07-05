@@ -27,10 +27,20 @@ class EmailClassification(BaseModel):
     category: EmailCategory
 
 
-class EmailClassifications(BaseModel):
+class IndexedClassification(BaseModel):
+    """Classifier output for one message, referenced by prompt index.
+
+    Message-ids are long and error-prone for the model to echo back; indexes
+    keep the structured output small and reliable."""
+
+    index: int
+    category: EmailCategory
+
+
+class IndexedClassifications(BaseModel):
     """Batch classification output."""
 
-    classifications: list[EmailClassification]
+    classifications: list[IndexedClassification]
 
 
 class EmailItem(BaseModel):

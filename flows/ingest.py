@@ -33,7 +33,7 @@ from mps.db import (
     write_phi_observations,
     write_tangled_items,
 )
-from mps.email import EmailClassifications, EmailItem, fetch_inbox
+from mps.email import EmailClassification, EmailItem, IndexedClassifications, fetch_inbox
 from mps.github import IssueOrPR, IssueRef, gh_headers
 from mps.phi import PhiInteraction, PhiObservation, restore_handle
 from mps.likes import LikeRecord, LikedPost, fetch_likes, summarize_embed
@@ -230,7 +230,7 @@ def persist_emails(items: list[EmailItem]) -> int:
 
 EMAIL_CLASSIFIER_PROMPT = """\
 you categorize inbox emails for a solo developer's dashboard.
-given (message_id, sender, subject, snippet) tuples, assign each one:
+given numbered (sender, subject, snippet) lines, assign each index one:
 
 - personal: written by a human directly to the recipient
 - work: professional correspondence needing attention (invoices, contracts,
@@ -239,8 +239,10 @@ given (message_id, sender, subject, snippet) tuples, assign each one:
   CI results, statements ready, receipts)
 - promotional: marketing, sales, product announcements, engagement bait
 
-return a classification for every message_id you were given.
+return a classification for every index you were given.
 """
+
+CLASSIFY_BATCH_SIZE = 25
 
 
 @task
@@ -259,29 +261,38 @@ def classify_emails(api_key: str) -> int:
         logger.info("no unclassified emails")
         return 0
 
-    lines = [
-        f"message_id={mid!r} sender={sender!r} subject={subject!r} snippet={snippet[:200]!r}"
-        for mid, sender, subject, snippet in pending
-    ]
-
     model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
     agent = Agent(
         model,
-        output_type=EmailClassifications,
+        output_type=IndexedClassifications,
         system_prompt=EMAIL_CLASSIFIER_PROMPT,
         name="email-classifier",
+        retries=2,
         model_settings={"anthropic_cache_instructions": "5m"},
     )
-    result = agent.run_sync("classify these emails:\n\n" + "\n".join(lines))
-    record_pydantic_ai_result(
-        task_name="classify_emails",
-        model="claude-haiku-4-5",
-        result=result,
-        metadata={"email_count": len(pending)},
-    )
 
-    total = write_email_classifications(result.output.classifications, _db_path())
-    logger.info(f"classified {len(result.output.classifications)} emails ({total} total)")
+    classified: list[EmailClassification] = []
+    for start in range(0, len(pending), CLASSIFY_BATCH_SIZE):
+        batch = pending[start : start + CLASSIFY_BATCH_SIZE]
+        lines = [
+            f"{i}. sender={sender!r} subject={subject!r} snippet={snippet[:200]!r}"
+            for i, (_, sender, subject, snippet) in enumerate(batch)
+        ]
+        result = agent.run_sync("classify these emails:\n\n" + "\n".join(lines))
+        record_pydantic_ai_result(
+            task_name="classify_emails",
+            model="claude-haiku-4-5",
+            result=result,
+            metadata={"email_count": len(batch)},
+        )
+        for c in result.output.classifications:
+            if 0 <= c.index < len(batch):
+                classified.append(
+                    EmailClassification(message_id=batch[c.index][0], category=c.category)
+                )
+
+    total = write_email_classifications(classified, _db_path())
+    logger.info(f"classified {len(classified)} emails ({total} total)")
     return total
 
 
