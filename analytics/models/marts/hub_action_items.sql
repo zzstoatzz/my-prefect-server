@@ -1,6 +1,8 @@
-SELECT source, repo, identifier, kind, title, url,
-       author, labels, importance_score, updated
-FROM (
+-- each source scores on its own scale (github's contributor multiplier reaches
+-- ~2x, email caps at 1.0), so raw scores aren't comparable across sources.
+-- min-max normalize within each source before the global top-200 cut, so no
+-- source can crowd the others out on scale alone.
+WITH unioned AS (
     SELECT
         'github' AS source,
         repo,
@@ -44,5 +46,19 @@ FROM (
         received_at AS updated
     FROM {{ ref('int_emails_scored') }}
 )
+SELECT source, repo, identifier, kind, title, url, author, labels,
+    ROUND(
+        CASE
+            WHEN MAX(importance_score) OVER (PARTITION BY source)
+               = MIN(importance_score) OVER (PARTITION BY source)
+            THEN importance_score
+            ELSE (importance_score - MIN(importance_score) OVER (PARTITION BY source))
+               / (MAX(importance_score) OVER (PARTITION BY source)
+                - MIN(importance_score) OVER (PARTITION BY source))
+        END,
+        4
+    ) AS importance_score,
+    updated
+FROM unioned
 ORDER BY importance_score DESC
 LIMIT 200
