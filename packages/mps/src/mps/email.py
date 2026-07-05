@@ -43,16 +43,39 @@ def _decode_header(value: str | None) -> str:
     return "".join(parts).strip()
 
 
-def _is_bulk(msg: email.message.Message) -> bool:
-    """Marketing blasts, newsletters, and list mail all carry these headers;
-    person-to-person mail doesn't."""
+BULK_SENDER_PREFIXES = (
+    "noreply",
+    "no-reply",
+    "no_reply",
+    "donotreply",
+    "customerservice",
+    "marketing",
+    "newsletter",
+    "notifications",
+    "info",
+    "hello",
+)
+
+
+def _is_bulk(msg: email.message.Message, body: str, sender_address: str) -> bool:
+    """Detect marketing/newsletter/list mail.
+
+    hydroxide rebuilds messages from Proton's API and drops List-Unsubscribe/
+    Precedence headers, so header checks alone miss most bulk mail — fall back
+    to the body's unsubscribe boilerplate and no-reply-style sender addresses.
+    """
     if msg.get("List-Unsubscribe") or msg.get("List-Id"):
         return True
-    precedence = (msg.get("Precedence") or "").lower()
-    return precedence in ("bulk", "list", "junk")
+    if (msg.get("Precedence") or "").lower() in ("bulk", "list", "junk"):
+        return True
+    if "unsubscribe" in body.lower():
+        return True
+    local_part = sender_address.split("@")[0].lower()
+    return local_part.startswith(BULK_SENDER_PREFIXES)
 
 
-def _extract_snippet(msg: email.message.Message) -> str:
+def _extract_text(msg: email.message.Message) -> str:
+    """Full normalized text of the first text/plain part."""
     body = ""
     if msg.is_multipart():
         for part in msg.walk():
@@ -70,8 +93,7 @@ def _extract_snippet(msg: email.message.Message) -> str:
             charset = msg.get_content_charset() or "utf-8"
             body = payload.decode(charset, errors="replace")
 
-    body = re.sub(r"\s+", " ", body).strip()
-    return body[:SNIPPET_CHARS]
+    return re.sub(r"\s+", " ", body).strip()
 
 
 def fetch_inbox(
@@ -127,16 +149,17 @@ def fetch_inbox(
                 if parsed:
                     received_at = parsed.astimezone(datetime.UTC).isoformat()
 
+            body = _extract_text(msg)
             items.append(
                 EmailItem(
                     message_id=message_id,
                     subject=_decode_header(msg.get("Subject")),
                     sender_name=sender_name,
                     sender_address=sender_address,
-                    snippet=_extract_snippet(msg),
+                    snippet=body[:SNIPPET_CHARS],
                     received_at=received_at,
                     unread=b"\\Seen" not in flags,
-                    is_bulk=_is_bulk(msg),
+                    is_bulk=_is_bulk(msg, body, sender_address),
                     mailbox=mailbox,
                 )
             )
