@@ -13,3 +13,8 @@ web/.svelte-kit/
 web/build/
 .zig-cache/
 zig-out/
+
+# local dbt run artifacts
+analytics/logs/
+analytics/target/
+analytics/profiles/.user.yml
