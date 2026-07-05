@@ -27,7 +27,6 @@ class EmailItem(BaseModel):
     snippet: str
     received_at: str  # ISO 8601
     unread: bool
-    is_bulk: bool = False
     mailbox: str = "INBOX"
 
 
@@ -41,37 +40,6 @@ def _decode_header(value: str | None) -> str:
         else:
             parts.append(chunk)
     return "".join(parts).strip()
-
-
-BULK_SENDER_PREFIXES = (
-    "noreply",
-    "no-reply",
-    "no_reply",
-    "donotreply",
-    "customerservice",
-    "marketing",
-    "newsletter",
-    "notifications",
-    "info",
-    "hello",
-)
-
-
-def _is_bulk(msg: email.message.Message, body: str, sender_address: str) -> bool:
-    """Detect marketing/newsletter/list mail.
-
-    hydroxide rebuilds messages from Proton's API and drops List-Unsubscribe/
-    Precedence headers, so header checks alone miss most bulk mail — fall back
-    to the body's unsubscribe boilerplate and no-reply-style sender addresses.
-    """
-    if msg.get("List-Unsubscribe") or msg.get("List-Id"):
-        return True
-    if (msg.get("Precedence") or "").lower() in ("bulk", "list", "junk"):
-        return True
-    if "unsubscribe" in body.lower():
-        return True
-    local_part = sender_address.split("@")[0].lower()
-    return local_part.startswith(BULK_SENDER_PREFIXES)
 
 
 def _extract_text(msg: email.message.Message) -> str:
@@ -159,7 +127,6 @@ def fetch_inbox(
                     snippet=body[:SNIPPET_CHARS],
                     received_at=received_at,
                     unread=b"\\Seen" not in flags,
-                    is_bulk=_is_bulk(msg, body, sender_address),
                     mailbox=mailbox,
                 )
             )
