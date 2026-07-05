@@ -10,7 +10,7 @@
 
 ## context
 
-phi's web frontend is being redesigned around a metroid-prime-style "cockpit" with three lenses (mind / output / tools). the **mind** lens is an Atlas-style 2D map (canonical reference: `leaflet-search/site/atlas.{js,css,html}` + the `rebuild-atlas` flow here) showing every "object of phi's attention" — concepts, goals, handles she's engaged with, discovery candidates — colored by kind, clustered by semantic similarity, multi-scale legible via zoom.
+phi's web frontend is being redesigned around a metroid-prime-style "cockpit" with three lenses (mind / output / tools). the **mind** lens is an Atlas-style 2D map (canonical reference: `pub-search/site/atlas.{js,css,html}` + the `rebuild-atlas` flow here) showing every "object of phi's attention" — concepts, goals, handles she's engaged with, discovery candidates — colored by kind, clustered by semantic similarity, multi-scale legible via zoom.
 
 today's `/mind` page uses a d3 force-directed graph with handle-only nodes positioned by observation similarity. that breaks past ~40 nodes and only covers one of the four kinds. we need to upgrade the back end so the front end has real coordinates to render against.
 
@@ -44,7 +44,7 @@ handles get a single point per handle, positioned at the centroid of their obser
 
 ## reuse / leverage
 
-- `rebuild-atlas` flow (`flows/atlas.py`) is the reference — it already does the leaflet-search/backend → UMAP → HDBSCAN → json → cf pages dance. mostly a question of swapping the data source.
+- `rebuild-atlas` flow (`flows/atlas.py`) is the reference — it already does the pub-search/backend → UMAP → HDBSCAN → json → cf pages dance. mostly a question of swapping the data source.
 - observation/interaction/summary embeddings are already in TurboPuffer. the new work is embedding goals, posts, notes, urls, blog docs, and computing handle centroids.
 - the `compact` flow already enumerates `phi-users-*` namespaces and pulls observation content; the same enumeration can yield handle centroids.
 - the `morning` flow already lists phi's PDS collections (cards, connections, collections) — extend the same listing pattern to goals, observations, blog docs.
@@ -88,11 +88,11 @@ cluster labels can be LLM-derived (haiku, batched, ByContent cache) the same way
 
 ## frontend contract
 
-the bot's `web/` (svelte 5 + sveltekit static) will fetch `phi-atlas.json` once on the mind lens, render with the same canvas pattern as `leaflet-search/site/atlas.js`. color palette ties into the redesign's HUD/scan-visor system:
+the bot's `web/` (svelte 5 + sveltekit static) will fetch `phi-atlas.json` once on the mind lens, render with the same canvas pattern as `pub-search/site/atlas.js`. color palette ties into the redesign's HUD/scan-visor system:
 
 - concept-kinds (observation, summary, goal, active-observation): scan cyan family
 - emission-kinds (post, note, url, blog): HUD orange family
 - handle-engaged: warm off-white (avatar fill at high zoom)
 - handle-candidate: dim outline only, until engagement upgrades them
 
-multi-scale rendering follows leaflet-search's zoom→fadein/fadeout grammar exactly.
+multi-scale rendering follows pub-search's zoom→fadein/fadeout grammar exactly.

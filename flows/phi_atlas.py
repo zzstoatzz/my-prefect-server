@@ -11,7 +11,7 @@ clusters via haiku, computes deterministic `layer` + `promotion_status`
 lifecycle metadata per point, and writes the result as a blob on phi's PDS
 under `io.zzstoatzz.phi.atlas/self`.
 
-Distinct from `flows/atlas.py`, which is the leaflet-search publication atlas.
+Distinct from `flows/atlas.py`, which is the pub-search publication atlas.
 
 Required env (injected by deployment job_variables.env, sourced from Secret
 blocks at deploy time):

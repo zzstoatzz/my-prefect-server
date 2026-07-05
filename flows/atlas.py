@@ -1,7 +1,7 @@
 """
 Rebuild the atlas (2D semantic map) and deploy to Cloudflare Pages.
 
-Clones leaflet-search, runs the build-atlas script (UMAP + HDBSCAN),
+Clones pub-search, runs the build-atlas script (UMAP + HDBSCAN),
 then deploys the site to Cloudflare Pages via wrangler.
 
 Secrets are injected into the pod environment via the deployment's
@@ -29,7 +29,7 @@ from pathlib import Path
 from prefect import flow, get_run_logger, task
 from prefect.tasks import exponential_backoff
 
-REPO_URL = "https://github.com/zzstoatzz/leaflet-search.git"
+REPO_URL = "https://github.com/zzstoatzz/pub-search.git"
 CF_ACCOUNT_ID = "3e9ba01cd687b3c4d29033908177072e"
 CF_PROJECT = "leaflet-search"
 
@@ -78,7 +78,7 @@ def _install_node(node_install: Path) -> Path:
 
 @task(retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=10), retry_jitter_factor=1)
 def clone_repo(dest: Path) -> Path:
-    """Shallow-clone leaflet-search to get site files + build script."""
+    """Shallow-clone pub-search to get site files + build script."""
     # idempotent across retries: git clone refuses a non-empty destination
     if dest.exists():
         shutil.rmtree(dest)
@@ -124,7 +124,7 @@ def build_atlas(repo_dir: Path) -> Path:
 def build_facts(repo_dir: Path) -> Path:
     """Regenerate site/facts.json (corpus factoids for the wrapped page).
 
-    Runs leaflet-search's scripts/build-facts, which reads TURSO_URL /
+    Runs pub-search's scripts/build-facts, which reads TURSO_URL /
     TURSO_TOKEN from the inherited environment and writes display-ready
     factoids next to the site files, so the subsequent Pages deploy ships
     fresh facts. Paced queries — well under the atlas build's cost.

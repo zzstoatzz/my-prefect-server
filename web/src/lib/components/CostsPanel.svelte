@@ -21,7 +21,7 @@
 	const PALETTE = ['#22d3ee', '#a78bfa', '#34d399', '#fbbf24', '#f472b6', '#60a5fa', '#fb923c', '#4ade80', '#e879f9', '#2dd4bf', '#f87171', '#94a3b8'];
 	const REPO: Record<string, string> = {
 		relays: 'relay', 'plyr.fm': 'plyr.fm', typeahead: 'typeahead', prefect: 'my-prefect-server',
-		'standard.site': 'leaflet-search', trending: 'coral', bufo: 'find-bufo', labelz: 'labelz',
+		'standard.site': 'pub-search', trending: 'coral', bufo: 'find-bufo', labelz: 'labelz',
 		phi: 'bot'
 	};
 	const repoUrl = (key: string) => (REPO[key] ? `https://tangled.org/zzstoatzz.io/${REPO[key]}` : null);

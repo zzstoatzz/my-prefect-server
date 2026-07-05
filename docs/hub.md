@@ -67,7 +67,7 @@ a single `ingest` flow runs hourly on cron and fetches all data sources concurre
 | `curate` | on `morning` completion | agentic Semble curation. reviews phi's public knowledge graph and private observations, writes Semble URL cards/collections/connections through `semble-api`, and blocks unindexed standalone note cards |
 | `phi-atlas` | cron `0 13 * * *` (8am CT) | builds phi's daily private/public semantic atlas from TurboPuffer + PDS records, writes `io.zzstoatzz.phi.atlas/self` |
 | `docket` | on `phi-atlas` completion | synthesizes promotion-pressure candidates from the atlas and writes `io.zzstoatzz.phi.docket/self` |
-| `rebuild-atlas` | cron `0 */6 * * *` | rebuilds the leaflet-search 2D semantic map (UMAP + HDBSCAN on TurboPuffer embeddings), deploys to Cloudflare Pages |
+| `rebuild-atlas` | cron `0 */6 * * *` | rebuilds the pub-search 2D semantic map (UMAP + HDBSCAN on TurboPuffer embeddings), deploys to Cloudflare Pages |
 | `pds-records` | ad hoc, no schedule | operator flow for listing/creating/updating/deleting PDS records; default deployment is dry-run list mode |
 | `costs` | cron `0 8 * * *` (daily 08:00 UTC) | collects provider billing (neon/cloudflare/hetzner/fly connectors), writes an `io.zzstoatzz.cost.snapshot` PDS record, surfaced at hub.waow.tech |
 | `typeahead-index` | cron `0 9 */3 * *` (every 3rd day) | builds the typeahead prefix-index snapshot on the home box (zig batch job), publishes it to R2, rewrites `latest.json`. no ingress, no SLA |
@@ -135,7 +135,7 @@ the mechanical TurboPuffer tag-graph cleanup:
 
 ## atlas
 
-the `rebuild-atlas` flow runs every 6h. it clones leaflet-search, runs the build-atlas script (PCA → UMAP → HDBSCAN on TurboPuffer document embeddings), produces `atlas.json`, and deploys the static site to Cloudflare Pages via wrangler.
+the `rebuild-atlas` flow runs every 6h. it clones pub-search, runs the build-atlas script (PCA → UMAP → HDBSCAN on TurboPuffer document embeddings), produces `atlas.json`, and deploys the static site to Cloudflare Pages via wrangler.
 
 ## phi atlas and docket
 

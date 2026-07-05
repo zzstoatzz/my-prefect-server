@@ -3,7 +3,7 @@
 bisk.social is a ball pit of bisks (posts) sized by likes. the live race must be
 the same for everyone and must not depend on any one browser's session — so we
 compute the current standings here and publish a static snapshot the static site
-adopts (the leaflet-search builder pattern; see flows/typeahead_index.py for the
+adopts (the pub-search builder pattern; see flows/typeahead_index.py for the
 sibling R2-snapshot flow).
 
   - pool  = dave's follows ∪ dave's followers, under the Enhanced Grace Limit
