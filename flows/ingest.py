@@ -23,6 +23,8 @@ from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 
 from mps.db import (
+    unclassified_emails,
+    write_email_classifications,
     write_emails,
     write_github_issues,
     write_liked_posts,
@@ -31,7 +33,7 @@ from mps.db import (
     write_phi_observations,
     write_tangled_items,
 )
-from mps.email import EmailItem, fetch_inbox
+from mps.email import EmailClassifications, EmailItem, fetch_inbox
 from mps.github import IssueOrPR, IssueRef, gh_headers
 from mps.phi import PhiInteraction, PhiObservation, restore_handle
 from mps.likes import LikeRecord, LikedPost, fetch_likes, summarize_embed
@@ -224,6 +226,63 @@ def fetch_emails() -> list[EmailItem]:
 @task
 def persist_emails(items: list[EmailItem]) -> int:
     return write_emails(items, _db_path())
+
+
+EMAIL_CLASSIFIER_PROMPT = """\
+you categorize inbox emails for a solo developer's dashboard.
+given (message_id, sender, subject, snippet) tuples, assign each one:
+
+- personal: written by a human directly to the recipient
+- work: professional correspondence needing attention (invoices, contracts,
+  recruiter/client mail, account security)
+- notification: automated but informational (mailing lists, forum threads,
+  CI results, statements ready, receipts)
+- promotional: marketing, sales, product announcements, engagement bait
+
+return a classification for every message_id you were given.
+"""
+
+
+@task
+def classify_emails(api_key: str) -> int:
+    """LLM-classify emails that don't have a category yet."""
+    from pydantic_ai import Agent
+    from pydantic_ai.models.anthropic import AnthropicModel
+    from pydantic_ai.providers.anthropic import AnthropicProvider
+
+    from mps.spend import record_pydantic_ai_result
+
+    logger = get_run_logger()
+
+    pending = unclassified_emails(_db_path())
+    if not pending:
+        logger.info("no unclassified emails")
+        return 0
+
+    lines = [
+        f"message_id={mid!r} sender={sender!r} subject={subject!r} snippet={snippet[:200]!r}"
+        for mid, sender, subject, snippet in pending
+    ]
+
+    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
+    agent = Agent(
+        model,
+        output_type=EmailClassifications,
+        system_prompt=EMAIL_CLASSIFIER_PROMPT,
+        name="email-classifier",
+        model_settings={"anthropic_cache_instructions": "5m"},
+    )
+    result = agent.run_sync("classify these emails:\n\n" + "\n".join(lines))
+    record_pydantic_ai_result(
+        task_name="classify_emails",
+        model="claude-haiku-4-5",
+        result=result,
+        metadata={"email_count": len(pending)},
+    )
+
+    total = write_email_classifications(result.output.classifications, _db_path())
+    logger.info(f"classified {len(result.output.classifications)} emails ({total} total)")
+    return total
 
 
 # --- phi tasks ---
@@ -497,6 +556,7 @@ def ingest(only_unread: bool = True):
     if emails:
         total = persist_emails(emails)
         logger.info(f"persisted {len(emails)} emails; {total} total in raw_emails")
+        classify_emails(Secret.load("anthropic-api-key").get())
 
     if phi_observations or phi_interactions:
         obs_total, ix_total = persist_phi(phi_observations, phi_interactions)

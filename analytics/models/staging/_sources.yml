@@ -10,3 +10,4 @@ sources:
       - name: raw_likes
       - name: raw_liked_posts
       - name: raw_emails
+      - name: raw_email_classifications

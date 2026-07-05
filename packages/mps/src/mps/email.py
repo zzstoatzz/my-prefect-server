@@ -11,10 +11,26 @@ import email.header
 import email.utils
 import imaplib
 import re
+from typing import Literal
 
 from pydantic import BaseModel
 
 SNIPPET_CHARS = 500
+
+EmailCategory = Literal["personal", "work", "notification", "promotional"]
+
+
+class EmailClassification(BaseModel):
+    """LLM-assigned category for one inbox message."""
+
+    message_id: str
+    category: EmailCategory
+
+
+class EmailClassifications(BaseModel):
+    """Batch classification output."""
+
+    classifications: list[EmailClassification]
 
 
 class EmailItem(BaseModel):

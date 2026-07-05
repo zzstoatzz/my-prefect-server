@@ -4,7 +4,7 @@ import datetime
 
 import duckdb
 
-from mps.email import EmailItem
+from mps.email import EmailClassification, EmailItem
 from mps.likes import LikeRecord, LikedPost
 from mps.phi import PhiInteraction, PhiObservation
 
@@ -227,5 +227,57 @@ def write_emails(items: list[EmailItem], db_path: str) -> int:
             rows,
         )
     count = con.execute("SELECT count(*) FROM raw_emails").fetchone()[0]
+    con.close()
+    return count
+
+
+def unclassified_emails(db_path: str, limit: int = 100) -> list[tuple[str, str, str, str]]:
+    """Emails with no classification yet: (message_id, sender, subject, snippet)."""
+    con = duckdb.connect(db_path, read_only=True)
+    try:
+        con.execute("SELECT 1 FROM raw_email_classifications LIMIT 1")
+    except duckdb.CatalogException:
+        con.close()
+        con = duckdb.connect(db_path, read_only=True)
+        rows = con.execute(
+            "SELECT message_id, sender_address, subject, snippet FROM raw_emails LIMIT ?",
+            [limit],
+        ).fetchall()
+        con.close()
+        return rows
+    rows = con.execute(
+        """
+        SELECT e.message_id, e.sender_address, e.subject, e.snippet
+        FROM raw_emails e
+        LEFT JOIN raw_email_classifications c ON e.message_id = c.message_id
+        WHERE c.message_id IS NULL
+        LIMIT ?
+        """,
+        [limit],
+    ).fetchall()
+    con.close()
+    return rows
+
+
+def write_email_classifications(items: list[EmailClassification], db_path: str) -> int:
+    """Upsert LLM email classifications. Returns total row count."""
+    con = duckdb.connect(db_path)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS raw_email_classifications (
+            message_id VARCHAR PRIMARY KEY,
+            category VARCHAR,
+            classified_at TIMESTAMP DEFAULT now()
+        )
+    """)
+    rows = [
+        (item.message_id, item.category, datetime.datetime.now(datetime.UTC))
+        for item in items
+    ]
+    if rows:
+        con.executemany(
+            "INSERT OR REPLACE INTO raw_email_classifications VALUES (?, ?, ?)",
+            rows,
+        )
+    count = con.execute("SELECT count(*) FROM raw_email_classifications").fetchone()[0]
     con.close()
     return count
