@@ -1,0 +1,20 @@
+[Unit]
+Description=hydroxide Proton IMAP bridge (localhost only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=stoat
+Group=stoat
+# auth state lives in ~/.config/hydroxide (created by `hydroxide auth`)
+ExecStart=/home/stoat/.local/bin/hydroxide imap
+Restart=always
+RestartSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/home/stoat/.config/hydroxide
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

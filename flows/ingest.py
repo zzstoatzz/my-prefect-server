@@ -23,6 +23,7 @@ from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 
 from mps.db import (
+    write_emails,
     write_github_issues,
     write_liked_posts,
     write_likes,
@@ -30,6 +31,7 @@ from mps.db import (
     write_phi_observations,
     write_tangled_items,
 )
+from mps.email import EmailItem, fetch_inbox
 from mps.github import IssueOrPR, IssueRef, gh_headers
 from mps.phi import PhiInteraction, PhiObservation, restore_handle
 from mps.likes import LikeRecord, LikedPost, fetch_likes, summarize_embed
@@ -186,6 +188,42 @@ def fetch_all_tangled_items() -> list[TangledItem]:
             items.extend(batch)
 
     return items
+
+
+# --- email tasks ---
+
+
+@task
+def fetch_emails() -> list[EmailItem]:
+    """Fetch recent inbox mail from the local hydroxide bridge.
+
+    Skips (returns []) if the bridge isn't running or creds aren't set up yet,
+    so the rest of ingest keeps flowing while proton is unconfigured.
+    """
+    logger = get_run_logger()
+
+    try:
+        creds = Secret.load("proton-bridge-creds").get()
+    except ValueError:
+        logger.warning("proton-bridge-creds Secret block not found — skipping email")
+        return []
+
+    host = os.environ.get("PROTON_BRIDGE_HOST", "127.0.0.1")
+    port = int(os.environ.get("PROTON_BRIDGE_PORT", "1143"))
+
+    try:
+        items = fetch_inbox(host, port, creds["username"], creds["password"])
+    except (ConnectionRefusedError, OSError) as e:
+        logger.warning(f"proton bridge unreachable at {host}:{port} — skipping email ({e})")
+        return []
+
+    logger.info(f"fetched {len(items)} emails from bridge")
+    return items
+
+
+@task
+def persist_emails(items: list[EmailItem]) -> int:
+    return write_emails(items, _db_path())
 
 
 # --- phi tasks ---
@@ -397,6 +435,7 @@ def ingest(only_unread: bool = True):
     # kick off tangled + phi + likes fetches immediately (no deps on github token)
     tangled_future = fetch_all_tangled_items.submit()
     likes_future = fetch_nate_likes.submit()
+    email_future = fetch_emails.submit()
 
     tpuf_key = Secret.load("turbopuffer-api-key").get()
     phi_future = fetch_phi_memory.submit(tpuf_key)
@@ -434,6 +473,8 @@ def ingest(only_unread: bool = True):
     likes = likes_future.result()
     logger.info(f"fetched {len(likes)} likes")
 
+    emails = email_future.result()
+
     # sequential writes — same process, no DuckDB lock contention
     if gh_items:
         total = persist_github(gh_items)
@@ -452,6 +493,10 @@ def ingest(only_unread: bool = True):
         if liked_posts:
             lp_total = persist_liked_posts(liked_posts)
             logger.info(f"resolved {len(liked_posts)} liked posts; {lp_total} total in raw_liked_posts")
+
+    if emails:
+        total = persist_emails(emails)
+        logger.info(f"persisted {len(emails)} emails; {total} total in raw_emails")
 
     if phi_observations or phi_interactions:
         obs_total, ix_total = persist_phi(phi_observations, phi_interactions)

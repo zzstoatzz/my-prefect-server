@@ -9,3 +9,4 @@ sources:
       - name: raw_phi_interactions
       - name: raw_likes
       - name: raw_liked_posts
+      - name: raw_emails

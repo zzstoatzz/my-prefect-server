@@ -4,6 +4,7 @@ import datetime
 
 import duckdb
 
+from mps.email import EmailItem
 from mps.likes import LikeRecord, LikedPost
 from mps.phi import PhiInteraction, PhiObservation
 
@@ -193,5 +194,35 @@ def write_phi_interactions(items: list[PhiInteraction], db_path: str) -> int:
             rows,
         )
     count = con.execute("SELECT count(*) FROM raw_phi_interactions").fetchone()[0]
+    con.close()
+    return count
+
+
+def write_emails(items: list[EmailItem], db_path: str) -> int:
+    """Upsert EmailItem objects into raw_emails. Returns total row count."""
+    con = duckdb.connect(db_path)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS raw_emails (
+            message_id VARCHAR PRIMARY KEY,
+            subject VARCHAR, sender_name VARCHAR, sender_address VARCHAR,
+            snippet VARCHAR, received_at VARCHAR,
+            unread BOOLEAN, mailbox VARCHAR,
+            fetched_at TIMESTAMP DEFAULT now()
+        )
+    """)
+    rows = [
+        (
+            item.message_id, item.subject, item.sender_name, item.sender_address,
+            item.snippet, item.received_at, item.unread, item.mailbox,
+            datetime.datetime.now(datetime.UTC),
+        )
+        for item in items
+    ]
+    if rows:
+        con.executemany(
+            "INSERT OR REPLACE INTO raw_emails VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            rows,
+        )
+    count = con.execute("SELECT count(*) FROM raw_emails").fetchone()[0]
     con.close()
     return count

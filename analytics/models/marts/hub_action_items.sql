@@ -28,6 +28,21 @@ FROM (
         importance_score,
         created_at AS updated
     FROM {{ ref('int_tangled_items_scored') }}
+
+    UNION ALL
+
+    SELECT
+        'email' AS source,
+        'inbox' AS repo,
+        message_id AS identifier,
+        'email' AS kind,
+        subject AS title,
+        'https://mail.proton.me/u/0/inbox' AS url,
+        sender_address AS author,
+        CASE WHEN unread THEN ARRAY['unread'] ELSE ARRAY[]::VARCHAR[] END AS labels,
+        importance_score,
+        received_at AS updated
+    FROM {{ ref('int_emails_scored') }}
 )
 ORDER BY importance_score DESC
 LIMIT 200
