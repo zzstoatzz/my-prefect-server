@@ -14,6 +14,7 @@ definitions:
       job_variables:
         command: >-
           uv run
+          --refresh-package my-prefect-server
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
     # home box (heavypad) process pool. persistent analytics paths replace the
@@ -24,6 +25,7 @@ definitions:
       job_variables:
         command: >-
           uv run
+          --refresh-package my-prefect-server
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
         env:
@@ -41,6 +43,7 @@ deployments:
       job_variables:
         command: >-
           uv run
+          --refresh-package my-prefect-server
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
     schedules:
@@ -68,6 +71,7 @@ deployments:
       job_variables:
         command: >-
           uv run --python 3.13.11
+          --refresh-package my-prefect-server
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
         env:
@@ -133,6 +137,7 @@ deployments:
       job_variables:
         command: >-
           uv run --python 3.13.11
+          --refresh-package my-prefect-server
           --with 'my-prefect-server[atlas] @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
         env:
@@ -172,6 +177,7 @@ deployments:
         # build-atlas script; both are required.)
         command: >-
           uv run --python 3.13.11
+          --refresh-package my-prefect-server
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
         env:
@@ -215,6 +221,7 @@ deployments:
       job_variables:
         command: >-
           uv run
+          --refresh-package my-prefect-server
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
         env:
@@ -253,6 +260,7 @@ deployments:
       job_variables:
         command: >-
           uv run
+          --refresh-package my-prefect-server
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           prefect flow-run execute
         env:
@@ -309,6 +317,7 @@ deployments:
       job_variables:
         command: >-
           uv run
+          --refresh-package my-prefect-server
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
           --with boto3
           prefect flow-run execute
