@@ -8,6 +8,9 @@
 	let segments = $derived(parseInlineCode(card.title));
 	let author = $derived(authorUrl(card));
 	let origin = $derived(originUrl(card));
+	let authorLabel = $derived(
+		card.source === 'email' ? String(card.meta.user) : `@${card.meta.user}`
+	);
 </script>
 
 <div class="bg-gray-900 rounded-lg p-4 space-y-2">
@@ -34,7 +37,7 @@
 		rel="noopener noreferrer"
 		class="block text-gray-200 hover:text-white hover:underline text-sm leading-snug"
 	>
-		<span class="text-gray-400">#{card.meta.number}</span>
+		{#if card.meta.number}<span class="text-gray-400">#{card.meta.number}</span>{/if}
 		{#each segments as seg, i (i)}
 			{#if seg.code}
 				<code class="bg-gray-700/60 px-1 rounded text-xs">{seg.code}</code>
@@ -49,10 +52,10 @@
 			{#if card.meta.user}
 				{#if author}
 					<a href={author} class="text-gray-400 hover:text-gray-200" target="_blank" rel="noopener noreferrer">
-						@{card.meta.user}
+						{authorLabel}
 					</a>
 				{:else}
-					<span class="text-gray-400">@{card.meta.user}</span>
+					<span class="text-gray-400">{authorLabel}</span>
 				{/if}
 			{/if}
 		</div>

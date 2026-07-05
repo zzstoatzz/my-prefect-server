@@ -27,6 +27,7 @@ class EmailItem(BaseModel):
     snippet: str
     received_at: str  # ISO 8601
     unread: bool
+    is_bulk: bool = False
     mailbox: str = "INBOX"
 
 
@@ -40,6 +41,15 @@ def _decode_header(value: str | None) -> str:
         else:
             parts.append(chunk)
     return "".join(parts).strip()
+
+
+def _is_bulk(msg: email.message.Message) -> bool:
+    """Marketing blasts, newsletters, and list mail all carry these headers;
+    person-to-person mail doesn't."""
+    if msg.get("List-Unsubscribe") or msg.get("List-Id"):
+        return True
+    precedence = (msg.get("Precedence") or "").lower()
+    return precedence in ("bulk", "list", "junk")
 
 
 def _extract_snippet(msg: email.message.Message) -> str:
@@ -126,6 +136,7 @@ def fetch_inbox(
                     snippet=_extract_snippet(msg),
                     received_at=received_at,
                     unread=b"\\Seen" not in flags,
+                    is_bulk=_is_bulk(msg),
                     mailbox=mailbox,
                 )
             )

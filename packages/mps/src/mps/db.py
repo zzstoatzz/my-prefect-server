@@ -207,20 +207,22 @@ def write_emails(items: list[EmailItem], db_path: str) -> int:
             subject VARCHAR, sender_name VARCHAR, sender_address VARCHAR,
             snippet VARCHAR, received_at VARCHAR,
             unread BOOLEAN, mailbox VARCHAR,
-            fetched_at TIMESTAMP DEFAULT now()
+            fetched_at TIMESTAMP DEFAULT now(),
+            is_bulk BOOLEAN DEFAULT false
         )
     """)
+    con.execute("ALTER TABLE raw_emails ADD COLUMN IF NOT EXISTS is_bulk BOOLEAN DEFAULT false")
     rows = [
         (
             item.message_id, item.subject, item.sender_name, item.sender_address,
             item.snippet, item.received_at, item.unread, item.mailbox,
-            datetime.datetime.now(datetime.UTC),
+            datetime.datetime.now(datetime.UTC), item.is_bulk,
         )
         for item in items
     ]
     if rows:
         con.executemany(
-            "INSERT OR REPLACE INTO raw_emails VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT OR REPLACE INTO raw_emails VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
     count = con.execute("SELECT count(*) FROM raw_emails").fetchone()[0]

@@ -2,7 +2,7 @@
 
 from email.message import EmailMessage
 
-from mps.email import SNIPPET_CHARS, _decode_header, _extract_snippet
+from mps.email import SNIPPET_CHARS, _decode_header, _extract_snippet, _is_bulk
 
 
 def test_decode_header_plain():
@@ -29,6 +29,24 @@ def test_extract_snippet_multipart_prefers_text_plain():
     msg.set_content("plain body")
     msg.add_alternative("<p>html body</p>", subtype="html")
     assert _extract_snippet(msg) == "plain body"
+
+
+def test_is_bulk_list_unsubscribe():
+    msg = EmailMessage()
+    msg["List-Unsubscribe"] = "<https://example.com/unsub>"
+    assert _is_bulk(msg)
+
+
+def test_is_bulk_precedence():
+    msg = EmailMessage()
+    msg["Precedence"] = "Bulk"
+    assert _is_bulk(msg)
+
+
+def test_is_bulk_personal_mail_is_not():
+    msg = EmailMessage()
+    msg["From"] = "a friend <friend@example.com>"
+    assert not _is_bulk(msg)
 
 
 def test_extract_snippet_truncates():

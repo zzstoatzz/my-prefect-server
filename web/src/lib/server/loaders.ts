@@ -39,7 +39,8 @@ export async function loadCards(): Promise<Card[]> {
 		tags: Array.isArray(r.labels) ? r.labels : [],
 		meta: {
 			repo: r.repo,
-			number: r.identifier,
+			// email identifiers are RFC 5322 message-ids — meaningless noise in the UI
+			number: r.source === 'email' ? '' : r.identifier,
 			user: r.author
 		}
 	}));

@@ -40,8 +40,9 @@ WITH unioned AS (
         'email' AS kind,
         subject AS title,
         'https://mail.proton.me/u/0/inbox' AS url,
-        sender_address AS author,
-        CASE WHEN unread THEN ARRAY['unread'] ELSE ARRAY[]::VARCHAR[] END AS labels,
+        COALESCE(NULLIF(sender_name, ''), sender_address) AS author,
+        (CASE WHEN unread THEN ARRAY['unread'] ELSE ARRAY[]::VARCHAR[] END)
+            || (CASE WHEN is_bulk THEN ARRAY['bulk'] ELSE ARRAY[]::VARCHAR[] END) AS labels,
         importance_score,
         received_at AS updated
     FROM {{ ref('int_emails_scored') }}
