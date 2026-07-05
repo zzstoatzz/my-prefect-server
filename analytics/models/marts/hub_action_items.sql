@@ -1,6 +1,6 @@
 -- each source scores on its own scale (github's contributor multiplier reaches
 -- ~2x, email caps at 1.0), so raw scores aren't comparable across sources.
--- min-max normalize within each source before the global top-200 cut, so no
+-- deflate any source whose max exceeds 1 before the global top-200 cut, so no
 -- source can crowd the others out on scale alone.
 WITH unioned AS (
     SELECT
@@ -48,15 +48,12 @@ WITH unioned AS (
     FROM {{ ref('int_emails_scored') }}
 )
 SELECT source, repo, identifier, kind, title, url, author, labels,
+    -- deflate sources whose scale exceeds 1 (github's contributor multiplier)
+    -- WITHOUT stretching low scores up: min-max would promote a source's best
+    -- item to 1.0 even when it's absolute junk (e.g. an inbox of pure spam)
     ROUND(
-        CASE
-            WHEN MAX(importance_score) OVER (PARTITION BY source)
-               = MIN(importance_score) OVER (PARTITION BY source)
-            THEN importance_score
-            ELSE (importance_score - MIN(importance_score) OVER (PARTITION BY source))
-               / (MAX(importance_score) OVER (PARTITION BY source)
-                - MIN(importance_score) OVER (PARTITION BY source))
-        END,
+        importance_score
+            / GREATEST(MAX(importance_score) OVER (PARTITION BY source), 1.0),
         4
     ) AS importance_score,
     updated
