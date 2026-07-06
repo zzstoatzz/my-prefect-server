@@ -39,7 +39,11 @@ WITH unioned AS (
         message_id AS identifier,
         'email' AS kind,
         subject AS title,
-        'https://mail.proton.me/u/0/inbox' AS url,
+        -- proton's internal message ids never cross the IMAP bridge, so a true
+        -- per-message URL is impossible; a hash-prefilled search (the web
+        -- client reads keyword/from from location.hash) lands on the message
+        'https://mail.proton.me/u/0/almost-all-mail#keyword=' || url_encode(subject)
+            || '&from=' || url_encode(sender_address) AS url,
         COALESCE(NULLIF(sender_name, ''), sender_address) AS author,
         (CASE WHEN unread THEN ARRAY['unread'] ELSE ARRAY[]::VARCHAR[] END)
             || (CASE WHEN category IS NOT NULL THEN ARRAY[category] ELSE ARRAY[]::VARCHAR[] END) AS labels,
