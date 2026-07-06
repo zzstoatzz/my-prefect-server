@@ -193,10 +193,19 @@ def stored_open_refs() -> list[IssueRef]:
     Re-fetching everything stored as open (through the 4h cache) keeps the
     hub from showing closed/merged work.
     """
+    import shutil
+
     import duckdb
 
     logger = get_run_logger()
-    con = duckdb.connect(_db_path(), read_only=True)
+    src = _db_path()
+    if not os.path.exists(src):
+        return []
+    # snapshot to bypass the writer's exclusive flock (same pattern as brief's
+    # load_items) — an off-schedule ingest may overlap a running transform
+    snap = "/tmp/ingest_open_refs_snapshot.duckdb"
+    shutil.copy2(src, snap)
+    con = duckdb.connect(snap, read_only=True)
     try:
         rows = con.execute(
             "SELECT repo, number, type FROM raw_github_issues WHERE state = 'open'"
