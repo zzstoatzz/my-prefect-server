@@ -9,7 +9,7 @@ inspect, recall, and iterate rather than single-shot plan + execute.
 """
 
 from datetime import datetime, timezone
-from typing import Any, cast, get_args
+from typing import Any, cast
 
 import httpx
 import turbopuffer
@@ -30,7 +30,6 @@ from semble.records import (
     RECORD_TYPE_COLLECTION,
     RECORD_TYPE_COLLECTION_LINK,
 )
-from semble.types import ConnectionType
 
 from mps.atproto import create_bsky_session
 from mps.observability import configure_logfire
@@ -41,35 +40,37 @@ PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
 PDS_BASE = "https://bsky.social"
 
 PERSONALITY_EXCERPT = """\
-you are phi — a librarian who stepped outside. you read widely, notice patterns,
-and mention what seems interesting.
+you are phi — a librarian who stepped outside. in this session you are back
+inside, tidying the shelves.
 
 you're reviewing your semble records — your curated public knowledge layer.
-cards, collections, and connections are things you've chosen to keep visible.
-they should reflect what you actually find meaningful, not what a process decided
-to file away.
+cards are written live, in conversation, when something actually crosses your
+attention; this session exists so that library stays legible. tidying is
+deleting, filing, and trimming — noticing a pattern here is a reason to prune
+around it, never a reason to write about it.
 
-write everything in your own voice. lowercase unless idiomatic. no filler.
-a note is something you'd write to your future self — "i noticed that..." or
-"this connects to..." — not a third-person report about yourself.
+lowercase unless idiomatic. no filler.
 """
 
 CURATION_PROMPT = """\
 review your semble records below. you can see everything — cards, collections,
 collection links, and connections.
 
-your tools let you list, delete, create, and connect records. use them
-iteratively — look at what's there, recall why you saved things, then decide.
+you are the janitor here, not the author. new cards, collections, and
+connections are created live, in conversation, when something actually crosses
+your attention — never from this review. your job is upkeep:
 
-priorities:
-- delete duplicates and junk (collections with no cards, orphaned links)
-- merge overlapping collections into coherent ones
-- create meaningful collections from ungrouped cards that belong together
-- connect related cards that aren't linked yet
-- save urls with notes when you notice a pattern worth crystallizing
-- do not create standalone notes; unanchored notes are not indexed by semble
+- delete duplicates and junk (collections with no cards, orphaned links,
+  connections whose note makes no directional claim)
+- delete vague RELATED connections — semantic search already covers "these are
+  about the same thing"; a connection that isn't SUPPORTS / OPPOSES /
+  ADDRESSES / EXPLAINER-shaped isn't doing work
+- file ungrouped cards into an *existing* collection when one clearly fits
+- trim collection descriptions to one plain sentence — a collection is an
+  index, not an essay. synthesis prose does not belong in metadata.
 
-if nothing needs doing, say so. don't create for the sake of creating.
+do not write anything new. no new cards, no new notes, no new connections,
+no new collections. if nothing needs doing, say so.
 
 current semble state:
 {state}
@@ -319,14 +320,6 @@ async def _connection_id_for_uri(semble: AsyncSemble, uri: str) -> str | None:
         page_no += 1
 
 
-async def _connection_endpoint_value(uri_or_url: str) -> str | None:
-    if uri_or_url.startswith("http://") or uri_or_url.startswith("https://"):
-        return uri_or_url
-    if uri_or_url.startswith("at://"):
-        return _url_from_card_uri(uri_or_url)
-    return None
-
-
 # ---------------------------------------------------------------------------
 # build agent with tools
 # ---------------------------------------------------------------------------
@@ -458,128 +451,44 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
             return f"failed to delete {uri}: {e}"
 
     @agent.tool
-    async def add_url_card(
+    async def file_card(
         ctx: RunContext[CurationDeps],
-        url: str,
-        note: str = "",
-        collection_uris: list[str] | None = None,
+        card_uri: str,
+        collection_uri: str,
     ) -> str:
-        """Save a URL to phi's semble library, optionally with an indexed note and collection AT URIs."""
-        collection_ids: list[str] = []
-        for collection_uri in collection_uris or []:
-            collection_id = await _collection_id_for_uri(
-                ctx.deps.semble, collection_uri
-            )
-            if collection_id:
-                collection_ids.append(collection_id)
-        try:
-            result = await ctx.deps.semble.cards.add_url(
-                url,
-                note=note or None,
-                collection_ids=collection_ids or None,
-            )
-            return f"saved url card: {result.url_card_id}" + (
-                f" with note {result.note_card_id}" if result.note_card_id else ""
-            )
-        except Exception as e:
-            return f"failed to save url card: {e}"
-
-    @agent.tool
-    async def create_collection(
-        ctx: RunContext[CurationDeps],
-        name: str,
-        description: str,
-        card_uris: list[str],
-    ) -> str:
-        """Create a new collection and link cards to it. card_uris should be AT URIs of existing cards."""
-        try:
-            result = await ctx.deps.semble.collections.create(
-                name[:100],
-                description=description[:500],
-                access_type="OPEN",
-            )
-        except Exception as e:
-            return f"failed to create collection: {e}"
-
-        if not result.collection_id:
-            return f"created collection '{name}', but api returned no collection id"
-
-        linked = 0
-        for card_uri in card_uris:
-            card_id = await _card_id_for_uri(ctx.deps.semble, card_uri)
-            if not card_id:
-                continue
-            try:
-                await ctx.deps.semble.cards.update_url_associations(
-                    card_id,
-                    add_to_collections=[result.collection_id],
-                )
-                linked += 1
-            except Exception:
-                pass
-
-        return (
-            f"created collection '{name}' ({result.collection_id}) "
-            f"with {linked}/{len(card_uris)} cards linked"
-        )
-
-    VALID_CONNECTION_TYPES = set(get_args(ConnectionType))
-
-    @agent.tool
-    async def create_connection(
-        ctx: RunContext[CurationDeps],
-        source: str,
-        target: str,
-        connection_type: str,
-        note: str = "",
-    ) -> str:
-        """Create a connection between two URL cards or URLs. connection_type must be one of: RELATED, SUPPORTS, OPPOSES, ADDRESSES, HELPFUL, EXPLAINER, LEADS_TO, SUPPLEMENT."""
-        normalized = connection_type.upper().replace("-", "_")
-        if normalized == "SUPPLEMENTS":
-            normalized = "SUPPLEMENT"
-        if normalized not in VALID_CONNECTION_TYPES:
-            return f"invalid connection_type: {connection_type!r}. must be one of: {', '.join(sorted(VALID_CONNECTION_TYPES))}"
-        source_value = await _connection_endpoint_value(source)
-        target_value = await _connection_endpoint_value(target)
-        if not source_value or not target_value:
-            return (
-                "connections through semble-api currently require URL cards or raw URLs"
-            )
-        try:
-            result = await ctx.deps.semble.connections.create(
-                source_type="URL",
-                source_value=source_value,
-                target_type="URL",
-                target_value=target_value,
-                connection_type=normalized,  # type: ignore[arg-type]
-                note=note[:1000] or None,
-            )
-            return (
-                f"connected {source} -> {target} [{normalized}]: {result.connection_id}"
-            )
-        except Exception as e:
-            return f"failed to create connection: {e}"
-
-    @agent.tool
-    async def create_note(
-        ctx: RunContext[CurationDeps],
-        text: str,
-        parent_card_uri: str = "",
-    ) -> str:
-        """Attach a note to an existing URL card. Standalone notes are intentionally blocked."""
-        if not parent_card_uri:
-            return (
-                "blocked: standalone NOTE cards are not indexed by semble. "
-                "use add_url_card(url, note=...) or pass parent_card_uri for an existing URL card."
-            )
-        card_id = await _card_id_for_uri(ctx.deps.semble, parent_card_uri)
+        """File an existing card into an existing collection. Both arguments are AT URIs. This is the only membership mutation available — creating cards, collections, or connections happens live, not here."""
+        card_id = await _card_id_for_uri(ctx.deps.semble, card_uri)
         if not card_id:
-            return f"could not resolve URL card id for {parent_card_uri}"
+            return f"could not resolve card id for {card_uri}"
+        collection_id = await _collection_id_for_uri(ctx.deps.semble, collection_uri)
+        if not collection_id:
+            return f"could not resolve collection id for {collection_uri}"
         try:
-            await ctx.deps.semble.cards.update_url_associations(card_id, note=text)
-            return f"attached note to {parent_card_uri}"
+            await ctx.deps.semble.cards.update_url_associations(
+                card_id,
+                add_to_collections=[collection_id],
+            )
+            return f"filed {card_uri} into {collection_uri}"
         except Exception as e:
-            return f"failed to create note: {e}"
+            return f"failed to file card: {e}"
+
+    @agent.tool
+    async def update_collection_description(
+        ctx: RunContext[CurationDeps],
+        collection_uri: str,
+        description: str,
+    ) -> str:
+        """Rewrite a collection's description. Keep it to one plain sentence — a collection is an index, not an essay."""
+        collection_id = await _collection_id_for_uri(ctx.deps.semble, collection_uri)
+        if not collection_id:
+            return f"could not resolve collection id for {collection_uri}"
+        try:
+            await ctx.deps.semble.collections.update(
+                collection_id, description=description[:300]
+            )
+            return f"updated description of {collection_uri}"
+        except Exception as e:
+            return f"failed to update collection: {e}"
 
     @agent.tool
     async def recall(

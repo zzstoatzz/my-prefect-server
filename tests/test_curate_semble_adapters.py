@@ -1,6 +1,5 @@
 """Regression tests for curate's Semble API adapter layer."""
 
-import asyncio
 from typing import get_args
 
 from semble.records import CARD_TYPE_URL, RECORD_TYPE_CARD
@@ -29,25 +28,26 @@ def test_url_from_card_uri_uses_semble_record_shape(monkeypatch):
     assert curate._url_from_card_uri(uri) == "https://example.com/post"
 
 
-def test_connection_endpoint_value_resolves_url_card_uri(monkeypatch):
-    monkeypatch.setattr(
-        curate,
-        "_url_from_card_uri",
-        lambda uri: "https://example.com/resolved" if uri.startswith("at://") else None,
-    )
+def test_curate_agent_is_janitor_only():
+    """curate must never author. authoring from a review of phi's own
+    library is how the graph once collapsed into one-topic self-synthesis;
+    new cards/collections/connections are created live by the bot only."""
+    agent = curate._build_agent("claude-haiku-4-5", "dummy-key")
+    tool_names = set(agent._function_toolset.tools)
 
-    assert (
-        asyncio.run(
-            curate._connection_endpoint_value(
-                "at://did:plc:phi/network.cosmik.card/card1"
-            )
-        )
-        == "https://example.com/resolved"
-    )
-    assert (
-        asyncio.run(curate._connection_endpoint_value("https://example.com/raw"))
-        == "https://example.com/raw"
-    )
+    forbidden = {
+        "add_url_card",
+        "create_collection",
+        "create_connection",
+        "create_note",
+    }
+    assert not (tool_names & forbidden)
+    assert {
+        "list_semble_records",
+        "delete_record",
+        "file_card",
+        "update_collection_description",
+    } <= tool_names
 
 
 def test_connection_type_vocabulary_comes_from_semble_sdk():

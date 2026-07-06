@@ -430,7 +430,11 @@ pressure with a natural shape. then:
   - suggested_shape — pick the most natural surface:
       card        a single observation worth saving publicly (network.cosmik.card NOTE)
       url         a URL phi has been pointing at, worth bookmarking publicly
-      connection  link existing public records (e.g. a note ↔ a blog)
+      connection  link existing public records (e.g. a note ↔ a blog).
+                  only when the link makes a directional claim (supports,
+                  opposes, addresses, explains, leads to) — "these are
+                  about the same thing" is not a connection; reject or
+                  pick another shape instead
       note        a small lowercase bluesky post
       thread      a multi-post thread (when the cluster has internal structure)
       doc         a long-form greengale blog post (when the cluster is dense
