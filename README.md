@@ -30,8 +30,11 @@ personal data pipeline and intelligence layer. digests github, [tangled.org](htt
   phi memory (tpuf) ──┘
                                                   │
                                                   ▼
+                                          classify-emails [on ingest ✓]
+                                                  │
+                                                  ▼
                                           transform (dbt)
-                                          [on ingest ✓]
+                                          [on classify-emails ✓]
                                                   │
                         ┌─────────────────────────┼──────────┐
                         ▼                         ▼          ▼

@@ -64,6 +64,21 @@ deployments:
     parameters:
       only_unread: true
 
+  # LLM email categorization, split from ingest so a classifier outage can't
+  # fail ingestion. sits between ingest and transform so the dbt build always
+  # joins fresh categories (usually seconds — batches are cached 24h).
+  - name: classify-emails
+    entrypoint: flows/classify_emails.py:classify_emails
+    work_pool: *home
+    concurrency_limit: *cancel_new
+    triggers:
+      - type: event
+        expect:
+          - "prefect.flow-run.Completed"
+        match_related:
+          prefect.resource.name: "ingest"
+          prefect.resource.role: "deployment"
+
   - name: transform
     entrypoint: flows/transform.py:transform
     work_pool:
@@ -84,7 +99,7 @@ deployments:
         expect:
           - "prefect.flow-run.Completed"
         match_related:
-          prefect.resource.name: "ingest"
+          prefect.resource.name: "classify-emails"
           prefect.resource.role: "deployment"
 
   - name: brief

@@ -4,7 +4,7 @@ action item dashboard and intelligence pipeline at [hub.waow.tech](https://hub.w
 
 ## data sources
 
-a single `ingest` flow runs hourly on cron and fetches all data sources concurrently, then writes to DuckDB sequentially (same process = no single-writer lock contention). downstream flows (transform, brief, phi-memory-synthesis) are event-driven via deployment triggers — they only run when upstream completes.
+a single `ingest` flow runs hourly on cron and fetches all data sources concurrently, then writes to DuckDB sequentially (same process = no single-writer lock contention). downstream flows (classify-emails, transform, brief, phi-memory-synthesis) are event-driven via deployment triggers — they only run when upstream completes.
 
 **github** — fetches notifications (issues + PRs) and open items authored by `zzstoatzz` via the search API. each issue is cached by repo+number for 24h. persists to `raw_github_issues`.
 
@@ -25,8 +25,11 @@ a single `ingest` flow runs hourly on cron and fetches all data sources concurre
   phi memory (tpuf) ──┘
                                                   │
                                                   ▼
+                                          classify-emails [on ingest ✓]
+                                                  │
+                                                  ▼
                                           transform (dbt)
-                                          [on ingest ✓]
+                                          [on classify-emails ✓]
                                                   │
                         ┌─────────────────────────┼──────────┐
                         ▼                         ▼          ▼
@@ -59,8 +62,9 @@ a single `ingest` flow runs hourly on cron and fetches all data sources concurre
 | deployment | trigger | what it does |
 |---|---|---|
 | `diagnostics` | cron `*/5 * * * *` (inactive) | prints system info — canary for worker health |
-| `ingest` | cron `0 * * * *` | fetches github, tangled.org, bluesky likes, and phi memory concurrently, resolves liked post content, persists all to DuckDB sequentially |
-| `transform` | on `ingest` completion | dbt build: staging → enrichment → mart. concurrency limit 1. runs under python 3.13 (dbt-core compat) |
+| `ingest` | cron `0 * * * *` | fetches github, tangled.org, email, bluesky likes, and phi memory concurrently, resolves liked post content, persists all to DuckDB sequentially |
+| `classify-emails` | on `ingest` completion | LLM-categorizes new inbox emails (personal/work/notification/promotional) in cached 25-email batches so scoring can down-weight promotional mail |
+| `transform` | on `classify-emails` completion | dbt build: staging → enrichment → mart. concurrency limit 1. runs under python 3.13 (dbt-core compat) |
 | `brief` | on `transform` completion | loads top 200 scored items, sends to claude haiku 4.5 via pydantic-ai, writes `briefing.json`. cached by items content hash (skips LLM when data unchanged) |
 | `phi-memory-synthesis` | on `transform` completion | synthesizes per-user relationship summaries from phi's observations + interactions. extracts new observations from liked posts (LLM). writes summaries to TurboPuffer (`phi-users-*`). cached by observations content hash |
 | `phi-tag-maintenance` | cron `0 13 * * *` (8am CT) | tag maintenance (dedup, merge, relationship discovery) in TurboPuffer. runs 1h before phi's daily reflection |
