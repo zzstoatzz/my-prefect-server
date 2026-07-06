@@ -50,7 +50,7 @@ TANGLED_COLLECTIONS = [
 ]
 
 # bump to invalidate all cached results (e.g. when fetch shape changes)
-_CACHE_VERSION = "v2"
+_CACHE_VERSION = "v3"
 
 
 @dataclass
@@ -112,12 +112,14 @@ def fetch_notifications(token: str, only_unread: bool = True) -> list[IssueRef]:
 
 @task(
     cache_policy=ByRepoAndNumber(),
-    cache_expiration=datetime.timedelta(hours=24),
+    # short enough that a merge/close disappears from the hub within hours —
+    # stored rows only update on re-fetch, so this bounds state staleness
+    cache_expiration=datetime.timedelta(hours=4),
     persist_result=True,
     result_serializer="json",
 )
 def fetch_issue_or_pr(ref: IssueRef, token: str) -> IssueOrPR | None:
-    """Fetch a single issue or PR. Cached by repo+number for 24h."""
+    """Fetch a single issue or PR. Cached by repo+number for 4h."""
     with httpx.Client(headers=gh_headers(token)) as client:
         resp = client.get(f"{GITHUB_API}/repos/{ref.repo}/issues/{ref.number}")
         if resp.status_code == 404:
@@ -170,6 +172,36 @@ def fetch_authored_items(token: str, username: str = "zzstoatzz") -> list[IssueR
         ))
 
     logger.info(f"fetched {len(refs)} authored items for {username}")
+    return refs
+
+
+@task
+def stored_open_refs() -> list[IssueRef]:
+    """Issues/PRs sitting in DuckDB as 'open'.
+
+    Notifications only surface items with fresh activity, so a PR merged
+    quietly stays 'open' in raw_github_issues forever unless re-verified.
+    Re-fetching everything stored as open (through the 4h cache) keeps the
+    hub from showing closed/merged work.
+    """
+    import duckdb
+
+    logger = get_run_logger()
+    con = duckdb.connect(_db_path(), read_only=True)
+    try:
+        rows = con.execute(
+            "SELECT repo, number, type FROM raw_github_issues WHERE state = 'open'"
+        ).fetchall()
+    except duckdb.CatalogException:
+        return []
+    finally:
+        con.close()
+
+    refs = [
+        IssueRef(repo=repo, number=number, subject_type=type_)
+        for repo, number, type_ in rows
+    ]
+    logger.info(f"re-verifying {len(refs)} stored-open issues/PRs")
     return refs
 
 
@@ -535,10 +567,12 @@ def ingest(only_unread: bool = True):
     notif_refs = fetch_notifications(token, only_unread=only_unread)
     authored_refs = fetch_authored_items(token)
 
+    open_refs = stored_open_refs()
+
     # merge and dedupe by (repo, number)
     seen: set[tuple[str, int]] = set()
     refs: list[IssueRef] = []
-    for ref in notif_refs + authored_refs:
+    for ref in notif_refs + authored_refs + open_refs:
         key = (ref.repo, ref.number)
         if key not in seen:
             seen.add(key)
