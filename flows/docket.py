@@ -689,7 +689,7 @@ def archive_to_duckdb(docket: Docket) -> None:
 # ---------------------------------------------------------------------------
 
 
-@flow(name="docket", log_prints=True)
+@flow(name="docket", log_prints=True, timeout_seconds=1800)
 async def docket(dry_run: bool = False) -> dict[str, int]:
     """Establish today's promotion object.
 

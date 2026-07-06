@@ -167,7 +167,7 @@ async def update_pds_record(
     return {"uri": resp.uri, "cid": resp.cid}
 
 
-@flow(name="pds-records", log_prints=True)
+@flow(name="pds-records", log_prints=True, timeout_seconds=600)
 async def pds_records(config: PdsRecordsConfig):
     """General-purpose PDS record management.
 

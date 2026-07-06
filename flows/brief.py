@@ -12,12 +12,14 @@ from pydantic_ai.durable_exec.prefect import PrefectAgent, TaskConfig
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from prefect import flow, task, get_run_logger
+from prefect.artifacts import create_markdown_artifact
 from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 
 from mps.briefing import Briefing
 from mps.spend import record_pydantic_ai_result
+
 
 @dataclass
 class ByItemsContent(CachePolicy):
@@ -36,6 +38,7 @@ class ByItemsContent(CachePolicy):
         h = hashlib.md5((SYSTEM_PROMPT + items_text).encode()).hexdigest()[:12]
         return f"briefing/{h}"
 
+
 SYSTEM_PROMPT = """\
 you are a dashboard curator for a solo developer's issue tracker.
 given scored items from github and tangled.org, produce a briefing
@@ -48,9 +51,12 @@ for genuinely exceptional situations. use red accent sparingly.
 lead with the most useful observation, not the most alarming one.
 """
 
+
 def make_agent(api_key: str) -> PrefectAgent[Briefing]:
     """Build agent after API key is available (provider validates key at init)."""
-    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
+    model = AnthropicModel(
+        "claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key)
+    )
     agent = Agent(
         model,
         output_type=Briefing,
@@ -111,7 +117,9 @@ async def generate_briefing(items_text: str, api_key: str) -> Briefing:
         task_name="generate_briefing",
         model="claude-haiku-4-5",
         result=result,
-        metadata={"item_count": 0 if not items_text.strip() else items_text.count(chr(10)) + 1},
+        metadata={
+            "item_count": 0 if not items_text.strip() else items_text.count(chr(10)) + 1
+        },
     )
     return result.output
 
@@ -121,7 +129,26 @@ def write_briefing(briefing: Briefing, path: str):
     Path(path).write_text(briefing.model_dump_json(indent=2))
 
 
-@flow(name="brief", log_prints=True)
+@task
+def publish_briefing_artifact(briefing: Briefing) -> None:
+    """Render the briefing on the flow run page, so 'what did that run
+    produce?' doesn't require ssh to the analytics box."""
+    lines = [f"# {briefing.title}", "", briefing.headline, ""]
+    for section in briefing.sections:
+        lines.append(f"## {section.title}")
+        lines.append(section.summary)
+        for item in section.items:
+            marker = "**" if item.highlight else ""
+            lines.append(f"- {marker}{item.item_id}{marker} — {item.note}")
+        lines.append("")
+    create_markdown_artifact(
+        key="briefing",
+        markdown="\n".join(lines),
+        description="the generated hub briefing",
+    )
+
+
+@flow(name="brief", log_prints=True, timeout_seconds=900)
 async def brief():
     logger = get_run_logger()
     db_path = os.environ.get(
@@ -143,6 +170,7 @@ async def brief():
     briefing.generated_at = datetime.now(timezone.utc).isoformat()
 
     write_briefing(briefing, briefing_path)
+    publish_briefing_artifact(briefing)
     logger.info(f"wrote briefing: {briefing.headline} ({briefing_path})")
 
 

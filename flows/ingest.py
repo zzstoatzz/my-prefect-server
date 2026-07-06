@@ -19,6 +19,7 @@ from typing import Any
 
 import httpx
 from prefect import flow, get_run_logger, task, unmapped
+from prefect.artifacts import create_table_artifact
 from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
@@ -34,7 +35,12 @@ from mps.db import (
     write_phi_observations,
     write_tangled_items,
 )
-from mps.email import EmailClassification, EmailItem, IndexedClassifications, fetch_inbox
+from mps.email import (
+    EmailClassification,
+    EmailItem,
+    IndexedClassifications,
+    fetch_inbox,
+)
 from mps.github import IssueOrPR, IssueRef, gh_headers
 from mps.phi import PhiInteraction, PhiObservation, restore_handle
 from mps.likes import LikeRecord, LikedPost, fetch_likes, summarize_embed
@@ -100,11 +106,13 @@ def fetch_notifications(token: str, only_unread: bool = True) -> list[IssueRef]:
             number = int(url.rstrip("/").split("/")[-1])
         except (ValueError, IndexError):
             continue
-        refs.append(IssueRef(
-            repo=n["repository"]["full_name"],
-            number=number,
-            subject_type=subject_type,
-        ))
+        refs.append(
+            IssueRef(
+                repo=n["repository"]["full_name"],
+                number=number,
+                subject_type=subject_type,
+            )
+        )
 
     logger.info(f"fetched {len(refs)} issue/PR notifications")
     return refs
@@ -151,7 +159,11 @@ def fetch_authored_items(token: str, username: str = "zzstoatzz") -> list[IssueR
     with httpx.Client(headers=gh_headers(token)) as client:
         resp = client.get(
             f"{GITHUB_API}/search/issues",
-            params={"q": f"author:{username} is:open", "per_page": 50, "sort": "updated"},
+            params={
+                "q": f"author:{username} is:open",
+                "per_page": 50,
+                "sort": "updated",
+            },
         )
         resp.raise_for_status()
 
@@ -165,11 +177,13 @@ def fetch_authored_items(token: str, username: str = "zzstoatzz") -> list[IssueR
             number = int(parts[-1])
         except (IndexError, ValueError):
             continue
-        refs.append(IssueRef(
-            repo=repo,
-            number=number,
-            subject_type="PullRequest" if is_pr else "Issue",
-        ))
+        refs.append(
+            IssueRef(
+                repo=repo,
+                number=number,
+                subject_type="PullRequest" if is_pr else "Issue",
+            )
+        )
 
     logger.info(f"fetched {len(refs)} authored items for {username}")
     return refs
@@ -249,7 +263,9 @@ def fetch_emails() -> list[EmailItem]:
     try:
         items = fetch_inbox(host, port, creds["username"], creds["password"])
     except (ConnectionRefusedError, OSError) as e:
-        logger.warning(f"proton bridge unreachable at {host}:{port} — skipping email ({e})")
+        logger.warning(
+            f"proton bridge unreachable at {host}:{port} — skipping email ({e})"
+        )
         return []
 
     logger.info(f"fetched {len(items)} emails from bridge")
@@ -321,7 +337,9 @@ def classify_email_batch(
         f"{i}. sender={sender!r} subject={subject!r} snippet={snippet[:200]!r}"
         for i, (_, sender, subject, snippet) in enumerate(batch)
     ]
-    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
+    model = AnthropicModel(
+        "claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key)
+    )
     agent = Agent(
         model,
         output_type=IndexedClassifications,
@@ -355,7 +373,9 @@ USER_NS_PREFIX = "phi-users-"
 
 
 @task
-def fetch_phi_memory(tpuf_key: str) -> tuple[list[PhiObservation], list[PhiInteraction]]:
+def fetch_phi_memory(
+    tpuf_key: str,
+) -> tuple[list[PhiObservation], list[PhiInteraction]]:
     """Fetch observations and interactions from all phi-users-* TurboPuffer namespaces."""
     import turbopuffer
 
@@ -383,13 +403,15 @@ def fetch_phi_memory(tpuf_key: str) -> tuple[list[PhiObservation], list[PhiInter
             )
             if resp.rows:
                 for row in resp.rows:
-                    observations.append(PhiObservation(
-                        handle=handle,
-                        observation_id=str(row.id),
-                        content=row.content,
-                        tags=getattr(row, "tags", []) or [],
-                        created_at=getattr(row, "created_at", ""),
-                    ))
+                    observations.append(
+                        PhiObservation(
+                            handle=handle,
+                            observation_id=str(row.id),
+                            content=row.content,
+                            tags=getattr(row, "tags", []) or [],
+                            created_at=getattr(row, "created_at", ""),
+                        )
+                    )
         except Exception as e:
             if "not found" not in str(e).lower():
                 logger.warning(f"failed to fetch observations for {ns_id}: {e}")
@@ -404,17 +426,21 @@ def fetch_phi_memory(tpuf_key: str) -> tuple[list[PhiObservation], list[PhiInter
             )
             if resp.rows:
                 for row in resp.rows:
-                    interactions.append(PhiInteraction(
-                        handle=handle,
-                        interaction_id=str(row.id),
-                        content=row.content,
-                        created_at=getattr(row, "created_at", ""),
-                    ))
+                    interactions.append(
+                        PhiInteraction(
+                            handle=handle,
+                            interaction_id=str(row.id),
+                            content=row.content,
+                            created_at=getattr(row, "created_at", ""),
+                        )
+                    )
         except Exception as e:
             if "not found" not in str(e).lower():
                 logger.warning(f"failed to fetch interactions for {ns_id}: {e}")
 
-    logger.info(f"fetched {len(observations)} observations, {len(interactions)} interactions")
+    logger.info(
+        f"fetched {len(observations)} observations, {len(interactions)} interactions"
+    )
     return observations, interactions
 
 
@@ -491,17 +517,21 @@ def resolve_liked_posts(db_path: str) -> list[LikedPost]:
                 uri = post.get("uri", "")
                 record = post.get("record", {})
                 author = post.get("author", {})
-                embed_type, embed_text = summarize_embed(post.get("embed") or record.get("embed") or {})
-                posts.append(LikedPost(
-                    subject_uri=uri,
-                    author_handle=author.get("handle", ""),
-                    author_did=author.get("did", ""),
-                    text=record.get("text", ""),
-                    created_at=record.get("createdAt", ""),
-                    liked_at=uri_to_liked_at.get(uri, ""),
-                    embed_type=embed_type,
-                    embed_text=embed_text,
-                ))
+                embed_type, embed_text = summarize_embed(
+                    post.get("embed") or record.get("embed") or {}
+                )
+                posts.append(
+                    LikedPost(
+                        subject_uri=uri,
+                        author_handle=author.get("handle", ""),
+                        author_did=author.get("did", ""),
+                        text=record.get("text", ""),
+                        created_at=record.get("createdAt", ""),
+                        liked_at=uri_to_liked_at.get(uri, ""),
+                        embed_type=embed_type,
+                        embed_text=embed_text,
+                    )
+                )
 
     logger.info(f"resolved {len(posts)} liked posts")
     return posts
@@ -546,7 +576,7 @@ def persist_tangled(items: list[TangledItem]) -> int:
 # --- flow ---
 
 
-@flow(name="ingest", log_prints=True)
+@flow(name="ingest", log_prints=True, timeout_seconds=1800)
 def ingest(only_unread: bool = True):
     """
     Fetch GitHub, tangled.org, and phi memory concurrently, then persist sequentially.
@@ -603,11 +633,15 @@ def ingest(only_unread: bool = True):
     # sequential writes — same process, no DuckDB lock contention
     if gh_items:
         total = persist_github(gh_items)
-        logger.info(f"upserted {len(gh_items)} github rows; {total} total in raw_github_issues")
+        logger.info(
+            f"upserted {len(gh_items)} github rows; {total} total in raw_github_issues"
+        )
 
     if tangled_items:
         total = persist_tangled(tangled_items)
-        logger.info(f"persisted {len(tangled_items)} tangled rows; {total} total in raw_tangled_items")
+        logger.info(
+            f"persisted {len(tangled_items)} tangled rows; {total} total in raw_tangled_items"
+        )
 
     if likes:
         total = persist_likes(likes)
@@ -617,7 +651,9 @@ def ingest(only_unread: bool = True):
         liked_posts = resolve_liked_posts(_db_path())
         if liked_posts:
             lp_total = persist_liked_posts(liked_posts)
-            logger.info(f"resolved {len(liked_posts)} liked posts; {lp_total} total in raw_liked_posts")
+            logger.info(
+                f"resolved {len(liked_posts)} liked posts; {lp_total} total in raw_liked_posts"
+            )
 
     if emails:
         total = persist_emails(emails)
@@ -641,6 +677,19 @@ def ingest(only_unread: bool = True):
             f"persisted {len(phi_observations)} phi observations ({obs_total} total), "
             f"{len(phi_interactions)} interactions ({ix_total} total)"
         )
+
+    create_table_artifact(
+        key="ingest-counts",
+        table=[
+            {"source": "github", "fetched": len(gh_items)},
+            {"source": "tangled", "fetched": len(tangled_items)},
+            {"source": "email", "fetched": len(emails)},
+            {"source": "likes", "fetched": len(likes)},
+            {"source": "phi observations", "fetched": len(phi_observations)},
+            {"source": "phi interactions", "fetched": len(phi_interactions)},
+        ],
+        description="rows fetched per source this run",
+    )
 
 
 if __name__ == "__main__":

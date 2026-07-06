@@ -114,7 +114,11 @@ def import_spend_log(log_path: Path, analytics_db: Path) -> int:
                     float(event.get("input_cost_usd") or 0),
                     float(event.get("output_cost_usd") or 0),
                     float(event.get("total_cost_usd") or 0),
-                    json.dumps(event.get("metadata") or {}, separators=(",", ":"), sort_keys=True),
+                    json.dumps(
+                        event.get("metadata") or {},
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ),
                 )
             )
 
@@ -129,7 +133,7 @@ def import_spend_log(log_path: Path, analytics_db: Path) -> int:
         con.close()
 
 
-@flow(name="transform", log_prints=True)
+@flow(name="transform", log_prints=True, timeout_seconds=1800)
 def transform():
     # lazy imports: dbt-common -> mashumaro has Python 3.14 compat issues at
     # module load time; importing inside the function defers until flow runs
@@ -144,8 +148,12 @@ def transform():
 
     logger = get_run_logger()
 
-    src = Path(os.environ.get("ANALYTICS_DB_PATH", "/prefect-analytics/analytics.duckdb"))
-    spend_log = Path(os.environ.get("LLM_SPEND_LOG_PATH", str(src.with_name("llm-spend.jsonl"))))
+    src = Path(
+        os.environ.get("ANALYTICS_DB_PATH", "/prefect-analytics/analytics.duckdb")
+    )
+    spend_log = Path(
+        os.environ.get("LLM_SPEND_LOG_PATH", str(src.with_name("llm-spend.jsonl")))
+    )
     import_spend_log(spend_log, src)
 
     # compile manifest.json so PrefectDbtOrchestrator can parse the project
@@ -155,13 +163,25 @@ def transform():
     # rpds-py's resolution break. (the outer flow's --python only covers this
     # process, not this nested `uv run`.)
     result = subprocess.run(
-        ["uv", "run", "--python", "3.13.11", "dbt", "compile",
-         "--project-dir", str(ANALYTICS_DIR),
-         "--profiles-dir", str(ANALYTICS_DIR / "profiles")],
-        capture_output=True, text=True,
+        [
+            "uv",
+            "run",
+            "--python",
+            "3.13.11",
+            "dbt",
+            "compile",
+            "--project-dir",
+            str(ANALYTICS_DIR),
+            "--profiles-dir",
+            str(ANALYTICS_DIR / "profiles"),
+        ],
+        capture_output=True,
+        text=True,
     )
     if result.returncode != 0:
-        raise RuntimeError(f"dbt compile failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}")
+        raise RuntimeError(
+            f"dbt compile failed:\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+        )
     logger.info("dbt compile OK")
 
     settings = PrefectDbtSettings(

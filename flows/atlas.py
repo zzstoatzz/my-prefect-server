@@ -76,7 +76,11 @@ def _install_node(node_install: Path) -> Path:
     return node_bin
 
 
-@task(retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=10), retry_jitter_factor=1)
+@task(
+    retries=2,
+    retry_delay_seconds=exponential_backoff(backoff_factor=10),
+    retry_jitter_factor=1,
+)
 def clone_repo(dest: Path) -> Path:
     """Shallow-clone pub-search to get site files + build script."""
     # idempotent across retries: git clone refuses a non-empty destination
@@ -90,7 +94,11 @@ def clone_repo(dest: Path) -> Path:
     return dest
 
 
-@task(retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=30), retry_jitter_factor=1)
+@task(
+    retries=2,
+    retry_delay_seconds=exponential_backoff(backoff_factor=30),
+    retry_jitter_factor=1,
+)
 def build_atlas(repo_dir: Path) -> Path:
     """Run the build-atlas script. Returns path to atlas.json.
 
@@ -101,8 +109,14 @@ def build_atlas(repo_dir: Path) -> Path:
     output = repo_dir / "site" / "atlas.json"
 
     result = subprocess.run(
-        ["uv", "run", "--script", str(repo_dir / "scripts" / "build-atlas"),
-         "--output", str(output)],
+        [
+            "uv",
+            "run",
+            "--script",
+            str(repo_dir / "scripts" / "build-atlas"),
+            "--output",
+            str(output),
+        ],
         capture_output=True,
         text=True,
         # headroom: this one budget absorbs the heavy uv dep install
@@ -146,7 +160,11 @@ def build_facts(repo_dir: Path) -> Path:
     return output
 
 
-@task(retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=15), retry_jitter_factor=1)
+@task(
+    retries=2,
+    retry_delay_seconds=exponential_backoff(backoff_factor=15),
+    retry_jitter_factor=1,
+)
 def deploy_to_pages(site_dir: Path) -> str:
     """Deploy site/ to Cloudflare Pages via wrangler.
 
@@ -183,13 +201,25 @@ def deploy_to_pages(site_dir: Path) -> str:
     subprocess.run(
         [str(npm_bin), "install", "--no-audit", "--no-fund"],
         cwd=str(site_dir),
-        env=env, capture_output=True, text=True, timeout=240, check=True,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=240,
+        check=True,
     )
 
     wrangler_bin = site_dir / "node_modules" / ".bin" / "wrangler"
     result = subprocess.run(
-        [str(node_bin), str(wrangler_bin), "pages", "deploy", ".",
-         f"--project-name={CF_PROJECT}", "--branch=main", "--commit-dirty=true"],
+        [
+            str(node_bin),
+            str(wrangler_bin),
+            "pages",
+            "deploy",
+            ".",
+            f"--project-name={CF_PROJECT}",
+            "--branch=main",
+            "--commit-dirty=true",
+        ],
         cwd=str(site_dir),
         env=env,
         capture_output=True,
@@ -224,7 +254,7 @@ def deploy_to_pages(site_dir: Path) -> str:
     return ""
 
 
-@flow(name="rebuild-atlas", log_prints=True)
+@flow(name="leaflet-atlas", log_prints=True, timeout_seconds=7200)
 def rebuild_atlas():
     """Rebuild the 2D semantic map and deploy to Cloudflare Pages."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -235,7 +265,9 @@ def rebuild_atlas():
         try:
             build_facts(repo_dir)
         except Exception as e:
-            get_run_logger().warning(f"build-facts failed, deploying with committed facts.json: {e}")
+            get_run_logger().warning(
+                f"build-facts failed, deploying with committed facts.json: {e}"
+            )
         deploy_to_pages(repo_dir / "site")
 
 

@@ -7,7 +7,7 @@ import platform
 from prefect import flow
 
 
-@flow(name="diagnostics", log_prints=True)
+@flow(name="diagnostics", log_prints=True, timeout_seconds=300)
 def diagnostics():
     now = datetime.datetime.now(datetime.timezone.utc)
     print(f"time:     {now.isoformat()}")

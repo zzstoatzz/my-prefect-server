@@ -21,6 +21,7 @@ from atproto import AsyncClient
 from pydantic import BaseModel, Field
 
 from prefect import flow, task
+from prefect.artifacts import create_table_artifact
 from prefect.blocks.system import Secret
 from prefect.cache_policies import NONE
 
@@ -49,7 +50,9 @@ async def build_connectors() -> list[Connector]:
     try:
         hetzner_tokens = list((await Secret.load(HETZNER_TOKENS_BLOCK)).get().values())
     except Exception as exc:
-        print(f"  hetzner: no {HETZNER_TOKENS_BLOCK} block ({exc}); will fall back to env")
+        print(
+            f"  hetzner: no {HETZNER_TOKENS_BLOCK} block ({exc}); will fall back to env"
+        )
 
     return [
         FlyConnector(),
@@ -118,7 +121,7 @@ async def write_snapshot(snapshot: Snapshot) -> str:
     return resp.uri
 
 
-@flow(name="costs", log_prints=True)
+@flow(name="costs", log_prints=True, timeout_seconds=900)
 async def costs(config: CostsConfig | None = None):
     """Collect infra costs from all connectors and snapshot them to PDS."""
     configure_logfire("prefect-flow-costs")
@@ -137,6 +140,22 @@ async def costs(config: CostsConfig | None = None):
         line_items=line_items,
     )
     print(f"snapshot total: ${snapshot.total / 100:.2f} across {len(line_items)} items")
+
+    create_table_artifact(
+        key="cost-snapshot",
+        table=[
+            {
+                "provider": i.provider,
+                "project": i.project,
+                "service": i.service,
+                "usd": round(i.amount / 100, 2),
+                "estimated": i.estimated,
+                "note": i.note or "",
+            }
+            for i in sorted(line_items, key=lambda i: -i.amount)
+        ],
+        description=f"infra costs {period.start.date()} .. {period.end.date()} — total ${snapshot.total / 100:.2f}",
+    )
 
     if config.dry_run:
         print(json.dumps(snapshot.to_record(), indent=2))

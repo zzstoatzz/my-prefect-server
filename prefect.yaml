@@ -98,7 +98,10 @@ deployments:
           prefect.resource.name: "transform"
           prefect.resource.role: "deployment"
 
-  - name: compact
+  # phi's per-user relationship summaries + likes observations (formerly
+  # "compact"). chained off transform because it reads the dbt mart AND to
+  # serialize DuckDB access behind the single-writer pipeline.
+  - name: phi-memory-synthesis
     entrypoint: flows/compact.py:compact
     work_pool: *home
     triggers:
@@ -109,7 +112,8 @@ deployments:
           prefect.resource.name: "transform"
           prefect.resource.role: "deployment"
 
-  - name: morning
+  # phi's tag merge/relationship maintenance (formerly "morning")
+  - name: phi-tag-maintenance
     entrypoint: flows/morning.py:morning
     work_pool: *home
     concurrency_limit: *cancel_new
@@ -124,7 +128,7 @@ deployments:
         expect:
           - "prefect.flow-run.Completed"
         match_related:
-          prefect.resource.name: "morning"
+          prefect.resource.name: "phi-tag-maintenance"
           prefect.resource.role: "deployment"
 
   - name: phi-atlas
@@ -162,7 +166,9 @@ deployments:
           prefect.resource.name: "phi-atlas"
           prefect.resource.role: "deployment"
 
-  - name: rebuild-atlas
+  # the pub-search leaflet map (formerly "rebuild-atlas" — renamed so it can't
+  # be confused with phi-atlas, which is a different atlas entirely)
+  - name: leaflet-atlas
     entrypoint: flows/atlas.py:rebuild_atlas
     # Canary for the job-variable-driven secret pattern: secrets are
     # injected as env vars (resolved from Secret blocks at deploy time),
@@ -254,7 +260,7 @@ deployments:
     # uploads to R2 → exits; App B promotes it. No SLA — a late/failed run just
     # serves the prior snapshot. host prereqs (zig 0.16 + rclone) installed by
     # typeahead deploy/home-indexer/install.sh. concurrency 1 so builds never
-    # overlap. 09:00 UTC sits clear of the 6h rebuild-atlas marks + the 13:00 cluster.
+    # overlap. 09:00 UTC sits clear of the 6h leaflet-atlas marks + the 13:00 cluster.
     work_pool:
       name: home-pool
       job_variables:

@@ -35,7 +35,7 @@ personal data pipeline and intelligence layer. digests github, [tangled.org](htt
                                                   │
                         ┌─────────────────────────┼──────────┐
                         ▼                         ▼          ▼
-                      brief                    compact    hub UI
+                      brief                    phi-memory-synthesis    hub UI
                   [on transform ✓]         [on transform ✓]
                         │                         │
                         ▼                         ▼
@@ -44,7 +44,7 @@ personal data pipeline and intelligence layer. digests github, [tangled.org](htt
 
                         phi identity flows
   ─────────────────────────────────────────────
-  morning (daily 8am CT) ──► TurboPuffer
+  phi-tag-maintenance (daily 8am CT) ──► TurboPuffer
           │
           ▼
   curate  ─────────────────► Semble API
@@ -55,7 +55,7 @@ personal data pipeline and intelligence layer. digests github, [tangled.org](htt
 
                         publication flows
   ─────────────────────────────────────────────
-  rebuild-atlas   (every 6h)  ──► Cloudflare Pages
+  leaflet-atlas   (every 6h)  ──► Cloudflare Pages
   typeahead-index (every 3d)  ──► R2  (prefix-index snapshot, built at home)
   bisk-snapshot   (every 10m) ──► R2  (bisk.social standings snapshot)
   pds-records     (ad hoc)    ──► PDS record maintenance

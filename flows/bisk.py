@@ -43,7 +43,9 @@ TOPCHICKEN = "did:plc:bty3nc67lteylmmb7hvgxeu5"
 # her own namesake cap, which is the kind of measurement error the EF revision
 # exists to fix. instrumentation has improved; the eyewall is wider now.
 ENHANCED_GRACE_LIMIT = 10_000
-GRACE_LIMIT = ENHANCED_GRACE_LIMIT  # legacy alias; kept so the snapshot field reads true
+GRACE_LIMIT = (
+    ENHANCED_GRACE_LIMIT  # legacy alias; kept so the snapshot field reads true
+)
 # topchicken runs a discrete daily round: trading locks at 12:00 UTC and the
 # winner is crowned ~13:05 UTC (see topchicken.cee.wtf). the live race must mirror
 # that exact round — open from the most recent 12:00 UTC lock to now — NOT a
@@ -58,6 +60,7 @@ def round_start(now: datetime) -> datetime:
     """the open of the round currently being judged: the most recent 12:00 UTC."""
     lock = now.replace(hour=LOCK_HOUR_UTC, minute=0, second=0, microsecond=0)
     return lock if now >= lock else lock - timedelta(days=1)
+
 
 CONSTELLATION = "https://constellation.microcosm.blue/xrpc"
 SLINGSHOT = "https://slingshot.microcosm.blue/xrpc"
@@ -77,7 +80,9 @@ async def _backlink_dids(client, subject: str, source: str) -> list[str]:
         p = {"subject": subject, "source": source, "limit": 1000}
         if cursor:
             p["cursor"] = cursor
-        body = await _get(client, f"{CONSTELLATION}/blue.microcosm.links.getBacklinks", p)
+        body = await _get(
+            client, f"{CONSTELLATION}/blue.microcosm.links.getBacklinks", p
+        )
         out += [rec["did"] for rec in body.get("records", [])]
         cursor = body.get("cursor")
         if not cursor:
@@ -157,7 +162,9 @@ def window_bisks(pool: dict[str, dict]) -> list[dict]:
     post linger as leader for another ~24h.
     """
     window_start = round_start(datetime.now(timezone.utc))
-    print(f"round: posts since {window_start:%Y-%m-%d %H:%M} UTC (open since the 12:00 UTC lock)")
+    print(
+        f"round: posts since {window_start:%Y-%m-%d %H:%M} UTC (open since the 12:00 UTC lock)"
+    )
 
     async def run() -> list[dict]:
         bisks: list[dict] = []
@@ -197,7 +204,9 @@ def window_bisks(pool: dict[str, dict]) -> list[dict]:
 
             await asyncio.gather(*(one(d, p) for d, p in pool.items()))
         bisks.sort(key=lambda b: b["likes"], reverse=True)
-        print(f"window: {len(bisks)} bisks (≥1 like) from {len({b['did'] for b in bisks})} chickens")
+        print(
+            f"window: {len(bisks)} bisks (≥1 like) from {len({b['did'] for b in bisks})} chickens"
+        )
         return bisks
 
     return asyncio.run(run())
@@ -212,7 +221,9 @@ def all_time_coop() -> list[dict]:
                 f"{SLINGSHOT}/blue.microcosm.identity.resolveMiniDoc",
                 {"identifier": TOPCHICKEN},
             )
-            recs = await _list_records(client, mini["pds"], TOPCHICKEN, "app.bsky.feed.post")
+            recs = await _list_records(
+                client, mini["pds"], TOPCHICKEN, "app.bsky.feed.post"
+            )
             winners = []
             for r in recs:
                 v = r["value"]
@@ -262,7 +273,9 @@ def all_time_coop() -> list[dict]:
 
             dropped = len(winners) - len(kept)
             kept.sort(key=lambda w: w["crownedAt"], reverse=True)
-            print(f"coop: {len(kept)} viewable crownings ({dropped} dropped: gone/deactivated)")
+            print(
+                f"coop: {len(kept)} viewable crownings ({dropped} dropped: gone/deactivated)"
+            )
             return kept
 
     return asyncio.run(run())
@@ -299,7 +312,7 @@ def publish(snapshot: dict) -> str:
     return f"{bucket}/{OBJECT_KEY}"
 
 
-@flow(name="bisk-snapshot", log_prints=True)
+@flow(name="bisk-snapshot", log_prints=True, timeout_seconds=540)
 def bisk_snapshot() -> None:
     pool = build_pool()
     snapshot = {

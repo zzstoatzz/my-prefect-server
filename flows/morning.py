@@ -85,7 +85,6 @@ class ByTagsHash(CachePolicy):
         return f"morning-{task_key}/{h}"
 
 
-
 # ---------------------------------------------------------------------------
 # phase 1: tag collection + deduplication
 # ---------------------------------------------------------------------------
@@ -214,9 +213,7 @@ async def identify_tag_merges(
 
     inventory = "\n".join(tag_lines)
 
-    model = AnthropicModel(
-        model_name, provider=AnthropicProvider(api_key=api_key)
-    )
+    model = AnthropicModel(model_name, provider=AnthropicProvider(api_key=api_key))
     agent = Agent(
         model,
         system_prompt=(
@@ -406,9 +403,7 @@ async def discover_tag_relationships(
 
     inventory = "\n".join(tag_lines)
 
-    model = AnthropicModel(
-        model_name, provider=AnthropicProvider(api_key=api_key)
-    )
+    model = AnthropicModel(model_name, provider=AnthropicProvider(api_key=api_key))
     agent = Agent(
         model,
         system_prompt=(
@@ -526,7 +521,7 @@ def store_tag_relationships(
 # ---------------------------------------------------------------------------
 
 
-@flow(name="morning", log_prints=True)
+@flow(name="phi-tag-maintenance", log_prints=True, timeout_seconds=1800)
 async def morning():
     """Morning flow: tag maintenance.
 

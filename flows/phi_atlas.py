@@ -934,7 +934,7 @@ def archive_atlas_json(atlas_json: str, generated_at: str, point_count: int) -> 
 # ---------------------------------------------------------------------------
 
 
-@flow(name="phi-atlas", log_prints=True)
+@flow(name="phi-atlas", log_prints=True, timeout_seconds=3600)
 async def phi_atlas(dry_run: bool = False) -> dict[str, int]:
     """Daily map of phi's mental landscape.
 

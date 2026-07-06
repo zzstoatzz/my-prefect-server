@@ -48,7 +48,9 @@ REPO_URL_FALLBACK = "https://github.com/zzstoatzz/typeahead.git"
 # under the runtime user's home, so this flow reinstantiates on any host that
 # has the deployment's env + the install.sh prereqs. Nothing here assumes a
 # particular box.
-INDEXER_HOME = Path(os.environ.get("INDEXER_HOME") or (Path.home() / ".typeahead-index"))
+INDEXER_HOME = Path(
+    os.environ.get("INDEXER_HOME") or (Path.home() / ".typeahead-index")
+)
 REPO_DIR = INDEXER_HOME / "repo"
 
 
@@ -61,8 +63,13 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
     """
     logger = get_run_logger()
     proc = subprocess.Popen(
-        cmd, cwd=str(cwd), env=env,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+        cmd,
+        cwd=str(cwd),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
     )
     try:
         assert proc.stdout is not None
@@ -76,7 +83,11 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
         raise RuntimeError(f"{' '.join(cmd[:3])} ... exited {code}")
 
 
-@task(retries=2, retry_delay_seconds=exponential_backoff(backoff_factor=10), retry_jitter_factor=1)
+@task(
+    retries=2,
+    retry_delay_seconds=exponential_backoff(backoff_factor=10),
+    retry_jitter_factor=1,
+)
 def clone_repo() -> Path:
     """Fresh shallow clone of typeahead (tangled, github fallback)."""
     logger = get_run_logger()
@@ -86,7 +97,8 @@ def clone_repo() -> Path:
     for url in (REPO_URL, REPO_URL_FALLBACK):
         r = subprocess.run(
             ["git", "clone", "--depth", "1", url, str(REPO_DIR)],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
         )
         if r.returncode == 0:
             logger.info(f"cloned {url}")
@@ -108,7 +120,9 @@ def build_binary(repo_dir: Path) -> Path:
     try:
         _stream(["zig", "build", "-Doptimize=ReleaseSafe"], services, env, timeout=900)
     except RuntimeError:
-        get_run_logger().warning("primary dep fetch failed; retrying via github mirrors")
+        get_run_logger().warning(
+            "primary dep fetch failed; retrying via github mirrors"
+        )
         shutil.copy(services / "build.zig.zon.gh", services / "build.zig.zon")
         _stream(["zig", "build", "-Doptimize=ReleaseSafe"], services, env, timeout=900)
     if not binary.is_file():
@@ -136,7 +150,9 @@ def run_indexer(binary: Path) -> None:
     # image uses. Fail loudly if it's missing (the upload would fail anyway).
     rclone = shutil.which("rclone")
     if not rclone:
-        raise RuntimeError("rclone not found on PATH — run typeahead deploy/home-indexer/install.sh")
+        raise RuntimeError(
+            "rclone not found on PATH — run typeahead deploy/home-indexer/install.sh"
+        )
     env["INDEX_RCLONE_BIN"] = rclone
     # the shared `turso-url` block holds the full libsql:// URL (atlas's client
     # wants it), but the indexer's TursoClient wants a BARE host. Normalize here
@@ -146,7 +162,7 @@ def run_indexer(binary: Path) -> None:
     _stream([str(binary)], binary.parent, env, timeout=7200)
 
 
-@flow(name="typeahead-index", log_prints=True)
+@flow(name="typeahead-index", log_prints=True, timeout_seconds=14400)
 def typeahead_index():
     repo = clone_repo()
     binary = build_binary(repo)

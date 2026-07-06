@@ -4,7 +4,7 @@ action item dashboard and intelligence pipeline at [hub.waow.tech](https://hub.w
 
 ## data sources
 
-a single `ingest` flow runs hourly on cron and fetches all data sources concurrently, then writes to DuckDB sequentially (same process = no single-writer lock contention). downstream flows (transform, brief, compact) are event-driven via deployment triggers — they only run when upstream completes.
+a single `ingest` flow runs hourly on cron and fetches all data sources concurrently, then writes to DuckDB sequentially (same process = no single-writer lock contention). downstream flows (transform, brief, phi-memory-synthesis) are event-driven via deployment triggers — they only run when upstream completes.
 
 **github** — fetches notifications (issues + PRs) and open items authored by `zzstoatzz` via the search API. each issue is cached by repo+number for 24h. persists to `raw_github_issues`.
 
@@ -30,7 +30,7 @@ a single `ingest` flow runs hourly on cron and fetches all data sources concurre
                                                   │
                         ┌─────────────────────────┼──────────┐
                         ▼                         ▼          ▼
-                      brief                    compact    hub UI
+                      brief                    phi-memory-synthesis    hub UI
                   [on transform ✓]         [on transform ✓]
                         │                         │
                         ▼                         ▼
@@ -39,7 +39,7 @@ a single `ingest` flow runs hourly on cron and fetches all data sources concurre
 
                         phi identity flows
   ─────────────────────────────────────────────
-  morning (daily 8am CT)   ──► TurboPuffer
+  phi-tag-maintenance (daily 8am CT)   ──► TurboPuffer
           │
           ▼
   curate                   ──► Semble API
@@ -50,7 +50,7 @@ a single `ingest` flow runs hourly on cron and fetches all data sources concurre
 
                         publication flows
   ─────────────────────────────────────────────
-  rebuild-atlas (every 6h) ──► Cloudflare Pages
+  leaflet-atlas (every 6h) ──► Cloudflare Pages
   pds-records (ad hoc)     ──► PDS record maintenance
 ```
 
@@ -62,12 +62,12 @@ a single `ingest` flow runs hourly on cron and fetches all data sources concurre
 | `ingest` | cron `0 * * * *` | fetches github, tangled.org, bluesky likes, and phi memory concurrently, resolves liked post content, persists all to DuckDB sequentially |
 | `transform` | on `ingest` completion | dbt build: staging → enrichment → mart. concurrency limit 1. runs under python 3.13 (dbt-core compat) |
 | `brief` | on `transform` completion | loads top 200 scored items, sends to claude haiku 4.5 via pydantic-ai, writes `briefing.json`. cached by items content hash (skips LLM when data unchanged) |
-| `compact` | on `transform` completion | synthesizes per-user relationship summaries from phi's observations + interactions. extracts new observations from liked posts (LLM). writes summaries to TurboPuffer (`phi-users-*`). cached by observations content hash |
-| `morning` | cron `0 13 * * *` (8am CT) | tag maintenance (dedup, merge, relationship discovery) in TurboPuffer. runs 1h before phi's daily reflection |
-| `curate` | on `morning` completion | agentic Semble curation. reviews phi's public knowledge graph and private observations, writes Semble URL cards/collections/connections through `semble-api`, and blocks unindexed standalone note cards |
+| `phi-memory-synthesis` | on `transform` completion | synthesizes per-user relationship summaries from phi's observations + interactions. extracts new observations from liked posts (LLM). writes summaries to TurboPuffer (`phi-users-*`). cached by observations content hash |
+| `phi-tag-maintenance` | cron `0 13 * * *` (8am CT) | tag maintenance (dedup, merge, relationship discovery) in TurboPuffer. runs 1h before phi's daily reflection |
+| `curate` | on `phi-tag-maintenance` completion | agentic Semble curation. reviews phi's public knowledge graph and private observations, writes Semble URL cards/collections/connections through `semble-api`, and blocks unindexed standalone note cards |
 | `phi-atlas` | cron `0 13 * * *` (8am CT) | builds phi's daily private/public semantic atlas from TurboPuffer + PDS records, writes `io.zzstoatzz.phi.atlas/self` |
 | `docket` | on `phi-atlas` completion | synthesizes promotion-pressure candidates from the atlas and writes `io.zzstoatzz.phi.docket/self` |
-| `rebuild-atlas` | cron `0 */6 * * *` | rebuilds the pub-search 2D semantic map (UMAP + HDBSCAN on TurboPuffer embeddings), deploys to Cloudflare Pages |
+| `leaflet-atlas` | cron `0 */6 * * *` | rebuilds the pub-search 2D semantic map (UMAP + HDBSCAN on TurboPuffer embeddings), deploys to Cloudflare Pages |
 | `pds-records` | ad hoc, no schedule | operator flow for listing/creating/updating/deleting PDS records; default deployment is dry-run list mode |
 | `costs` | cron `0 8 * * *` (daily 08:00 UTC) | collects provider billing (neon/cloudflare/hetzner/fly connectors), writes an `io.zzstoatzz.cost.snapshot` PDS record, surfaced at hub.waow.tech |
 | `typeahead-index` | cron `0 9 */3 * *` (every 3rd day) | builds the typeahead prefix-index snapshot on the home box (zig batch job), publishes it to R2, rewrites `latest.json`. no ingress, no SLA |
@@ -92,7 +92,7 @@ SvelteKit hub mounts and reads.
 | `stg_phi_interactions` | view | dedup `raw_phi_interactions` by interaction id |
 | `int_github_issues_scored` | table | scoring: recency (30-day decay) x engagement (log scale) x label multiplier (bug=1.5) x contributor weight |
 | `int_tangled_items_scored` | table | scoring: recency (30-day decay) x 0.5 (no engagement data) x contributor weight |
-| `int_phi_user_profiles` | table | aggregates per-user observation + interaction counts for compact flow |
+| `int_phi_user_profiles` | table | aggregates per-user observation + interaction counts for phi-memory-synthesis flow |
 | `hub_action_items` | mart | union of both scored tables, ordered by `importance_score` desc, limit 200 |
 | `raw_llm_spend` | not a dbt model | materialized directly by `transform.py` from the append-only `llm-spend.jsonl` telemetry log (listed here for completeness) |
 
@@ -110,9 +110,9 @@ the `brief` flow fires automatically when `transform` completes (via deployment 
 
 briefing model is defined in `packages/mps/src/mps/briefing.py`.
 
-## compact
+## phi-memory-synthesis
 
-the `compact` flow fires in parallel with `brief` when `transform` completes. it maintains phi's long-term memory in TurboPuffer.
+the `phi-memory-synthesis` flow fires in parallel with `brief` when `transform` completes. it maintains phi's long-term memory in TurboPuffer.
 
 **relationship summaries** — for each user phi has interacted with (from `int_phi_user_profiles`), loads their observations and recent interactions from DuckDB, resolves their bluesky profile, and sends to claude haiku to synthesize a dense relationship summary. writes to `phi-users-{handle}` namespaces as `kind="summary"` records. cached by observations content hash — skips the LLM when data unchanged.
 
@@ -120,26 +120,26 @@ the `compact` flow fires in parallel with `brief` when `transform` completes. it
 
 the result: observations from likes are indistinguishable from observations phi creates during conversations — same schema, same namespaces, same reconciliation logic.
 
-## morning and phi identity
+## phi-tag-maintenance and phi identity
 
-the `morning` flow runs daily at 8am CT (1h before phi's reflection). it owns
+the `phi-tag-maintenance` flow runs daily at 8am CT (1h before phi's reflection). it owns
 the mechanical TurboPuffer tag-graph cleanup:
 
 1. collect all tags across all `phi-users-*` namespaces
 2. embed tags and identify near-duplicates via LLM (e.g., "atproto" / "at protocol" / "AT Protocol")
 3. apply merges: rewrite tags in TurboPuffer, discover inter-tag relationships, store in `phi-tag-relationships` namespace
 
-`curate` is a separate event-triggered flow after `morning`. it reviews phi's Semble records and private observations with an agent, then mutates Semble through `semble-api` instead of hand-rolled PDS writes. URL cards, notes attached to URLs, collections, collection links, and connections go through Semble's API; standalone note cards are intentionally blocked because they are public PDS records that Semble does not index.
+`curate` is a separate event-triggered flow after `phi-tag-maintenance`. it reviews phi's Semble records and private observations with an agent, then mutates Semble through `semble-api` instead of hand-rolled PDS writes. URL cards, notes attached to URLs, collections, collection links, and connections go through Semble's API; standalone note cards are intentionally blocked because they are public PDS records that Semble does not index.
 
 `phi-atlas` is a separate daily flow that maps phi's private memory and public PDS records into `io.zzstoatzz.phi.atlas/self`. `docket` runs after `phi-atlas` and writes `io.zzstoatzz.phi.docket/self`, a small daily set of promotion-pressure candidates. those `io.zzstoatzz.phi.*` records stay as raw PDS writes because they are phi-owned records, not Semble graph mutations.
 
 ## atlas
 
-the `rebuild-atlas` flow runs every 6h. it clones pub-search, runs the build-atlas script (PCA → UMAP → HDBSCAN on TurboPuffer document embeddings), produces `atlas.json`, and deploys the static site to Cloudflare Pages via wrangler.
+the `leaflet-atlas` flow runs every 6h. it clones pub-search, runs the build-atlas script (PCA → UMAP → HDBSCAN on TurboPuffer document embeddings), produces `atlas.json`, and deploys the static site to Cloudflare Pages via wrangler.
 
 ## phi atlas and docket
 
-`phi-atlas` runs daily alongside `morning`. It combines phi-owned PDS records
+`phi-atlas` runs daily alongside `phi-tag-maintenance`. It combines phi-owned PDS records
 and TurboPuffer memory rows into a single 2D map, using cached embeddings where
 possible and only embedding records that are missing vectors. It archives the
 generated atlas JSON and uploads the current atlas to phi's PDS.
@@ -157,7 +157,7 @@ The helper writes an append-only JSONL file next to the analytics DB
 `raw_llm_spend` for analysis, while the hub reads the live JSONL file directly
 for near-live totals.
 
-The landing page shows compact 24h/7d spend, recent calls, top flows, the
+The landing page shows phi-memory-synthesis 24h/7d spend, recent calls, top flows, the
 models in use, and the prompt-cache hit rate for the window. Tiny nonzero costs
 are displayed with enough decimal places to avoid misleading `$0.00` rows for
 cheap embedding calls.

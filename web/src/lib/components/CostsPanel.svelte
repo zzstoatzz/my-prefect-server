@@ -29,7 +29,9 @@
 	// LLM flows are Prefect flows defined in this repo's flows/ dir; link each to
 	// its source. Most map name→name.py; a few have differently-named files.
 	const FLOW_FILE: Record<string, string> = {
-		'rebuild-atlas': 'atlas.py', 'phi-atlas': 'phi_atlas.py', 'pds-records': 'pds_records.py'
+		'rebuild-atlas': 'atlas.py', 'leaflet-atlas': 'atlas.py', 'phi-atlas': 'phi_atlas.py',
+		'pds-records': 'pds_records.py', 'phi-tag-maintenance': 'morning.py',
+		'phi-memory-synthesis': 'compact.py'
 	};
 	const flowUrl = (name: string) =>
 		`https://tangled.org/zzstoatzz.io/my-prefect-server/blob/main/flows/${FLOW_FILE[name] ?? name.replace(/-/g, '_') + '.py'}`;
