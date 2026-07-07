@@ -105,6 +105,10 @@ class CurationDeps(BaseModel, arbitrary_types_allowed=True):
     semble: Any = Field(description="semble api client authenticated as phi")
     tpuf_client: Any = Field(description="turbopuffer client")
     openai_client: Any = Field(description="openai client for embeddings")
+    pds_session: dict | None = Field(
+        default=None,
+        description="phi's bsky session (did, accessJwt) for raw-PDS fallbacks",
+    )
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -246,6 +250,26 @@ def _at_uri_parts(uri: str) -> tuple[str, str, str]:
     return parts[0], parts[1], parts[2]
 
 
+def _pds_delete_record(session: dict[str, Any], uri: str) -> str:
+    """Delete a record straight off phi's PDS by AT URI.
+
+    The appview stops indexing records whose parents are gone, so orphans —
+    the records most in need of cleanup — can't be resolved to appview ids.
+    This is the fallback for exactly that case.
+    """
+    did, collection, rkey = _at_uri_parts(uri)
+    if did != session["did"]:
+        return f"refusing to delete a record outside phi's repo: {uri}"
+    resp = httpx.post(
+        f"{PDS_BASE}/xrpc/com.atproto.repo.deleteRecord",
+        headers={"Authorization": f"Bearer {session['accessJwt']}"},
+        json={"repo": did, "collection": collection, "rkey": rkey},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return f"deleted {uri} directly on the pds (not indexed by the appview)"
+
+
 def _raw_record_by_uri(collection: str, uri: str) -> dict[str, Any] | None:
     for record in _list_records(PHI_DID, collection):
         if record.get("uri") == uri:
@@ -297,9 +321,14 @@ async def _card_id_for_uri(semble: AsyncSemble, uri: str) -> str | None:
 
 
 async def _collection_id_for_uri(semble: AsyncSemble, uri: str) -> str | None:
+    collection = await _collection_for_uri(semble, uri)
+    return collection.id if collection else None
+
+
+async def _collection_for_uri(semble: AsyncSemble, uri: str):
     for collection in await _list_all_collections(semble):
         if collection.id and collection.uri == uri:
-            return collection.id
+            return collection
     return None
 
 
@@ -404,28 +433,31 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
 
     @agent.tool
     async def delete_record(ctx: RunContext[CurationDeps], uri: str) -> str:
-        """Delete a record by its AT URI. Works for any record type (card, connection, collection, collectionLink)."""
+        """Delete a record by its AT URI. Works for any record type (card, connection, collection, collectionLink). Records the appview no longer indexes (orphans) are deleted straight off the pds."""
+
+        def _fallback(reason: str) -> str:
+            if not ctx.deps.pds_session:
+                return reason
+            return _pds_delete_record(ctx.deps.pds_session, uri)
+
         try:
             _, collection, _ = _at_uri_parts(uri)
             if collection == RECORD_TYPE_CARD:
                 card_id = await _card_id_for_uri(ctx.deps.semble, uri)
                 if not card_id:
-                    return f"could not resolve card id for {uri}"
+                    return _fallback(f"could not resolve card id for {uri}")
                 await ctx.deps.semble.cards.remove_from_library(card_id)
                 return f"removed card from library: {uri}"
             if collection == RECORD_TYPE_COLLECTION:
                 collection_id = await _collection_id_for_uri(ctx.deps.semble, uri)
                 if not collection_id:
-                    return f"could not resolve collection id for {uri}"
+                    return _fallback(f"could not resolve collection id for {uri}")
                 await ctx.deps.semble.collections.delete(collection_id)
                 return f"deleted collection: {uri}"
             if collection == "network.cosmik.connection":
                 connection_id = await _connection_id_for_uri(ctx.deps.semble, uri)
                 if not connection_id:
-                    return (
-                        f"could not resolve connection id for {uri}; "
-                        "semble-api does not expose uri-based connection deletes yet"
-                    )
+                    return _fallback(f"could not resolve connection id for {uri}")
                 await ctx.deps.semble.connections.delete(connection_id)
                 return f"deleted connection: {uri}"
             if collection == RECORD_TYPE_COLLECTION_LINK:
@@ -440,7 +472,9 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
                     ctx.deps.semble, collection_uri
                 )
                 if not card_id or not collection_id:
-                    return f"could not resolve linked card/collection ids for {uri}"
+                    return _fallback(
+                        f"could not resolve linked card/collection ids for {uri}"
+                    )
                 await ctx.deps.semble.cards.update_url_associations(
                     card_id,
                     remove_from_collections=[collection_id],
@@ -479,12 +513,13 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
         description: str,
     ) -> str:
         """Rewrite a collection's description. Keep it to one plain sentence — a collection is an index, not an essay."""
-        collection_id = await _collection_id_for_uri(ctx.deps.semble, collection_uri)
-        if not collection_id:
+        collection = await _collection_for_uri(ctx.deps.semble, collection_uri)
+        if not collection:
             return f"could not resolve collection id for {collection_uri}"
         try:
+            # the update endpoint requires name even when unchanged
             await ctx.deps.semble.collections.update(
-                collection_id, description=description[:300]
+                collection.id, name=collection.name, description=description[:300]
             )
             return f"updated description of {collection_uri}"
         except Exception as e:
@@ -709,6 +744,7 @@ async def run_curation_agent(
     openai_client: Any,
     api_key: str,
     model_name: str,
+    pds_session: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run the curation agent loop."""
     agent = _build_agent(model_name, api_key)
@@ -716,6 +752,7 @@ async def run_curation_agent(
         semble=semble_client,
         tpuf_client=tpuf_client,
         openai_client=openai_client,
+        pds_session=pds_session,
     )
     prompt = CURATION_PROMPT.format(state=state_text)
     result = await agent.run(prompt, deps=deps)
@@ -806,6 +843,7 @@ async def curate():
             openai_client=openai_client,
             api_key=anthropic_key,
             model_name=model_name,
+            pds_session=session,
         )
         print(
             f"semble curation: {semble_result['actions_taken']} actions — {semble_result['summary']}"
