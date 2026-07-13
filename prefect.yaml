@@ -378,3 +378,24 @@ deployments:
       # note: drifts to 9pm central when CST returns.
       - cron: "0 3 * * 1"
         active: true
+
+  - name: phi-editorial
+    entrypoint: flows/phi_trigger.py:phi_trigger
+    # daily coral editorial-context refresh — phi researches coral's
+    # trending entities and rewrites io.zzstoatzz.phi.editorialContext,
+    # which coral's curator prompt reads each cycle.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --refresh-package my-prefect-server
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
+    parameters:
+      slot: editorial
+    schedules:
+      # daily 15:00 UTC (10am CT) — after the morning flows, when the
+      # overnight firehose has settled into a legible trending picture
+      - cron: "0 15 * * *"
+        active: true
