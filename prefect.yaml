@@ -355,3 +355,19 @@ deployments:
       # snapshots, so the baseline only needs to be roughly fresh.
       - cron: "*/10 * * * *"
         active: true
+
+  - name: phi-curation
+    entrypoint: flows/phi_trigger.py:phi_trigger
+    # kicks phi's weekly publication-curation pass via her control API —
+    # the bot defines the pass, this deployment owns the clock. more phi
+    # schedules = more deployments of phi-trigger with a different slot.
+    work_pool:
+      name: home-pool
+    parameters:
+      slot: curation
+    schedules:
+      # sunday 10pm operator-local, when the week's most-recommended
+      # surface is complete
+      - cron: "0 22 * * 0"
+        timezone: "America/Chicago"
+        active: true
