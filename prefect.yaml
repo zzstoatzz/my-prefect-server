@@ -363,6 +363,12 @@ deployments:
     # schedules = more deployments of phi-trigger with a different slot.
     work_pool:
       name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --refresh-package my-prefect-server
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
     parameters:
       slot: curation
     schedules:
