@@ -366,8 +366,9 @@ deployments:
     parameters:
       slot: curation
     schedules:
-      # sunday 10pm operator-local, when the week's most-recommended
-      # surface is complete
-      - cron: "0 22 * * 0"
-        timezone: "America/Chicago"
+      # sunday 10pm central = 03:00 UTC monday. explicit UTC because the
+      # server computed run times in UTC despite a stored timezone field
+      # (queued runs came out at 22:00Z) — revisit if that gets fixed.
+      # note: drifts to 9pm central when CST returns.
+      - cron: "0 3 * * 1"
         active: true
