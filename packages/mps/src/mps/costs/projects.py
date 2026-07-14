@@ -55,7 +55,7 @@ _RESOURCE_PATTERNS: dict[str, str] = {
     # misc
     "pollz": "misc",
     "bsky-feed": "misc",  # zig-bsky-feed and bsky-feed
-    "status": "misc",  # zzstoatzz-quickslice-status etc.
+    "status": "status",  # zzstoatzz-quickslice-status etc.
 }
 
 UNATTRIBUTED = "unattributed"
