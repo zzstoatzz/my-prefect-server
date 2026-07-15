@@ -254,7 +254,10 @@ deployments:
           NEON_API_KEY: "{{ prefect.blocks.secret.neon-api-key }}"
           # hetzner is NOT here: its tokens are project-scoped (one per cloud
           # project), so the flow loads the `hetzner-tokens` Secret block (a
-          # dict of {name: token}) and merges them. add a project = add a key.
+          # dict of {name: token}) and merges them. Dedicated/auction inventory
+          # comes from `hetzner-robot`: {username,password,monthly_usd}. The
+          # explicit price registry is required because Robot omits auction
+          # winning prices. add a server price immediately after ordering.
           # CF billing API is 403 for this token (no Billing:Read scope) and
           # mostly deprecated anyway, so fixed costs are explicit resource
           # lines. Keep these resource-shaped so project attribution works.
@@ -398,4 +401,24 @@ deployments:
       # daily 15:00 UTC (10am CT) — after the morning flows, when the
       # overnight firehose has settled into a legible trending picture
       - cron: "0 15 * * *"
+        active: true
+
+  - name: phi-character-retro
+    entrypoint: flows/phi_trigger.py:phi_trigger
+    # roughly monthly: phi rereads her own blog/posts/library and
+    # rewrites her [SELF] record — claims with receipts, drift visible
+    # in the firehose. the personality file is a constitution now.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --refresh-package my-prefect-server
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
+    parameters:
+      slot: character-retro
+    schedules:
+      # first of the month, 17:00 UTC (noon CT)
+      - cron: "0 17 1 * *"
         active: true
