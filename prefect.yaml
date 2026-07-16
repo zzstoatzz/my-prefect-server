@@ -422,3 +422,38 @@ deployments:
       # first of the month, 17:00 UTC (noon CT)
       - cron: "0 17 1 * *"
         active: true
+
+  - name: phi-chicken-scout
+    entrypoint: flows/phi_trigger.py:phi_trigger
+    # mid-round market scout — the cheap-entry window, ~12h into the round
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --refresh-package my-prefect-server
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
+    parameters:
+      slot: chicken-scout
+    schedules:
+      - cron: "0 18 * * *"
+        active: true
+
+  - name: phi-chicken-precheck
+    entrypoint: flows/phi_trigger.py:phi_trigger
+    # pre-lock check — final books, rivals asleep, last call (was a
+    # poller slot in the bot; migrated here 2026-07-16)
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --refresh-package my-prefect-server
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
+    parameters:
+      slot: chicken-precheck
+    schedules:
+      - cron: "0 4 * * *"
+        active: true
