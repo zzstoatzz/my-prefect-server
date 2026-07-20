@@ -4,6 +4,7 @@ and the invariant that an unmeasurable provider raises rather than reporting $0.
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 
 import pytest
@@ -72,6 +73,63 @@ def test_record_omits_none_fields():
     )
     item = snap.to_record()["lineItems"][0]
     assert "usage" not in item and "note" not in item
+
+
+def test_collect_connector_propagates_failure_instead_of_reporting_zero():
+    from flows.costs import collect_connector
+
+    class BrokenConnector:
+        name = "broken"
+
+        async def collect(self, period):
+            raise RuntimeError("provider unavailable")
+
+    assert collect_connector.retries == 3
+    assert collect_connector.retry_delay_seconds == [2.0, 10.0, 30.0]
+    with pytest.raises(RuntimeError, match="provider unavailable"):
+        asyncio.run(
+            collect_connector.fn(BrokenConnector(), Period.trailing_month())
+        )
+
+
+def test_costs_refuses_to_publish_when_any_provider_fails(monkeypatch):
+    import flows.costs as costs_flow
+
+    class Connector:
+        def __init__(self, name):
+            self.name = name
+
+    async def fake_build_connectors():
+        return [Connector("healthy"), Connector("fly")]
+
+    async def fake_collect(connector, period):
+        if connector.name == "fly":
+            raise RuntimeError("machines API 500")
+        return [
+            LineItem(
+                provider="healthy",
+                project="misc",
+                service="service",
+                amount=100,
+                estimated=False,
+            )
+        ]
+
+    wrote = False
+
+    async def fake_write_snapshot(snapshot):
+        nonlocal wrote
+        wrote = True
+
+    monkeypatch.setattr(costs_flow, "build_connectors", fake_build_connectors)
+    monkeypatch.setattr(costs_flow, "collect_connector", fake_collect)
+    monkeypatch.setattr(costs_flow, "write_snapshot", fake_write_snapshot)
+
+    with pytest.raises(RuntimeError, match="failed providers: fly"):
+        asyncio.run(
+            costs_flow.costs.fn(costs_flow.CostsConfig(dry_run=False))
+        )
+    assert wrote is False
 
 
 def test_cloudflare_raises_without_account(monkeypatch):

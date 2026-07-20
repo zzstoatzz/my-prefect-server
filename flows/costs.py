@@ -1,8 +1,9 @@
 """Collect infrastructure costs across providers and write a daily snapshot to PDS.
 
-Fans connectors out as best-effort tasks (one dead provider can't sink the
-snapshot), aggregates LineItems into an io.zzstoatzz.cost.snapshot record, and
-upserts it at rkey=YYYY-MM-DD so re-runs on the same day overwrite cleanly.
+Runs connectors as independently retried tasks, aggregates LineItems into an
+io.zzstoatzz.cost.snapshot record, and upserts it at rkey=YYYY-MM-DD so re-runs
+on the same day overwrite cleanly. A snapshot is published only when every
+provider succeeds; an unavailable provider must never masquerade as a $0 bill.
 
 Provider tokens are injected as env vars from Secret blocks via prefect.yaml;
 connector code reads os.environ directly. The evergreen site renders the result
@@ -70,17 +71,18 @@ class CostsConfig(BaseModel):
     )
 
 
-@task(cache_policy=NONE)
+@task(cache_policy=NONE, retries=3, retry_delay_seconds=[2, 10, 30])
 async def collect_connector(connector: Connector, period: Period) -> list[LineItem]:
-    """Run one connector. Best-effort: log and return [] rather than fail the flow."""
-    try:
-        items = await connector.collect(period)
-        total = sum(i.amount for i in items) / 100
-        print(f"  {connector.name}: {len(items)} line item(s), ${total:.2f}")
-        return items
-    except Exception as exc:
-        print(f"  {connector.name}: SKIPPED ({type(exc).__name__}: {exc})")
-        return []
+    """Collect one provider, retrying failures at the task level.
+
+    Exceptions deliberately propagate. Returning [] on failure makes an
+    unavailable provider indistinguishable from a real $0 bill and allows a
+    partial snapshot to replace the last complete one.
+    """
+    items = await connector.collect(period)
+    total = sum(i.amount for i in items) / 100
+    print(f"  {connector.name}: {len(items)} line item(s), ${total:.2f}")
+    return items
 
 
 OPERATOR_CREDS_BLOCK = "operator-atproto-creds"
@@ -131,8 +133,23 @@ async def costs(config: CostsConfig | None = None):
     print(f"collecting costs for {period.start.date()} .. {period.end.date()}")
 
     line_items: list[LineItem] = []
+    failed_providers: list[str] = []
     for connector in await build_connectors():
-        line_items.extend(await collect_connector(connector, period))
+        try:
+            line_items.extend(await collect_connector(connector, period))
+        except Exception as exc:
+            failed_providers.append(connector.name)
+            print(
+                f"  {connector.name}: UNMEASURED after retries "
+                f"({type(exc).__name__}: {exc})"
+            )
+
+    if failed_providers:
+        failed = ", ".join(failed_providers)
+        raise RuntimeError(
+            "refusing to publish an incomplete cost snapshot; "
+            f"failed providers: {failed}"
+        )
 
     snapshot = Snapshot(
         generated_at=dt.datetime.now(dt.UTC),
