@@ -103,7 +103,15 @@ def _machine_monthly_cents(guest: dict, region: str = "iad") -> int:
 
 
 def _volume_monthly_cents(volumes: list[dict]) -> int:
-    return round(sum(v.get("size_gb", 0) for v in volumes) * _VOLUME_GB_MO * 100)
+    return round(
+        sum(
+            v.get("size_gb", 0)
+            for v in volumes
+            if v.get("state") != "pending_destroy"
+        )
+        * _VOLUME_GB_MO
+        * 100
+    )
 
 
 def _allocate_cents(total_cents: int, weights: dict[str, int]) -> dict[str, int]:
@@ -229,10 +237,15 @@ class FlyConnector:
                     )
                 )
 
-            volume_gb = sum(v.get("size_gb", 0) for v in volumes)
-            if volumes:
-                unattached = sum(not v.get("attached_machine_id") for v in volumes)
-                usage = f"{len(volumes)} volume(s): {volume_gb:g} GB"
+            billable_volumes = [
+                volume for volume in volumes if volume.get("state") != "pending_destroy"
+            ]
+            volume_gb = sum(v.get("size_gb", 0) for v in billable_volumes)
+            if billable_volumes:
+                unattached = sum(
+                    not v.get("attached_machine_id") for v in billable_volumes
+                )
+                usage = f"{len(billable_volumes)} volume(s): {volume_gb:g} GB"
                 if unattached:
                     usage += f"; {unattached} unattached"
                 items.append(
@@ -240,7 +253,7 @@ class FlyConnector:
                         provider=PROVIDER,
                         project=project_for(app),
                         service=f"{app}:volumes",
-                        amount=_volume_monthly_cents(volumes),
+                        amount=_volume_monthly_cents(billable_volumes),
                         estimated=True,
                         usage=usage,
                         note="provisioned capacity at $0.15/GB-month; billed even unattached",

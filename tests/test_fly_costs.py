@@ -31,6 +31,15 @@ def test_persistent_volume_cost_is_included():
     assert _volume_monthly_cents([{"size_gb": 1}]) == 15
 
 
+def test_pending_destroy_volume_is_not_billed():
+    assert _volume_monthly_cents(
+        [
+            {"size_gb": 100, "state": "pending_destroy"},
+            {"size_gb": 1, "state": "created"},
+        ]
+    ) == 15
+
+
 def test_status_is_its_own_project():
     assert project_for("zzstoatzz-quickslice-status") == "status"
 
