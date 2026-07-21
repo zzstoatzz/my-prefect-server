@@ -189,9 +189,14 @@ publish-server-remote optimize="ReleaseFast":
     echo "==> syncing prefect-server source to $SERVER"
     rsync -az --delete \
       --exclude='.zig-cache' --exclude='zig-out' --exclude='runtime-lib' \
-      --exclude='.env' \
+      --exclude='.env' --exclude='.venv' \
       "$SERVER_SRC"/ root@"$SERVER":/opt/prefect-server/
-    ssh root@"$SERVER" 'chown -R root:root /opt/prefect-server'
+    ssh root@"$SERVER" 'find /opt/prefect-server \
+      \( -path /opt/prefect-server/.zig-cache \
+         -o -path /opt/prefect-server/zig-out \
+         -o -path /opt/prefect-server/runtime-lib \
+         -o -path /opt/prefect-server/.venv \) -prune \
+      -o -exec chown root:root {} +'
 
     ssh root@"$SERVER" "cat > /tmp/prefect-server-build.sh" <<SCRIPT
     #!/usr/bin/env bash

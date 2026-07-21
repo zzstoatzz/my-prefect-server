@@ -27,6 +27,7 @@ from prefect import flow, get_run_logger, task
 from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
+from prefect.tasks import exponential_backoff
 
 from mps.phi import clean_handle
 from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
@@ -176,6 +177,9 @@ def _format_stats(profile: dict[str, Any]) -> str:
     cache_expiration=timedelta(hours=4),
     persist_result=True,
     result_serializer="json",
+    retries=3,
+    retry_delay_seconds=exponential_backoff(backoff_factor=15),
+    retry_jitter_factor=1,
 )
 async def synthesize_summary(
     handle: str,
@@ -459,6 +463,9 @@ def _format_liked_posts(posts: list[dict[str, str]]) -> str:
     cache_expiration=timedelta(hours=4),
     persist_result=True,
     result_serializer="json",
+    retries=3,
+    retry_delay_seconds=exponential_backoff(backoff_factor=15),
+    retry_jitter_factor=1,
 )
 async def extract_likes_observations(
     handle: str,
