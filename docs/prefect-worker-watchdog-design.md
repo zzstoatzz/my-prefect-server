@@ -9,10 +9,12 @@ systemd -> prefect-worker-guard -> prefect worker start --pool home-pool --type 
 ```
 
 On 2026-06-22 the Prefect API reported no active `Running`, `Pending`, or `Late`
-flow runs, but the HeavyPad worker cgroup still contained roughly 240 stale
+flow runs, but the HeavyPad worker cgroup still contained roughly 240
 `prefect flow-run execute` / `python -m prefect.engine` descendants and was using
 about 55 GiB RSS. Manually terminating those child processes dropped host memory
-back to normal without affecting any active control-plane run.
+back to normal without affecting any active control-plane run. Later correlation
+showed that the flow clients were stuck shutting down failed WebSocket connections
+to the Zig server; this was not an independent process-worker leak.
 
 That is an unacceptable failure mode for a home worker: the control plane can be
 healthy while local worker infrastructure leaks enough process state to OOM the
@@ -47,11 +49,11 @@ rail.
 
 These are systemd safety limits, not an estimate that the worker legitimately
 needs 12 GiB. The guard observes the counters but does not use aggregate cgroup
-pressure to kill the worker or its flows; terminal-descendant cleanup addresses
-the known leak directly.
+pressure to kill the worker or its flows.
 
-The guard is intentionally outside Prefect. If the worker is the component
-leaking processes, relying on another flow to repair it is circular.
+The guard is intentionally outside Prefect because it supervises the worker
+control process. It has no authority over the lifecycle of individual flow
+processes.
 
 On 2026-06-25 the systemd unit and guard stayed alive while the Prefect worker
 stopped heartbeating. The cgroup was below the memory/task thresholds, so the
@@ -67,13 +69,11 @@ has stopped polling within Prefect's configured window. This gives the local
 supervisor an authoritative worker-liveness signal without polling the Prefect
 API.
 
-On 2026-07-01, we found a separate failure mode: local `prefect flow-run execute`
-descendants can remain alive after the server has already marked their flow run
-terminal. The guard scans the complete systemd unit for descendants with
-`PREFECT__FLOW_RUN_ID`, checks that run's state through the Prefect API, and
-terminates just those descendant PIDs when the server reports `COMPLETED`,
-`FAILED`, `CRASHED`, or `CANCELLED`. Scanning the unit preserves cleanup across
-worker generations without granting the guard process-group kill authority.
+On 2026-07-01, the guard added a terminal-descendant reaper based on the belief
+that the worker was independently leaking processes. That ownership model was
+wrong: a flow reaches terminal state before its client flushes events, closes
+WebSockets, and exits. The reaper therefore raced normal teardown and routinely
+turned successful infrastructure exits into SIGTERM status 143.
 
 On 2026-07-21, a malformed server response crashed the worker while multiple
 flows were healthy. The guard's unconditional process-group cleanup then sent
@@ -81,16 +81,35 @@ flows were healthy. The guard's unconditional process-group cleanup then sent
 multiple workload failures. The guard no longer terminates a worker process
 group for any internal recovery path. Unexpected worker exits leave flow
 children running; health-triggered replacement kills the `uv` wrapper and inner
-Prefect scheduler but excludes flow-run lineages; terminal cleanup scans the
-entire systemd unit so it still finds children from older worker generations.
+Prefect scheduler but excludes flow-run lineages.
+
+## terminal-descendant RCA and removal
+
+On 2026-07-22, the terminal reaper was removed after reproducing both sides of
+the failure in isolated HeavyPad environments:
+
+- A stock Prefect 3.7.2 server and process worker returned an ordinary no-op
+  flow to the worker's two control processes about 1.5 seconds after the flow
+  reached `Completed`.
+- A deliberately detached child that inherited the flow engine's output pipes
+  reproduced the three-process accumulation. This proves that terminal state
+  alone cannot distinguish normal teardown from an escaped workload process.
+- Historical production logs tied the long-lived stacks to repeated
+  `websockets.client` keepalive and close failures. In one representative run,
+  the flow completed, the client remained in failed WebSocket shutdown for 49
+  seconds, and the guard then caused the runner's status-143 exit.
+- After the Zig HTTP/WebSocket connection-lifetime fix, recent guard matches
+  occurred only 0.7–2.6 seconds after completion: the normal teardown window.
+- An isolated build of the fixed Zig server completed concurrent Prefect 3.7.2
+  runs without WebSocket errors or retained flow processes.
+
+The root fix is the server transport ownership repair. The guard now supervises
+only worker liveness and control-process replacement, and it never infers local
+process ownership from a control-plane terminal state.
 
 ## future direction
 
-The next version should improve local process awareness:
-
-- track child counts and oldest descendant age directly;
-- emit the remaining planned Prefect event `prefect.worker.orphaned-processes-detected`
-  (the guard already logs `resource-observed` / `resource-threshold-exceeded` as journal
-  events and emits the `prefect.worker.restart-requested` Prefect event);
-- eventually subsume enough worker behavior that the guard can become a native
-  worker runtime instead of a wrapper around `prefect worker start`.
+If worker liveness remains stable, the next simplification is to remove the Zig
+wrapper entirely and let systemd supervise `prefect worker start` directly. That
+requires a separate soak of the documented local healthcheck failure modes; it
+is not coupled to flow-process cleanup.

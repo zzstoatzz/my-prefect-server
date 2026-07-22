@@ -13,8 +13,6 @@ const Config = struct {
     healthcheck_url: ?[]const u8 = null,
     healthcheck_startup_grace_seconds: u64 = 120,
     healthcheck_unhealthy_retries: u64 = 3,
-    terminal_descendant_check_seconds: u64 = 60,
-    terminal_descendant_terminate_seconds: u64 = 10,
 };
 
 const Snapshot = struct {
@@ -86,7 +84,6 @@ fn printUsage(err: anyerror) !void {
     std.debug.print("  CHECK_INTERVAL_SECONDS=30\n", .{});
     std.debug.print("  HEALTHCHECK_URL=http://127.0.0.1:8080/health\n", .{});
     std.debug.print("  HEALTHCHECK_STARTUP_GRACE_SECONDS=120\n  HEALTHCHECK_UNHEALTHY_RETRIES=3\n", .{});
-    std.debug.print("  TERMINAL_DESCENDANT_CHECK_SECONDS=60\n  TERMINAL_DESCENDANT_TERMINATE_SECONDS=10\n", .{});
 }
 
 fn loadConfig(gpa: std.mem.Allocator, io: std.Io, path: []const u8) !Config {
@@ -122,10 +119,6 @@ fn loadConfig(gpa: std.mem.Allocator, io: std.Io, path: []const u8) !Config {
             config.healthcheck_startup_grace_seconds = try parsePositiveU64(value);
         } else if (std.mem.eql(u8, key, "HEALTHCHECK_UNHEALTHY_RETRIES")) {
             config.healthcheck_unhealthy_retries = try parsePositiveU64(value);
-        } else if (std.mem.eql(u8, key, "TERMINAL_DESCENDANT_CHECK_SECONDS")) {
-            config.terminal_descendant_check_seconds = try parsePositiveU64(value);
-        } else if (std.mem.eql(u8, key, "TERMINAL_DESCENDANT_TERMINATE_SECONDS")) {
-            config.terminal_descendant_terminate_seconds = try parsePositiveU64(value);
         } else {
             return error.UnknownConfigKey;
         }
@@ -178,7 +171,6 @@ fn runGuard(gpa: std.mem.Allocator, io: std.Io, config: *const Config) !void {
         const pid = child.id.?;
         const pgid = pid;
         const started_at = unixSeconds();
-        var last_terminal_descendant_check: i64 = 0;
         var unhealthy_checks: u64 = 0;
         var state = WorkerState{ .child = child };
         var waiter = std.Thread.spawn(.{}, waitForWorker, .{ io, &state }) catch |err| {
@@ -204,12 +196,6 @@ fn runGuard(gpa: std.mem.Allocator, io: std.Io, config: *const Config) !void {
             }
 
             const snapshot = collectSnapshot(gpa, io, config, pgid);
-            const now = unixSeconds();
-            if (config.terminal_descendant_check_seconds > 0 and now > 0 and (last_terminal_descendant_check == 0 or now - last_terminal_descendant_check >= config.terminal_descendant_check_seconds)) {
-                last_terminal_descendant_check = now;
-                cleanupTerminalDescendants(gpa, io, config, pid, pgid);
-            }
-
             if (healthcheckUnhealthy(gpa, io, config, started_at)) {
                 unhealthy_checks += 1;
                 logHealthcheckFailure(config, pid, pgid, unhealthy_checks);
@@ -256,16 +242,6 @@ fn spawnWorker(io: std.Io, config: *const Config) !std.process.Child {
     });
 }
 
-fn processAlive(pid: posix.pid_t) bool {
-    const rc = std.c.kill(pid, @enumFromInt(0));
-    if (rc == 0) return true;
-    return switch (posix.errno(rc)) {
-        .SRCH => false,
-        .PERM => true,
-        else => true,
-    };
-}
-
 fn collectSnapshot(gpa: std.mem.Allocator, io: std.Io, config: *const Config, pgid: posix.pid_t) Snapshot {
     var snapshot = Snapshot{};
 
@@ -278,75 +254,6 @@ fn collectSnapshot(gpa: std.mem.Allocator, io: std.Io, config: *const Config, pg
 
     _ = pgid;
     return snapshot;
-}
-
-fn cleanupTerminalDescendants(gpa: std.mem.Allocator, io: std.Io, config: *const Config, worker_pid: posix.pid_t, pgid: posix.pid_t) void {
-    if (builtin.os.tag != .linux) return;
-
-    const flow_processes = collectFlowProcesses(gpa, io, config, pgid) catch |err| {
-        logTerminalDescendantScanError(config, worker_pid, pgid, @errorName(err));
-        return;
-    };
-    defer freeFlowProcesses(gpa, flow_processes);
-    if (flow_processes.len > 0) logTerminalDescendantScan(config, worker_pid, pgid, flow_processes.len);
-
-    for (flow_processes, 0..) |flow_process, index| {
-        if (seenFlowRun(flow_processes[0..index], flow_process.flow_run_id)) continue;
-
-        const state_type = flowRunStateType(gpa, io, flow_process.flow_run_id) catch null;
-        if (state_type == null) continue;
-        defer gpa.free(state_type.?);
-
-        if (!isTerminalState(state_type.?)) continue;
-
-        const affected = countFlowRunProcesses(flow_processes, flow_process.flow_run_id);
-        logTerminalDescendantObserved(config, worker_pid, pgid, flow_process.flow_run_id, flow_process.flow_name, state_type.?, affected);
-        terminateFlowRunProcesses(io, flow_processes, flow_process.flow_run_id, config.terminal_descendant_terminate_seconds);
-        logTerminalDescendantTerminated(config, worker_pid, pgid, flow_process.flow_run_id, state_type.?, affected);
-    }
-}
-
-fn collectFlowProcesses(gpa: std.mem.Allocator, io: std.Io, config: *const Config, pgid: posix.pid_t) ![]FlowProcess {
-    var proc_dir = try std.Io.Dir.openDirAbsolute(io, "/proc", .{ .iterate = true });
-    defer proc_dir.close(io);
-
-    var processes: std.ArrayList(FlowProcess) = .empty;
-    errdefer {
-        for (processes.items) |process| {
-            gpa.free(process.flow_run_id);
-            if (process.flow_name) |flow_name| gpa.free(flow_name);
-        }
-        processes.deinit(gpa);
-    }
-
-    var iterator = proc_dir.iterate();
-    while (try iterator.next(io)) |entry| {
-        const pid_int = std.fmt.parseInt(i32, entry.name, 10) catch continue;
-        const pid: posix.pid_t = @intCast(pid_int);
-        if (config.systemd_unit) |unit| {
-            if (!processBelongsToSystemdUnit(gpa, io, pid, unit)) continue;
-        } else {
-            const process_pgid = readProcessGroupId(gpa, io, pid) catch continue;
-            if (process_pgid != pgid) continue;
-        }
-
-        const process = readFlowProcess(gpa, io, pid) catch continue;
-        if (process) |flow_process| try processes.append(gpa, flow_process);
-    }
-
-    return try processes.toOwnedSlice(gpa);
-}
-
-fn processBelongsToSystemdUnit(gpa: std.mem.Allocator, io: std.Io, pid: posix.pid_t, unit: []const u8) bool {
-    var path_buf: [64]u8 = undefined;
-    const path = std.fmt.bufPrint(&path_buf, "/proc/{}/cgroup", .{pid}) catch return false;
-    const cgroup = readFileStreamingAlloc(gpa, io, path, 64 * 1024) catch return false;
-    defer gpa.free(cgroup);
-    return cgroupContainsUnit(cgroup, unit);
-}
-
-fn cgroupContainsUnit(cgroup: []const u8, unit: []const u8) bool {
-    return std.mem.indexOf(u8, cgroup, unit) != null;
 }
 
 fn readProcessGroupId(gpa: std.mem.Allocator, io: std.Io, pid: posix.pid_t) !posix.pid_t {
@@ -408,120 +315,6 @@ fn envValue(environ: []const u8, key: []const u8) ?[]const u8 {
         if (std.mem.eql(u8, entry[0..key.len], key)) return entry[key.len + 1 ..];
     }
     return null;
-}
-
-fn flowRunStateType(gpa: std.mem.Allocator, io: std.Io, flow_run_id: []const u8) !?[]u8 {
-    const api_url = envVarOwned(gpa, "PREFECT_API_URL") catch return null;
-    defer gpa.free(api_url);
-    const auth = envVarOwned(gpa, "PREFECT_API_AUTH_STRING") catch return null;
-    defer gpa.free(auth);
-
-    const separator: []const u8 = if (std.mem.endsWith(u8, api_url, "/")) "" else "/";
-    const url = try std.fmt.allocPrint(gpa, "{s}{s}flow_runs/{s}", .{ api_url, separator, flow_run_id });
-    defer gpa.free(url);
-
-    const argv = [_][]const u8{
-        "curl",
-        "-fsS",
-        "--max-time",
-        "10",
-        "-u",
-        auth,
-        url,
-    };
-    const result = std.process.run(gpa, io, .{
-        .argv = &argv,
-        .stdout_limit = .limited(256 * 1024),
-        .stderr_limit = .limited(16 * 1024),
-    }) catch return null;
-    defer gpa.free(result.stdout);
-    defer gpa.free(result.stderr);
-
-    switch (result.term) {
-        .exited => |code| if (code != 0) return null,
-        else => return null,
-    }
-
-    const state_type = jsonStringField(result.stdout, "state_type") orelse return null;
-    return try gpa.dupe(u8, state_type);
-}
-
-fn envVarOwned(gpa: std.mem.Allocator, comptime name: [:0]const u8) ![]u8 {
-    const value = std.c.getenv(name.ptr) orelse return error.MissingEnvironmentVariable;
-    return try gpa.dupe(u8, std.mem.span(value));
-}
-
-fn jsonStringField(json: []const u8, field_name: []const u8) ?[]const u8 {
-    var name_buf: [128]u8 = undefined;
-    if (field_name.len + 2 > name_buf.len) return null;
-    name_buf[0] = '"';
-    @memcpy(name_buf[1 .. 1 + field_name.len], field_name);
-    name_buf[1 + field_name.len] = '"';
-    const needle = name_buf[0 .. field_name.len + 2];
-
-    const field_start = std.mem.indexOf(u8, json, needle) orelse return null;
-    const colon_rel = std.mem.indexOfScalar(u8, json[field_start + needle.len ..], ':') orelse return null;
-    var index = field_start + needle.len + colon_rel + 1;
-    while (index < json.len and std.ascii.isWhitespace(json[index])) : (index += 1) {}
-    if (index >= json.len or json[index] != '"') return null;
-    index += 1;
-    const value_start = index;
-    while (index < json.len and json[index] != '"') : (index += 1) {}
-    if (index >= json.len) return null;
-    return json[value_start..index];
-}
-
-fn isTerminalState(state_type: []const u8) bool {
-    return std.mem.eql(u8, state_type, "COMPLETED") or
-        std.mem.eql(u8, state_type, "FAILED") or
-        std.mem.eql(u8, state_type, "CRASHED") or
-        std.mem.eql(u8, state_type, "CANCELLED");
-}
-
-fn seenFlowRun(processes: []const FlowProcess, flow_run_id: []const u8) bool {
-    for (processes) |process| {
-        if (std.mem.eql(u8, process.flow_run_id, flow_run_id)) return true;
-    }
-    return false;
-}
-
-fn countFlowRunProcesses(processes: []const FlowProcess, flow_run_id: []const u8) u64 {
-    var count: u64 = 0;
-    for (processes) |process| {
-        if (std.mem.eql(u8, process.flow_run_id, flow_run_id)) count += 1;
-    }
-    return count;
-}
-
-fn terminateFlowRunProcesses(io: std.Io, processes: []const FlowProcess, flow_run_id: []const u8, graceful_seconds: u64) void {
-    for (processes) |process| {
-        if (!std.mem.eql(u8, process.flow_run_id, flow_run_id)) continue;
-        posix.kill(process.pid, posix.SIG.TERM) catch {};
-    }
-
-    var remaining = graceful_seconds;
-    while (remaining > 0) : (remaining -= 1) {
-        var any_alive = false;
-        for (processes) |process| {
-            if (!std.mem.eql(u8, process.flow_run_id, flow_run_id)) continue;
-            if (processAlive(process.pid)) any_alive = true;
-        }
-        if (!any_alive) return;
-        sleepSeconds(io, 1);
-    }
-
-    for (processes) |process| {
-        if (!std.mem.eql(u8, process.flow_run_id, flow_run_id)) continue;
-        if (processAlive(process.pid)) posix.kill(process.pid, posix.SIG.KILL) catch {};
-    }
-}
-
-fn freeFlowProcesses(gpa: std.mem.Allocator, processes: []const FlowProcess) void {
-    for (processes) |process| {
-        gpa.free(process.flow_run_id);
-        if (process.flow_name) |flow_name| gpa.free(flow_name);
-    }
-    gpa.free(processes);
 }
 
 fn readSystemdProperty(gpa: std.mem.Allocator, io: std.Io, unit: []const u8, property: []const u8) !u64 {
@@ -698,57 +491,6 @@ fn logHealthcheckRestart(config: *const Config, pid: posix.pid_t, pgid: posix.pi
         "{{\"event\":\"prefect.worker.restart-requested\",\"worker_name\":\"{s}\",\"work_pool_name\":\"{s}\",\"worker_pid\":{},\"process_group_id\":{},\"threshold_name\":\"local_worker_healthcheck\",\"observed_value\":{}}}\n",
         .{ config.worker_name, config.work_pool_name, pid, pgid, failure_count },
     );
-}
-
-fn logTerminalDescendantScan(config: *const Config, pid: posix.pid_t, pgid: posix.pid_t, process_count: usize) void {
-    std.debug.print(
-        "{{\"event\":\"prefect.worker.terminal-descendant-scan\",\"worker_name\":\"{s}\",\"work_pool_name\":\"{s}\",\"worker_pid\":{},\"process_group_id\":{},\"process_count\":{}}}\n",
-        .{ config.worker_name, config.work_pool_name, pid, pgid, process_count },
-    );
-}
-
-fn logTerminalDescendantScanError(config: *const Config, pid: posix.pid_t, pgid: posix.pid_t, err: []const u8) void {
-    std.debug.print(
-        "{{\"event\":\"prefect.worker.terminal-descendant-scan-error\",\"worker_name\":\"{s}\",\"work_pool_name\":\"{s}\",\"worker_pid\":{},\"process_group_id\":{},\"error\":\"{s}\"}}\n",
-        .{ config.worker_name, config.work_pool_name, pid, pgid, err },
-    );
-}
-
-fn logTerminalDescendantObserved(
-    config: *const Config,
-    pid: posix.pid_t,
-    pgid: posix.pid_t,
-    flow_run_id: []const u8,
-    flow_name: ?[]const u8,
-    state_type: []const u8,
-    process_count: u64,
-) void {
-    std.debug.print(
-        "{{\"event\":\"prefect.worker.terminal-descendant-observed\",\"worker_name\":\"{s}\",\"work_pool_name\":\"{s}\",\"worker_pid\":{},\"process_group_id\":{},\"flow_run_id\":\"{s}\",\"state_type\":\"{s}\",\"process_count\":{}",
-        .{ config.worker_name, config.work_pool_name, pid, pgid, flow_run_id, state_type, process_count },
-    );
-    if (flow_name) |name| std.debug.print(",\"flow_name\":\"{s}\"", .{name});
-    std.debug.print("}}\n", .{});
-}
-
-fn logTerminalDescendantTerminated(
-    config: *const Config,
-    pid: posix.pid_t,
-    pgid: posix.pid_t,
-    flow_run_id: []const u8,
-    state_type: []const u8,
-    process_count: u64,
-) void {
-    std.debug.print(
-        "{{\"event\":\"prefect.worker.terminal-descendant-terminated\",\"worker_name\":\"{s}\",\"work_pool_name\":\"{s}\",\"worker_pid\":{},\"process_group_id\":{},\"flow_run_id\":\"{s}\",\"state_type\":\"{s}\",\"process_count\":{}}}\n",
-        .{ config.worker_name, config.work_pool_name, pid, pgid, flow_run_id, state_type, process_count },
-    );
-}
-
-test "systemd cgroup matching includes prior worker generations in the unit" {
-    const cgroup = "0::/system.slice/prefect-home-worker.service\n";
-    try std.testing.expect(cgroupContainsUnit(cgroup, "prefect-home-worker.service"));
-    try std.testing.expect(!cgroupContainsUnit(cgroup, "other-worker.service"));
 }
 
 fn sleepSeconds(io: std.Io, seconds: u64) void {

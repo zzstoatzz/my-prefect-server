@@ -50,12 +50,9 @@ sudo systemctl restart prefect-home-worker
   every descendant carrying `PREFECT__FLOW_RUN_ID`. Active flow-run children
   remain alive and continue talking to the Prefect API independently.
 - The guard does not poll the Prefect API for worker liveness. It uses Prefect's
-  local worker health endpoint for that. It does make a bounded API read for any
-  local descendant in the whole systemd unit that advertises
-  `PREFECT__FLOW_RUN_ID`; if the server already says that run is terminal, the
-  guard terminates only those descendant PIDs. Scanning the unit instead of the
-  current worker process group also cleans terminal descendants left behind by
-  earlier worker generations.
+  local worker health endpoint for that. It never terminates flow-run processes;
+  terminal state belongs to the flow engine and is not evidence that process
+  teardown has finished.
 - Retargeting a deployment onto `home-pool`: on the current (3.7.2) server, changing a
   deployment's work pool via `prefect deploy` leaves the old `work_queue_id` — delete and
   recreate the deployment so it binds to `home-pool`'s queue.
