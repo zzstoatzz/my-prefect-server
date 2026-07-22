@@ -194,6 +194,11 @@ fn runGuard(gpa: std.mem.Allocator, io: std.Io, config: *const Config) !void {
             if (state.done.load(.acquire)) {
                 waiter.join();
                 logEvent("worker-exited", config, pid, pgid, null, state.term);
+                // The supervised PID is an `uv` wrapper. If it exits before
+                // its inner Prefect scheduler, retire the remaining control
+                // processes before starting a replacement. Flow-run lineages
+                // are explicitly preserved by terminateWorkerInfrastructure.
+                terminateWorkerInfrastructure(gpa, io, pgid);
                 gpa.destroy(child);
                 break;
             }
