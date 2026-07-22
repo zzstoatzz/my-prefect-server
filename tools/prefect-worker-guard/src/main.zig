@@ -9,11 +9,6 @@ const Config = struct {
     worker_name: []const u8 = "prefect-worker",
     work_pool_name: []const u8 = "default",
     check_interval_seconds: u64 = 30,
-    graceful_shutdown_seconds: u64 = 60,
-    memory_soft_bytes: ?u64 = null,
-    memory_hard_bytes: ?u64 = null,
-    tasks_soft: ?u64 = null,
-    tasks_hard: ?u64 = null,
     systemd_unit: ?[]const u8 = null,
     healthcheck_url: ?[]const u8 = null,
     healthcheck_startup_grace_seconds: u64 = 120,
@@ -25,12 +20,6 @@ const Config = struct {
 const Snapshot = struct {
     memory_current_bytes: ?u64 = null,
     tasks_current: ?u64 = null,
-};
-
-const RestartReason = struct {
-    threshold_name: []const u8,
-    threshold_value: u64,
-    observed_value: u64,
 };
 
 const JournalRestart = struct {
@@ -94,9 +83,7 @@ fn printUsage(err: anyerror) !void {
     std.debug.print("\nconfig keys:\n", .{});
     std.debug.print("  WORKER_COMMAND=/path/to/uv\\0run\\0--with\\0prefect==3.7.2\\0prefect\\0worker\\0start\\0...\n", .{});
     std.debug.print("  WORKER_NAME=heavypad\n  WORK_POOL_NAME=home-pool\n  SYSTEMD_UNIT=prefect-home-worker.service\n", .{});
-    std.debug.print("  CHECK_INTERVAL_SECONDS=30\n  GRACEFUL_SHUTDOWN_SECONDS=60\n", .{});
-    std.debug.print("  MEMORY_SOFT_BYTES=12884901888\n  MEMORY_HARD_BYTES=19327352832\n", .{});
-    std.debug.print("  TASKS_SOFT=500\n  TASKS_HARD=800\n", .{});
+    std.debug.print("  CHECK_INTERVAL_SECONDS=30\n", .{});
     std.debug.print("  HEALTHCHECK_URL=http://127.0.0.1:8080/health\n", .{});
     std.debug.print("  HEALTHCHECK_STARTUP_GRACE_SECONDS=120\n  HEALTHCHECK_UNHEALTHY_RETRIES=3\n", .{});
     std.debug.print("  TERMINAL_DESCENDANT_CHECK_SECONDS=60\n  TERMINAL_DESCENDANT_TERMINATE_SECONDS=10\n", .{});
@@ -127,16 +114,6 @@ fn loadConfig(gpa: std.mem.Allocator, io: std.Io, path: []const u8) !Config {
             config.work_pool_name = value;
         } else if (std.mem.eql(u8, key, "CHECK_INTERVAL_SECONDS")) {
             config.check_interval_seconds = try parsePositiveU64(value);
-        } else if (std.mem.eql(u8, key, "GRACEFUL_SHUTDOWN_SECONDS")) {
-            config.graceful_shutdown_seconds = try parsePositiveU64(value);
-        } else if (std.mem.eql(u8, key, "MEMORY_SOFT_BYTES")) {
-            config.memory_soft_bytes = try parsePositiveU64(value);
-        } else if (std.mem.eql(u8, key, "MEMORY_HARD_BYTES")) {
-            config.memory_hard_bytes = try parsePositiveU64(value);
-        } else if (std.mem.eql(u8, key, "TASKS_SOFT")) {
-            config.tasks_soft = try parsePositiveU64(value);
-        } else if (std.mem.eql(u8, key, "TASKS_HARD")) {
-            config.tasks_hard = try parsePositiveU64(value);
         } else if (std.mem.eql(u8, key, "SYSTEMD_UNIT")) {
             config.systemd_unit = value;
         } else if (std.mem.eql(u8, key, "HEALTHCHECK_URL")) {
@@ -217,7 +194,6 @@ fn runGuard(gpa: std.mem.Allocator, io: std.Io, config: *const Config) !void {
             if (state.done.load(.acquire)) {
                 waiter.join();
                 logEvent("worker-exited", config, pid, pgid, null, state.term);
-                cleanupGroup(io, pgid);
                 gpa.destroy(child);
                 break;
             }
@@ -235,7 +211,7 @@ fn runGuard(gpa: std.mem.Allocator, io: std.Io, config: *const Config) !void {
                 if (unhealthy_checks >= config.healthcheck_unhealthy_retries) {
                     logEvent("healthcheck-failed", config, pid, pgid, snapshot, null);
                     logHealthcheckRestart(config, pid, pgid, unhealthy_checks);
-                    terminateGroup(io, pgid, config.graceful_shutdown_seconds);
+                    terminateWorkerOnly(pid);
                     while (!state.done.load(.acquire)) sleepSeconds(io, 1);
                     waiter.join();
                     gpa.destroy(child);
@@ -248,17 +224,7 @@ fn runGuard(gpa: std.mem.Allocator, io: std.Io, config: *const Config) !void {
             if (journalRestartReason(gpa, io, config, started_at)) |reason| {
                 logEvent("journal-restart-signal", config, pid, pgid, snapshot, null);
                 logJournalRestart(config, pid, pgid, reason);
-                terminateGroup(io, pgid, config.graceful_shutdown_seconds);
-                while (!state.done.load(.acquire)) sleepSeconds(io, 1);
-                waiter.join();
-                gpa.destroy(child);
-                break;
-            }
-
-            if (restartReason(config, snapshot)) |reason| {
-                logEvent("resource-threshold-exceeded", config, pid, pgid, snapshot, null);
-                logRestart(config, pid, pgid, reason);
-                terminateGroup(io, pgid, config.graceful_shutdown_seconds);
+                terminateWorkerOnly(pid);
                 while (!state.done.load(.acquire)) sleepSeconds(io, 1);
                 waiter.join();
                 gpa.destroy(child);
@@ -312,7 +278,7 @@ fn collectSnapshot(gpa: std.mem.Allocator, io: std.Io, config: *const Config, pg
 fn cleanupTerminalDescendants(gpa: std.mem.Allocator, io: std.Io, config: *const Config, worker_pid: posix.pid_t, pgid: posix.pid_t) void {
     if (builtin.os.tag != .linux) return;
 
-    const flow_processes = collectFlowProcesses(gpa, io, pgid) catch |err| {
+    const flow_processes = collectFlowProcesses(gpa, io, config, pgid) catch |err| {
         logTerminalDescendantScanError(config, worker_pid, pgid, @errorName(err));
         return;
     };
@@ -335,7 +301,7 @@ fn cleanupTerminalDescendants(gpa: std.mem.Allocator, io: std.Io, config: *const
     }
 }
 
-fn collectFlowProcesses(gpa: std.mem.Allocator, io: std.Io, pgid: posix.pid_t) ![]FlowProcess {
+fn collectFlowProcesses(gpa: std.mem.Allocator, io: std.Io, config: *const Config, pgid: posix.pid_t) ![]FlowProcess {
     var proc_dir = try std.Io.Dir.openDirAbsolute(io, "/proc", .{ .iterate = true });
     defer proc_dir.close(io);
 
@@ -352,14 +318,30 @@ fn collectFlowProcesses(gpa: std.mem.Allocator, io: std.Io, pgid: posix.pid_t) !
     while (try iterator.next(io)) |entry| {
         const pid_int = std.fmt.parseInt(i32, entry.name, 10) catch continue;
         const pid: posix.pid_t = @intCast(pid_int);
-        const process_pgid = readProcessGroupId(gpa, io, pid) catch continue;
-        if (process_pgid != pgid) continue;
+        if (config.systemd_unit) |unit| {
+            if (!processBelongsToSystemdUnit(gpa, io, pid, unit)) continue;
+        } else {
+            const process_pgid = readProcessGroupId(gpa, io, pid) catch continue;
+            if (process_pgid != pgid) continue;
+        }
 
         const process = readFlowProcess(gpa, io, pid) catch continue;
         if (process) |flow_process| try processes.append(gpa, flow_process);
     }
 
     return try processes.toOwnedSlice(gpa);
+}
+
+fn processBelongsToSystemdUnit(gpa: std.mem.Allocator, io: std.Io, pid: posix.pid_t, unit: []const u8) bool {
+    var path_buf: [64]u8 = undefined;
+    const path = std.fmt.bufPrint(&path_buf, "/proc/{}/cgroup", .{pid}) catch return false;
+    const cgroup = readFileStreamingAlloc(gpa, io, path, 64 * 1024) catch return false;
+    defer gpa.free(cgroup);
+    return cgroupContainsUnit(cgroup, unit);
+}
+
+fn cgroupContainsUnit(cgroup: []const u8, unit: []const u8) bool {
+    return std.mem.indexOf(u8, cgroup, unit) != null;
 }
 
 fn readProcessGroupId(gpa: std.mem.Allocator, io: std.Io, pid: posix.pid_t) !posix.pid_t {
@@ -556,26 +538,6 @@ fn readSystemdProperty(gpa: std.mem.Allocator, io: std.Io, unit: []const u8, pro
     return try std.fmt.parseInt(u64, value, 10);
 }
 
-fn restartReason(config: *const Config, snapshot: Snapshot) ?RestartReason {
-    if (snapshot.memory_current_bytes) |observed| {
-        if (config.memory_hard_bytes) |limit| {
-            if (observed > limit) return .{ .threshold_name = "memory_hard_bytes", .threshold_value = limit, .observed_value = observed };
-        }
-        if (config.memory_soft_bytes) |limit| {
-            if (observed > limit) return .{ .threshold_name = "memory_soft_bytes", .threshold_value = limit, .observed_value = observed };
-        }
-    }
-    if (snapshot.tasks_current) |observed| {
-        if (config.tasks_hard) |limit| {
-            if (observed > limit) return .{ .threshold_name = "tasks_hard", .threshold_value = limit, .observed_value = observed };
-        }
-        if (config.tasks_soft) |limit| {
-            if (observed > limit) return .{ .threshold_name = "tasks_soft", .threshold_value = limit, .observed_value = observed };
-        }
-    }
-    return null;
-}
-
 fn healthcheckUnhealthy(gpa: std.mem.Allocator, io: std.Io, config: *const Config, started_at: i64) bool {
     const url = config.healthcheck_url orelse return false;
 
@@ -656,24 +618,12 @@ fn unixSeconds() i64 {
     }
 }
 
-fn terminateGroup(io: std.Io, pgid: posix.pid_t, graceful_seconds: u64) void {
-    const group_pid = -pgid;
-    posix.kill(group_pid, posix.SIG.TERM) catch {};
-
-    var remaining = graceful_seconds;
-    while (remaining > 0) : (remaining -= 1) {
-        if (!processAlive(pgid)) return;
-        sleepSeconds(io, 1);
-    }
-
-    posix.kill(group_pid, posix.SIG.KILL) catch {};
-}
-
-fn cleanupGroup(io: std.Io, pgid: posix.pid_t) void {
-    const group_pid = -pgid;
-    posix.kill(group_pid, posix.SIG.TERM) catch {};
-    sleepSeconds(io, 1);
-    posix.kill(group_pid, posix.SIG.KILL) catch {};
+fn terminateWorkerOnly(pid: posix.pid_t) void {
+    // Flow-run processes share the worker's process group. Killing the group
+    // turns a scheduler/control-plane failure into collateral flow failures.
+    // SIGKILL only the unhealthy worker so its independently-running flow
+    // children can finish and persist their own terminal states.
+    posix.kill(pid, posix.SIG.KILL) catch {};
 }
 
 fn logEvent(
@@ -701,13 +651,6 @@ fn logEvent(
     };
 
     std.debug.print("}}\n", .{});
-}
-
-fn logRestart(config: *const Config, pid: posix.pid_t, pgid: posix.pid_t, reason: RestartReason) void {
-    std.debug.print(
-        "{{\"event\":\"prefect.worker.restart-requested\",\"worker_name\":\"{s}\",\"work_pool_name\":\"{s}\",\"worker_pid\":{},\"process_group_id\":{},\"threshold_name\":\"{s}\",\"threshold_value\":{},\"observed_value\":{}}}\n",
-        .{ config.worker_name, config.work_pool_name, pid, pgid, reason.threshold_name, reason.threshold_value, reason.observed_value },
-    );
 }
 
 fn logJournalRestart(config: *const Config, pid: posix.pid_t, pgid: posix.pid_t, reason: JournalRestart) void {
@@ -774,6 +717,12 @@ fn logTerminalDescendantTerminated(
         "{{\"event\":\"prefect.worker.terminal-descendant-terminated\",\"worker_name\":\"{s}\",\"work_pool_name\":\"{s}\",\"worker_pid\":{},\"process_group_id\":{},\"flow_run_id\":\"{s}\",\"state_type\":\"{s}\",\"process_count\":{}}}\n",
         .{ config.worker_name, config.work_pool_name, pid, pgid, flow_run_id, state_type, process_count },
     );
+}
+
+test "systemd cgroup matching includes prior worker generations in the unit" {
+    const cgroup = "0::/system.slice/prefect-home-worker.service\n";
+    try std.testing.expect(cgroupContainsUnit(cgroup, "prefect-home-worker.service"));
+    try std.testing.expect(!cgroupContainsUnit(cgroup, "other-worker.service"));
 }
 
 fn sleepSeconds(io: std.Io, seconds: u64) void {

@@ -35,28 +35,25 @@ sudo systemctl restart prefect-home-worker
 - The unit sets `PATH` to include `~/.local/bin` because the process worker spawns
   `uv run …` for each flow run.
 - The unit is cgroup-limited (`MemoryHigh=12G`, `MemoryMax=18G`, `TasksMax=800`)
-  and `KillMode=control-group` so leaked flow-run children cannot consume the
-  whole laptop. `Restart=always` brings the guard back if systemd kills it.
-- The guard checks the unit's systemd counters every 30 seconds and cycles the
-  worker process group if memory exceeds 12 GiB or task count exceeds 500.
-  Those are watchdog thresholds, not capacity targets: normal operation should
-  remain in the low single-digit GiB range with a few hundred tasks. Crossing
-  either threshold means the process worker is probably leaking descendants or
-  wedged, and should be restarted before it reaches the old emergency shape.
+  and `KillMode=control-group` so a genuinely runaway service cannot consume the
+  whole laptop. Those systemd hard limits are the final machine safety rail;
+  the guard only observes the counters and never kills work based on them.
 - The worker starts with Prefect's local `--with-healthcheck` endpoint enabled.
-  The guard checks `http://127.0.0.1:8080/health` and restarts the process group
+  The guard checks `http://127.0.0.1:8080/health` and replaces only the worker PID
   after three consecutive failures past startup grace. This catches the
   dead-but-running case where the OS process is alive but the worker has stopped
   successfully polling for runs.
 - The guard also scans the local systemd journal for worker-channel heartbeat
-  failures from the current worker process generation. If Prefect's websocket
-  heartbeat loop dies but the worker process stays alive, the guard restarts the
-  process group instead of leaving an OFFLINE worker that still looks alive to
-  systemd.
+  failures from the current worker process generation. If the worker is wedged,
+  the guard replaces only that worker PID. Active flow-run children remain alive
+  and continue talking to the Prefect API independently.
 - The guard does not poll the Prefect API for worker liveness. It uses Prefect's
   local worker health endpoint for that. It does make a bounded API read for any
-  local descendant that advertises `PREFECT__FLOW_RUN_ID`; if the server already
-  says that run is terminal, the guard terminates only those descendant PIDs.
+  local descendant in the whole systemd unit that advertises
+  `PREFECT__FLOW_RUN_ID`; if the server already says that run is terminal, the
+  guard terminates only those descendant PIDs. Scanning the unit instead of the
+  current worker process group also cleans terminal descendants left behind by
+  earlier worker generations.
 - Retargeting a deployment onto `home-pool`: on the current (3.7.2) server, changing a
   deployment's work pool via `prefect deploy` leaves the old `work_queue_id` — delete and
   recreate the deployment so it binds to `home-pool`'s queue.

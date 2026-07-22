@@ -30,8 +30,8 @@ The guard:
 3. Periodically reads systemd cgroup counters for the owning unit.
 4. Checks Prefect's local worker health endpoint when enabled.
 5. Emits machine-readable journal logs.
-6. Sends `SIGTERM`, then `SIGKILL` after a grace window, when memory, tasks, or
-   local worker health thresholds are exceeded.
+6. Replaces only the worker PID when its local health endpoint or worker-channel
+   heartbeat is unhealthy. Active flow-run processes are never signalled.
 7. Starts a fresh worker process after a restart.
 
 systemd remains the outer supervisor, cgroup owner, logger, and final OOM safety
@@ -43,15 +43,11 @@ rail.
 - `MemoryMax=18G`
 - `MemorySwapMax=2G`
 - `TasksMax=800`
-- guard restart at `MEMORY_SOFT_BYTES=12884901888` (12 GiB)
-- guard restart at `TASKS_SOFT=500`
 
-These are health-trip thresholds, not an estimate that the worker legitimately
-needs 12 GiB. On 2026-06-24, live operation with multiple flow children,
-including `rebuild-atlas`, sat around 3-4 GiB. The earlier 900-task shape was
-already an incident: a process-worker descendant leak below the previous
-24 GiB / 1000-task restart line. The guard should intervene before the worker
-gets anywhere near that shape again.
+These are systemd safety limits, not an estimate that the worker legitimately
+needs 12 GiB. The guard observes the counters but does not use aggregate cgroup
+pressure to kill the worker or its flows; terminal-descendant cleanup addresses
+the known leak directly.
 
 The guard is intentionally outside Prefect. If the worker is the component
 leaking processes, relying on another flow to repair it is circular.
@@ -72,11 +68,20 @@ API.
 
 On 2026-07-01, we found a separate failure mode: local `prefect flow-run execute`
 descendants can remain alive after the server has already marked their flow run
-terminal. The guard now scans only the worker's own process group for descendants
-with `PREFECT__FLOW_RUN_ID`, checks that run's state through the Prefect API, and
+terminal. The guard scans the complete systemd unit for descendants with
+`PREFECT__FLOW_RUN_ID`, checks that run's state through the Prefect API, and
 terminates just those descendant PIDs when the server reports `COMPLETED`,
-`FAILED`, `CRASHED`, or `CANCELLED`. It never uses process-group termination for
-this targeted cleanup path.
+`FAILED`, `CRASHED`, or `CANCELLED`. Scanning the unit preserves cleanup across
+worker generations without granting the guard process-group kill authority.
+
+On 2026-07-21, a malformed server response crashed the worker while multiple
+flows were healthy. The guard's unconditional process-group cleanup then sent
+`SIGTERM` to every active flow and converted one control-plane failure into
+multiple workload failures. The guard no longer terminates a worker process
+group for any internal recovery path. Unexpected worker exits leave flow
+children running; health-triggered replacement sends `SIGKILL` only to the
+worker PID; terminal cleanup scans the entire systemd unit so it still finds
+children from older worker generations.
 
 ## future direction
 
