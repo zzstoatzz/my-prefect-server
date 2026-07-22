@@ -39,14 +39,16 @@ sudo systemctl restart prefect-home-worker
   whole laptop. Those systemd hard limits are the final machine safety rail;
   the guard only observes the counters and never kills work based on them.
 - The worker starts with Prefect's local `--with-healthcheck` endpoint enabled.
-  The guard checks `http://127.0.0.1:8080/health` and replaces only the worker PID
+  The guard checks `http://127.0.0.1:8080/health` and replaces only the worker's
+  control-process lineage
   after three consecutive failures past startup grace. This catches the
   dead-but-running case where the OS process is alive but the worker has stopped
   successfully polling for runs.
 - The guard also scans the local systemd journal for worker-channel heartbeat
   failures from the current worker process generation. If the worker is wedged,
-  the guard replaces only that worker PID. Active flow-run children remain alive
-  and continue talking to the Prefect API independently.
+  the guard replaces the worker wrapper and scheduler processes while excluding
+  every descendant carrying `PREFECT__FLOW_RUN_ID`. Active flow-run children
+  remain alive and continue talking to the Prefect API independently.
 - The guard does not poll the Prefect API for worker liveness. It uses Prefect's
   local worker health endpoint for that. It does make a bounded API read for any
   local descendant in the whole systemd unit that advertises

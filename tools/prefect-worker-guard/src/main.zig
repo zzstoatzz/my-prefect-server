@@ -211,7 +211,7 @@ fn runGuard(gpa: std.mem.Allocator, io: std.Io, config: *const Config) !void {
                 if (unhealthy_checks >= config.healthcheck_unhealthy_retries) {
                     logEvent("healthcheck-failed", config, pid, pgid, snapshot, null);
                     logHealthcheckRestart(config, pid, pgid, unhealthy_checks);
-                    terminateWorkerOnly(pid);
+                    terminateWorkerInfrastructure(gpa, io, pgid);
                     while (!state.done.load(.acquire)) sleepSeconds(io, 1);
                     waiter.join();
                     gpa.destroy(child);
@@ -224,7 +224,7 @@ fn runGuard(gpa: std.mem.Allocator, io: std.Io, config: *const Config) !void {
             if (journalRestartReason(gpa, io, config, started_at)) |reason| {
                 logEvent("journal-restart-signal", config, pid, pgid, snapshot, null);
                 logJournalRestart(config, pid, pgid, reason);
-                terminateWorkerOnly(pid);
+                terminateWorkerInfrastructure(gpa, io, pgid);
                 while (!state.done.load(.acquire)) sleepSeconds(io, 1);
                 waiter.join();
                 gpa.destroy(child);
@@ -618,12 +618,33 @@ fn unixSeconds() i64 {
     }
 }
 
-fn terminateWorkerOnly(pid: posix.pid_t) void {
-    // Flow-run processes share the worker's process group. Killing the group
-    // turns a scheduler/control-plane failure into collateral flow failures.
-    // SIGKILL only the unhealthy worker so its independently-running flow
-    // children can finish and persist their own terminal states.
-    posix.kill(pid, posix.SIG.KILL) catch {};
+fn terminateWorkerInfrastructure(gpa: std.mem.Allocator, io: std.Io, pgid: posix.pid_t) void {
+    // The supervised child is an `uv` wrapper whose inner Prefect worker is a
+    // separate PID. Killing only the wrapper leaves a duplicate scheduler.
+    // Flow-run lineages advertise PREFECT__FLOW_RUN_ID in their environment,
+    // so kill every process in the worker generation except those lineages.
+    var proc_dir = std.Io.Dir.openDirAbsolute(io, "/proc", .{ .iterate = true }) catch return;
+    defer proc_dir.close(io);
+
+    var infrastructure_pids: std.ArrayList(posix.pid_t) = .empty;
+    defer infrastructure_pids.deinit(gpa);
+    var iterator = proc_dir.iterate();
+    while (iterator.next(io) catch null) |entry| {
+        const pid_int = std.fmt.parseInt(i32, entry.name, 10) catch continue;
+        const pid: posix.pid_t = @intCast(pid_int);
+        const process_pgid = readProcessGroupId(gpa, io, pid) catch continue;
+        if (process_pgid != pgid) continue;
+
+        const flow_process = readFlowProcess(gpa, io, pid) catch null;
+        if (flow_process) |process| {
+            gpa.free(process.flow_run_id);
+            if (process.flow_name) |flow_name| gpa.free(flow_name);
+            continue;
+        }
+        infrastructure_pids.append(gpa, pid) catch return;
+    }
+
+    for (infrastructure_pids.items) |pid| posix.kill(pid, posix.SIG.KILL) catch {};
 }
 
 fn logEvent(

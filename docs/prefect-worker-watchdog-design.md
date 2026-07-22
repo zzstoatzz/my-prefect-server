@@ -30,8 +30,9 @@ The guard:
 3. Periodically reads systemd cgroup counters for the owning unit.
 4. Checks Prefect's local worker health endpoint when enabled.
 5. Emits machine-readable journal logs.
-6. Replaces only the worker PID when its local health endpoint or worker-channel
-   heartbeat is unhealthy. Active flow-run processes are never signalled.
+6. Replaces the worker control-process lineage when its local health endpoint or
+   worker-channel heartbeat is unhealthy, explicitly excluding descendants that
+   carry `PREFECT__FLOW_RUN_ID`.
 7. Starts a fresh worker process after a restart.
 
 systemd remains the outer supervisor, cgroup owner, logger, and final OOM safety
@@ -79,9 +80,9 @@ flows were healthy. The guard's unconditional process-group cleanup then sent
 `SIGTERM` to every active flow and converted one control-plane failure into
 multiple workload failures. The guard no longer terminates a worker process
 group for any internal recovery path. Unexpected worker exits leave flow
-children running; health-triggered replacement sends `SIGKILL` only to the
-worker PID; terminal cleanup scans the entire systemd unit so it still finds
-children from older worker generations.
+children running; health-triggered replacement kills the `uv` wrapper and inner
+Prefect scheduler but excludes flow-run lineages; terminal cleanup scans the
+entire systemd unit so it still finds children from older worker generations.
 
 ## future direction
 
