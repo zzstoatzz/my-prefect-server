@@ -328,6 +328,50 @@ deployments:
         # activating requires delete+recreate of the deployment (not just redeploy).
         active: true
 
+  - name: pub-search-snapshot
+    entrypoint: flows/pub_search_snapshot.py:pub_search_snapshot
+    # the pub-search replica snapshot builder (BUILDER_MODE=1), lifted off Fly
+    # onto the home box — the same move typeahead-index made. Pure batch: reads
+    # the leaf Turso db → gated FTS replica build (~600MB) → rclone to R2
+    # (leaflet-search-index) → channel pointer LAST → exits. The serving
+    # backend's promote watcher adopts on its own poll; a late/failed run just
+    # leaves the prior snapshot serving. See pub-search
+    # docs/builder-offbox-plan.md for the cutover sequence.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --refresh-package my-prefect-server
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
+        env:
+          # shared turso blocks ARE the leaf db (atlas uses the same ones);
+          # pub-search's client wants the full libsql:// URL — no stripping.
+          TURSO_URL: "{{ prefect.blocks.secret.turso-url }}"
+          TURSO_TOKEN: "{{ prefect.blocks.secret.turso-token }}"
+          # pub-search's own R2 bucket (leaflet-search-index) — NOT typeahead's.
+          INDEX_R2_ENDPOINT: "{{ prefect.blocks.secret.leaflet-index-r2-endpoint }}"
+          INDEX_R2_BUCKET: "{{ prefect.blocks.secret.leaflet-index-r2-bucket }}"
+          INDEX_R2_ACCESS_KEY_ID: "{{ prefect.blocks.secret.leaflet-index-r2-access-key-id }}"
+          INDEX_R2_SECRET_ACCESS_KEY: "{{ prefect.blocks.secret.leaflet-index-r2-secret-access-key }}"
+          # persistent repo/scratch root (process runs execute in ephemeral /tmp;
+          # the ~600MB build itself is fine in the run's tmp via BUILD_DIR default)
+          BUILDER_HOME: /home/stoat/pub-search-snapshot
+          # STAGING until the soak in builder-offbox-plan.md step 2 passes;
+          # then flip to prod + BUILDER_ALLOW_PROD=1 and decommission the fly
+          # builder machine.
+          BUILDER_CHANNEL: staging
+          # cap the ~600MB upload; tiny next to typeahead's 8.6GB but be polite
+          RCLONE_BWLIMIT: "10M"
+    concurrency_limit: *cancel_new
+    schedules:
+      # every 2h at :40 — clear of the 6h atlas marks, 09:00 typeahead-index,
+      # and the 13:00 cluster. ~7GB/day upload. relax to daily once the
+      # pub-search live overlay lands (phase 2 of builder-offbox-plan.md).
+      - cron: "40 */2 * * *"
+        active: true
+
   - name: bisk-snapshot
     entrypoint: flows/bisk.py:bisk_snapshot
     # the bisk.social standings builder (https://tangled.org/zzstoatzz.io/bisk).
