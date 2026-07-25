@@ -11,7 +11,20 @@ so re-runs are idempotent), and surfaces it at hub.waow.tech.
 
 ## reading a snapshot
 
-Records are public — no auth needed:
+**Use the pdsx MCP tools.** `list_records` and `get_record` cover this with
+structured output and no handle/DID/PDS resolution dance:
+
+```
+list_records(repo="zzstoatzz.io", collection="io.zzstoatzz.cost.snapshot", limit=30)
+get_record(repo="zzstoatzz.io", collection="io.zzstoatzz.cost.snapshot", rkey="2026-07-24")
+```
+
+pdsx MCP does full record CRUD — reads *and* `create_record`/`update_record`/
+`delete_record`. It is not read-only. Only blob upload, batch JSONL operations,
+and permissioned spaces need the `pdsx` CLI.
+
+Raw HTTP only as a fallback when the MCP isn't available. Records are public, so
+no auth is needed:
 
 ```bash
 DID=$(curl -s "https://api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=zzstoatzz.io" | jq -r .did)

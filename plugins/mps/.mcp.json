@@ -7,6 +7,10 @@
         "PREFECT_API_URL": "https://${DOMAIN}/api",
         "PREFECT_API_AUTH_STRING": "${AUTH_STRING}"
       }
+    },
+    "pdsx": {
+      "type": "http",
+      "url": "https://pdsx-by-zzstoatzz.fastmcp.app/mcp"
     }
   }
 }

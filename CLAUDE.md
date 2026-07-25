@@ -34,6 +34,27 @@ this file is a set of notes for us:
 - requires-python is >=3.13 (not 3.14) so the transform flow can run dbt under python 3.13
 - we maintain prefect-dbt — never suggest replacing PrefectDbtOrchestrator with subprocess calls
 
+## agent tooling — MCP surfaces and what they actually do
+
+the `mps` plugin in `plugins/mps/` bundles two MCP servers. know what each one
+can do before hand-rolling `curl`, and before claiming something isn't possible.
+
+- **pdsx** (`https://pdsx-by-zzstoatzz.fastmcp.app/mcp`) — full PDS record
+  **CRUD**: `list_records`, `get_record`, `describe_repo`, `query`, `whoami`,
+  and `create_record` / `update_record` / `delete_record`. it is **not
+  read-only**. use it for cost snapshots, phi docket, and any
+  `io.zzstoatzz.*` record work instead of resolving handle → DID → PDS by hand.
+  the only CLI carve-outs are blob upload (`pdsx upload-blob` — base64 through a
+  JSON-RPC boundary is the wrong shape), batch JSONL ops with concurrency, and
+  permissioned spaces. source: `~/github.com/zzstoatzz/pdsx`.
+- **prefect** (`uvx --from prefect-mcp prefect-mcp-server`) — read-only
+  diagnostics. this one genuinely is read-only, but that's a *scope* decision
+  about a very large API, not a principle about MCP. do not generalize it to
+  other servers. mutations go through `just prefect ...`.
+
+if you are about to say "the MCP can't do X" or offer to build a missing tool,
+grep its tool list first. that has been wrong more than once.
+
 ## running flows ad hoc
 
 - Flow files under `flows/` are ordinary Python modules. Most have an
