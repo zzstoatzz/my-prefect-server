@@ -40,14 +40,18 @@ from mps.observability import configure_logfire
 
 COLLECTION = "io.zzstoatzz.cost.snapshot"
 HETZNER_TOKENS_BLOCK = "hetzner-tokens"
+HETZNER_ROBOT_BLOCK = "hetzner-robot"
 
 
 async def build_connectors() -> list[Connector]:
-    """Assemble connectors. Hetzner is special: its tokens are project-scoped,
-    so we load the `hetzner-tokens` Secret block (a dict of {label: token}) and
-    hand the values to the connector. The other three read single tokens from
-    env (injected from Secret blocks via prefect.yaml)."""
+    """Assemble connectors. Hetzner Cloud tokens are project-scoped, so
+    `hetzner-tokens` is a dict of {label: token}. `hetzner-robot` carries
+    dedicated-server Webservice credentials plus exact contracted monthly USD
+    prices, because auction inventory does not expose its winning price. The
+    other providers read env injected from Secret blocks in prefect.yaml."""
     hetzner_tokens: list[str] | None = None
+    robot_credentials: tuple[str, str] | None = None
+    robot_monthly_usd: dict[str, float] = {}
     try:
         hetzner_tokens = list((await Secret.load(HETZNER_TOKENS_BLOCK)).get().values())
     except Exception as exc:
@@ -55,10 +59,22 @@ async def build_connectors() -> list[Connector]:
             f"  hetzner: no {HETZNER_TOKENS_BLOCK} block ({exc}); will fall back to env"
         )
 
+    try:
+        robot = (await Secret.load(HETZNER_ROBOT_BLOCK)).get()
+        robot = json.loads(robot) if isinstance(robot, str) else robot
+        robot_credentials = (robot["username"], robot["password"])
+        robot_monthly_usd = robot.get("monthly_usd", {})
+    except Exception as exc:
+        print(f"  hetzner: no {HETZNER_ROBOT_BLOCK} block ({exc}); Robot inventory omitted")
+
     return [
         FlyConnector(),
         CloudflareConnector(),
-        HetznerConnector(tokens=hetzner_tokens),
+        HetznerConnector(
+            tokens=hetzner_tokens,
+            robot_credentials=robot_credentials,
+            robot_monthly_usd=robot_monthly_usd,
+        ),
         NeonConnector(),
     ]
 
