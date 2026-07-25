@@ -254,10 +254,8 @@ deployments:
           NEON_API_KEY: "{{ prefect.blocks.secret.neon-api-key }}"
           # hetzner is NOT here: its tokens are project-scoped (one per cloud
           # project), so the flow loads the `hetzner-tokens` Secret block (a
-          # dict of {name: token}) and merges them. Dedicated/auction inventory
-          # comes from `hetzner-robot`: {username,password,monthly_usd}. The
-          # explicit price registry is required because Robot omits auction
-          # winning prices. add a server price immediately after ordering.
+          # dict of {name: token}) and merges them. Cloud is the whole Hetzner
+          # footprint — there are no dedicated/Robot servers on this account.
           # CF billing API is 403 for this token (no Billing:Read scope) and
           # mostly deprecated anyway, so fixed costs are explicit resource
           # lines. Keep these resource-shaped so project attribution works.

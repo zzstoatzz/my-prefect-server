@@ -64,9 +64,9 @@ resolved at `prefect deploy` time. Flow code does not call the Secret API for
 these.
 
 The exception is a block whose *shape* matters to the flow — e.g.
-`hetzner-tokens` is a dict of `{label: token}` and `hetzner-robot` carries
-credentials plus a price registry. Those are loaded in-flow via
-`Secret.load(...)`, because env vars can't express a mapping.
+`hetzner-tokens` is a dict of `{label: token}`, one per Hetzner Cloud project,
+because Hetzner has no account-wide token. That one is loaded in-flow via
+`Secret.load(...)`, since an env var can't express a mapping.
 
 ## work pools
 

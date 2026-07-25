@@ -39,7 +39,6 @@ _RESOURCE_PATTERNS: dict[str, str] = {
     "relay.waow": "relays",
     "zlay": "relays",
     "relay-eval": "relays",
-    "stream": "relays",
     # trending topics
     "coral": "trending",
     # bufo

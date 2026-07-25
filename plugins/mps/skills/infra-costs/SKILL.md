@@ -69,16 +69,18 @@ A connector that raises is collected into `failed_providers`, and the flow then
 (`flows/costs.py`). Never let a connector swallow an error and return partial
 results — an omitted resource must never be counted as $0.
 
-Caveat, currently true: the Hetzner Robot branch catches `httpx.HTTPError` and
-only prints, so a Robot outage under-reports instead of failing closed. That is
-inconsistent with the invariant above and is not yet fixed.
-
 Hetzner specifics: Cloud API tokens are **project-scoped** (no account-wide
 token), so the flow loads a `hetzner-tokens` Secret block of `{label: token}`
-and merges all projects, deduping by server id. Robot/dedicated servers use a
-separate Webservice API and need a `hetzner-robot` block carrying credentials
-plus a `monthly_usd` registry — required because auction inventory does not
-expose its winning price.
+and merges all projects, deduping by server id. There are currently two project
+tokens covering four Cloud servers — `relay-eval`, `relay`, `zlay`,
+`prefect-server` — and that is the entire Hetzner footprint.
+
+Hetzner **Robot** (the legacy dedicated/auction product) is deliberately out of
+scope: there are no dedicated servers on this account. `hetzner-edge` on the
+tailnet is not a separate machine — it is `prefect-server` under a different
+tailnet hostname, same public IP. Don't build a Robot connector without first
+confirming a dedicated server actually exists; one was written and reverted for
+exactly this reason.
 
 ## Fly cleanup
 
