@@ -12,8 +12,13 @@ queried and merged; project attribution comes from server names (projects.py),
 so the Hetzner project name isn't needed. Robot inventory identifies active
 dedicated servers, while an explicit USD price registry records the contracted
 monthly amount. That registry is required because auction-server inventory does
-not expose the winning price. Missing prices are warned and omitted, never
-silently counted as $0.
+not expose the winning price.
+
+Robot failures are fail-CLOSED: an unreachable Robot API or an active server with
+no registered price raises, so the flow refuses to publish rather than shipping a
+snapshot whose missing dedicated servers read as a real cost decrease. This is
+deliberately stricter than the per-project Cloud token handling above, where one
+bad token skips only its own project.
 """
 
 from __future__ import annotations
@@ -151,40 +156,45 @@ class HetznerConnector:
 
         if self._robot_credentials:
             username, password = self._robot_credentials
-            try:
-                robot_servers = await _robot_servers(username, password)
-            except httpx.HTTPError as exc:
-                print(f"  hetzner: Robot UNMEASURED ({exc}); dedicated servers omitted")
-            else:
-                for server in robot_servers:
-                    if server.get("cancelled") or server.get("status") != "ready":
-                        continue
-                    number = str(server.get("server_number", ""))
-                    name = server.get("server_name") or f"robot-{number}"
-                    product = server.get("product", "dedicated")
-                    price = next(
-                        (
-                            self._robot_monthly_usd[key]
-                            for key in (number, name, product)
-                            if key in self._robot_monthly_usd
-                        ),
-                        None,
+            # a Robot outage would drop every dedicated server at once, so it
+            # raises here and lets the flow refuse the snapshot rather than
+            # publishing a hole that reads as a real cost decrease.
+            robot_servers = await _robot_servers(username, password)
+
+            unpriced: list[str] = []
+            for server in robot_servers:
+                if server.get("cancelled") or server.get("status") != "ready":
+                    continue
+                number = str(server.get("server_number", ""))
+                name = server.get("server_name") or f"robot-{number}"
+                product = server.get("product", "dedicated")
+                price = next(
+                    (
+                        self._robot_monthly_usd[key]
+                        for key in (number, name, product)
+                        if key in self._robot_monthly_usd
+                    ),
+                    None,
+                )
+                if price is None:
+                    unpriced.append(f"'{name}' ({number}, {product})")
+                    continue
+                items.append(
+                    LineItem(
+                        provider=PROVIDER,
+                        project=project_for(name),
+                        service=name,
+                        amount=round(price * 100),
+                        estimated=False,
+                        usage=f"{product} · {server.get('dc', '?')}",
+                        note="contracted Robot monthly price; excludes one-time setup",
                     )
-                    if price is None:
-                        print(
-                            f"  hetzner: Robot server '{name}' ({number}, {product}) "
-                            "UNMEASURED — add its contracted USD monthly price"
-                        )
-                        continue
-                    items.append(
-                        LineItem(
-                            provider=PROVIDER,
-                            project=project_for(name),
-                            service=name,
-                            amount=round(price * 100),
-                            estimated=False,
-                            usage=f"{product} · {server.get('dc', '?')}",
-                            note="contracted Robot monthly price; excludes one-time setup",
-                        )
-                    )
+                )
+
+            if unpriced:
+                raise RuntimeError(
+                    "Robot servers with no contracted USD monthly price in the "
+                    f"hetzner-robot block: {', '.join(unpriced)}. Add them — an "
+                    "active server must never be omitted or counted as $0."
+                )
         return items

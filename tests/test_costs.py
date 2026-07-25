@@ -294,3 +294,50 @@ def test_hetzner_robot_inventory_uses_explicit_contracted_price(monkeypatch):
     assert [(i.service, i.project, i.amount, i.estimated) for i in items] == [
         ("stream-archive", "relays", 11950, False)
     ]
+
+
+def test_hetzner_robot_unpriced_server_fails_closed(monkeypatch):
+    """An active dedicated server with no registered price must sink the
+    snapshot, not vanish from it — a missing server reads as a cost decrease."""
+    import asyncio
+
+    from mps.costs.connectors import hetzner
+
+    async def fake_robot_servers(username, password):
+        return [
+            {
+                "server_number": 99,
+                "server_name": "unpriced-box",
+                "product": "Server Auction",
+                "dc": "FSN1-DC1",
+                "status": "ready",
+                "cancelled": False,
+            }
+        ]
+
+    monkeypatch.setattr(hetzner, "_robot_servers", fake_robot_servers)
+    connector = hetzner.HetznerConnector(
+        robot_credentials=("u", "p"), robot_monthly_usd={}
+    )
+    with pytest.raises(RuntimeError, match="no contracted USD monthly price"):
+        asyncio.run(connector.collect(Period.trailing_month()))
+
+
+def test_hetzner_robot_api_failure_fails_closed(monkeypatch):
+    """A Robot outage drops every dedicated server at once, so it must raise
+    rather than silently omitting them."""
+    import asyncio
+
+    import httpx
+
+    from mps.costs.connectors import hetzner
+
+    async def fake_robot_servers(username, password):
+        raise httpx.ConnectError("robot unreachable")
+
+    monkeypatch.setattr(hetzner, "_robot_servers", fake_robot_servers)
+    connector = hetzner.HetznerConnector(
+        robot_credentials=("u", "p"), robot_monthly_usd={"99": 50.0}
+    )
+    with pytest.raises(httpx.HTTPError):
+        asyncio.run(connector.collect(Period.trailing_month()))
