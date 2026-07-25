@@ -358,10 +358,10 @@ deployments:
           # persistent repo/scratch root (process runs execute in ephemeral /tmp;
           # the ~600MB build itself is fine in the run's tmp via BUILD_DIR default)
           BUILDER_HOME: /home/stoat/pub-search-snapshot
-          # STAGING until the soak in builder-offbox-plan.md step 2 passes;
-          # then flip to prod + BUILDER_ALLOW_PROD=1 and decommission the fly
-          # builder machine.
-          BUILDER_CHANNEL: staging
+          # staging soak passed 2026-07-25 (run 7f12358a: b1784951763-0bbc,
+          # 55018 docs, manifest parity with the fly-built prod snapshot).
+          BUILDER_CHANNEL: prod
+          BUILDER_ALLOW_PROD: "1"
           # cap the ~600MB upload; tiny next to typeahead's 8.6GB but be polite
           RCLONE_BWLIMIT: "10M"
     concurrency_limit: *cancel_new
