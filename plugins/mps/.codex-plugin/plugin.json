@@ -1,0 +1,30 @@
+{
+  "name": "mps",
+  "version": "0.1.0",
+  "description": "Operate the self-hosted Prefect server at prefect-server.waow.tech — server access, the heavypad home-pool worker, deployments, ad-hoc runs, and infra cost snapshots.",
+  "author": {
+    "name": "nate",
+    "url": "https://bsky.app/profile/zzstoatzz.io"
+  },
+  "repository": "https://tangled.org/zzstoatzz.io/my-prefect-server",
+  "license": "MIT",
+  "keywords": ["prefect", "orchestration", "self-hosted", "k3s", "atproto", "costs"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "mps",
+    "shortDescription": "Operate a self-hosted Prefect server",
+    "longDescription": "mps equips an agent to run the self-hosted Prefect stack behind prefect-server.waow.tech: query the server over authenticated API calls, reason about the heavypad home-pool process worker and its restart guard, register and debug deployments whose flow code is pulled from git at runtime, execute flows ad hoc without corrupting production write paths, and read the daily infra cost snapshot across Fly, Hetzner, Cloudflare, and Neon.",
+    "developerName": "nate",
+    "category": "Engineering",
+    "capabilities": ["Read", "Write"],
+    "websiteURL": "https://hub.waow.tech",
+    "defaultPrompt": [
+      "why is this flow run stuck in RUNNING",
+      "did fly costs drop after I deleted that machine",
+      "re-register the deployments after a flow change"
+    ],
+    "brandColor": "#2D6DF6",
+    "screenshots": []
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "prefect": {
+      "command": "uvx",
+      "args": ["--from", "prefect-mcp", "prefect-mcp-server"],
+      "env": {
+        "PREFECT_API_URL": "https://${DOMAIN}/api",
+        "PREFECT_API_AUTH_STRING": "${AUTH_STRING}"
+      }
+    }
+  }
+}
