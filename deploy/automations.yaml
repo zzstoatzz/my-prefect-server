@@ -10,23 +10,22 @@
 # rather than creating a second one. Automations created by `prefect deploy`
 # (the `*__automation_1` ones) are left alone.
 #
-# !! Both send-notification automations are disabled (2026-07-27).
-# The zig server's send-notification action hangs: actions_executor logs
-# "executing triggered_action" and then never logs success or failure, and
-# emits neither the .executed nor the .failed audit event. Egress is fine —
-# curl from the services pod reaches discord.com in 90ms — so it is wedging
-# inside the action, and sendDiscordNotification passes no timeout to
-# client.fetch. Two hung actions exhaust actionExecutorConcurrency (2 on
-# redis) and the executor stops taking *any* work, including the
-# run-deployment actions that chain ingest -> classify -> transform -> brief.
-# Re-enable only once that is fixed in prefect-server.
+# Both send-notification automations were disabled 2026-07-27 because the zig
+# server hung on every *successful* discord delivery: discord answers a webhook
+# POST with 204 No Content, and a body-less 2xx never returned from the http
+# client, so the action held an actions_executor slot forever. Two of those
+# stopped every automation action on the server. Fixed in prefect-server
+# d5fc1f2 (`?wait=true` asks discord for a body); re-enabled and verified —
+# the .executed audit event lands and run-deployment actions keep working after
+# repeated notifications. See prefect-server
+# docs/incidents/2026-07-27-send-notification-hang-on-204.md.
 
 automations:
   - name: flow-run failure -> discord
     description: >-
       Any deployment failing, crashing, or timing out. This is the operational
       floor — it fires on flow runs, not on repository activity.
-    enabled: false
+    enabled: true
     trigger:
       type: event
       posture: Reactive
@@ -95,7 +94,7 @@ automations:
       The only automation that sends fastmcp activity to a human, and it sends
       LLM-composed text rather than a rendered notification. Keeping delivery
       here means fastmcp_brief.py needs no webhook credentials.
-    enabled: false
+    enabled: true
     trigger:
       type: event
       posture: Reactive
