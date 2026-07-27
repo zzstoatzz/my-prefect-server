@@ -59,13 +59,27 @@ purely mechanical. it is correct to return very few items, or none.
 
 write headlines in lowercase, plain, specific. no marketing tone, no "notably",
 no "it's worth mentioning". name the actual thing.
+
+headlines are read at a glance on a phone, so keep them short — under about
+nine words. put the detail in `why`, as one clause, no trailing period.
+
+`number` is the issue or PR number the url points at. `severity` is:
+  broken   — main is red, a release is blocked, something is down
+  bug      — a real defect users will hit
+  waiting  — someone needs a maintainer to act
+  decision — a question or design call is open
 """
 
 
 class BriefItem(BaseModel):
-    headline: str = Field(max_length=110, description="what happened, specific and lowercase")
-    why: str = Field(max_length=140, description="one clause on why it deserves attention")
+    headline: str = Field(max_length=90, description="what happened, specific and lowercase")
+    why: str = Field(max_length=120, description="one clause on why it deserves attention")
     url: str
+    number: int = Field(description="the issue or PR number this is about")
+    severity: str = Field(
+        description="one of: broken, waiting, decision, bug",
+        pattern="^(broken|waiting|decision|bug)$",
+    )
 
 
 class Brief(BaseModel):
@@ -153,8 +167,19 @@ def compose(threads: list[dict[str, Any]], api_key: str) -> Brief:
     return result.output
 
 
+# a bare URL makes discord render a full link-preview card per item, which is
+# what turned the first brief into a wall. A masked link — [text](url) — is not
+# unfurled at all, so the whole brief stays one compact block.
+SEVERITY_MARK = {
+    "broken": "🔴",
+    "bug": "🟠",
+    "waiting": "🟡",
+    "decision": "🔵",
+}
+
+
 def render(brief: Brief, window_hours: int) -> str:
-    """Ranked items, truncated to fit Discord rather than failing at the hop."""
+    """Ranked items as compact markdown, sized to fit Discord."""
     if not brief.items:
         return ""
 
@@ -162,17 +187,20 @@ def render(brief: Brief, window_hours: int) -> str:
     used = 0
     shown = 0
     for item in brief.items:
-        line = f"• {item.headline}\n  {item.why}\n  {item.url}"
-        if used + len(line) + 1 > BRIEF_CHAR_BUDGET:
+        mark = SEVERITY_MARK.get(item.severity, "⚪")
+        # headline carries the link so no bare url appears anywhere
+        block = f"{mark} **[{item.headline}]({item.url})** `#{item.number}`\n-# {item.why}"
+        if used + len(block) + 2 > BRIEF_CHAR_BUDGET:
             break
-        out.append(line)
-        used += len(line) + 1
+        out.append(block)
+        used += len(block) + 2
         shown += 1
 
     dropped = len(brief.items) - shown
-    footer = f"\n({shown} of {brief.considered} threads, last {window_hours}h"
-    footer += f"; {dropped} more not shown)" if dropped else ")"
-    return "\n".join(out) + footer
+    tail = f"-# {shown} of {brief.considered} threads · last {window_hours}h"
+    if dropped:
+        tail += f" · {dropped} more"
+    return "\n\n".join(out) + "\n\n" + tail
 
 
 @flow(name="fastmcp-brief", log_prints=True, timeout_seconds=600)
