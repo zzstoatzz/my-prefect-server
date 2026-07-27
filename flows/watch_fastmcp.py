@@ -107,6 +107,10 @@ def _thread_to_event(thread: dict) -> dict[str, Any] | None:
         "kind": subject_type,
         "number": number,
         "url": html_url,
+        # the REST url, carried so the brief can ask for real state later. The
+        # notification itself has none — no open/closed, no merged — which is
+        # why a brief built on titles alone reports merged fixes as outages.
+        "api_url": api_url,
         "repo": REPO,
         "updated_at": thread.get("updated_at") or "",
     }

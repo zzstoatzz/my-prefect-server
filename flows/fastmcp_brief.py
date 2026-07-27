@@ -26,6 +26,8 @@ from prefect.events import emit_event
 from prefect.variables import Variable
 from pydantic import BaseModel, Field
 
+from mps.github import gh_headers
+
 MODEL = "claude-haiku-4-5"
 
 # thread_id -> updated_at of everything already briefed. A volume trigger fires
@@ -47,6 +49,11 @@ you are given recent notification threads (pull requests, issues, discussions).
 almost all of them are ambient subscription noise. your job is to find the few
 that a maintainer would want to know about right now, and to say why in a
 clause — not to summarize everything.
+
+everything you are shown is open. anything already merged or closed has been
+removed before you see it, so never describe something as broken or blocking
+on the strength of its title alone — the title of a fix describes the problem
+it fixes. read state, labels and author, and say what is true *now*.
 
 rank by what would change how they spend the next hour:
 - something broken, regressed, or blocking a release
@@ -135,6 +142,56 @@ def recent_github_events(hours: int) -> list[dict[str, Any]]:
     return threads
 
 
+@task(retries=2, retry_delay_seconds=10)
+def enrich(threads: list[dict[str, Any]], token: str) -> list[dict[str, Any]]:
+    """Attach real state, and drop what is already resolved.
+
+    A notification carries no state — only title, type and url. Worse, a merge
+    is itself activity, so merging a pull request pushes it *into* the
+    notification list. Briefing on titles alone therefore reports fixes as
+    outages: the first delivered brief led with a red "upgrade checks failing
+    on main" for a PR that had merged four hours earlier.
+    """
+    logger = get_run_logger()
+    headers = gh_headers(token)
+    alive: list[dict[str, Any]] = []
+    resolved = 0
+
+    with httpx.Client(headers=headers, timeout=30.0) as client:
+        for thread in threads:
+            api_url = thread.get("api_url")
+            if not api_url:
+                # emitted before api_url was carried; treat as unknown rather
+                # than asserting a state we cannot check
+                alive.append({**thread, "state": "unknown"})
+                continue
+
+            resp = client.get(api_url)
+            if resp.status_code != 200:
+                logger.warning("%s -> %s, keeping as unknown", api_url, resp.status_code)
+                alive.append({**thread, "state": "unknown"})
+                continue
+
+            item = resp.json()
+            if item.get("state") == "closed" or item.get("merged_at"):
+                resolved += 1
+                continue
+
+            alive.append(
+                {
+                    **thread,
+                    "state": item.get("state"),
+                    "draft": bool(item.get("draft")),
+                    "author": (item.get("user") or {}).get("login"),
+                    "labels": [lbl.get("name") for lbl in item.get("labels") or []],
+                    "comments": item.get("comments", 0),
+                }
+            )
+
+    logger.info("%d open after dropping %d already closed/merged", len(alive), resolved)
+    return alive
+
+
 @task
 def compose(threads: list[dict[str, Any]], api_key: str) -> Brief:
     from pydantic_ai import Agent
@@ -145,7 +202,9 @@ def compose(threads: list[dict[str, Any]], api_key: str) -> Brief:
 
     lines = [
         f"- [{t.get('kind')} #{t.get('number')}] {t.get('title')!r} "
-        f"(reason={t.get('reason')}, updated={t.get('updated_at')}) {t.get('url')}"
+        f"(state={t.get('state')}{', draft' if t.get('draft') else ''}, "
+        f"author={t.get('author')}, labels={t.get('labels') or []}, "
+        f"comments={t.get('comments', 0)}, updated={t.get('updated_at')}) {t.get('url')}"
         for t in threads
     ]
 
@@ -223,6 +282,11 @@ def fastmcp_brief(window_hours: int = 6, ignore_briefed: bool = False) -> dict[s
         return {"items": 0, "threads": len(threads), "fresh": 0}
     logger.info("%d of %d threads are new since the last brief", len(fresh), len(threads))
     threads = fresh
+
+    threads = enrich(threads, Secret.load("github-token").get())
+    if not threads:
+        logger.info("everything in the window is already closed or merged")
+        return {"items": 0, "threads": 0}
 
     brief = compose(threads, Secret.load("anthropic-api-key").get())
     body = render(brief, window_hours)
