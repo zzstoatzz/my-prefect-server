@@ -499,3 +499,31 @@ deployments:
     schedules:
       - cron: "0 4 * * *"
         active: true
+
+  - name: watch-fastmcp
+    entrypoint: flows/watch_fastmcp.py:watch_fastmcp
+    # emits github.<reason> events; notifies nobody. Conditional requests that
+    # 304 don't count against GitHub's rate limit and it returns
+    # X-Poll-Interval: 60, so every 5 minutes is well inside its floor.
+    work_pool: *home
+    schedules:
+      - cron: "*/5 * * * *"
+        active: true
+
+  - name: fastmcp-brief
+    entrypoint: flows/fastmcp_brief.py:fastmcp_brief
+    # no schedule on purpose — driven by the `fastmcp activity -> brief` and
+    # `fastmcp direct ask -> brief` automations in deploy/automations.yaml, so
+    # it fires when something is happening rather than on a clock.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --refresh-package my-prefect-server
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
+        env:
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage

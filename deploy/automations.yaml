@@ -1,0 +1,99 @@
+# Standalone automations — the ones prefect.yaml cannot express.
+#
+# Deployment `triggers:` sugar in prefect.yaml only produces automations whose
+# action is run-deployment on that deployment. Anything else (send-notification,
+# or a trigger that fans into a different deployment) has to be created against
+# the API, which is why `flow-run failure -> discord` lived only as a database
+# row for months. Applied by `just automations`.
+#
+# Names are the identity: applying updates the automation with a matching name
+# rather than creating a second one. Automations created by `prefect deploy`
+# (the `*__automation_1` ones) are left alone.
+
+automations:
+  - name: flow-run failure -> discord
+    description: >-
+      Any deployment failing, crashing, or timing out. This is the operational
+      floor — it fires on flow runs, not on repository activity.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - prefect.flow-run.Failed
+        - prefect.flow-run.Crashed
+        - prefect.flow-run.TimedOut
+      threshold: 1
+      within: 60
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "{{ deployment.name }} {{ state.name }}"
+        body: "{{ deployment.name }} run {{ flow_run.name }} reached {{ state.name }} - {{ state.message }}"
+
+  - name: fastmcp activity -> brief
+    description: >-
+      Fires when fastmcp gets busy, not when a single notification arrives.
+      threshold/within is the whole point: 8 thread updates inside an hour means
+      something is happening. The brief flow then reads the entire window back
+      off the bus, so it sees the situation rather than the one event that
+      tripped the trigger.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - github.*
+      match:
+        githubrepo: PrefectHQ/fastmcp
+      threshold: 8
+      within: 3600
+    actions:
+      - type: run-deployment
+        source: selected
+        deployment: fastmcp-brief
+        parameters:
+          window_hours: 6
+
+  - name: fastmcp direct ask -> brief
+    description: >-
+      Someone is actually blocked on you (review requested, mention, assignment).
+      No threshold — one is enough.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - github.review_requested
+        - github.mention
+        - github.team_mention
+        - github.assign
+      match:
+        githubrepo: PrefectHQ/fastmcp
+      threshold: 1
+      within: 60
+    actions:
+      - type: run-deployment
+        source: selected
+        deployment: fastmcp-brief
+        parameters:
+          window_hours: 2
+
+  - name: brief ready -> discord
+    description: >-
+      The only automation that sends fastmcp activity to a human, and it sends
+      LLM-composed text rather than a rendered notification. Keeping delivery
+      here means fastmcp_brief.py needs no webhook credentials.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - hub.brief.ready
+      threshold: 1
+      within: 60
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "{{ resource.name }}"
+        body: "{{ payload.brief }}"
