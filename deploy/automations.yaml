@@ -9,13 +9,24 @@
 # Names are the identity: applying updates the automation with a matching name
 # rather than creating a second one. Automations created by `prefect deploy`
 # (the `*__automation_1` ones) are left alone.
+#
+# !! Both send-notification automations are disabled (2026-07-27).
+# The zig server's send-notification action hangs: actions_executor logs
+# "executing triggered_action" and then never logs success or failure, and
+# emits neither the .executed nor the .failed audit event. Egress is fine —
+# curl from the services pod reaches discord.com in 90ms — so it is wedging
+# inside the action, and sendDiscordNotification passes no timeout to
+# client.fetch. Two hung actions exhaust actionExecutorConcurrency (2 on
+# redis) and the executor stops taking *any* work, including the
+# run-deployment actions that chain ingest -> classify -> transform -> brief.
+# Re-enable only once that is fixed in prefect-server.
 
 automations:
   - name: flow-run failure -> discord
     description: >-
       Any deployment failing, crashing, or timing out. This is the operational
       floor — it fires on flow runs, not on repository activity.
-    enabled: true
+    enabled: false
     trigger:
       type: event
       posture: Reactive
@@ -84,7 +95,7 @@ automations:
       The only automation that sends fastmcp activity to a human, and it sends
       LLM-composed text rather than a rendered notification. Keeping delivery
       here means fastmcp_brief.py needs no webhook credentials.
-    enabled: true
+    enabled: false
     trigger:
       type: event
       posture: Reactive
