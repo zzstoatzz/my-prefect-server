@@ -237,18 +237,34 @@ SEVERITY_MARK = {
 }
 
 
-def render(brief: Brief, window_hours: int) -> str:
-    """Ranked items as compact markdown, sized to fit Discord."""
+def render(
+    brief: Brief,
+    window_hours: int,
+    threads: list[dict[str, Any]] | None = None,
+) -> str:
+    """Ranked items as compact markdown, sized to fit Discord.
+
+    Links come from the thread the model was shown, keyed by number — never
+    from the model's own `url` field. A generated URL is a citation the reader
+    trusts, and the one thing worse than no link is a confident wrong one.
+    Items whose number matches nothing we actually saw are dropped.
+    """
     if not brief.items:
         return ""
+
+    trusted = {t["number"]: t["url"] for t in (threads or []) if t.get("number") and t.get("url")}
 
     out: list[str] = []
     used = 0
     shown = 0
     for item in brief.items:
+        url = trusted.get(item.number)
+        if trusted and url is None:
+            continue
+        url = url or item.url
         mark = SEVERITY_MARK.get(item.severity, "⚪")
         # headline carries the link so no bare url appears anywhere
-        block = f"{mark} **[{item.headline}]({item.url})** `#{item.number}`\n-# {item.why}"
+        block = f"{mark} **[{item.headline}]({url})** `#{item.number}`\n-# {item.why}"
         if used + len(block) + 2 > BRIEF_CHAR_BUDGET:
             break
         out.append(block)
@@ -289,7 +305,7 @@ def fastmcp_brief(window_hours: int = 6, ignore_briefed: bool = False) -> dict[s
         return {"items": 0, "threads": 0}
 
     brief = compose(threads, Secret.load("anthropic-api-key").get())
-    body = render(brief, window_hours)
+    body = render(brief, window_hours, threads)
 
     # mark everything we looked at, including what the model discarded —
     # otherwise discarded threads are reconsidered on every single trip

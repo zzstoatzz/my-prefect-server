@@ -95,9 +95,13 @@ def _thread_to_event(thread: dict) -> dict[str, Any] | None:
             number = int(tail)
 
     path = {"PullRequest": "pull", "Issue": "issues", "Discussion": "discussions"}.get(
-        subject_type, "issues"
+        subject_type
     )
-    html_url = f"https://github.com/{REPO}/{path}/{number}" if number else f"https://github.com/{REPO}"
+    if number is None or path is None:
+        # a link to the repo homepage is worse than no item at all: it looks
+        # like a citation and tells you nothing. Drop it rather than emit one.
+        return None
+    html_url = f"https://github.com/{REPO}/{path}/{number}"
 
     return {
         "thread_id": thread.get("id"),

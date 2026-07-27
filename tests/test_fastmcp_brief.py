@@ -124,3 +124,46 @@ def test_render_stays_within_the_discord_budget() -> None:
 def test_every_severity_has_a_mark(severity: str) -> None:
     body = render(Brief(items=[_item(1, severity)], considered=1), 6)
     assert not body.startswith("⚪"), f"{severity} fell through to the default mark"
+
+
+# --- links must come from data, never from the model -----------------------
+
+
+def test_render_prefers_the_thread_url_over_whatever_the_model_emitted() -> None:
+    # the model is asked for a url and will happily produce a plausible one.
+    # A wrong link reads as a citation, so the link is looked up by number from
+    # the threads we actually saw.
+    item = _item(4653)
+    item.url = "https://github.com/PrefectHQ/fastmcp"  # a homepage link, useless
+    threads = [{"number": 4653, "url": "https://github.com/PrefectHQ/fastmcp/pull/4653"}]
+    body = render(Brief(items=[item], considered=1), 6, threads)
+    assert "/pull/4653)" in body
+    assert "fastmcp)" not in body
+
+
+def test_render_drops_items_whose_number_matches_nothing_we_saw() -> None:
+    """A hallucinated number has no trustworthy link, so it cannot be shown."""
+    threads = [{"number": 4653, "url": "https://github.com/PrefectHQ/fastmcp/pull/4653"}]
+    body = render(Brief(items=[_item(9999)], considered=1), 6, threads)
+    assert "9999" not in body
+
+
+def test_watch_drops_threads_it_cannot_build_a_real_link_for() -> None:
+    # this is what produced a bare repo-homepage link in a delivered message
+    from flows.watch_fastmcp import _thread_to_event
+
+    unparseable = {
+        "id": "1",
+        "reason": "subscribed",
+        "updated_at": "2026-07-27T18:00:00Z",
+        "subject": {"title": "t", "type": "PullRequest", "url": "https://api.github.com/notafile"},
+    }
+    assert _thread_to_event(unparseable) is None
+
+    unknown_kind = {
+        "id": "2",
+        "reason": "subscribed",
+        "updated_at": "2026-07-27T18:00:00Z",
+        "subject": {"title": "t", "type": "Release", "url": ".../releases/12"},
+    }
+    assert _thread_to_event(unknown_kind) is None
