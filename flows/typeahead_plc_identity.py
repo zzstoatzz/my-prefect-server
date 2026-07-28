@@ -42,6 +42,7 @@ Expected env (set by the deployment):
 import os
 import shutil
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 from prefect import flow, get_run_logger, task
@@ -49,6 +50,8 @@ from prefect.tasks import exponential_backoff
 
 REPO_URL = "https://tangled.org/zzstoatzz.io/typeahead.git"
 REPO_URL_FALLBACK = "https://github.com/zzstoatzz/typeahead.git"
+
+WEEK = 604800
 
 WORK_HOME = Path(os.environ.get("PLC_BUNDLE_DIR") or (Path.home() / ".typeahead-plc"))
 REPO_DIR = WORK_HOME / "repo"
@@ -135,11 +138,27 @@ def scrape_tail(repo_dir: Path) -> str:
     byte-compatible bundles — allegedly needs a rust toolchain and vendored
     openssl, and the unpublished tail is where every recently-created account
     lives, so this must not depend on host setup succeeding.
+
+    Unlike the python path, `allegedly bundle` does NOT skip weeks already
+    present; see the --after handling below.
     """
     logger = get_run_logger()
     script = repo_dir / "scripts" / "plc-identity-sync.py"
     if shutil.which("allegedly"):
-        _stream(["allegedly", "bundle", "--dest", str(BUNDLE_DIR)],
+        # --after is REQUIRED here. `allegedly bundle` opens targets with
+        # File::create_new (weekly.rs:163), so it PANICS with EEXIST on the
+        # first week already on disk — it does not skip. Its default --after is
+        # PLC genesis, which collides immediately with the published bundles we
+        # just fetched. Start at the week after the newest one we have.
+        weeks = sorted(
+            int(p.stem.split(".")[0])
+            for p in BUNDLE_DIR.glob("*.jsonl.gz")
+            if p.stem.split(".")[0].isdigit()
+        )
+        after = datetime.fromtimestamp((weeks[-1] + WEEK) if weeks else 1668643200, UTC)
+        logger.info(f"allegedly bundle --after {after.isoformat()} ({len(weeks)} weeks on disk)")
+        _stream(["allegedly", "bundle", "--dest", str(BUNDLE_DIR),
+                 "--after", after.strftime("%Y-%m-%dT%H:%M:%SZ")],
                 WORK_HOME, {**os.environ}, timeout=6 * 3600)
         return "allegedly"
     logger.warning("allegedly not on PATH — using the python tail scraper")
