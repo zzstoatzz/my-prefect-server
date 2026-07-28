@@ -349,6 +349,10 @@ deployments:
           # persistent NVMe — process runs execute in an ephemeral /tmp, and the
           # bundle cache is ~28GB that we do NOT want to re-download weekly.
           PLC_BUNDLE_DIR: /home/stoat/typeahead-plc
+          # NOTE: defining `env:` here REPLACES the *home anchor's env, it does
+          # not merge — so this must be restated or results//tmp coordination
+          # silently reverts to the ephemeral run directory.
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
           PLC_APPLY: "1"
     concurrency_limit: *cancel_new
     schedules:
