@@ -23,6 +23,7 @@ blocks at deploy time):
 """
 
 import asyncio
+import collections
 import gc
 import gzip
 import hashlib
@@ -66,7 +67,7 @@ EMBED_BATCH_SIZE = 128
 # UMAP / HDBSCAN parameters — see docs/phi-atlas.md "open questions" for tuning rationale
 UMAP_MIN_NEIGHBORS = 5
 UMAP_MAX_NEIGHBORS = 30
-HDBSCAN_COARSE_MIN_CLUSTER = 20
+COARSE_GROUPS = 8  # coarse groups agglomerated from fine centroids; see assign_clusters
 HDBSCAN_FINE_MIN_CLUSTER = 5
 NEIGHBOR_K = 5  # k for nearest-neighbor field per point
 
@@ -548,28 +549,77 @@ def reduce_to_2d(points: list[AtlasPoint]) -> list[AtlasPoint]:
     return points
 
 
+def assign_clusters(coords: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Fine labels from HDBSCAN, coarse groups agglomerated from fine centroids.
+
+    Coarse used to be its own HDBSCAN pass over the same 2D coords, which
+    collapsed as the atlas grew: by 2026-07-27 it returned two clusters, one
+    holding 93.5% of 4,416 points under the label "audit trails and memory".
+    That is not a tuning problem — at min_cluster_size 20, 40, 80 and 150 the
+    answer is two, because UMAP puts almost everything in one dense blob and
+    HDBSCAN's excess-of-mass selection then takes the root of the hierarchy.
+
+    Clustering the fine centroids instead gives a balanced split (largest group
+    ~22% rather than 93.5%) and a fixed number of groups, so the top level of
+    the map stays legible as the atlas grows. It also makes the hierarchy real:
+    every fine cluster now belongs to exactly one coarse group, where before
+    the two passes were independent and `parent_coarse` was a majority vote
+    over members that could disagree.
+
+    Points HDBSCAN calls noise (~38%) keep a coarse group — nearest centroid —
+    because the previous coarse pass assigned every point somewhere and the
+    docket's anchor lookup depends on that.
+    """
+    import hdbscan
+    from sklearn.cluster import AgglomerativeClustering
+
+    fine = hdbscan.HDBSCAN(min_cluster_size=HDBSCAN_FINE_MIN_CLUSTER).fit(coords).labels_
+
+    fine_ids = sorted({int(lbl) for lbl in fine if lbl != -1})
+    if not fine_ids:
+        return fine, np.zeros(len(coords), dtype=int)
+
+    centroids = np.array([coords[fine == fid].mean(axis=0) for fid in fine_ids])
+    k = min(COARSE_GROUPS, len(fine_ids))
+    if k < 2:
+        return fine, np.zeros(len(coords), dtype=int)
+
+    groups = AgglomerativeClustering(n_clusters=k, linkage="ward").fit(centroids).labels_
+    fine_to_coarse = {fid: int(g) for fid, g in zip(fine_ids, groups)}
+    group_centroids = np.array(
+        [centroids[groups == g].mean(axis=0) for g in range(k)]
+    )
+
+    coarse = np.empty(len(coords), dtype=int)
+    for i, lbl in enumerate(fine):
+        if lbl != -1:
+            coarse[i] = fine_to_coarse[int(lbl)]
+        else:
+            coarse[i] = int(((group_centroids - coords[i]) ** 2).sum(axis=1).argmin())
+    return fine, coarse
+
+
 @task
 def cluster_points(points: list[AtlasPoint]) -> list[AtlasPoint]:
-    """HDBSCAN at two granularities. Operates on the 2D coords from UMAP."""
-    import hdbscan
-
+    """Fine clusters via HDBSCAN on the 2D coords; coarse groups above them."""
     logger = get_run_logger()
     placed = [p for p in points if p._vector is not None]
     if not placed:
         return points
 
     coords = np.array([[p.x, p.y] for p in placed], dtype=np.float32)
+    fine, coarse = assign_clusters(coords)
 
-    coarse = hdbscan.HDBSCAN(min_cluster_size=HDBSCAN_COARSE_MIN_CLUSTER).fit(coords)
-    fine = hdbscan.HDBSCAN(min_cluster_size=HDBSCAN_FINE_MIN_CLUSTER).fit(coords)
-
-    for p, c, f in zip(placed, coarse.labels_, fine.labels_):
+    for p, c, f in zip(placed, coarse, fine):
         p.cluster_coarse = int(c)
         p.cluster_fine = int(f)
 
-    n_coarse = len(set(coarse.labels_)) - (1 if -1 in coarse.labels_ else 0)
-    n_fine = len(set(fine.labels_)) - (1 if -1 in fine.labels_ else 0)
-    logger.info(f"clusters: {n_coarse} coarse, {n_fine} fine")
+    n_coarse = len(set(coarse.tolist()))
+    n_fine = len(set(fine.tolist())) - (1 if -1 in fine else 0)
+    largest = max(collections.Counter(coarse.tolist()).values()) / len(coarse)
+    logger.info(
+        f"clusters: {n_coarse} coarse (largest {largest:.1%} of points), {n_fine} fine"
+    )
     return points
 
 

@@ -254,32 +254,71 @@ def _cluster_label(atlas: dict[str, Any], cluster_fine: int) -> str:
 
 
 def _public_anchors_in_coarse(
-    atlas: dict[str, Any], cluster_coarse: int, max_anchors: int
+    atlas: dict[str, Any],
+    cluster_coarse: int,
+    max_anchors: int,
+    cluster_fine: int | None = None,
 ) -> list[AnchorRef]:
-    """Existing public records in the same coarse cluster (the surrounding
-    public state the candidate would land near). Excludes the candidate's
-    own fine cluster's raw points."""
-    out: list[AnchorRef] = []
-    for p in atlas.get("points") or []:
+    """Public records nearest the candidate — the public state it would land next to.
+
+    This used to scan the atlas point list in order and take the first N public
+    records sharing a coarse cluster. With the coarse layer holding 93.5% of
+    points in one group, that returned the *same six anchors for every
+    candidate* — every topic was told it already had public surface at "get
+    better at trading the chicken market". The evidence was per-candidate; only
+    the anchors were effectively constant.
+
+    Ranking by distance to the candidate's fine-cluster centroid is what the
+    docstring always claimed: nearest public neighbours, per candidate. The
+    coarse filter stays as a scope, but no longer decides the ordering.
+    """
+    points = atlas.get("points") or []
+
+    origin: tuple[float, float] | None = None
+    if cluster_fine is not None:
+        members = [
+            p
+            for p in points
+            if p.get("cluster_fine") == cluster_fine
+            and p.get("x") is not None
+            and p.get("y") is not None
+        ]
+        if members:
+            origin = (
+                sum(p["x"] for p in members) / len(members),
+                sum(p["y"] for p in members) / len(members),
+            )
+
+    scored: list[tuple[float, AnchorRef]] = []
+    for p in points:
         if p.get("cluster_coarse") != cluster_coarse:
             continue
-        layer = p.get("layer") or ""
-        if layer not in ("public-knowledge", "public-output", "durable-intent"):
+        if (p.get("layer") or "") not in (
+            "public-knowledge",
+            "public-output",
+            "durable-intent",
+        ):
             continue
-        refs = p.get("refs") or {}
-        at_uri = refs.get("at_uri") or ""
+        at_uri = (p.get("refs") or {}).get("at_uri") or ""
         if not at_uri:
             continue
-        out.append(
-            AnchorRef(
-                at_uri=at_uri,
-                kind=p.get("kind") or "",
-                snippet=(p.get("label") or "")[:240],
+        if origin is None or p.get("x") is None or p.get("y") is None:
+            dist = 0.0
+        else:
+            dist = (p["x"] - origin[0]) ** 2 + (p["y"] - origin[1]) ** 2
+        scored.append(
+            (
+                dist,
+                AnchorRef(
+                    at_uri=at_uri,
+                    kind=p.get("kind") or "",
+                    snippet=(p.get("label") or "")[:240],
+                ),
             )
         )
-        if len(out) >= max_anchors:
-            break
-    return out
+
+    scored.sort(key=lambda pair: pair[0])
+    return [ref for _, ref in scored[:max_anchors]]
 
 
 def _evidence_from_cluster(
@@ -344,7 +383,7 @@ def _extract_pressure_pool_impl(atlas: dict[str, Any]) -> list[dict[str, Any]]:
                 "points": cluster_points,
                 "tags": tags,
                 "anchors": _public_anchors_in_coarse(
-                    atlas, coarse, MAX_ANCHORS_PER_CLUSTER
+                    atlas, coarse, MAX_ANCHORS_PER_CLUSTER, cluster_fine=cf
                 ),
             }
         )
