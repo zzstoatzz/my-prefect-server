@@ -45,7 +45,6 @@ import subprocess
 from pathlib import Path
 
 from prefect import flow, get_run_logger, task
-from prefect.cache_policies import NONE
 from prefect.tasks import exponential_backoff
 
 REPO_URL = "https://tangled.org/zzstoatzz.io/typeahead.git"
@@ -79,29 +78,12 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
         raise RuntimeError(f"{' '.join(cmd[:3])} ... exited {code}")
 
 
-# Every task here is side-effecting — it clones, downloads, or writes to Turso —
-# and none returns a value worth reusing. cache_policy=NONE matches the
-# convention in curate.py / pds_records.py and makes that explicit rather than
-# inheriting INPUTS + TASK_SOURCE + RUN_ID. It also means nothing persists a
-# result, which matters because this deployment's `env:` block replaces the
-# *home anchor rather than merging with it, so PREFECT_LOCAL_STORAGE_PATH would
-# otherwise be unset and results would land in the run's ephemeral /tmp.
-#
-# NOTE these stages are deliberately NOT wrapped in `with transaction()`.
-# Verified against prefect 3.7.3: task transactions nest as children of an
-# enclosing transaction, commit LAZY, and Transaction.reset() propagates a
-# child's ROLLED_BACK state to the parent — which then rolls back every
-# sibling. So one `with transaction()` around these three stages would mean a
-# failure in apply_identities fires on_rollback for the bundle download, i.e.
-# discards up to 28GB over a Turso hiccup. Independent commits are correct
-# here: every side effect is idempotent and resumable (bundles skip weeks
-# already on disk, identity UPDATEs are COALESCE-guarded), so partial progress
-# is worth keeping.
-#
-# Also verified: cache_policy=NONE does NOT suppress rollback hooks. It only
-# removes the transaction key, so nothing is staged or read back.
+# Deliberately NOT wrapped in `with transaction()`. Task transactions nest as
+# children and a rolled-back child rolls back its siblings, so one shared
+# transaction would let a failure in apply_identities discard the 28GB bundle
+# download. Every side effect here is idempotent and resumable, so partial
+# progress is worth keeping.
 @task(
-    cache_policy=NONE,
     retries=2,
     retry_delay_seconds=exponential_backoff(backoff_factor=10),
     retry_jitter_factor=1,
@@ -124,7 +106,7 @@ def clone_repo() -> Path:
     raise RuntimeError("clone failed from both tangled and github")
 
 
-@task(cache_policy=NONE, retries=1, retry_delay_seconds=60)
+@task(retries=1, retry_delay_seconds=60)
 def fetch_published_bundles(repo_dir: Path) -> None:
     """Seed the bundle cache from https://plc.t3.storage.dev/plc.directory/.
 
@@ -144,7 +126,7 @@ def fetch_published_bundles(repo_dir: Path) -> None:
     )
 
 
-@task(cache_policy=NONE, retries=1, retry_delay_seconds=60)
+@task(retries=1, retry_delay_seconds=60)
 def scrape_tail(repo_dir: Path) -> str:
     """Bundle the weeks the public host has not published.
 
@@ -167,7 +149,7 @@ def scrape_tail(repo_dir: Path) -> str:
     return "python"
 
 
-@task(cache_policy=NONE)
+@task
 def apply_identities(repo_dir: Path, tail_via: str) -> None:
     """Walk the bundle cache and write resolved handle/pds back to Turso.
 
