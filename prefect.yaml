@@ -550,9 +550,26 @@ deployments:
 
   - name: fastmcp-brief
     entrypoint: flows/fastmcp_brief.py:fastmcp_brief
-    # no schedule on purpose — driven by the `fastmcp activity -> brief` and
-    # `fastmcp direct ask -> brief` automations in deploy/automations.yaml, so
-    # it fires when something is happening rather than on a clock.
+    # Driven by the `fastmcp activity -> brief` and `fastmcp direct ask ->
+    # brief` automations in deploy/automations.yaml, PLUS a floor schedule.
+    #
+    # The automations alone were not enough. `fastmcp activity -> brief` fires
+    # at 8 github.* events in an hour, a threshold calibrated on the watcher's
+    # cold start, which drained the whole unread backlog as 50 events at once.
+    # Steady state is 1-5 an hour: only 2 of 7 active hours cleared 8, and
+    # exactly one brief reached discord in the first twelve hours. `fastmcp
+    # direct ask -> brief` never fired at all because 49 of 50 events are
+    # `subscribed` — review_requested and mention do not occur on this repo.
+    #
+    # So volume is the wrong trigger on its own: it alarms on bursts of noise
+    # and stays silent through a quiet morning that still contains the one PR
+    # worth seeing. The floor guarantees the window gets looked at. It is cheap
+    # and quiet by construction — the flow drops threads it has already briefed
+    # and emits nothing at all when nothing merits surfacing, so a dead window
+    # costs one small LLM call and produces no message.
+    #
+    # This is deliberately the only change to the triggering, so that whether
+    # the briefs are any good is attributable. Revert by deleting `schedules`.
     work_pool:
       name: home-pool
       job_variables:
@@ -565,3 +582,8 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+    parameters:
+      window_hours: 6
+    schedules:
+      - cron: "0 */4 * * *"
+        active: true
