@@ -160,10 +160,31 @@ def test_watch_drops_threads_it_cannot_build_a_real_link_for() -> None:
     }
     assert _thread_to_event(unparseable) is None
 
-    unknown_kind = {
+    # a release subject url ends in a release id, which parses as a number and
+    # used to build github.com/<repo>/issues/360744956 — a confident link to an
+    # issue that does not exist. Observed 4 times in 200 real notifications.
+    release = {
         "id": "2",
         "reason": "subscribed",
         "updated_at": "2026-07-27T18:00:00Z",
-        "subject": {"title": "t", "type": "Release", "url": ".../releases/12"},
+        "subject": {
+            "title": "v4.0.0",
+            "type": "Release",
+            "url": "https://api.github.com/repos/PrefectHQ/fastmcp/releases/360744956",
+        },
     }
-    assert _thread_to_event(unknown_kind) is None
+    assert _thread_to_event(release) is None
+
+
+def test_enrich_takes_githubs_own_html_url() -> None:
+    """Links are authoritative, not assembled from a path guess."""
+    threads = [_thread(4653)]
+    responses = {
+        threads[0]["api_url"]: {
+            "state": "open",
+            "html_url": "https://github.com/PrefectHQ/fastmcp/pull/4653",
+            "user": {"login": "hxaxd"},
+        }
+    }
+    alive = _enrich_against(responses, threads)
+    assert alive[0]["url"] == "https://github.com/PrefectHQ/fastmcp/pull/4653"

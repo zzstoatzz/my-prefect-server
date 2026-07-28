@@ -94,12 +94,15 @@ def _thread_to_event(thread: dict) -> dict[str, Any] | None:
         if tail.isdigit():
             number = int(tail)
 
+    # A provisional link only. The authoritative one is github's own html_url,
+    # which the brief takes from the enrichment fetch — this is what shows if a
+    # thread is surfaced before that ever runs. `Release` is deliberately absent
+    # from the path map: its subject url ends in a release id, which parses as a
+    # number and would otherwise build a link to an issue that does not exist.
     path = {"PullRequest": "pull", "Issue": "issues", "Discussion": "discussions"}.get(
         subject_type
     )
     if number is None or path is None:
-        # a link to the repo homepage is worse than no item at all: it looks
-        # like a citation and tells you nothing. Drop it rather than emit one.
         return None
     html_url = f"https://github.com/{REPO}/{path}/{number}"
 

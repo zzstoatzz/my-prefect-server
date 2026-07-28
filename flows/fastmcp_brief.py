@@ -180,6 +180,12 @@ def enrich(threads: list[dict[str, Any]], token: str) -> list[dict[str, Any]]:
             alive.append(
                 {
                     **thread,
+                    # github's own html_url, rather than one assembled from the
+                    # subject type and a trailing path segment. A release's url
+                    # ends in a release id (…/releases/360744956), which parses
+                    # as a number just fine and then builds a link to an issue
+                    # that does not exist.
+                    "url": item.get("html_url") or thread.get("url"),
                     "state": item.get("state"),
                     "draft": bool(item.get("draft")),
                     "author": (item.get("user") or {}).get("login"),
