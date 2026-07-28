@@ -326,6 +326,44 @@ deployments:
         # activating requires delete+recreate of the deployment (not just redeploy).
         active: true
 
+  - name: typeahead-plc-identity
+    entrypoint: flows/typeahead_plc_identity.py:typeahead_plc_identity
+    # Bulk DID -> (handle, pds) resolution from the PLC log, via fig's Allegedly
+    # weekly bundles. typeahead's per-DID identity resolution could not converge
+    # (1.3M rows missing handle, 9.3M missing pds, at 500/run). Not on the
+    # Cloudflare cron: ~28GB of bundles and a multi-GB working set. Same home-pool
+    # shape as typeahead-index — pure batch, no ingress, no SLA.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --refresh-package my-prefect-server
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
+        env:
+          # full libsql:// URL — unlike typeahead-index, this flow does NOT strip
+          # the scheme; the python script rewrites it to https itself.
+          TURSO_URL: "{{ prefect.blocks.secret.typeahead-turso-url }}"
+          TURSO_AUTH_TOKEN: "{{ prefect.blocks.secret.typeahead-turso-token }}"
+          # persistent NVMe — process runs execute in an ephemeral /tmp, and the
+          # bundle cache is ~28GB that we do NOT want to re-download weekly.
+          PLC_BUNDLE_DIR: /home/stoat/typeahead-plc
+          PLC_APPLY: "1"
+    concurrency_limit: *cancel_new
+    schedules:
+      # weekly, matching the bundle cadence — Allegedly stops ~73h short of now
+      # (PLC ops can still be invalidated inside that window) and the relay
+      # firehose's #identity events cover the remainder, so there is nothing to
+      # gain from running more often. 05:00 UTC Monday sits clear of
+      # typeahead-index (09:00) and the 13:00 cluster.
+      - cron: "0 5 * * 1"
+        # start inactive: the first run should be watched by hand. It walks the
+        # whole bundle set and writes millions of rows to a single-writer Turso
+        # shared with the live ingester. NOTE: prefect 3.7.2 won't overwrite an
+        # existing deployment's schedule — activating needs delete+recreate.
+        active: false
+
   - name: pub-search-snapshot
     entrypoint: flows/pub_search_snapshot.py:pub_search_snapshot
     # the pub-search replica snapshot builder (BUILDER_MODE=1), lifted off Fly
