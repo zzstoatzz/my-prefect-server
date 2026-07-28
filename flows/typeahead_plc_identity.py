@@ -174,6 +174,12 @@ def scrape_tail(repo_dir: Path) -> str:
     """
     logger = get_run_logger()
     script = repo_dir / "scripts" / "plc-identity-sync.py"
+    # Must run BEFORE --after is computed: allegedly writes gzip straight into
+    # the final filename, so a previously-killed run can leave a truncated
+    # newest week that would otherwise be treated as complete and skipped.
+    _stream(["uv", "run", str(script), "--dest", str(BUNDLE_DIR),
+             "--verify-bundles", "--bundles-only"],
+            repo_dir, {**os.environ}, timeout=3600, label="verify bundles")
     if shutil.which("allegedly"):
         # --after is REQUIRED here. `allegedly bundle` opens targets with
         # File::create_new (weekly.rs:163), so it PANICS with EEXIST on the
@@ -187,9 +193,13 @@ def scrape_tail(repo_dir: Path) -> str:
         )
         after = datetime.fromtimestamp((weeks[-1] + WEEK) if weeks else 1668643200, UTC)
         logger.info(f"allegedly bundle --after {after.isoformat()} ({len(weeks)} weeks on disk)")
+        # RUST_LOG=info turns on allegedly's own per-week progress
+        # ("done week N (ts): X ops (Y/s)"). Without it the binary is silent for
+        # hours and a healthy run is indistinguishable from a hung one.
         _stream(["allegedly", "bundle", "--dest", str(BUNDLE_DIR),
                  "--after", after.strftime("%Y-%m-%dT%H:%M:%SZ")],
-                WORK_HOME, {**os.environ}, timeout=6 * 3600, label="allegedly bundle")
+                WORK_HOME, {**os.environ, "RUST_LOG": "info"},
+                timeout=6 * 3600, label="allegedly bundle")
         return "allegedly"
     logger.warning("allegedly not on PATH — using the python tail scraper")
     _stream(["uv", "run", str(script), "--dest", str(BUNDLE_DIR), "--scrape-tail",
@@ -225,8 +235,19 @@ def typeahead_plc_identity() -> None:
     BUNDLE_DIR.mkdir(parents=True, exist_ok=True)
     repo = clone_repo()
     fetch_published_bundles(repo)
-    tail_via = scrape_tail(repo)
-    apply_identities(repo, tail_via)
+    # Identity BEFORE the tail scrape, deliberately.
+    #
+    # The published bundles already cover 2022-11-17 -> 2025-09-18, which is
+    # where almost every unresolved DID was last touched. The tail is ~43 weeks
+    # scraped from plc.directory, which self-rate-limits to 500 req/5min (600ms
+    # between pages) — ~3.5 hours during which the run delivers nothing.
+    #
+    # Bundles are additive and this pass is idempotent, so resolving against
+    # whatever is on disk gets the value now, and the tail scraped here improves
+    # the NEXT run. Ordering it the other way made a 3.5h prerequisite out of
+    # the least valuable stage.
+    apply_identities(repo, "published bundles only")
+    scrape_tail(repo)
 
 
 if __name__ == "__main__":
