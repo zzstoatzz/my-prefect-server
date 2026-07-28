@@ -1,12 +1,9 @@
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
-np = pytest.importorskip("numpy")
-pytest.importorskip("hdbscan")
-pytest.importorskip("sklearn")
-
-from flows.phi_atlas import COARSE_GROUPS, assign_clusters  # noqa: E402
+from flows.phi_atlas import COARSE_GROUPS, assign_clusters
 
 
 @pytest.fixture

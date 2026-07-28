@@ -53,6 +53,13 @@ members = ["packages/*"]
 dev = [
     "ty>=0.0.23",
     "pytest>=8",
+    # phi_atlas imports numpy at module scope and hdbscan/sklearn inside its
+    # clustering task; without these `pytest tests/` cannot even collect
+    # tests/test_phi_atlas_classifier.py. Tests must not fail — so the deps
+    # its tests need belong in the dev group, not in a skip guard.
+    "numpy>=1.26",
+    "hdbscan>=0.8.40",
+    "scikit-learn>=1.5",
 ]
 
 [tool.ty.src]

@@ -1750,7 +1750,10 @@ atlas = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "hdbscan" },
+    { name = "numpy" },
     { name = "pytest" },
+    { name = "scikit-learn" },
     { name = "ty" },
 ]
 
@@ -1773,7 +1776,10 @@ provides-extras = ["atlas"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "hdbscan", specifier = ">=0.8.40" },
+    { name = "numpy", specifier = ">=1.26" },
     { name = "pytest", specifier = ">=8" },
+    { name = "scikit-learn", specifier = ">=1.5" },
     { name = "ty", specifier = ">=0.0.23" },
 ]
 

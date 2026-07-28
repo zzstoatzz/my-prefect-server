@@ -2,10 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-pytest.importorskip("duckdb")
-pytest.importorskip("pydantic_ai")
-
-from flows.docket import _public_anchors_in_coarse  # noqa: E402
+from flows.docket import _public_anchors_in_coarse
 
 
 def _pt(pid, x, y, fine, coarse, layer="public-output", uri=None, label=""):
