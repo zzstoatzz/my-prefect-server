@@ -22,11 +22,14 @@ holds a multi-GB dict, neither of which a Worker can do.
 
 HOST PREREQS
 ------------
-  - `allegedly` on PATH (`cargo install allegedly`), for scraping the weeks the
-    public bundle host has not published yet. If it is absent this flow still
-    runs — it falls back to published bundles only, and logs what it skipped.
-  - a persistent path with ~30GB free (PLC_BUNDLE_DIR). Process flow runs
-    execute in an ephemeral /tmp, so this MUST be set to real disk.
+  - a persistent path with ~30GB free (PLC_BUNDLE_DIR). Process flow runs execute
+    in an ephemeral /tmp, so this MUST be set to real disk.
+  - `uv` and `git` on the worker PATH (they already are, via ~/.local/bin).
+  - `allegedly` is OPTIONAL. Installed on heavypad 2026-07-28 at
+    ~/.local/bin/allegedly. It needs rust >=1.85 (apt ships 1.75, so rustup) and
+    vendored openssl to avoid needing libssl-dev + root — see
+    typeahead deploy/home-indexer/install.sh. When absent the flow falls back to
+    the script's pure-python tail scraper, which emits byte-compatible bundles.
 
 Expected env (set by the deployment):
   - TURSO_URL         (block: typeahead-turso-url — full libsql:// URL, NOT stripped;
@@ -102,61 +105,61 @@ def clone_repo() -> Path:
 def fetch_published_bundles(repo_dir: Path) -> None:
     """Seed the bundle cache from https://plc.t3.storage.dev/plc.directory/.
 
-    Resumable by construction — the script skips weeks already on disk and
-    writes via .part + rename, so a killed run never leaves a torn bundle
-    looking complete. Measured 2026-07-28: 149 weeks, 27.96GB gz, complete from
+    Resumable by construction — the script skips weeks already on disk and writes
+    via .part + rename, so a killed run never leaves a torn bundle looking
+    complete. Measured 2026-07-28: 149 weeks, 27.96GB gz, complete from
     2022-11-17 through 2025-09-18.
+
+    Bundles ONLY. An earlier version passed --from-dir here, which also ran the
+    whole identity phase — a full keyset scan and bundle parse, discarded,
+    before apply_identities did it all again.
     """
     script = repo_dir / "scripts" / "plc-identity-sync.py"
     _stream(
-        ["uv", "run", str(script), "--dest", str(BUNDLE_DIR), "--fetch", "--from-dir"],
+        ["uv", "run", str(script), "--dest", str(BUNDLE_DIR), "--fetch", "--bundles-only"],
         repo_dir, {**os.environ}, timeout=4 * 3600,
     )
 
 
 @task(retries=1, retry_delay_seconds=60)
-def scrape_tail() -> bool:
-    """`allegedly bundle` the weeks the public host has not published.
+def scrape_tail(repo_dir: Path) -> str:
+    """Bundle the weeks the public host has not published.
 
-    Returns False (and does NOT fail the run) when allegedly is absent: the
-    published bundles still carry years of history, and a partial identity fix
-    beats no run at all. The skip is logged rather than silent — a missing tail
-    means recently-created accounts stay unresolved, which is precisely the
-    population this job exists for, so it must be visible.
+    Prefers `allegedly bundle` (fig's tool, and the reference implementation).
+    Falls back to the script's pure-python --scrape-tail, which emits
+    byte-compatible bundles — allegedly needs a rust toolchain and vendored
+    openssl, and the unpublished tail is where every recently-created account
+    lives, so this must not depend on host setup succeeding.
     """
     logger = get_run_logger()
-    if shutil.which("allegedly") is None:
-        logger.warning(
-            "allegedly not on PATH — skipping the unpublished tail. Published "
-            "bundles end 2025-09-18, so accounts created since then will NOT be "
-            "resolved by this run. Install with `cargo install allegedly`."
-        )
-        return False
-    _stream(
-        ["allegedly", "bundle", "--dest", str(BUNDLE_DIR)],
-        WORK_HOME, {**os.environ}, timeout=6 * 3600,
-    )
-    return True
+    script = repo_dir / "scripts" / "plc-identity-sync.py"
+    if shutil.which("allegedly"):
+        _stream(["allegedly", "bundle", "--dest", str(BUNDLE_DIR)],
+                WORK_HOME, {**os.environ}, timeout=6 * 3600)
+        return "allegedly"
+    logger.warning("allegedly not on PATH — using the python tail scraper")
+    _stream(["uv", "run", str(script), "--dest", str(BUNDLE_DIR), "--scrape-tail",
+             "--bundles-only"],
+            repo_dir, {**os.environ}, timeout=6 * 3600)
+    return "python"
 
 
 @task
-def apply_identities(repo_dir: Path, tail_ok: bool) -> None:
+def apply_identities(repo_dir: Path, tail_via: str) -> None:
     """Walk the bundle cache and write resolved handle/pds back to Turso.
 
-    Reads bundles directly rather than piping `allegedly backfill`, so the job
-    does not require a Rust toolchain to do its main work. Writes are batched
-    into transactions — Turso is single-writer and this shares it with the
-    ingester.
+    Reads bundles directly rather than piping `allegedly backfill`, so the main
+    work needs no rust toolchain. Writes are paced — Turso is single-writer and
+    this shares it with the live ingester.
     """
     logger = get_run_logger()
+    logger.info(f"tail bundled via: {tail_via}")
     script = repo_dir / "scripts" / "plc-identity-sync.py"
     cmd = ["uv", "run", str(script), "--dest", str(BUNDLE_DIR), "--from-dir"]
     if os.environ.get("PLC_APPLY") == "1":
         cmd.append("--apply")
     else:
         logger.warning("PLC_APPLY != 1 — dry run, no writes")
-    if not tail_ok:
-        logger.warning("running against published bundles only (no scraped tail)")
     _stream(cmd, repo_dir, {**os.environ}, timeout=6 * 3600)
 
 
@@ -168,8 +171,8 @@ def typeahead_plc_identity() -> None:
     BUNDLE_DIR.mkdir(parents=True, exist_ok=True)
     repo = clone_repo()
     fetch_published_bundles(repo)
-    tail_ok = scrape_tail()
-    apply_identities(repo, tail_ok)
+    tail_via = scrape_tail(repo)
+    apply_identities(repo, tail_via)
 
 
 if __name__ == "__main__":
