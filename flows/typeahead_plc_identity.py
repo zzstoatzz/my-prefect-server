@@ -42,6 +42,7 @@ Expected env (set by the deployment):
 import os
 import shutil
 import subprocess
+import threading
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -58,13 +59,40 @@ REPO_DIR = WORK_HOME / "repo"
 BUNDLE_DIR = WORK_HOME / "weekly"
 
 
-def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
+def _heartbeat(stop: threading.Event, label: str, every: int = 300) -> None:
+    """Log bundle-cache size while a silent stage runs.
+
+    `allegedly bundle` writes a week's file only when that week completes and
+    prints nothing in between, so a multi-hour tail scrape produces ZERO log
+    lines. On 2026-07-28 that made a healthy run look orphaned — 2h17m with no
+    output — and it took a manual check of /proc/<pid>/stat to prove otherwise.
+    Streaming stdout is not enough when the subprocess has nothing to say.
+    """
+    logger = get_run_logger()
+    while not stop.wait(every):
+        try:
+            files = list(BUNDLE_DIR.glob("*.jsonl.gz"))
+            mb = sum(f.stat().st_size for f in files) / 1e6
+            partial = sum(f.stat().st_size for f in BUNDLE_DIR.glob("*.part")) / 1e6
+            logger.info(
+                f"[{label}] alive — {len(files)} bundles, {mb/1000:.1f} GB"
+                + (f" (+{partial:.0f} MB in flight)" if partial else "")
+            )
+        except Exception as e:  # never let the heartbeat kill the stage
+            logger.warning(f"[{label}] heartbeat failed: {e}")
+
+
+def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int, label: str = "") -> None:
     """Run a subprocess, streaming output to the run logger live.
 
     These stages are long (a cold bundle fetch is tens of GB). Capture-then-dump
-    would leave the run silent throughout — stream so progress is visible.
+    would leave the run silent throughout — stream so progress is visible. A
+    heartbeat covers the stages that stream nothing at all.
     """
     logger = get_run_logger()
+    stop = threading.Event()
+    hb = threading.Thread(target=_heartbeat, args=(stop, label or cmd[0]), daemon=True)
+    hb.start()
     proc = subprocess.Popen(
         cmd, cwd=str(cwd), env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
@@ -77,6 +105,8 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
     except subprocess.TimeoutExpired:
         proc.kill()
         raise RuntimeError(f"{cmd[0]} exceeded {timeout}s timeout")
+    finally:
+        stop.set()
     if code != 0:
         raise RuntimeError(f"{' '.join(cmd[:3])} ... exited {code}")
 
@@ -125,7 +155,7 @@ def fetch_published_bundles(repo_dir: Path) -> None:
     script = repo_dir / "scripts" / "plc-identity-sync.py"
     _stream(
         ["uv", "run", str(script), "--dest", str(BUNDLE_DIR), "--fetch", "--bundles-only"],
-        repo_dir, {**os.environ}, timeout=4 * 3600,
+        repo_dir, {**os.environ}, timeout=4 * 3600, label="fetch bundles",
     )
 
 
@@ -159,7 +189,7 @@ def scrape_tail(repo_dir: Path) -> str:
         logger.info(f"allegedly bundle --after {after.isoformat()} ({len(weeks)} weeks on disk)")
         _stream(["allegedly", "bundle", "--dest", str(BUNDLE_DIR),
                  "--after", after.strftime("%Y-%m-%dT%H:%M:%SZ")],
-                WORK_HOME, {**os.environ}, timeout=6 * 3600)
+                WORK_HOME, {**os.environ}, timeout=6 * 3600, label="allegedly bundle")
         return "allegedly"
     logger.warning("allegedly not on PATH — using the python tail scraper")
     _stream(["uv", "run", str(script), "--dest", str(BUNDLE_DIR), "--scrape-tail",
