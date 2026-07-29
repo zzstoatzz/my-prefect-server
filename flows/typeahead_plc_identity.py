@@ -161,50 +161,36 @@ def fetch_published_bundles(repo_dir: Path) -> None:
 
 @task(retries=1, retry_delay_seconds=60)
 def scrape_tail(repo_dir: Path) -> str:
-    """Bundle the weeks the public host has not published.
+    """Bundle the weeks the public host has not published, via the python scraper.
 
-    Prefers `allegedly bundle` (fig's tool, and the reference implementation).
-    Falls back to the script's pure-python --scrape-tail, which emits
-    byte-compatible bundles — allegedly needs a rust toolchain and vendored
-    openssl, and the unpublished tail is where every recently-created account
-    lives, so this must not depend on host setup succeeding.
+    NOT `allegedly bundle`, deliberately. allegedly sets no read timeout and hung
+    indefinitely on the same call twice — dc4cce22 for 3h07m, a8af8f5e for 7.5h,
+    both at 0.15% CPU with zero bytes written. Our subprocess timeout was 6h,
+    far too coarse to catch it, so a run sat dead for most of a day after its
+    useful work had already completed.
 
-    Unlike the python path, `allegedly bundle` does NOT skip weeks already
-    present; see the --after handling below.
+    The python path sets an explicit per-request timeout with retries and writes
+    .part + rename, so a kill cannot leave a file that looks complete (allegedly
+    streams gzip straight into the final name, which is how we ended up deleting
+    truncated bundles by hand). Output is byte-compatible, so switching back is a
+    one-line change if allegedly grows a timeout.
+
+    Runs LAST: everything above it has already delivered this run's value, and
+    this stage only improves the next one.
     """
     logger = get_run_logger()
     script = repo_dir / "scripts" / "plc-identity-sync.py"
-    # Must run BEFORE --after is computed: allegedly writes gzip straight into
-    # the final filename, so a previously-killed run can leave a truncated
-    # newest week that would otherwise be treated as complete and skipped.
-    _stream(["uv", "run", str(script), "--dest", str(BUNDLE_DIR),
-             "--verify-bundles", "--bundles-only"],
-            repo_dir, {**os.environ}, timeout=3600, label="verify bundles")
-    if shutil.which("allegedly"):
-        # --after is REQUIRED here. `allegedly bundle` opens targets with
-        # File::create_new (weekly.rs:163), so it PANICS with EEXIST on the
-        # first week already on disk — it does not skip. Its default --after is
-        # PLC genesis, which collides immediately with the published bundles we
-        # just fetched. Start at the week after the newest one we have.
-        weeks = sorted(
-            int(p.stem.split(".")[0])
-            for p in BUNDLE_DIR.glob("*.jsonl.gz")
-            if p.stem.split(".")[0].isdigit()
-        )
-        after = datetime.fromtimestamp((weeks[-1] + WEEK) if weeks else 1668643200, UTC)
-        logger.info(f"allegedly bundle --after {after.isoformat()} ({len(weeks)} weeks on disk)")
-        # RUST_LOG=info turns on allegedly's own per-week progress
-        # ("done week N (ts): X ops (Y/s)"). Without it the binary is silent for
-        # hours and a healthy run is indistinguishable from a hung one.
-        _stream(["allegedly", "bundle", "--dest", str(BUNDLE_DIR),
-                 "--after", after.strftime("%Y-%m-%dT%H:%M:%SZ")],
-                WORK_HOME, {**os.environ, "RUST_LOG": "info"},
-                timeout=6 * 3600, label="allegedly bundle")
-        return "allegedly"
-    logger.warning("allegedly not on PATH — using the python tail scraper")
-    _stream(["uv", "run", str(script), "--dest", str(BUNDLE_DIR), "--scrape-tail",
-             "--bundles-only"],
-            repo_dir, {**os.environ}, timeout=6 * 3600)
+    weeks = sorted(
+        int(p.stem.split(".")[0])
+        for p in BUNDLE_DIR.glob("*.jsonl.gz")
+        if p.stem.split(".")[0].isdigit()
+    )
+    logger.info(f"tail scrape starting — {len(weeks)} weeks on disk")
+    _stream(
+        ["uv", "run", str(script), "--dest", str(BUNDLE_DIR), "--scrape-tail",
+         "--verify-bundles", "--bundles-only"],
+        repo_dir, {**os.environ}, timeout=4 * 3600, label="tail scrape",
+    )
     return "python"
 
 
