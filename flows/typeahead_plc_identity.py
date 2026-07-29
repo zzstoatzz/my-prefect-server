@@ -41,6 +41,7 @@ Expected env (set by the deployment):
 
 import os
 import shutil
+import signal
 import subprocess
 import threading
 from datetime import UTC, datetime
@@ -93,18 +94,42 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int, label: str = "")
     stop = threading.Event()
     hb = threading.Thread(target=_heartbeat, args=(stop, label or cmd[0]), daemon=True)
     hb.start()
+    # start_new_session puts the child in its own process group so we can kill
+    # the WHOLE tree. Without it, a Prefect cancel SIGTERMs only this flow
+    # process: the child (allegedly, or uv->python) survives as an orphan and
+    # keeps working — observed repeatedly, including an `allegedly bundle` that
+    # ran for hours after its run was cancelled, and a scraper still holding the
+    # bundle dir. It also made the flow die uncleanly, which the worker reports
+    # as Crashed rather than Cancelled, so every cancel paged Discord.
     proc = subprocess.Popen(
         cmd, cwd=str(cwd), env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+        start_new_session=True,
     )
+
+    def _kill_tree(sig=signal.SIGTERM):
+        try:
+            os.killpg(os.getpgid(proc.pid), sig)
+        except (ProcessLookupError, PermissionError):
+            pass
     try:
         assert proc.stdout is not None
         for line in proc.stdout:
             logger.info(line.rstrip())
         code = proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
-        proc.kill()
+        _kill_tree(signal.SIGKILL)
         raise RuntimeError(f"{cmd[0]} exceeded {timeout}s timeout")
+    except BaseException:
+        # covers cancellation (SIGTERM -> KeyboardInterrupt/SystemExit) as well
+        # as ordinary errors: the child must never outlive the run.
+        logger.warning(f"terminating child process group for {cmd[0]}")
+        _kill_tree()
+        try:
+            proc.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            _kill_tree(signal.SIGKILL)
+        raise
     finally:
         stop.set()
     if code != 0:
