@@ -361,11 +361,12 @@ deployments:
         # ACTIVE since 2026-07-30, after a clean end-to-end run: 319,888
         # identity updates applied, handle backlog 1,311,817 -> 14,680.
         #
-        # NOTE: `prefect deploy` will not OVERWRITE an existing schedule from
-        # this file, so flipping this bool alone does nothing. You do NOT need
-        # delete+recreate though — manage it directly:
-        #   just prefect deployment schedule ls <deployment>
-        #   just prefect deployment schedule resume <deployment> <schedule-id>
+        # This file IS authoritative for the schedule. Verified 2026-07-30 on
+        # prefect 3.7.3 by changing the cron and by flipping this flag: each
+        # `prefect deploy` REPLACES the schedule (its id changes) and both the
+        # cron expression and `active` are applied. The older note claiming
+        # deploy won't overwrite an existing schedule, and that activating needs
+        # delete+recreate, was wrong on both counts.
         active: true
 
   - name: pub-search-snapshot
