@@ -358,11 +358,15 @@ deployments:
       # gain from running more often. 05:00 UTC Monday sits clear of
       # typeahead-index (09:00) and the 13:00 cluster.
       - cron: "0 5 * * 1"
-        # start inactive: the first run should be watched by hand. It walks the
-        # whole bundle set and writes millions of rows to a single-writer Turso
-        # shared with the live ingester. NOTE: prefect 3.7.2 won't overwrite an
-        # existing deployment's schedule — activating needs delete+recreate.
-        active: false
+        # ACTIVE since 2026-07-30, after a clean end-to-end run: 319,888
+        # identity updates applied, handle backlog 1,311,817 -> 14,680.
+        #
+        # NOTE: `prefect deploy` will not OVERWRITE an existing schedule from
+        # this file, so flipping this bool alone does nothing. You do NOT need
+        # delete+recreate though — manage it directly:
+        #   just prefect deployment schedule ls <deployment>
+        #   just prefect deployment schedule resume <deployment> <schedule-id>
+        active: true
 
   - name: pub-search-snapshot
     entrypoint: flows/pub_search_snapshot.py:pub_search_snapshot
