@@ -254,18 +254,10 @@ def reconcile_handles(repo_dir: Path) -> None:
     script = repo_dir / "scripts" / "plc-identity-sync.py"
     cmd = ["uv", "run", str(script), "--dest", str(BUNDLE_DIR), "--from-dir",
            "--reconcile-handles"]
-    # Gated SEPARATELY from PLC_APPLY, and off by default.
-    #
-    # The other stages fill in blanks: worst case they write a handle where
-    # there was none. This one OVERWRITES handles that are already populated,
-    # across an estimated ~100k rows, and had never run against real data. A
-    # dry run prints the candidate count and a sample of before/after pairs;
-    # flip PLC_RECONCILE_APPLY=1 once that number looks like the ~1% the
-    # sampling predicted, and not like "most of the corpus".
-    if os.environ.get("PLC_RECONCILE_APPLY") == "1":
+    if os.environ.get("PLC_APPLY") == "1":
         cmd.append("--apply")
     else:
-        logger.warning("PLC_RECONCILE_APPLY != 1 — dry run, reporting candidates only")
+        logger.warning("PLC_APPLY != 1 — dry run, no writes")
     _stream(cmd, repo_dir, {**os.environ}, timeout=6 * 3600, label="reconcile handles")
 
 
