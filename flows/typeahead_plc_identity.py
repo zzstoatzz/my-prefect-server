@@ -238,29 +238,6 @@ def apply_identities(repo_dir: Path, tail_via: str) -> None:
     _stream(cmd, repo_dir, {**os.environ}, timeout=6 * 3600)
 
 
-@task
-def reconcile_handles(repo_dir: Path) -> None:
-    """Repair handles we hold that are WRONG, as opposed to missing.
-
-    Every other identity path selects on absence, so a rename we miss is
-    permanent — the actor stays searchable only under a name they no longer use.
-    Measured 2026-07-30: ~1% of stored handles, roughly 100k actors.
-
-    Detection is free here because the bundles are already on disk from the
-    stages above. Only the candidates cost an API call, and only the appview's
-    answer is written — PLC's alsoKnownAs is a claim, not a verified handle.
-    """
-    logger = get_run_logger()
-    script = repo_dir / "scripts" / "plc-identity-sync.py"
-    cmd = ["uv", "run", str(script), "--dest", str(BUNDLE_DIR), "--from-dir",
-           "--reconcile-handles"]
-    if os.environ.get("PLC_APPLY") == "1":
-        cmd.append("--apply")
-    else:
-        logger.warning("PLC_APPLY != 1 — dry run, no writes")
-    _stream(cmd, repo_dir, {**os.environ}, timeout=6 * 3600, label="reconcile handles")
-
-
 @flow(name="typeahead-plc-identity")
 def typeahead_plc_identity() -> None:
     if not os.environ.get("TURSO_URL"):
@@ -281,9 +258,6 @@ def typeahead_plc_identity() -> None:
     # the NEXT run. Ordering it the other way made a 3.5h prerequisite out of
     # the least valuable stage.
     apply_identities(repo, "published bundles only")
-    # after the fill pass: it walks the same bundles, and a handle just filled
-    # in is not one this needs to second-guess
-    reconcile_handles(repo)
     scrape_tail(repo)
 
 
