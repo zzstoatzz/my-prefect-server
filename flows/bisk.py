@@ -46,20 +46,23 @@ ENHANCED_GRACE_LIMIT = 10_000
 GRACE_LIMIT = (
     ENHANCED_GRACE_LIMIT  # legacy alias; kept so the snapshot field reads true
 )
-# topchicken runs a discrete daily round: trading locks at 12:00 UTC and the
-# winner is crowned ~13:05 UTC (see topchicken.cee.wtf). the live race must mirror
-# that exact round — open from the most recent 12:00 UTC lock to now — NOT a
-# rolling trailing-24h window. a rolling window keeps the just-crowned post in the
-# race for ~24h after it has already won, so the site shows yesterday's top chicken
-# as today's leader. anchoring to the lock resets the race the moment a round ends.
-# (the all-time view uses topchicken's own crownings, so it's unaffected by this.)
-LOCK_HOUR_UTC = 12
+# topchicken's round is one UTC calendar day of posts. trading on round D runs
+# D 06:00 → D+1 06:00 UTC, and the winner is crowned ~13:05 UTC on D+1 (see the
+# chicken market's "how a round works"). the live race shows the round whose
+# trading is currently open: the posting day of the most recent 06:00 UTC
+# boundary. anchoring to that discrete day — NOT a rolling trailing-24h window —
+# is what resets the race each round instead of letting the just-crowned post
+# linger as leader. both bounds matter: during the 00:00–06:00 overtime hours,
+# fresh posts belong to the *next* round and must not leak into this one.
+# (the all-time view uses topchicken's own crownings, so it's unaffected.)
+LOCK_HOUR_UTC = 6
 
 
-def round_start(now: datetime) -> datetime:
-    """the open of the round currently being judged: the most recent 12:00 UTC."""
+def round_bounds(now: datetime) -> tuple[datetime, datetime]:
+    """[start, end) of the posting day for the round currently trading."""
     lock = now.replace(hour=LOCK_HOUR_UTC, minute=0, second=0, microsecond=0)
-    return lock if now >= lock else lock - timedelta(days=1)
+    day = (lock if now >= lock else lock - timedelta(days=1)).replace(hour=0)
+    return day, day + timedelta(days=1)
 
 
 CONSTELLATION = "https://constellation.microcosm.blue/xrpc"
@@ -156,15 +159,13 @@ def build_pool() -> dict[str, dict]:
 def window_bisks(pool: dict[str, dict]) -> list[dict]:
     """the pool's bisks in topchicken's *current* daily round, with live likes.
 
-    the round opens at the most recent 12:00 UTC lock and is judged at the next
-    one; mirroring that discrete window (rather than a rolling 24h lookback) is
-    what makes the live race reset each day instead of letting the just-crowned
-    post linger as leader for another ~24h.
+    the round is one UTC calendar day of posts — the one whose trading is open
+    (it locks at 06:00 UTC the next day). mirroring that discrete day (rather
+    than a rolling 24h lookback) is what makes the live race reset each round
+    instead of letting the just-crowned post linger as leader for another ~24h.
     """
-    window_start = round_start(datetime.now(timezone.utc))
-    print(
-        f"round: posts since {window_start:%Y-%m-%d %H:%M} UTC (open since the 12:00 UTC lock)"
-    )
+    window_start, window_end = round_bounds(datetime.now(timezone.utc))
+    print(f"round {window_start:%Y-%m-%d}: posts from that UTC day (locks {window_end:%m-%d} 06:00 UTC)")
 
     async def run() -> list[dict]:
         bisks: list[dict] = []
@@ -190,7 +191,7 @@ def window_bisks(pool: dict[str, dict]) -> list[dict]:
                         when = datetime.fromisoformat(created.replace("Z", "+00:00"))
                     except ValueError:
                         continue
-                    if when < window_start or post.get("likeCount", 0) < 1:
+                    if not (window_start <= when < window_end) or post.get("likeCount", 0) < 1:
                         continue
                     bisks.append(
                         {
