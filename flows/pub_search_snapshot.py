@@ -117,14 +117,16 @@ def run_builder(binary: Path, version: str) -> None:
         "BUILDER_MODE": "1",
         "BUILDER_VERSION": version,
         "RCLONE": rclone,
-        # generous: no fly watchdog opponent here; prefect's flow timeout is
-        # the real bound. this only guards a truly hung build.
-        "BUILDER_TIMEOUT_SECS": "10800",
+        # healthy builds run 15-40min; a hung one must not eat the next 2h
+        # cycle (2026-08-01: a wedged build held the deployment concurrency
+        # slot for hours and stalled all snapshots). 75min subprocess bound,
+        # 90min flow bound.
+        "BUILDER_TIMEOUT_SECS": "4500",
     }
-    _stream([str(binary)], binary.parent, env, timeout=10800)
+    _stream([str(binary)], binary.parent, env, timeout=4500)
 
 
-@flow(name="pub-search-snapshot", log_prints=True, timeout_seconds=14400)
+@flow(name="pub-search-snapshot", log_prints=True, timeout_seconds=5400)
 def pub_search_snapshot():
     repo = clone_repo()
     binary, version = build_binary(repo)
