@@ -269,6 +269,24 @@ deployments:
     schedules:
       - cron: "0 8 * * *"  # daily at 08:00 UTC
 
+  - name: typeahead-enrich-backfill
+    entrypoint: flows/typeahead_enrich_backfill.py:typeahead_enrich_backfill
+    # one-shot/chained backfill for the ~6M actors stuck at profile_checked_at=0
+    # (the hourly cron's 200/run cold floor would take ~3.5 years). NO schedule —
+    # run manually, dry_run=true + small limit first, then chain paced runs via
+    # the returned last_rowid. concurrency 1: never two walkers on the queue.
+    concurrency_limit: 1
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --refresh-package my-prefect-server
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
+        env:
+          TURSO_URL: "{{ prefect.blocks.secret.typeahead-turso-url }}"
+          TURSO_AUTH_TOKEN: "{{ prefect.blocks.secret.typeahead-turso-token }}"
   - name: typeahead-index
     entrypoint: flows/typeahead_index.py:typeahead_index
     # the typeahead snapshot builder (Zig MODE=indexer), lifted off Fly onto the
