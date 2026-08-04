@@ -117,16 +117,20 @@ def run_builder(binary: Path, version: str) -> None:
         "BUILDER_MODE": "1",
         "BUILDER_VERSION": version,
         "RCLONE": rclone,
-        # healthy builds run 15-40min; a hung one must not eat the next 2h
-        # cycle (2026-08-01: a wedged build held the deployment concurrency
-        # slot for hours and stalled all snapshots). 75min subprocess bound,
-        # 90min flow bound.
-        "BUILDER_TIMEOUT_SECS": "4500",
+        # healthy builds run 15-40min at a ~60k-doc corpus, but export/VACUUM/
+        # hash/upload all scale ~linearly and we're planning for 5x (see
+        # pub-search docs/scale-300k-plan.md), so leave real headroom while
+        # still bounding a hung build before it eats the next 2h cycle
+        # (2026-08-01: a wedged build held the deployment concurrency slot for
+        # hours and stalled all snapshots). 100min subprocess bound, 110min
+        # flow bound — the builder logs per-phase timings; tighten these back
+        # once real 300k-corpus numbers exist.
+        "BUILDER_TIMEOUT_SECS": "6000",
     }
-    _stream([str(binary)], binary.parent, env, timeout=4500)
+    _stream([str(binary)], binary.parent, env, timeout=6000)
 
 
-@flow(name="pub-search-snapshot", log_prints=True, timeout_seconds=5400)
+@flow(name="pub-search-snapshot", log_prints=True, timeout_seconds=6600)
 def pub_search_snapshot():
     repo = clone_repo()
     binary, version = build_binary(repo)
