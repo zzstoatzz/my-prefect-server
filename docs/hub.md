@@ -4,7 +4,9 @@ action item dashboard and intelligence pipeline at [hub.waow.tech](https://hub.w
 
 ## data sources
 
-a single `ingest` flow runs hourly on cron and fetches all data sources concurrently, then writes to DuckDB sequentially (same process = no single-writer lock contention). downstream flows (classify-emails, transform, brief, phi-memory-synthesis) are event-driven via deployment triggers — they only run when upstream completes.
+a single `ingest` flow runs hourly on cron and fetches all data sources concurrently, then writes to DuckDB sequentially. downstream flows (classify-emails, transform, brief, phi-memory-synthesis) are event-driven via deployment triggers — they only run when upstream completes.
+
+DuckDB allows one read-write process per file, and flows on independent schedules (e.g. `docket`'s archive vs `transform`'s dbt build) can collide on it. every RW open of `analytics.duckdb` therefore holds the `analytics-duckdb-writer` global concurrency limit (limit=1, server-side) via `mps.lock.analytics_write_slot`, so writers queue instead of dying on the file lock. read paths avoid the lock entirely by snapshotting the file to `/tmp` first.
 
 **github** — fetches notifications (issues + PRs) and open items authored by `zzstoatzz` via the search API. each issue is cached by repo+number for 24h. persists to `raw_github_issues`.
 
@@ -53,8 +55,11 @@ a single `ingest` flow runs hourly on cron and fetches all data sources concurre
 
                         publication flows
   ─────────────────────────────────────────────
-  leaflet-atlas (every 6h) ──► Cloudflare Pages
-  pds-records (ad hoc)     ──► PDS record maintenance
+  leaflet-atlas (every 6h)       ──► Cloudflare Pages
+  pub-search-snapshot (every 2h) ──► R2
+  typeahead-index (every 3d)     ──► R2
+  bisk-snapshot (every 10m)      ──► R2
+  pds-records (ad hoc)           ──► PDS record maintenance
 ```
 
 ## flows
@@ -75,7 +80,13 @@ a single `ingest` flow runs hourly on cron and fetches all data sources concurre
 | `pds-records` | ad hoc, no schedule | operator flow for listing/creating/updating/deleting PDS records; default deployment is dry-run list mode |
 | `costs` | cron `0 8 * * *` (daily 08:00 UTC) | collects provider billing (neon/cloudflare/hetzner/fly connectors), writes an `io.zzstoatzz.cost.snapshot` PDS record, surfaced at hub.waow.tech |
 | `typeahead-index` | cron `0 9 */3 * *` (every 3rd day) | builds the typeahead prefix-index snapshot on the home box (zig batch job), publishes it to R2, rewrites `latest.json`. no ingress, no SLA |
+| `typeahead-plc-identity` | cron `0 5 * * 1` (weekly Mon) | bulk-resolves typeahead's DID → (handle, pds) backlog from the PLC log (~28GB of bundles; heavy batch, no SLA) |
+| `typeahead-enrich-backfill` | ad hoc, no schedule | paced profile backfill for typeahead's enrichment queue |
+| `pub-search-snapshot` | cron `40 */2 * * *` | builds the pub-search FTS snapshot from the Turso document corpus and publishes it to R2 |
 | `bisk-snapshot` | cron `*/10 * * * *` | computes the authoritative bisk.social standings and publishes a static snapshot to R2 for the edge site to adopt |
+| `phi-curation` / `phi-editorial` / `phi-character-retro` / `phi-chicken-precheck` / `phi-chicken-scout` | crons (weekly Mon 03 / daily 15 / monthly 1st 17 / daily 04 / daily 18, UTC) | thin `phi-trigger` deployments that kick named passes on the phi bot via its control API — the bot defines what runs, prefect owns the clock |
+| `watch-fastmcp` | cron `*/5 * * * *` | polls fastmcp's github notifications (conditional requests) and emits `github.<reason>` events onto the hub bus |
+| `fastmcp-brief` | automations + cron `0 */4 * * *` floor | reads the recent event window off the bus and composes a brief when something merits surfacing |
 
 all flows run on the `home-pool` process worker on the home box (heavypad); `kubernetes-pool` is retained as an unused fallback. code is pulled at runtime via `git clone` from tangled.sh (github fallback). deps install via `uv run --with 'my-prefect-server @ git+...'`. deployments are registered by CI on every push to main (`.tangled/workflows/deploy.yml`).
 

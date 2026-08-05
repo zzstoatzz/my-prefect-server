@@ -56,17 +56,27 @@ personal data pipeline and intelligence layer. digests github, [tangled.org](htt
           ▼
   docket  ─────────────────► PDS docket blob
 
+  phi-trigger deployments — kick named passes on the phi bot via its
+  control API (the bot defines WHAT runs; prefect owns the WHEN):
+  phi-curation (weekly Mon) · phi-editorial (daily 15 UTC) ·
+  phi-character-retro (monthly) · phi-chicken-precheck (daily 04 UTC) ·
+  phi-chicken-scout (daily 18 UTC)
+
                         publication flows
   ─────────────────────────────────────────────
-  leaflet-atlas   (every 6h)  ──► Cloudflare Pages
-  typeahead-index (every 3d)  ──► R2  (prefix-index snapshot, built at home)
-  bisk-snapshot   (every 10m) ──► R2  (bisk.social standings snapshot)
-  pds-records     (ad hoc)    ──► PDS record maintenance
+  leaflet-atlas       (every 6h)      ──► Cloudflare Pages
+  pub-search-snapshot (every 2h)      ──► R2  (FTS snapshot built from Turso)
+  typeahead-index     (every 3d)      ──► R2  (prefix-index snapshot, built at home)
+  typeahead-plc-identity (weekly Mon) ──► PLC identity reconcile (heavy: ~28GB bundles)
+  typeahead-enrich-backfill (ad hoc)  ──► paced profile backfill
+  bisk-snapshot       (every 10m)     ──► R2  (bisk.social standings snapshot)
+  pds-records         (ad hoc)        ──► PDS record maintenance
 
                         cost tracking + health
   ─────────────────────────────────────────────
-  costs       (daily 08:00 UTC) ──► PDS cost snapshot ──► hub.waow.tech
-  diagnostics (every 5m)        ──► liveness canary (prints host/python/pid)
+  costs         (daily 08:00 UTC) ──► PDS cost snapshot ──► hub.waow.tech
+  diagnostics   (schedule inactive) ──► liveness canary, run ad hoc
+  watch-fastmcp (every 5m) ──► events onto the hub bus ──► fastmcp-brief (4h floor + event triggers)
 ```
 
 see [docs/hub.md](docs/hub.md) for the full pipeline breakdown.
