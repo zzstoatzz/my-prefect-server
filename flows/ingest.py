@@ -37,6 +37,7 @@ from mps.email import (
     fetch_inbox,
 )
 from mps.github import IssueOrPR, IssueRef, gh_headers
+from mps.lock import analytics_write_slot
 from mps.phi import PhiInteraction, PhiObservation, restore_handle
 from mps.likes import LikeRecord, LikedPost, fetch_likes, summarize_embed
 from mps.tangled import PDS_BASE, TangledItem, fetch_items, fetch_repo_at_uris
@@ -380,32 +381,33 @@ def resolve_liked_posts(db_path: str) -> list[LikedPost]:
 
     logger = get_run_logger()
 
-    con = duckdb.connect(db_path)
-    # bootstrap raw_liked_posts if it doesn't exist yet
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS raw_liked_posts (
-            subject_uri VARCHAR PRIMARY KEY,
-            author_handle VARCHAR,
-            author_did VARCHAR,
-            text VARCHAR,
-            created_at VARCHAR,
-            liked_at VARCHAR,
-            embed_type VARCHAR,
-            embed_text VARCHAR,
-            fetched_at TIMESTAMP DEFAULT now()
-        )
-    """)
-    # find likes from last 7 days not yet resolved
-    rows = con.execute("""
-        SELECT l.subject_uri, l.created_at AS liked_at
-        FROM raw_likes l
-        LEFT JOIN raw_liked_posts lp ON l.subject_uri = lp.subject_uri
-        WHERE lp.subject_uri IS NULL
-          AND l.created_at >= (now() - INTERVAL '7 days')::VARCHAR
-        ORDER BY l.created_at DESC
-        LIMIT 200
-    """).fetchall()
-    con.close()
+    with analytics_write_slot():
+        con = duckdb.connect(db_path)
+        # bootstrap raw_liked_posts if it doesn't exist yet
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS raw_liked_posts (
+                subject_uri VARCHAR PRIMARY KEY,
+                author_handle VARCHAR,
+                author_did VARCHAR,
+                text VARCHAR,
+                created_at VARCHAR,
+                liked_at VARCHAR,
+                embed_type VARCHAR,
+                embed_text VARCHAR,
+                fetched_at TIMESTAMP DEFAULT now()
+            )
+        """)
+        # find likes from last 7 days not yet resolved
+        rows = con.execute("""
+            SELECT l.subject_uri, l.created_at AS liked_at
+            FROM raw_likes l
+            LEFT JOIN raw_liked_posts lp ON l.subject_uri = lp.subject_uri
+            WHERE lp.subject_uri IS NULL
+              AND l.created_at >= (now() - INTERVAL '7 days')::VARCHAR
+            ORDER BY l.created_at DESC
+            LIMIT 200
+        """).fetchall()
+        con.close()
 
     if not rows:
         logger.info("no unresolved likes to fetch")

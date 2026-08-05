@@ -47,6 +47,7 @@ from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 
 from mps.atproto import create_bsky_session
+from mps.lock import analytics_write_slot
 from mps.observability import configure_logfire
 from mps.spend import record_pydantic_ai_result
 
@@ -698,35 +699,36 @@ def _db_path() -> str:
     )
 
 
-@task(retries=10, retry_delay_seconds=30)
+@task
 def archive_to_duckdb(docket: Docket) -> None:
-    """Append-only history projection, retrying DuckDB's single-writer lock."""
-    db = duckdb.connect(_db_path())
-    try:
-        db.execute(
-            """
-            CREATE TABLE IF NOT EXISTS raw_phi_dockets (
-                generated_at TIMESTAMP,
-                atlas_record_cid VARCHAR,
-                candidate_count INTEGER,
-                docket_json VARCHAR,
-                fetched_at TIMESTAMP DEFAULT now()
+    """Append-only history projection; queues on the single analytics writer slot."""
+    with analytics_write_slot():
+        db = duckdb.connect(_db_path())
+        try:
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS raw_phi_dockets (
+                    generated_at TIMESTAMP,
+                    atlas_record_cid VARCHAR,
+                    candidate_count INTEGER,
+                    docket_json VARCHAR,
+                    fetched_at TIMESTAMP DEFAULT now()
+                )
+                """
             )
-            """
-        )
-        db.execute(
-            "INSERT INTO raw_phi_dockets "
-            "(generated_at, atlas_record_cid, candidate_count, docket_json) "
-            "VALUES (?, ?, ?, ?)",
-            [
-                datetime.now(UTC),
-                docket.atlas_record_cid,
-                len(docket.candidates),
-                _docket_to_bytes(docket).decode("utf-8"),
-            ],
-        )
-    finally:
-        db.close()
+            db.execute(
+                "INSERT INTO raw_phi_dockets "
+                "(generated_at, atlas_record_cid, candidate_count, docket_json) "
+                "VALUES (?, ?, ?, ?)",
+                [
+                    datetime.now(UTC),
+                    docket.atlas_record_cid,
+                    len(docket.candidates),
+                    _docket_to_bytes(docket).decode("utf-8"),
+                ],
+            )
+        finally:
+            db.close()
 
 
 # ---------------------------------------------------------------------------

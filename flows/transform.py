@@ -7,6 +7,7 @@ from pathlib import Path
 
 from prefect import flow, get_run_logger, task
 
+from mps.lock import analytics_write_slot
 from mps.spend import RAW_LLM_SPEND_SCHEMA
 
 ANALYTICS_DIR = Path(__file__).parent.parent / "analytics"
@@ -154,8 +155,6 @@ def transform():
     spend_log = Path(
         os.environ.get("LLM_SPEND_LOG_PATH", str(src.with_name("llm-spend.jsonl")))
     )
-    import_spend_log(spend_log, src)
-
     # compile manifest.json so PrefectDbtOrchestrator can parse the project
     logger.info("compiling dbt project...")
     # pin the nested dbt venv to stable 3.13 — without --python, uv picks the
@@ -196,10 +195,15 @@ def transform():
         test_strategy=TestStrategy.DEFERRED,
         create_summary_artifact=True,
     )
-    orchestrator.run_build()
 
-    dst = src.parent / "hub.duckdb"
-    export_hub_db(src, dst)
+    # one slot across spend import, dbt build, and hub export — the dbt run
+    # holds a RW duckdb connection the whole time, and export_hub_db's
+    # READ_ONLY attach still conflicts with any external writer
+    with analytics_write_slot():
+        import_spend_log(spend_log, src)
+        orchestrator.run_build()
+        dst = src.parent / "hub.duckdb"
+        export_hub_db(src, dst)
 
 
 if __name__ == "__main__":
