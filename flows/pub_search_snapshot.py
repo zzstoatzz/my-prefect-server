@@ -103,7 +103,7 @@ def build_binary(repo_dir: Path) -> tuple[Path, str]:
     return binary, sha
 
 
-@task
+@task(retries=2, retry_delay_seconds=60)
 def run_builder(binary: Path, version: str) -> None:
     """BUILDER_MODE=1: turso → gated build → rclone to R2 → pointer last → exit."""
     logger = get_run_logger()
@@ -126,11 +126,18 @@ def run_builder(binary: Path, version: str) -> None:
         # flow bound — the builder logs per-phase timings; tighten these back
         # once real 300k-corpus numbers exist.
         "BUILDER_TIMEOUT_SECS": "6000",
+        # a hung turso read has no HTTP-level timeout in the zig client; the
+        # builder self-terminates after this long with no completed turso
+        # request (2026-08-06: 94min silent export stall), so the task-level
+        # retry above recovers in minutes instead of failing the whole run
+        "BUILDER_STALL_SECS": "600",
     }
     _stream([str(binary)], binary.parent, env, timeout=6000)
 
 
-@flow(name="pub-search-snapshot", log_prints=True, timeout_seconds=6600)
+# 6000s builder bound + room for one stall-detected retry (stall trips at
+# ~600s) without the flow timeout beheading a genuinely slow second attempt
+@flow(name="pub-search-snapshot", log_prints=True, timeout_seconds=9000)
 def pub_search_snapshot():
     repo = clone_repo()
     binary, version = build_binary(repo)
