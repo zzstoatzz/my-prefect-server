@@ -7,6 +7,7 @@ re-runs the listing (cheap) instead of one blip killing the run.
 
 import httpx
 import pytest
+from prefect.cache_policies import NONE
 
 from flows.curate import PHI_DID, _list_records
 
@@ -18,6 +19,12 @@ def test_list_records_has_retries():
     assert _list_records.retries == 3
     assert _list_records.retry_delay_seconds == [2, 5, 10]
     assert _list_records.retry_jitter_factor == 1
+
+
+def test_list_records_never_caches():
+    # the agent deletes records mid-run and re-lists; a same-inputs cache
+    # hit would show pre-delete state
+    assert _list_records.cache_policy is NONE
 
 
 def test_list_records_paginates():

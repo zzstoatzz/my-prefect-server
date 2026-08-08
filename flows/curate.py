@@ -128,8 +128,10 @@ class CurationResult(BaseModel):
 
 
 # bsky.social throws intermittent 500s on listRecords; retries mean one
-# blip doesn't kill the whole curation run (re-listing is cheap)
-@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
+# blip doesn't kill the whole curation run (re-listing is cheap).
+# cache_policy=NONE: the agent deletes records mid-run and re-lists, so a
+# same-inputs cache hit would show pre-delete state
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1, cache_policy=NONE)
 def _list_records(
     did: str,
     collection: str,
