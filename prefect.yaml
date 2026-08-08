@@ -610,3 +610,11 @@ deployments:
     schedules:
       - cron: "0 */4 * * *"
         active: true
+
+  - name: pi-agent
+    entrypoint: flows/pi_agent.py:pi_agent
+    # runs pi (the coding agent) non-interactively on the home box. no
+    # schedule — triggered ad hoc for now; the end state is alert-driven
+    # (logfire alert -> automation -> this deployment with the alert in the
+    # prompt). requires pi installed + authed on the worker box.
+    work_pool: *home
