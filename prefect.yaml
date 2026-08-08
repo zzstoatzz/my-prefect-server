@@ -616,5 +616,20 @@ deployments:
     # runs pi (the coding agent) non-interactively on the home box. no
     # schedule — triggered ad hoc for now; the end state is alert-driven
     # (logfire alert -> automation -> this deployment with the alert in the
-    # prompt). requires pi installed + authed on the worker box.
-    work_pool: *home
+    # prompt). requires pi installed on the worker box (npm install -g
+    # @earendil-works/pi-coding-agent); auth comes from the injected key.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --refresh-package my-prefect-server
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          prefect flow-run execute
+        env:
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          ANTHROPIC_API_KEY: "{{ prefect.blocks.secret.anthropic-api-key }}"
+    parameters:
+      provider: anthropic
