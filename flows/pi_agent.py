@@ -43,12 +43,15 @@ def pi_agent(
     cmd.append(prompt)
 
     print(f"running: {' '.join(cmd[:-1])} <prompt: {len(prompt)} chars>")
+    # pi -p also accepts prompt content piped on stdin and will wait for EOF,
+    # so an inherited open stdin (e.g. under the systemd worker) hangs it
     result = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
         cwd=cwd,
         timeout=timeout_seconds,
+        stdin=subprocess.DEVNULL,
     )
     if result.stdout:
         print(result.stdout)
