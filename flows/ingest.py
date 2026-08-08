@@ -44,6 +44,14 @@ from mps.tangled import PDS_BASE, TangledItem, fetch_items, fetch_repo_at_uris
 
 GITHUB_API = "https://api.github.com"
 
+
+def gh_client(token: str, transport: httpx.BaseTransport | None = None) -> httpx.Client:
+    # follow_redirects matters: renamed/transferred repos 301 to their
+    # numeric /repositories/<id>/ url and httpx won't follow by default
+    return httpx.Client(
+        headers=gh_headers(token), follow_redirects=True, transport=transport
+    )
+
 TANGLED_COLLECTIONS = [
     "sh.tangled.repo.issue",
     "sh.tangled.repo.pull",
@@ -84,7 +92,7 @@ def load_token() -> str:
 def fetch_notifications(token: str, only_unread: bool = True) -> list[IssueRef]:
     """Fetch notifications and parse into IssueRef objects (Issues/PRs only)."""
     logger = get_run_logger()
-    with httpx.Client(headers=gh_headers(token)) as client:
+    with gh_client(token) as client:
         resp = client.get(
             f"{GITHUB_API}/notifications",
             params={"all": str(not only_unread).lower(), "per_page": 50},
@@ -124,15 +132,21 @@ def fetch_notifications(token: str, only_unread: bool = True) -> list[IssueRef]:
 )
 def fetch_issue_or_pr(ref: IssueRef, token: str) -> IssueOrPR | None:
     """Fetch a single issue or PR. Cached by repo+number for 4h."""
-    with httpx.Client(headers=gh_headers(token)) as client:
+    with gh_client(token) as client:
         resp = client.get(f"{GITHUB_API}/repos/{ref.repo}/issues/{ref.number}")
         if resp.status_code == 404:
             return None
         resp.raise_for_status()
         data = resp.json()
 
+    # a followed 301 means the repo was renamed/transferred — html_url
+    # carries the canonical name, so stored rows converge on it
+    html_url = data.get("html_url") or ""
+    parts = html_url.removeprefix("https://github.com/").split("/")
+    canonical_repo = "/".join(parts[:2]) if len(parts) >= 4 else ref.repo
+
     return IssueOrPR(
-        repo=ref.repo,
+        repo=canonical_repo,
         number=ref.number,
         type=ref.subject_type,
         title=data.get("title"),
@@ -152,7 +166,7 @@ def fetch_issue_or_pr(ref: IssueRef, token: str) -> IssueOrPR | None:
 def fetch_authored_items(token: str, username: str = "zzstoatzz") -> list[IssueRef]:
     """Fetch open issues/PRs authored by the user via the search API."""
     logger = get_run_logger()
-    with httpx.Client(headers=gh_headers(token)) as client:
+    with gh_client(token) as client:
         resp = client.get(
             f"{GITHUB_API}/search/issues",
             params={
