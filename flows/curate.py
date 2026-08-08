@@ -8,7 +8,6 @@ Unlike the old morning.py Phase 4, this is an agentic loop — phi can
 inspect, recall, and iterate rather than single-shot plan + execute.
 """
 
-import time
 from datetime import datetime, timezone
 from typing import Any, cast
 
@@ -128,35 +127,9 @@ class CurationResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _get_json_with_retries(
-    client: httpx.Client,
-    url: str,
-    params: dict[str, Any],
-    attempts: int = 4,
-) -> dict[str, Any]:
-    """GET with backoff on 5xx and transport errors.
-
-    bsky.social throws intermittent 500s on listRecords; one blip
-    mid-pagination shouldn't kill the whole curation run.
-    """
-    last_exc: Exception | None = None
-    for attempt in range(attempts):
-        if attempt:
-            time.sleep(2 ** (attempt - 1))
-        try:
-            resp = client.get(url, params=params)
-            if resp.status_code >= 500 and attempt < attempts - 1:
-                last_exc = httpx.HTTPStatusError(
-                    f"{resp.status_code} from {url}", request=resp.request, response=resp
-                )
-                continue
-            resp.raise_for_status()
-            return resp.json()
-        except httpx.TransportError as exc:
-            last_exc = exc
-    raise last_exc if last_exc else RuntimeError(f"unreachable: {url}")
-
-
+# bsky.social throws intermittent 500s on listRecords; retries mean one
+# blip doesn't kill the whole curation run (re-listing is cheap)
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
 def _list_records(
     did: str,
     collection: str,
@@ -173,9 +146,9 @@ def _list_records(
             }
             if cursor:
                 params["cursor"] = cursor
-            data = _get_json_with_retries(
-                client, "/xrpc/com.atproto.repo.listRecords", params
-            )
+            resp = client.get("/xrpc/com.atproto.repo.listRecords", params=params)
+            resp.raise_for_status()
+            data = resp.json()
             records.extend(data.get("records", []))
             cursor = data.get("cursor")
             if not cursor:
