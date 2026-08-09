@@ -67,7 +67,11 @@ async def _volume_gb_month_cents(token: str) -> float:
 
 def _monthly_cents(server: dict) -> int:
     """Gross monthly price for the server's location, in cents."""
-    location = (server.get("datacenter", {}).get("location", {}) or {}).get("name")
+    # /servers returns location at the top level; older shapes nested it
+    # under datacenter. missing both falls through to the first listed price.
+    location = (server.get("location") or {}).get("name") or (
+        (server.get("datacenter") or {}).get("location") or {}
+    ).get("name")
     for price in server.get("server_type", {}).get("prices", []):
         if price.get("location") == location:
             gross = float(price["price_monthly"]["gross"])
