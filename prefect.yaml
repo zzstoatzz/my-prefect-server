@@ -639,3 +639,9 @@ deployments:
     # the flow publishes, so a hijacked prompt can only produce a bad diff.
     # requires pi installed + openai-codex creds on the worker.
     work_pool: *home
+
+  # temporary: reproduces the pull-step compounding on the on_crashed path.
+  # delete with flows/crashtest.py once the 3.7.7 fix is confirmed.
+  - name: crashtest
+    entrypoint: flows/crashtest.py:crashtest
+    work_pool: *home
