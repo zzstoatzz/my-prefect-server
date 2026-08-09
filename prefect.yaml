@@ -631,3 +631,11 @@ deployments:
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
           ANTHROPIC_API_KEY: "{{ prefect.blocks.secret.anthropic-api-key }}"
+
+  - name: pi-pr
+    entrypoint: flows/pi_pr.py:pi_pr
+    # one-off: pi (luna) proposes a change in a throwaway clone, the flow turns
+    # it into a tangled pull record and DMs the link. pi holds no credential —
+    # the flow publishes, so a hijacked prompt can only produce a bad diff.
+    # requires pi installed + openai-codex creds on the worker.
+    work_pool: *home

@@ -123,3 +123,153 @@ def fetch_items(
             break
 
     return items
+
+
+# --- write path: open a pull request -----------------------------------------
+#
+# tangled pulls are patch-based. the changeset is gzipped, uploaded as a blob on
+# the *author's* PDS, and referenced from a sh.tangled.repo.pull record. no push
+# access to the target repo is involved, so opening a PR cannot write to it.
+#
+# ported from the operator's tangled-mcp (which implements the same record
+# layer) rather than depended on: that package pins a prerelease fastmcp, and an
+# MCP server framework has no business in a flow run to use forty lines of it.
+
+import gzip as _gzip
+import os as _os
+import time as _time
+from datetime import datetime as _dt
+from datetime import timezone as _tz
+from typing import Any
+
+BOBBIN_URL = "https://api.tangled.org"
+PULL_NSID = "sh.tangled.repo.pull"
+_B32 = "234567abcdefghijklmnopqrstuvwxyz"
+
+
+def _tid() -> str:
+    """atproto TID (sortable base32 timestamp rkey)"""
+    n = (_time.time_ns() // 1000) << 10 | int.from_bytes(_os.urandom(2), "big") % 1024
+    return "".join(_B32[(n >> (60 - 5 * i)) & 31] for i in range(13))
+
+
+def _now() -> str:
+    return _dt.now(_tz.utc).isoformat().replace("+00:00", "Z")
+
+
+def _bobbin(nsid: str, **params: Any) -> dict[str, Any]:
+    resp = httpx.get(f"{BOBBIN_URL}/xrpc/{nsid}", params=params, timeout=20)
+    if not resp.is_success:
+        raise RuntimeError(f"{nsid} failed ({resp.status_code}) {resp.text[:200]}")
+    return resp.json()
+
+
+def resolve_pds(did: str) -> str:
+    doc_url = (
+        f"https://{did.removeprefix('did:web:')}/.well-known/did.json"
+        if did.startswith("did:web:")
+        else f"https://plc.directory/{did}"
+    )
+    doc = httpx.get(doc_url, timeout=20).json()
+    for svc in doc.get("service", []):
+        if svc.get("type") == "AtprotoPersonalDataServer":
+            return svc["serviceEndpoint"]
+    raise RuntimeError(f"no PDS endpoint in DID document for {did}")
+
+
+def _resolve_repo_record(owner_did: str, name: str) -> tuple[str, dict[str, Any]]:
+    """find a repo's sh.tangled.repo record, handling both rkey conventions.
+
+    new-style records are keyed by repo name; legacy ones use a TID rkey and
+    carry the name in the value, so the name lookup 502s and we page instead.
+    """
+    try:
+        uri = f"at://{owner_did}/sh.tangled.repo/{name}"
+        return uri, _bobbin("sh.tangled.repo.getRepo", repo=uri)["value"]
+    except RuntimeError:
+        pass
+
+    cursor = None
+    while True:
+        params = {"subject": owner_did, "limit": 100}
+        if cursor:
+            params["cursor"] = cursor
+        page = _bobbin("sh.tangled.repo.listRepos", **params)
+        items = page.get("items") or []
+        for item in items:
+            value = item.get("value") or {}
+            if value.get("name") == name or item["uri"].rsplit("/", 1)[-1] == name:
+                return item["uri"], value
+        cursor = page.get("cursor")
+        if not cursor or not items:
+            raise ValueError(f"repo '{name}' not found for owner {owner_did}")
+
+
+def create_pull(
+    owner: str, repo: str, title: str, patch: str, body: str, handle: str, password: str
+) -> dict[str, str]:
+    """open a patch-based pull request, authored by `handle`."""
+    owner_did = httpx.get(
+        "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle",
+        params={"handle": owner},
+        timeout=20,
+    ).json()["did"]
+    record_uri, value = _resolve_repo_record(owner_did, repo)
+    repo_did = value.get("repoDid")
+    if not repo_did:
+        raise ValueError(f"repo '{owner}/{repo}' has no repoDid; cannot open pulls")
+    branch = _bobbin("sh.tangled.repo.getDefaultBranch", repo=record_uri).get(
+        "name"
+    ) or "main"
+
+    author_did = httpx.get(
+        "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle",
+        params={"handle": handle},
+        timeout=20,
+    ).json()["did"]
+    pds = resolve_pds(author_did)
+    session = httpx.post(
+        f"{pds}/xrpc/com.atproto.server.createSession",
+        json={"identifier": handle, "password": password},
+        timeout=20,
+    )
+    session.raise_for_status()
+    jwt = session.json()["accessJwt"]
+    auth = {"Authorization": f"Bearer {jwt}"}
+
+    blob_resp = httpx.post(
+        f"{pds}/xrpc/com.atproto.repo.uploadBlob",
+        content=_gzip.compress(patch.encode()),
+        headers={**auth, "Content-Type": "application/gzip"},
+        timeout=60,
+    )
+    blob_resp.raise_for_status()
+    blob = blob_resp.json()["blob"]
+
+    record: dict[str, Any] = {
+        "$type": PULL_NSID,
+        "title": title,
+        "target": {"repo": repo_did, "branch": branch},
+        "rounds": [{"patchBlob": blob, "createdAt": _now()}],
+        "createdAt": _now(),
+    }
+    if body:
+        record["body"] = body
+
+    put = httpx.post(
+        f"{pds}/xrpc/com.atproto.repo.putRecord",
+        json={
+            "repo": author_did,
+            "collection": PULL_NSID,
+            "rkey": _tid(),
+            "record": record,
+        },
+        headers=auth,
+        timeout=30,
+    )
+    put.raise_for_status()
+    return {
+        "uri": put.json()["uri"],
+        # the appview assigns sequential pull numbers we can't know here
+        "url": f"https://tangled.org/{owner}/{repo}/pulls",
+    }
