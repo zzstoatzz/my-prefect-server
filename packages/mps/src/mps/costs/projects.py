@@ -39,6 +39,8 @@ _RESOURCE_PATTERNS: dict[str, str] = {
     "relay.waow": "relays",
     "zlay": "relays",
     "relay-eval": "relays",
+    # stream (tangled.org/zat.dev/stream — jetstream + archive, hetzner hel1)
+    "stream": "stream",
     # trending topics
     "coral": "trending",
     # bufo
