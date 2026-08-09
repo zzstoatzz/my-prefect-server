@@ -16,6 +16,7 @@ this would fail at the last hop with a 400.
 """
 
 import datetime
+import json
 import os
 from typing import Any
 
@@ -35,7 +36,27 @@ MODEL = "claude-haiku-4-5"
 # re-briefed every time it trips. Keyed on updated_at, not just the id, so a
 # thread that genuinely moves again can come back.
 BRIEFED = "fastmcp_briefed_threads"
-BRIEFED_MAX = 400
+# Prefect's VariableUpdate model rejects a value whose json.dumps() exceeds
+# 5000 characters, so the bound that matters is serialized size, not entry
+# count. The old 400-entry cap never fired: 135 entries already serialize to
+# ~4997 chars, so from 2026-08-09 every run did its work, failed this write,
+# and left the dict one entry too big for the next one to save either — a
+# permanent loop, since a failed write can never shrink what it failed to
+# store. Margin below 5000 leaves room for a batch of new ids.
+BRIEFED_MAX_CHARS = 4000
+
+
+def fit_briefed(briefed: dict[str, str]) -> dict[str, str]:
+    """Drop the least-recently-updated entries until the value can be stored.
+
+    Sorted by updated_at, so what gets forgotten is what moved longest ago and
+    is least likely to resurface in a window.
+    """
+    items = sorted(briefed.items(), key=lambda kv: kv[1])
+    while items and len(json.dumps(dict(items))) > BRIEFED_MAX_CHARS:
+        items = items[max(1, len(items) // 10) :]
+    return dict(items)
+
 
 # discord's content limit is 2000; the sender wraps body in "**subject**\n\n"
 # and we leave room for the footer line
@@ -316,8 +337,7 @@ def fastmcp_brief(window_hours: int = 6, ignore_briefed: bool = False) -> dict[s
     # mark everything we looked at, including what the model discarded —
     # otherwise discarded threads are reconsidered on every single trip
     briefed.update({str(t.get("thread_id")): (t.get("updated_at") or "") for t in threads})
-    if len(briefed) > BRIEFED_MAX:
-        briefed = dict(sorted(briefed.items(), key=lambda kv: kv[1])[-BRIEFED_MAX:])
+    briefed = fit_briefed(briefed)
     if not ignore_briefed:
         Variable.set(BRIEFED, briefed, overwrite=True)
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
+from pydantic import ValidationError
 from prefect.logging import disable_run_logger
 
 from flows.fastmcp_brief import Brief, BriefItem, render
@@ -188,3 +189,45 @@ def test_enrich_takes_githubs_own_html_url() -> None:
     }
     alive = _enrich_against(responses, threads)
     assert alive[0]["url"] == "https://github.com/PrefectHQ/fastmcp/pull/4653"
+
+
+class TestBriefedStateFitsPrefectsVariableLimit:
+    """2026-08-09: three consecutive runs failed on the same write.
+
+    The dedup state was capped at 400 entries, but Prefect's VariableUpdate
+    rejects a value whose json.dumps() exceeds 5000 characters — and 135
+    entries already exceed it. So the cap never fired, every run did its work
+    and then failed to save, and the value it failed to save stayed too big
+    for the next run to save either. A failed write cannot shrink what it
+    failed to store, so it could only repeat.
+    """
+
+    @staticmethod
+    def _state(n: int) -> dict[str, str]:
+        return {
+            str(4_000_000 + i): f"2026-08-{(i % 28) + 1:02d}T12:00:00Z" for i in range(n)
+        }
+
+    def test_state_prefect_would_reject_is_made_storable(self):
+        from prefect.client.schemas.actions import VariableUpdate
+
+        from flows.fastmcp_brief import fit_briefed
+
+        oversized = self._state(400)
+        with pytest.raises(ValidationError):
+            VariableUpdate(value=oversized)
+
+        VariableUpdate(value=fit_briefed(oversized))  # must not raise
+
+    def test_small_state_is_left_alone(self):
+        from flows.fastmcp_brief import fit_briefed
+
+        state = self._state(3)
+        assert fit_briefed(state) == state
+
+    def test_what_moved_longest_ago_is_what_gets_forgotten(self):
+        from flows.fastmcp_brief import fit_briefed
+
+        kept = fit_briefed(self._state(400))
+        newest = max(self._state(400).values())
+        assert newest in kept.values()
