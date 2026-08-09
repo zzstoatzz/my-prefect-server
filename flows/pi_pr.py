@@ -20,7 +20,6 @@ from prefect import flow
 from prefect.blocks.system import Secret
 from pydantic import BaseModel, Field
 
-from mps.atproto import create_bsky_session, send_dm
 from mps.pi import minimal_env, run_pi, screen_prompt
 from mps.tangled import create_pull
 
@@ -68,17 +67,21 @@ def build_patch(cwd: str, base: str, title: str, author: str) -> str:
 @flow(name="pi-pr", log_prints=True, timeout_seconds=2400)
 def pi_pr(
     task: str,
+    title: str,
+    body: str,
     repo: Repo = "my-prefect-server",
-    title: str | None = None,
     agent: Agent = Agent(),
-    notify: str = OWNER,
     dry_run: bool = False,
 ) -> dict[str, Any]:
-    """have pi attempt `task` in `repo`, open a tangled PR, and DM the link."""
+    """have pi attempt `task` in `repo` and open a tangled PR.
+
+    `title` and `body` are the caller's own words and are published verbatim
+    as the pull request. this flow never composes prose for a record it signs
+    with someone else's identity — the PR is authored by whoever asked for it.
+    """
     anthropic_key = Secret.load("anthropic-api-key").get()
     screen_prompt(task, "full", anthropic_key)
 
-    title = title or task.strip().splitlines()[0][:72]
     cwd = tempfile.mkdtemp(prefix="pi-pr-")
     env = minimal_env()
 
@@ -118,21 +121,20 @@ def pi_pr(
 
     handle = Secret.load("atproto-handle").get()
     password = Secret.load("atproto-password").get()
-    body = f"opened by pi ({agent.model}) for task:\n\n> {task}\n\n---\n{output.strip()[-1500:]}"
     pull = create_pull(OWNER, repo, title, patch, body, handle, password)
     print(f"pull created: {pull['uri']}")
-
-    session = create_bsky_session(handle, password)
-    msg_id = send_dm(session, notify, f"opened a PR on {repo}: {title}\n{pull['url']}")
-    print(f"dm sent to {notify} ({msg_id})")
-
+    # no notification from here on purpose: anything said from phi's account
+    # belongs in her posting layer (consent checks, the policy judge, the
+    # operator override), and a flow messaging as her would bypass all three.
     return {"changed": True, **pull}
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--task", required=True)
+    parser.add_argument("--title", default="")
+    parser.add_argument("--body", default="")
     parser.add_argument("--repo", default="my-prefect-server")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
-    pi_pr(args.task, repo=args.repo, dry_run=args.dry_run)
+    pi_pr(args.task, args.title, args.body, repo=args.repo, dry_run=args.dry_run)
