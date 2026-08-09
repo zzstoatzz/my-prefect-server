@@ -631,5 +631,3 @@ deployments:
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
           ANTHROPIC_API_KEY: "{{ prefect.blocks.secret.anthropic-api-key }}"
-    parameters:
-      provider: anthropic
