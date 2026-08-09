@@ -21,7 +21,7 @@ dependencies = [
     # adds 'javascript' to ModelLanguage.
     "dbt-adapters<1.24",
     "prefect-dbt>=0.6",
-    "prefect>=3.7.3",
+    "prefect>=3.7.7",
     "logfire>=4.36.0",
     "semble-api>=0.0.2",
 ]
