@@ -248,8 +248,50 @@ def test_hetzner_merges_project_tokens_and_dedupes(monkeypatch):
     async def fake_servers(token):
         return fake[token]
 
+    async def fake_volumes(token):
+        return []
+
     monkeypatch.setattr(hetzner, "_servers", fake_servers)
+    monkeypatch.setattr(hetzner, "_volumes", fake_volumes)
 
     items = asyncio.run(hetzner.HetznerConnector().collect(Period.trailing_month()))
     services = sorted(i.service for i in items)
     assert services == ["pds-zzstoatzz-io", "relay-node"]  # id=1 counted once
+
+
+def test_hetzner_prices_volumes_at_per_gb_list(monkeypatch):
+    """Volumes bill per provisioned GB (the dominant cost for archive boxes like
+    stream); the connector must emit a line per volume, attributed by volume
+    name with fallback to the attached server, and never double-count across
+    tokens."""
+    import asyncio
+
+    from mps.costs.connectors import hetzner
+
+    monkeypatch.setenv("HCLOUD_TOKEN", "tok-a")
+
+    async def fake_servers(token):
+        return [
+            {"id": 7, "name": "stream-cx43", "server_type": {"name": "cx43", "prices": []}},
+        ]
+
+    async def fake_volumes(token):
+        return [
+            {"id": 70, "name": "stream-archive", "size": 3000, "server": 7},
+            {"id": 71, "name": "volume-hel1-1234", "size": 100, "server": 7},  # auto-name
+        ]
+
+    async def fake_price(token):
+        return 7.67  # cents per GB-month
+
+    monkeypatch.setattr(hetzner, "_servers", fake_servers)
+    monkeypatch.setattr(hetzner, "_volumes", fake_volumes)
+    monkeypatch.setattr(hetzner, "_volume_gb_month_cents", fake_price)
+
+    items = asyncio.run(hetzner.HetznerConnector().collect(Period.trailing_month()))
+    by_service = {i.service: i for i in items}
+    archive = by_service["stream-archive:volume"]
+    assert archive.amount == round(3000 * 7.67)  # 23010 cents ≈ €230.10
+    assert archive.project == "stream"
+    # auto-named volume falls back to the attached server's project
+    assert by_service["volume-hel1-1234:volume"].project == "stream"
