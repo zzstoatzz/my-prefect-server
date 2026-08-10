@@ -63,8 +63,12 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
     schedules:
-      - cron: "*/5 * * * *"
-        active: false
+      # :37 rather than the top of the hour, so the host sample is not taken
+      # while the hourly ingest is spinning up and skewing what it measures.
+      # scan_cache_size stays off — walking tens of GB evicts the dentry cache
+      # this flow reports on. Run it by hand when you want the total.
+      - cron: "37 * * * *"
+        active: true
 
   - name: ingest
     entrypoint: flows/ingest.py:ingest
