@@ -1,5 +1,24 @@
 name: my-prefect-server
 
+# MPS_PIN pins the package install to an exact commit, as "@<sha>". CI sets it
+# from the commit being deployed (.tangled/workflows/deploy.yml).
+#
+# It replaced a per-run `--refresh-package my-prefect-server`, which re-resolved
+# and re-unpacked the wheel on EVERY flow run — 4,500+ entries and 50G in
+# uv's archive-v0 on the home box. Pinning means one cache entry per deployed
+# commit, reused by every run of it.
+#
+# It also closes a correctness gap: unpinned, flow runs resolved main at RUN
+# time, so a push could change what already-scheduled runs executed with no
+# deploy involved. Now a deploy is the only thing that moves the code.
+#
+# The '@' is inside the placeholder deliberately. Prefect renders an unset
+# env-var placeholder to an empty string, so a bare '...git@{{ $MPS_SHA }}'
+# would silently produce the malformed '...git@' and break every flow run.
+# This way an unset MPS_PIN degrades to the plain unpinned URL instead.
+# Deploying without it is still not what you want (uv may then serve a stale
+# cached commit) — CI always sets it; set it by hand for a manual deploy.
+
 pull:
   - prefect.deployments.steps.run_shell_script:
       script: |
@@ -14,8 +33,7 @@ definitions:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
     # home box (heavypad) process pool. persistent analytics paths replace the
     # k8s PVC so DuckDB / spend-log / local-storage coordinate across flow runs
@@ -25,8 +43,7 @@ definitions:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
@@ -43,8 +60,7 @@ deployments:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
     schedules:
       - cron: "*/5 * * * *"
@@ -86,8 +102,7 @@ deployments:
       job_variables:
         command: >-
           uv run --python 3.13.11
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
@@ -156,8 +171,7 @@ deployments:
       job_variables:
         command: >-
           uv run --python 3.13.11
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server[atlas] @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server[atlas] @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
@@ -198,8 +212,7 @@ deployments:
         # build-atlas script; both are required.)
         command: >-
           uv run --python 3.13.11
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
           OMP_NUM_THREADS: "1"
@@ -242,8 +255,7 @@ deployments:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
           CLOUDFLARE_API_TOKEN: "{{ prefect.blocks.secret.cloudflare-api-token }}"
@@ -281,8 +293,7 @@ deployments:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
           TURSO_URL: "{{ prefect.blocks.secret.typeahead-turso-url }}"
@@ -300,8 +311,7 @@ deployments:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
           # typeahead-specific turso blocks — the shared `turso-url`/`turso-token`
@@ -356,8 +366,7 @@ deployments:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
           # full libsql:// URL — unlike typeahead-index, this flow does NOT strip
@@ -401,8 +410,7 @@ deployments:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
           # shared turso blocks ARE the leaf db (atlas uses the same ones);
@@ -444,8 +452,7 @@ deployments:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           --with boto3
           prefect flow-run execute
         env:
@@ -472,8 +479,7 @@ deployments:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
     parameters:
       slot: curation
@@ -495,8 +501,7 @@ deployments:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
     parameters:
       slot: editorial
@@ -516,8 +521,7 @@ deployments:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
     parameters:
       slot: character-retro
@@ -534,8 +538,7 @@ deployments:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
     parameters:
       slot: chicken-scout
@@ -552,8 +555,7 @@ deployments:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
     parameters:
       slot: chicken-precheck
@@ -598,8 +600,7 @@ deployments:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
@@ -623,8 +624,7 @@ deployments:
       job_variables:
         command: >-
           uv run
-          --refresh-package my-prefect-server
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb

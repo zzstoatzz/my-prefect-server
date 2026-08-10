@@ -8,12 +8,34 @@ dependencies:
   nixpkgs:
     - uv
     - python314
+    # git: the deploy pins the package install to the commit being deployed,
+    # which means reading HEAD out of the workspace checkout
+    - git
 
 environment:
   PREFECT_API_URL: "https://prefect-server.waow.tech/api"
   UV_PYTHON_PREFERENCE: "only-system"
 
 steps:
+  # MPS_PIN pins every deployment's `uv run --with ...` to this exact commit
+  # (see the header comment in prefect.yaml). Without it the install falls back
+  # to unpinned main and uv may serve a stale cached commit, so fail loudly
+  # rather than register deployments that quietly install the wrong code.
+  #
+  # The pinned sha must exist on GitHub, since that is where the package
+  # installs from, while this workflow triggers on the tangled push. Push
+  # github first.
   - name: register flows
     command: |
+      set -euo pipefail
+      SHA="$(git rev-parse HEAD)"
+      # ls-remote matches ref names, not object ids — querying the sha directly
+      # reports "no match" even when the commit is present. Compare main instead.
+      MIRROR="$(git ls-remote https://github.com/zzstoatzz/my-prefect-server.git refs/heads/main | cut -f1)"
+      if [ "$MIRROR" != "$SHA" ]; then
+        echo "github mirror main is ${MIRROR:-missing}, deploying ${SHA} — push github first" >&2
+        exit 1
+      fi
+      export MPS_PIN="@${SHA}"
+      echo "pinning deployments to ${MPS_PIN}"
       uv run --with prefect prefect --no-prompt deploy --all
