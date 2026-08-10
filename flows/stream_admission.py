@@ -223,6 +223,9 @@ def stream_admission(
         skips |= set(ALL_SUITES) - set(only)
 
     env = {"STREAM_ADMIT_SKIP": ",".join(sorted(skips))} if skips else {}
+    # so the receipt records the upstream pin instead of null (admit reads this
+    # exactly as the justfile does)
+    env["STREAM_UPSTREAM_REPO"] = str(UPSTREAM)
     if not build_image:
         env["STREAM_ADMIT_NO_BUILD"] = "1"
     log.info(
