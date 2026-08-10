@@ -141,9 +141,11 @@ def ensure_simulator() -> bool:
         " >/tmp/stream-gate-sim.log 2>&1 &",
         shell=True, cwd=UPSTREAM, start_new_session=True, env=dict(os.environ),
     )
-    for _ in range(90):
+    # a cold start also downloads and builds the simulator's go modules, which
+    # took longer than a 3-minute window on this box's first run
+    for attempt in range(300):
         if _run(f"curl -fsS --max-time 2 http://127.0.0.1:{SIMULATOR_PORT}/ >/dev/null", timeout=15).returncode == 0:
-            log.info("simulator up")
+            log.info("simulator up after %ds", attempt * 2)
             return True
         time.sleep(2)
     raise RuntimeError("simulator did not come up on :7777; see /tmp/stream-gate-sim.log")
