@@ -36,6 +36,23 @@ UPSTREAM = Path(os.environ.get("STREAM_UPSTREAM_REPO", "/home/stoat/jetstream"))
 UPSTREAM_URL = "https://github.com/bluesky-social/jetstream"
 SIMULATOR_PORT = 7777
 
+# The process worker runs with a bare PATH (/home/stoat/.local/bin:/usr/local/
+# bin:/usr/bin:/bin), so go and just — which live in the shared nix profile —
+# are invisible to it and the gate dies looking for them. Set this once, for
+# every subprocess, rather than per call site.
+GATE_PATH = os.environ.get(
+    "STREAM_GATE_PATH",
+    "/home/stoat/.local/bin:/nix/var/nix/profiles/default/bin:"
+    "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+)
+
+
+def _apply_path() -> None:
+    """Prepend the toolchain PATH so child processes inherit it."""
+    current = os.environ.get("PATH", "")
+    if GATE_PATH not in current:
+        os.environ["PATH"] = f"{GATE_PATH}:{current}" if current else GATE_PATH
+
 # every suite admit knows about; `only` is expressed as a skip-list of the rest
 # so the receipt still records each one explicitly (skipped is not omitted).
 ALL_SUITES = [
@@ -122,7 +139,7 @@ def ensure_simulator() -> bool:
     subprocess.Popen(
         "nohup go run ./cmd/simulator serve --reset --accounts=100 --commits-per-sec=20"
         " >/tmp/stream-gate-sim.log 2>&1 &",
-        shell=True, cwd=UPSTREAM, start_new_session=True,
+        shell=True, cwd=UPSTREAM, start_new_session=True, env=dict(os.environ),
     )
     for _ in range(90):
         if _run(f"curl -fsS --max-time 2 http://127.0.0.1:{SIMULATOR_PORT}/ >/dev/null", timeout=15).returncode == 0:
@@ -151,6 +168,8 @@ def stream_admission(
                  no image is exactly the thing admission exists to prevent.
     """
     log = get_run_logger()
+    _apply_path()
+    log.info("PATH: %s", os.environ["PATH"].split(":")[:4])
 
     resolved = checkout(sha)
     ensure_upstream()
@@ -166,13 +185,6 @@ def stream_admission(
     env = {"STREAM_ADMIT_SKIP": ",".join(sorted(skips))} if skips else {}
     if not build_image:
         env["STREAM_ADMIT_NO_BUILD"] = "1"
-    # PATH for a non-login process worker: zig is in ~/.local/bin, go/just in
-    # the shared nix profile, docker in /usr/local/bin.
-    env["PATH"] = (
-        f"/home/stoat/.local/bin:/nix/var/nix/profiles/default/bin:"
-        f"/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:{os.environ.get('PATH', '')}"
-    )
-
     log.info(
         "running the gate on %s (%d suites, %d skipped, build_image=%s)",
         resolved, len(ALL_SUITES) - len(skips), len(skips), build_image,
