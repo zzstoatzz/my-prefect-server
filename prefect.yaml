@@ -643,3 +643,21 @@ deployments:
     # the flow publishes, so a hijacked prompt can only produce a bad diff.
     # requires pi installed + openai-codex creds on the worker.
     work_pool: *home
+
+  - name: stream-admission
+    entrypoint: flows/stream_admission.py:stream_admission
+    # stream's 21-suite gate, on bare metal instead of spindle's microVM. the
+    # VM works but costs ~8.5 min of fixed setup and ~2x on execution (the
+    # lifecycle oracle: 2533s on the stock 2-vCPU guest, 900s on 12 vCPU, ~420s
+    # native). home-pool is a *process* pool on heavypad, so this IS the bare
+    # metal job — and spindle can trigger it with one REST call.
+    #
+    # no schedule: it is triggered per commit. parameters below are the cheap
+    # smoke-test shape; a real gate passes build_image=true and no `only`.
+    work_pool: *home
+    parameters:
+      only: ["unit-debug"]
+      build_image: false
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
