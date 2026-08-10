@@ -61,7 +61,18 @@ prometheus:
 
 grafana:
   enabled: true
-  adminPassword: bufobufobufo
+
+  # Credentials come from the `grafana-admin` secret in this namespace.
+  # Never inline a literal here. To rotate:
+  #   kubectl create secret generic grafana-admin -n monitoring \
+  #     --from-literal=admin-user=admin \
+  #     --from-literal=admin-password="$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')" \
+  #     --dry-run=client -o yaml | kubectl apply -f -
+  #   then re-run the monitoring helm upgrade and restart the deployment.
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
 
   # Ubuntu image required — DuckDB plugin uses glibc binaries, Alpine won't work
   image:
