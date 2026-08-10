@@ -136,6 +136,21 @@ def ensure_upstream() -> str:
     if r.returncode != 0:
         raise RuntimeError(f"upstream checkout failed:\n{r.stdout}")
     log.info("upstream pinned at %s", pin.group(0))
+
+    # The oracles run with GOPROXY=off (stream's harness does this on purpose —
+    # tests/differential_oracle.py, docs/upstream-harness.md), so every module
+    # they need must already be in the local cache. Starting the simulator only
+    # warms the simulator's own deps, not the oracle package's test deps, so
+    # differential-oracle failed with "module lookup disabled by GOPROXY=off".
+    # Download the whole module graph here, where the proxy is still allowed.
+    r = _run(
+        "go mod download all", cwd=UPSTREAM, timeout=1800,
+        env={"GOPROXY": os.environ.get("STREAM_GATE_GOPROXY", "https://proxy.golang.org,direct")},
+    )
+    if r.returncode != 0:
+        raise RuntimeError(f"warming the upstream go module cache failed:\n{r.stdout}")
+    log.info("upstream go module cache warm")
+
     return pin.group(0)
 
 
