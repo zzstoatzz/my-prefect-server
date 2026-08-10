@@ -7,10 +7,20 @@ stock 2-vCPU guest, 900s on 12 vCPU, ~420s on bare metal). home-pool is a
 *process* pool whose worker runs directly on heavypad, so a flow run here is
 the bare-metal job — with Prefect's logs, retries and history for free.
 
-Trigger it from anywhere that can make a REST call, spindle included:
+Trigger it from anywhere that can make a REST call, spindle included. Use the
+DEPLOYMENT endpoint — "create flow run FROM DEPLOYMENT":
 
-    POST {PREFECT_API}/deployments/{id}/create_flow_run
-    {"parameters": {"sha": "<commit>"}}
+    curl -X POST \
+      "$PREFECT_API_URL/deployments/404444b5-abb2-4531-95c3-382fbf85091f/create_flow_run" \
+      -H 'Content-Type: application/json' \
+      -d '{"parameters": {"sha": "<commit>", "build_image": true}}'
+
+NOT `POST /flow_runs/`. That takes a plain FlowRunCreate: no deployment_id, no
+work queue, no infrastructure document, and it defaults to Pending rather than
+Scheduled. Nothing polls for such a run, so it is created and then sits inert
+forever — the classic raw-API/Terraform trap. Only the deployment endpoint
+stamps the work queue and sets `flow_run.state = Scheduled()`, which is what
+makes a worker pick it up (prefect/server/api/deployments.py).
 
 The gate itself is unchanged: `scripts/admit run` still requires a clean tree,
 still refuses to write a receipt if any suite fails, and `admit verify` still
