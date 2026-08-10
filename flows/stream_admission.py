@@ -169,6 +169,25 @@ def ensure_simulator() -> bool:
     raise RuntimeError("simulator did not come up on :7777; see /tmp/stream-gate-sim.log")
 
 
+@task
+def ensure_powerloss_image() -> None:
+    """The powerloss suite refuses to run without its pinned tool image.
+
+    `just powerloss-image` is a one-time networked bootstrap; the suite itself
+    is offline. Building it here keeps a fresh box from failing that suite for
+    a reason that has nothing to do with the commit under test.
+    """
+    log = get_run_logger()
+    have = _run("docker images -q stream-powerloss-oracle:ubuntu24.04", timeout=60)
+    if have.stdout.strip():
+        log.info("powerloss tool image present")
+        return
+    log.info("building the powerloss tool image (one-time)")
+    r = _run("just powerloss-image", cwd=WORKTREE, timeout=1800)
+    if r.returncode != 0:
+        raise RuntimeError(f"powerloss image build failed:\n{r.stdout[-2000:]}")
+
+
 @flow(name="stream-admission", log_prints=True)
 def stream_admission(
     sha: str | None = None,
@@ -194,6 +213,7 @@ def stream_admission(
     resolved = checkout(sha)
     ensure_upstream()
     ensure_simulator()
+    ensure_powerloss_image()
 
     skips = set(skip or [])
     if only:
