@@ -47,11 +47,17 @@ GATE_PATH = os.environ.get(
 )
 
 
-def _apply_path() -> None:
-    """Prepend the toolchain PATH so child processes inherit it."""
+# stoat's docker CLI defaults to a Docker Desktop context whose socket does not
+# exist on this box; the system daemon is the one the user has group access to.
+DOCKER_HOST = os.environ.get("STREAM_GATE_DOCKER_HOST", "unix:///var/run/docker.sock")
+
+
+def _apply_env() -> None:
+    """Make the toolchain and docker daemon visible to every child process."""
     current = os.environ.get("PATH", "")
     if GATE_PATH not in current:
         os.environ["PATH"] = f"{GATE_PATH}:{current}" if current else GATE_PATH
+    os.environ.setdefault("DOCKER_HOST", DOCKER_HOST)
 
 # every suite admit knows about; `only` is expressed as a skip-list of the rest
 # so the receipt still records each one explicitly (skipped is not omitted).
@@ -172,8 +178,8 @@ def stream_admission(
                  no image is exactly the thing admission exists to prevent.
     """
     log = get_run_logger()
-    _apply_path()
-    log.info("PATH: %s", os.environ["PATH"].split(":")[:4])
+    _apply_env()
+    log.info("PATH: %s | DOCKER_HOST: %s", os.environ["PATH"].split(":")[:3], os.environ["DOCKER_HOST"])
 
     resolved = checkout(sha)
     ensure_upstream()
