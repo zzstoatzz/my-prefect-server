@@ -131,7 +131,9 @@ def ensure_simulator() -> bool:
     the interactive gate expects, and starting it costs ~2.5 min.
     """
     log = get_run_logger()
-    probe = _run(f"curl -fsS --max-time 3 http://127.0.0.1:{SIMULATOR_PORT}/ >/dev/null", timeout=30)
+    # NOT -f: the simulator answers / with a non-2xx and -f would
+    # report a healthy simulator as down (then try to bind :7777 twice)
+    probe = _run(f"curl -s --max-time 3 http://127.0.0.1:{SIMULATOR_PORT}/ >/dev/null", timeout=30)
     if probe.returncode == 0:
         log.info("simulator already serving :%d", SIMULATOR_PORT)
         return False
@@ -144,7 +146,7 @@ def ensure_simulator() -> bool:
     # a cold start also downloads and builds the simulator's go modules, which
     # took longer than a 3-minute window on this box's first run
     for attempt in range(300):
-        if _run(f"curl -fsS --max-time 2 http://127.0.0.1:{SIMULATOR_PORT}/ >/dev/null", timeout=15).returncode == 0:
+        if _run(f"curl -s --max-time 2 http://127.0.0.1:{SIMULATOR_PORT}/ >/dev/null", timeout=15).returncode == 0:
             log.info("simulator up after %ds", attempt * 2)
             return True
         time.sleep(2)
