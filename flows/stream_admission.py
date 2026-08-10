@@ -155,6 +155,33 @@ def ensure_upstream() -> str:
 
 
 @task
+def ensure_uv_cache() -> None:
+    """Warm the PEP-723 deps the offline suites need.
+
+    Same shape as the go module cache above, and the same failure: several of
+    stream's harness scripts declare inline dependencies and are invoked with
+    `uv run --offline`, so an uncached wheel is an unsatisfiable resolution
+    rather than a download. archive-contract died on exactly that -- "because
+    zstandard was not found in the cache ... your requirements are
+    unsatisfiable" -- thirteen suites deep, after twelve had already passed.
+
+    The two names are the whole set across the harness (zstandard:
+    tests/backfill_api.py, tests/e2e.py; websockets: tests/oracle.py,
+    tests/e2e.py, tests/powerloss_oracle.py). Warming here, with the network
+    still allowed, is what makes the --offline runs downstream honest.
+    """
+    log = get_run_logger()
+    r = _run(
+        'uv run --no-project --with zstandard --with websockets '
+        'python -c "import zstandard, websockets"',
+        cwd=WORKTREE, timeout=900,
+    )
+    if r.returncode != 0:
+        raise RuntimeError(f"warming the uv cache failed:\n{r.stdout}")
+    log.info("uv cache warm (zstandard, websockets)")
+
+
+@task
 def ensure_simulator() -> bool:
     """Start the pinned simulator if nothing is serving :7777.
 
@@ -227,6 +254,7 @@ def stream_admission(
 
     resolved = checkout(sha)
     ensure_upstream()
+    ensure_uv_cache()
     ensure_simulator()
     ensure_powerloss_image()
 
