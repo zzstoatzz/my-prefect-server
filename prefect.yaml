@@ -51,6 +51,25 @@ definitions:
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
 
 deployments:
+  - name: fleet-health
+    entrypoint: flows/fleet_health.py:fleet_health
+    # curl-weight HTTP checks only (runs on the home box — no websockets or
+    # firehose sampling from a residential connection). deep check for
+    # stream.waow.tech (tail advance, seal cost, compaction lag), shallow
+    # 200-checks for the rest of the fleet. unhealthy => failed flow run.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
+          prefect flow-run execute
+    schedules:
+      # offset from the top of the hour so it never samples stream during the
+      # eval's :06/:36 windows or alongside the hourly ingest spin-up
+      - cron: "3,18,33,48 * * * *"
+        active: true
+
   - name: diagnostics
     entrypoint: flows/diagnostics.py:diagnostics
     # retargeted to the home box (heavypad) via the process work pool — canary
