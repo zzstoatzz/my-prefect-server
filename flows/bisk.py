@@ -128,7 +128,11 @@ async def _profiles(client, dids: list[str]) -> dict[str, dict]:
 @task(log_prints=True)
 def build_pool() -> dict[str, dict]:
     async def run() -> dict[str, dict]:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(
+            timeout=30.0,
+            follow_redirects=True,
+            headers={"User-Agent": "bisk-snapshot (zzstoatzz.io)"},
+        ) as client:
             mini = await _get(
                 client,
                 f"{SLINGSHOT}/blue.microcosm.identity.resolveMiniDoc",
@@ -170,7 +174,11 @@ def window_bisks(pool: dict[str, dict]) -> list[dict]:
     async def run() -> list[dict]:
         bisks: list[dict] = []
         sem = asyncio.Semaphore(40)
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(
+            timeout=30.0,
+            follow_redirects=True,
+            headers={"User-Agent": "bisk-snapshot (zzstoatzz.io)"},
+        ) as client:
 
             async def one(did: str, pr: dict):
                 async with sem:
@@ -216,7 +224,11 @@ def window_bisks(pool: dict[str, dict]) -> list[dict]:
 @task(log_prints=True)
 def all_time_coop() -> list[dict]:
     async def run() -> list[dict]:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        async with httpx.AsyncClient(
+            timeout=30.0,
+            follow_redirects=True,
+            headers={"User-Agent": "bisk-snapshot (zzstoatzz.io)"},
+        ) as client:
             mini = await _get(
                 client,
                 f"{SLINGSHOT}/blue.microcosm.identity.resolveMiniDoc",
