@@ -146,23 +146,44 @@ class Atlas(BaseModel):
 def _list_records(did: str, collection: str) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     cursor = None
+    logger = get_run_logger()
     while True:
         params: dict[str, Any] = {"repo": did, "collection": collection, "limit": 100}
         if cursor:
             params["cursor"] = cursor
-        try:
-            resp = httpx.get(
-                f"{PDS_BASE}/xrpc/com.atproto.repo.listRecords",
-                params=params,
-                timeout=15,
-            )
-            resp.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            # collection doesn't exist on this repo → empty list
-            if e.response.status_code in (400, 404):
-                return records
-            raise
-        data = resp.json()
+        # one slow page out of dozens must not lose the whole collection —
+        # app.bsky.feed.post is ~27 pages, and an unretried timeout silently
+        # shipped atlases with phi's entire posting voice absent
+        data = None
+        for attempt in range(3):
+            try:
+                resp = httpx.get(
+                    f"{PDS_BASE}/xrpc/com.atproto.repo.listRecords",
+                    params=params,
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                break
+            except httpx.HTTPStatusError as e:
+                # collection doesn't exist on this repo → empty list
+                if e.response.status_code in (400, 404):
+                    return records
+                if attempt == 2:
+                    logger.warning(
+                        f"list {collection} page failed after retries ({e}); "
+                        f"keeping {len(records)} records fetched so far"
+                    )
+                    return records
+            except httpx.HTTPError as e:
+                if attempt == 2:
+                    logger.warning(
+                        f"list {collection} page failed after retries ({e}); "
+                        f"keeping {len(records)} records fetched so far"
+                    )
+                    return records
+        if data is None:
+            return records
         records.extend(data.get("records", []))
         cursor = data.get("cursor")
         if not cursor:
