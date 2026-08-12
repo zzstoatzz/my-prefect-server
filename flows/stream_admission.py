@@ -187,14 +187,40 @@ def ensure_simulator() -> bool:
 
     Left running between flow runs on purpose — it is the same standing world
     the interactive gate expects, and starting it costs ~2.5 min.
+
+    A standing simulator ages: at 20 commits/s every repo's getRepo CAR
+    grows until the export outlives the oracle's 120s serving window
+    (2026-08-11 and again 2026-08-12: lifecycle-oracle "timed out waiting
+    for steady_state", listRepos fast, getRepo hanging). Probe getRepo and
+    recycle a wedged or >12h-old world before running the gate.
     """
     log = get_run_logger()
     # NOT -f: the simulator answers / with a non-2xx and -f would
     # report a healthy simulator as down (then try to bind :7777 twice)
     probe = _run(f"curl -s --max-time 3 http://127.0.0.1:{SIMULATOR_PORT}/ >/dev/null", timeout=30)
     if probe.returncode == 0:
-        log.info("simulator already serving :%d", SIMULATOR_PORT)
-        return False
+        stale = _run(
+            "PID=$(ss -tlnp 2>/dev/null | grep :%d | grep -oE 'pid=[0-9]+' | cut -d= -f2 | head -1); "
+            "[ -n \"$PID\" ] && [ $(($(date +%%s) - $(stat -c %%Y /proc/$PID))) -gt 43200 ]" % SIMULATOR_PORT,
+            timeout=30,
+        ).returncode == 0
+        did = _run(
+            f"curl -s --max-time 3 'http://127.0.0.1:{SIMULATOR_PORT}/xrpc/com.atproto.sync.listRepos?limit=1'"
+            " | grep -oE 'did:[a-z0-9:]+' | head -1",
+            timeout=30,
+        )
+        wedged = bool(did.stdout.strip()) and _run(
+            f"curl -s --max-time 5 -o /dev/null 'http://127.0.0.1:{SIMULATOR_PORT}/xrpc/com.atproto.sync.getRepo?did={did.stdout.strip()}'",
+            timeout=30,
+        ).returncode != 0
+        if not stale and not wedged:
+            log.info("simulator already serving :%d", SIMULATOR_PORT)
+            return False
+        log.info("recycling simulator (stale=%s wedged=%s): a %s world outgrows the oracle's serving window", stale, wedged, ">12h" if stale else "wedged")
+        _run(
+            "PID=$(ss -tlnp 2>/dev/null | grep :%d | grep -oE 'pid=[0-9]+' | cut -d= -f2 | head -1); [ -n \"$PID\" ] && kill $PID; sleep 2" % SIMULATOR_PORT,
+            timeout=30,
+        )
     log.info("starting the pinned simulator on :%d", SIMULATOR_PORT)
     subprocess.Popen(
         "nohup go run ./cmd/simulator serve --reset --accounts=100 --commits-per-sec=20"
