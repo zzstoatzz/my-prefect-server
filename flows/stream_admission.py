@@ -124,18 +124,21 @@ def ensure_upstream() -> str:
     """The oracles run against the pinned upstream simulator."""
     log = get_run_logger()
     pin_src = (WORKTREE / "docs/upstream-harness.md").read_text()
-    pin = re.search(r"f29815c[0-9a-f]*", pin_src)
+    # the pin is whatever sha the doc's header declares — never a hardcoded
+    # prefix (the original f29815c[0-9a-f]* regex silently re-pinned the
+    # checkout to the OLD upstream after the 2026-08-12 d4dd2f0 re-pin)
+    pin = re.search(r"\*\*Upstream pin: `([0-9a-f]{40})`\*\*", pin_src)
     if not pin:
-        raise RuntimeError("could not find the upstream pin in docs/upstream-harness.md")
+        raise RuntimeError("could not find the upstream pin header in docs/upstream-harness.md")
     if not (UPSTREAM / ".git").exists():
         r = _run(f"git clone {shlex.quote(UPSTREAM_URL)} {shlex.quote(str(UPSTREAM))}")
         if r.returncode != 0:
             raise RuntimeError(f"upstream clone failed:\n{r.stdout}")
     _run("git fetch --tags origin", cwd=UPSTREAM)
-    r = _run(f"git checkout --force {pin.group(0)}", cwd=UPSTREAM)
+    r = _run(f"git checkout --force {pin.group(1)}", cwd=UPSTREAM)
     if r.returncode != 0:
         raise RuntimeError(f"upstream checkout failed:\n{r.stdout}")
-    log.info("upstream pinned at %s", pin.group(0))
+    log.info("upstream pinned at %s", pin.group(1))
 
     # The oracles run with GOPROXY=off (stream's harness does this on purpose —
     # tests/differential_oracle.py, docs/upstream-harness.md), so every module
