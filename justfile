@@ -252,6 +252,61 @@ publish-server-remote optimize="ReleaseFast":
     echo "==> safe to disconnect now — reattach with: just server-deploy-logs"
     ssh root@"$SERVER" 'tail -n +1 -f /tmp/prefect-server-deploy.log & TPID=$!; PID=$(cat /tmp/prefect-server-deploy.pid); while kill -0 "$PID" 2>/dev/null; do sleep 2; done; sleep 1; kill "$TPID" 2>/dev/null' || true
 
+# assert the server is actually DOING work, not merely alive.
+#
+# After the 2026-08-13 outage: pods Running, worker ONLINE and heartbeating,
+# /health 200, zero runs late — while every flow run had crashed for 100
+# minutes. Liveness is not throughput.
+#
+# Filtering happens *client-side* on purpose. The first version of this recipe
+# asked the server to filter by end_time, which the deployed version did not
+# support, so the predicate was ignored and it cheerfully reported 8936
+# completions "since the deploy". A verifier must not depend on features of
+# the thing it is verifying.
+verify-deploy minutes="12":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${DOMAIN:?set DOMAIN}"
+    : "${AUTH_STRING:?set AUTH_STRING}"
+    AUTH=$(printf "$AUTH_STRING" | base64)
+    SINCE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    DEADLINE=$(( $(date +%s) + {{ minutes }} * 60 ))
+
+    recent() {
+        curl -s -X POST "https://$DOMAIN/api/flow_runs/filter" \
+            -H "Authorization: Basic $AUTH" -H 'content-type: application/json' \
+            -d "{\"sort\":\"$1\",\"limit\":30}"
+    }
+
+    echo "==> watching for flow runs finishing after $SINCE (up to {{ minutes }}m)"
+    while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+        runs=$(recent END_TIME_DESC)
+
+        crashed=$(printf '%s' "$runs" | jq -r --arg since "$SINCE" \
+            '[.[] | select(.state_type == "CRASHED" and (.state_timestamp // .updated) > $since)] | length')
+        if [ "${crashed:-0}" -gt 0 ]; then
+            echo "FAIL: $crashed flow run(s) CRASHED since the deploy"
+            printf '%s' "$runs" | jq -r --arg since "$SINCE" \
+                '.[] | select(.state_type == "CRASHED" and (.state_timestamp // .updated) > $since)
+                 | "  \(.name): \(.state_message // "no message")"' | head -3
+            exit 1
+        fi
+
+        done_since=$(printf '%s' "$runs" | jq -r --arg since "$SINCE" \
+            '[.[] | select(.state_type == "COMPLETED" and (.end_time // "") > $since)] | length')
+        if [ "${done_since:-0}" -gt 0 ]; then
+            echo "OK: $done_since flow run(s) completed since the deploy"
+            printf '%s' "$runs" | jq -r --arg since "$SINCE" \
+                '.[] | select(.state_type == "COMPLETED" and (.end_time // "") > $since) | "  \(.end_time) \(.name)"' | head -3
+            exit 0
+        fi
+        sleep 20
+    done
+
+    echo "FAIL: no flow run completed within {{ minutes }}m of the deploy"
+    echo "      (worker alive but not producing — check 'just logs' and the work pool)"
+    exit 1
+
 # follow the most recent remote Prefect server deploy log
 server-deploy-logs:
     SERVER=$(just server-ip); ssh root@"$SERVER" 'tail -n 200 -f /tmp/prefect-server-deploy.log'
