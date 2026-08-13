@@ -52,9 +52,39 @@ can do before hand-rolling `curl`, and before claiming something isn't possible.
   diagnostics. this one genuinely is read-only, but that's a *scope* decision
   about a very large API, not a principle about MCP. do not generalize it to
   other servers. mutations go through `just prefect ...`.
+  - configured at **local** scope for this project (`claude mcp list` →
+    `prefect`), pointed at `https://$DOMAIN/api` with `PREFECT_API_AUTH_STRING`
+    from `.env`, so the credential stays out of the repo. it reads our server,
+    not Cloud — `get_identity` returns our `api_url` and version.
+  - there is *also* a `claude.ai Prefect` connector (`prefect.fastmcp.app`)
+    in the client list. that one is the hosted **Cloud** MCP and is unrelated
+    to this server; don't confuse the two when reading tool output.
+  - it makes a decent API fuzzer: it sends filter shapes the UI never does.
+    every gap fixed in prefect-server v0.0.19–v0.0.21 (flow-run time filters,
+    `GET /api/version`, tags/labels/parameters persistence, a real PATCH, the
+    work-pool default-queue bug) was found by pointing it at prod and reading
+    what came back.
 
 if you are about to say "the MCP can't do X" or offer to build a missing tool,
 grep its tool list first. that has been wrong more than once.
+
+## costs
+
+- `COSTS.md` in each repo fetches a live figure from
+  `https://hub.waow.tech/api/costs.json`. **as of 2026-08-13 most of those
+  figures are wrong**: 7 of 10 repos report `$0` because the snippets
+  exact-match a `service` name (`leaflet-search-backend`) while fly and
+  cloudflare line items gained component suffixes
+  (`leaflet-search-backend:compute`) on 2026-06-17. prefix-match to get the
+  real number until the generator is fixed.
+- attribution currently infers project ownership from resource-name substrings
+  in `packages/mps/src/mps/costs/projects.py`. that is the wrong model and is
+  being replaced: **each project should declare what it owns**. resource names
+  outlive renames (`pub-search`'s fly apps are still `leaflet-search-*`) and
+  collide (bare `relay` vs plyr's `relay-api`), so inference silently
+  mis-attributes and nothing fails loudly. the collector's job is to reconcile
+  declarations and report conflicts + orphans — ~20 live services are claimed
+  by no repo today.
 
 ## running flows ad hoc
 
