@@ -19,9 +19,11 @@ Design constraints, both learned the hard way:
     calling the tail stuck, and any shallow check gets one retry before it
     counts as down.
 
-Failure semantics: unhealthy targets raise, so the flow run fails and the
-Prefect UI (and any notification hook on flow-run failure) carries the page.
-The markdown artifact on every run is the glanceable fleet table either way.
+Failure semantics: a failed flow run means the sweep itself could not run
+(a check task errored out even after retry). Unhealthy targets are a
+*finding*, not a flow failure — they're logged as warnings, recorded in the
+markdown artifact, and emitted as a `fleet-health.unhealthy` event for
+automations to page on.
 
 Everything is stdlib; deps here are installed from git on every flow run.
 """
@@ -33,6 +35,7 @@ from dataclasses import dataclass
 
 from prefect import flow, get_run_logger, task
 from prefect.artifacts import create_markdown_artifact
+from prefect.events import emit_event
 
 TIMEOUT_S = 10
 TAIL_WINDOW_S = 20
@@ -154,6 +157,24 @@ def check_url(name: str, url: str) -> CheckResult:
     return CheckResult(name, st == 200, f"HTTP {st}")
 
 
+def summarize(results: list) -> tuple[list[str], list[str], list[str]]:
+    """Split sweep results into table rows, unhealthy findings, and checks
+    that themselves failed to run. Only the last group fails the flow."""
+    rows = ["| target | state | detail |", "| --- | --- | --- |"]
+    unhealthy: list[str] = []
+    broken_checks: list[str] = []
+    for r in results:
+        if isinstance(r, CheckResult):
+            mark = "ok" if r.healthy else "**DOWN**"
+            rows.append(f"| {r.name} | {mark} | {r.detail} |")
+            if not r.healthy:
+                unhealthy.append(f"{r.name}: {r.detail}")
+        else:  # task itself errored after retry — the sweep is incomplete
+            rows.append(f"| (task error) | **DOWN** | {r} |")
+            broken_checks.append(str(r))
+    return rows, unhealthy, broken_checks
+
+
 @flow(log_prints=True)
 def fleet_health() -> None:
     logger = get_run_logger()
@@ -163,17 +184,7 @@ def fleet_health() -> None:
     results: list[CheckResult] = [deep_future.result(raise_on_failure=False)]
     results += [f.result(raise_on_failure=False) for f in shallow_futures]
 
-    rows = ["| target | state | detail |", "| --- | --- | --- |"]
-    unhealthy: list[str] = []
-    for r in results:
-        if isinstance(r, CheckResult):
-            mark = "ok" if r.healthy else "**DOWN**"
-            rows.append(f"| {r.name} | {mark} | {r.detail} |")
-            if not r.healthy:
-                unhealthy.append(f"{r.name}: {r.detail}")
-        else:  # task itself errored after retry
-            rows.append(f"| (task error) | **DOWN** | {r} |")
-            unhealthy.append(str(r))
+    rows, unhealthy, broken_checks = summarize(results)
 
     create_markdown_artifact(
         key="fleet-health",
@@ -184,4 +195,13 @@ def fleet_health() -> None:
     for line in rows[2:]:
         logger.info(line)
     if unhealthy:
-        raise RuntimeError(f"{len(unhealthy)} unhealthy: " + " | ".join(unhealthy))
+        logger.warning("%d unhealthy: %s", len(unhealthy), " | ".join(unhealthy))
+        emit_event(
+            event="fleet-health.unhealthy",
+            resource={"prefect.resource.id": "fleet-health"},
+            payload={"unhealthy": unhealthy},
+        )
+    if broken_checks:
+        raise RuntimeError(
+            f"{len(broken_checks)} check(s) could not run: " + " | ".join(broken_checks)
+        )
