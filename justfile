@@ -223,7 +223,7 @@ publish-server-remote optimize="ReleaseFast":
     IMAGE="atcr.io/zzstoatzz.io/prefect-server:${LABEL}-\${TAG}"
 
     echo "==> building binary (\${TAG}, ${OPTIMIZE})"
-    zig build -Doptimize=${OPTIMIZE} -Dtarget=x86_64-linux-musl
+    zig build -Doptimize=${OPTIMIZE} -Dtarget=x86_64-linux-musl -Dgit_sha=\${TAG}
 
     echo "==> collecting runtime libraries"
     rm -rf runtime-lib
