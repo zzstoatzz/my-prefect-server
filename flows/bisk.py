@@ -32,6 +32,7 @@ from pathlib import Path
 
 import httpx
 from prefect import flow, task
+from prefect.tasks import exponential_backoff
 
 DAVE = "did:plc:hovt6k22s64dq63jjmoyibk3"
 TOPCHICKEN = "did:plc:bty3nc67lteylmmb7hvgxeu5"
@@ -72,6 +73,15 @@ OBJECT_KEY = "bisk.json"
 
 
 async def _get(client: httpx.AsyncClient, url: str, params: dict) -> dict:
+    """GET + raise_for_status.
+
+    No retry here on purpose: the tasks below carry prefect retries, so a
+    dropped connection anywhere in a paginated walk re-runs that task rather
+    than papering over the failure mid-walk with partial state. constellation
+    intermittently closes connections without a response
+    (httpx.RemoteProtocolError) and occasionally 502s — that took out 3 of 9
+    bisk-snapshot runs on 2026-08-12 before the tasks had retries.
+    """
     r = await client.get(url, params=params)
     r.raise_for_status()
     return r.json()
@@ -125,7 +135,12 @@ async def _profiles(client, dids: list[str]) -> dict[str, dict]:
     return out
 
 
-@task(log_prints=True)
+@task(
+    log_prints=True,
+    retries=3,
+    retry_delay_seconds=exponential_backoff(backoff_factor=5),
+    retry_jitter_factor=1,
+)
 def build_pool() -> dict[str, dict]:
     async def run() -> dict[str, dict]:
         async with httpx.AsyncClient(
@@ -159,7 +174,12 @@ def build_pool() -> dict[str, dict]:
     return asyncio.run(run())
 
 
-@task(log_prints=True)
+@task(
+    log_prints=True,
+    retries=3,
+    retry_delay_seconds=exponential_backoff(backoff_factor=5),
+    retry_jitter_factor=1,
+)
 def window_bisks(pool: dict[str, dict]) -> list[dict]:
     """the pool's bisks in topchicken's *current* daily round, with live likes.
 
@@ -221,7 +241,12 @@ def window_bisks(pool: dict[str, dict]) -> list[dict]:
     return asyncio.run(run())
 
 
-@task(log_prints=True)
+@task(
+    log_prints=True,
+    retries=3,
+    retry_delay_seconds=exponential_backoff(backoff_factor=5),
+    retry_jitter_factor=1,
+)
 def all_time_coop() -> list[dict]:
     async def run() -> list[dict]:
         async with httpx.AsyncClient(
@@ -294,7 +319,12 @@ def all_time_coop() -> list[dict]:
     return asyncio.run(run())
 
 
-@task(log_prints=True)
+@task(
+    log_prints=True,
+    retries=2,
+    retry_delay_seconds=exponential_backoff(backoff_factor=5),
+    retry_jitter_factor=1,
+)
 def publish(snapshot: dict) -> str:
     """publish to R2, or to a local file if BISK_OUT is set (dev/CI)."""
     body = json.dumps(snapshot).encode()

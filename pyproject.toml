@@ -60,7 +60,14 @@ dev = [
     "numpy>=1.26",
     "hdbscan>=0.8.40",
     "scikit-learn>=1.5",
+    # async tests (e.g. tests/test_bisk_retries.py) need a runner; with
+    # asyncio_mode = "auto" below, no test needs an @pytest.mark.asyncio.
+    "pytest-asyncio>=0.24",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
 
 [tool.ty.src]
 include = ["flows", "packages/mps/src"]
