@@ -514,6 +514,26 @@ deployments:
       - cron: "0 3 * * 1"
         active: true
 
+  - name: phi-likes-review
+    entrypoint: flows/phi_trigger.py:phi_trigger
+    # weekly read-back of phi's own likes — the likes accumulate as a
+    # public record of what caught her attention; this pass is where the
+    # record gets read (follow-ups, semble cards) instead of just written.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
+          prefect flow-run execute
+    parameters:
+      slot: likes-review
+    schedules:
+      # sunday 20:00 UTC (3pm CT) — end of the week, ahead of the sunday
+      # night curation pass so a like that earned a real read can feed it
+      - cron: "0 20 * * 0"
+        active: true
+
   - name: phi-editorial
     entrypoint: flows/phi_trigger.py:phi_trigger
     # daily coral editorial-context refresh — phi researches coral's
