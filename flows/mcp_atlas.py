@@ -157,13 +157,18 @@ def probe_liveness(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for entry in entries:
             if not entry["url"]:
                 entry["alive"] = None
+                entry["authRequired"] = None
                 continue
             try:
                 resp = client.post(entry["url"], json=initialize)
-                entry["alive"] = resp.is_success
+                # 401/403 means something is serving and enforcing auth —
+                # that's a live server, not an unreachable one
+                entry["authRequired"] = resp.status_code in (401, 403)
+                entry["alive"] = resp.is_success or entry["authRequired"]
             except httpx.HTTPError as exc:
                 logger.info(f"{entry['name']} ({entry['url']}) unreachable: {exc!r}")
                 entry["alive"] = False
+                entry["authRequired"] = False
     return entries
 
 

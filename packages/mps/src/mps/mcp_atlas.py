@@ -67,6 +67,36 @@ def normalize_record(
         if len(tools) == MAX_TOOLS:
             break
 
+    env_raw = value.get("environment")
+    environment: list[dict[str, Any]] = []
+    for item in (env_raw if isinstance(env_raw, list) else [])[:32]:
+        if not isinstance(item, dict) or not isinstance(item.get("name"), str):
+            continue
+        env_description = item.get("description")
+        environment.append(
+            {
+                "name": item["name"].strip()[:MAX_NAME],
+                "required": item.get("required") is True,
+                "description": env_description.strip()[:MAX_TOOL_DESCRIPTION]
+                if isinstance(env_description, str) and env_description.strip()
+                else None,
+            }
+        )
+
+    pkg_raw = value.get("packages")
+    packages: list[dict[str, str]] = []
+    for item in (pkg_raw if isinstance(pkg_raw, list) else [])[:8]:
+        if not isinstance(item, dict):
+            continue
+        registry, identifier = item.get("registry"), item.get("identifier")
+        if isinstance(registry, str) and isinstance(identifier, str):
+            packages.append(
+                {
+                    "registry": registry.strip()[:32],
+                    "identifier": identifier.strip()[:MAX_TOOL_NAME],
+                }
+            )
+
     transport = value.get("transport")
     framework = value.get("framework")
     return {
@@ -81,6 +111,8 @@ def normalize_record(
         "framework": framework.strip() if isinstance(framework, str) else None,
         "transport": transport if transport in TRANSPORTS else None,
         "tools": tools,
+        "environment": environment,
+        "packages": packages,
         "createdAt": value.get("createdAt")
         if isinstance(value.get("createdAt"), str)
         else None,

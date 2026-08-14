@@ -61,6 +61,7 @@ const PAGE = `<!doctype html>
   .desc { margin: .5rem 0 .4rem; font-size: .875rem; }
   .tools { color: var(--muted); font-size: .78rem; word-break: break-word; }
   .tools span[title] { text-decoration: underline dotted; cursor: help; }
+  .req { color: var(--dead); }
   .links { font-size: .78rem; margin-top: .45rem; }
   .links a { color: var(--accent); margin-right: 1rem; }
   footer { color: var(--muted); font-size: .75rem; margin-top: 2.5rem; }
@@ -136,7 +137,7 @@ const PAGE = `<!doctype html>
         : esc(s.name);
       const status = url
         ? (s.alive
-            ? '<span class="live">● live</span>'
+            ? '<span class="live">● live' + (s.authRequired ? " (auth)" : "") + "</span>"
             : '<span class="unreachable">○ unreachable</span>')
         : "";
       const author = '<span class="by"><a href="https://bsky.app/profile/' +
@@ -148,12 +149,25 @@ const PAGE = `<!doctype html>
               : esc(t.name)
           ).join(", ") + "</div>"
         : "";
+      const env = s.environment?.length
+        ? '<div class="tools">env: ' + s.environment.map((v) => {
+            const label = esc(v.name) + (v.required ? '<span class="req">*</span>' : "");
+            return v.description
+              ? '<span title="' + esc(v.description) + '">' + label + "</span>"
+              : label;
+          }).join(", ") + (s.environment.some((v) => v.required) ? ' <span class="req">(* required)</span>' : "") + "</div>"
+        : "";
+      const pkgs = s.packages?.length
+        ? '<div class="tools">install: ' + s.packages.map((p) =>
+            esc(p.registry) + ":" + esc(p.identifier)
+          ).join(", ") + "</div>"
+        : "";
       const links = [
         url && '<a href="' + esc(url) + '">endpoint</a>',
         s.uri && '<a href="https://pdsls.dev/' + esc(s.uri) + '">record</a>',
       ].filter(Boolean).join("");
       return '<div class="server" id="s-' + i + '">' + author + "<h2>" + title + "</h2>" + status +
-        '<p class="desc">' + esc(s.description) + "</p>" + tools +
+        '<p class="desc">' + esc(s.description) + "</p>" + tools + env + pkgs +
         (links ? '<div class="links">' + links + "</div>" : "") + "</div>";
     }).join("");
     if (atlas.generatedAt) {

@@ -27,6 +27,8 @@ def test_normalize_minimal_record():
         "framework": None,
         "transport": None,
         "tools": [],
+        "environment": [],
+        "packages": [],
         "createdAt": None,
     }
 
@@ -48,10 +50,26 @@ def test_normalize_full_record():
                 {"name": "search_gear"},
                 {"name": "price_snapshot", "description": "distribution of asks"},
             ],
+            "environment": [
+                {"name": "EBAY_CLIENT_ID", "required": True, "description": "app id"},
+                {"name": "EBAY_TIMEOUT"},
+                "junk",
+                {"required": True},
+            ],
+            "packages": [
+                {"registry": "pypi", "identifier": "partscout"},
+                {"registry": "npm"},
+                7,
+            ],
             "createdAt": "2026-08-13T00:00:00Z",
         },
     )
     assert entry is not None
+    assert entry["environment"] == [
+        {"name": "EBAY_CLIENT_ID", "required": True, "description": "app id"},
+        {"name": "EBAY_TIMEOUT", "required": False, "description": None},
+    ]
+    assert entry["packages"] == [{"registry": "pypi", "identifier": "partscout"}]
     assert entry["repo"] == "https://example.com/repo"
     assert entry["url"] == "https://example.com/mcp"
     assert entry["framework"] == "fastmcp"

@@ -55,11 +55,72 @@
             "items": { "type": "ref", "ref": "#tool" },
             "description": "Tools the server exposes. Advisory; crawlers may verify by connecting."
           },
+          "environment": {
+            "type": "array",
+            "maxLength": 32,
+            "items": { "type": "ref", "ref": "#envVar" },
+            "description": "Environment variables the server reads, so clients know what to configure before running or connecting."
+          },
+          "packages": {
+            "type": "array",
+            "maxLength": 8,
+            "items": { "type": "ref", "ref": "#package" },
+            "description": "Where the server is distributed, one entry per registry. Ecosystems are values, not structure — no language is privileged."
+          },
           "createdAt": {
             "type": "string",
             "format": "datetime",
             "description": "Client-declared timestamp when this record was created."
           }
+        }
+      }
+    },
+    "envVar": {
+      "type": "object",
+      "description": "One environment variable the server reads.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxGraphemes": 64,
+          "maxLength": 640,
+          "description": "Variable name, e.g. EBAY_CLIENT_ID."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether the server refuses to work without this. Defaults to false (optional)."
+        },
+        "description": {
+          "type": "string",
+          "maxGraphemes": 300,
+          "maxLength": 3000,
+          "description": "What the variable configures and where to get a value."
+        }
+      }
+    },
+    "package": {
+      "type": "object",
+      "description": "One distribution of the server in a package registry.",
+      "required": ["registry", "identifier"],
+      "properties": {
+        "registry": {
+          "type": "string",
+          "knownValues": ["pypi", "npm", "oci", "nuget", "gem", "crates"],
+          "maxGraphemes": 32,
+          "maxLength": 320,
+          "description": "Package ecosystem this entry refers to."
+        },
+        "identifier": {
+          "type": "string",
+          "maxGraphemes": 128,
+          "maxLength": 1280,
+          "description": "Package name within the registry, e.g. 'tangled-mcp' on pypi."
+        },
+        "version": {
+          "type": "string",
+          "maxGraphemes": 64,
+          "maxLength": 640,
+          "description": "Version this record describes. Omit to mean latest."
         }
       }
     },
