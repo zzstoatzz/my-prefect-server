@@ -36,15 +36,30 @@ const PAGE = `<!doctype html>
   .stat .l { color: var(--muted); font-size: .75rem; }
   .map {
     border: 1px solid var(--line); border-radius: 8px; background: var(--card);
-    margin: 0 0 1.6rem; overflow: hidden;
+    margin: 0 0 .5rem; overflow: hidden; position: relative;
   }
   .map svg { display: block; width: 100%; height: auto; }
   .map .dot { cursor: pointer; }
-  .map .dot circle { transition: r .15s; }
-  .map .dot:hover circle { r: 7; }
-  .map text {
-    font: 11px ui-monospace, "SF Mono", Menlo, monospace;
-    fill: var(--muted); pointer-events: none;
+  .map .tip {
+    position: absolute; pointer-events: none; display: none;
+    background: var(--fg); color: var(--bg); border-radius: 6px;
+    padding: .35rem .55rem; font-size: .75rem; white-space: nowrap;
+    transform: translate(-50%, -130%); z-index: 2;
+  }
+  .map-caption {
+    color: var(--muted); font-size: .72rem; margin: 0 0 .4rem;
+  }
+  .map-legend {
+    display: flex; gap: 1.2rem; flex-wrap: wrap; align-items: center;
+    color: var(--muted); font-size: .75rem; margin: 0 0 1.6rem;
+  }
+  .map-legend .swatch {
+    display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+    margin-right: .35rem; vertical-align: -1px;
+  }
+  :root { --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; }
+  @media (prefers-color-scheme: dark) {
+    :root { --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; }
   }
   .server {
     border: 1px solid var(--line); border-radius: 8px; background: var(--card);
@@ -77,6 +92,8 @@ const PAGE = `<!doctype html>
   just one view over them. <a href="/api/atlas.json">atlas.json</a></p>
   <div id="stats" class="stats"></div>
   <div id="map" class="map" hidden></div>
+  <p id="map-caption" class="map-caption" hidden>each dot is a server; closer dots have more similar descriptions and tools. filled = hosted, hollow = local-only, red ring = endpoint down. hover for names.</p>
+  <div id="map-legend" class="map-legend" hidden></div>
   <div id="servers"><p class="empty">loading…</p></div>
   <footer>
     crawled from the network via <a href="https://relay.waow.tech">relay</a> ·
@@ -109,25 +126,75 @@ const PAGE = `<!doctype html>
     ).join("");
     const mapped = atlas.servers.filter((s) => typeof s.x === "number" && typeof s.y === "number");
     if (mapped.length > 1) {
-      const W = 720, H = 420, pad = 30;
-      const px = (v) => pad + v * (W - 2 * pad);
-      const py = (v) => pad + v * (H - 2 * pad);
-      const color = (s) => !s.url
-        ? "var(--muted)"
-        : (s.alive ? "var(--accent)" : "var(--dead)");
+      const W = 720, H = 400, pad = 34;
+      // a few relaxation passes so overlapping dots separate without
+      // meaningfully moving off their semantic position
+      const pts = mapped.map((s) => ({ s, x: pad + s.x * (W - 2 * pad), y: pad + s.y * (H - 2 * pad) }));
+      const MIN = 26;
+      for (let pass = 0; pass < 12; pass++) {
+        for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+          const a = pts[i], b = pts[j];
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const d = Math.hypot(dx, dy) || 0.01;
+          if (d < MIN) {
+            const push = (MIN - d) / 2, ux = dx / d, uy = dy / d;
+            a.x -= ux * push; a.y -= uy * push;
+            b.x += ux * push; b.y += uy * push;
+          }
+        }
+      }
+      const pos = new Map(pts.map((p) => [p.s, p]));
+      const px = (s) => pos.get(s).x;
+      const py = (s) => pos.get(s).y;
+
+      // color = publisher identity, slots assigned in fixed (sorted-DID) order
+      const dids = [...new Set(atlas.servers.map((s) => s.did))].sort();
+      const slot = (did) => "var(--s" + (Math.min(dids.indexOf(did), 3) + 1) + ")";
+
+      const dot = (s) => {
+        const c = slot(s.did), x = px(s), y = py(s);
+        // fill = hosted; hollow = local-only; red ring flags a down endpoint
+        const body = !s.url
+          ? '<circle cx="' + x + '" cy="' + y + '" r="5.5" fill="var(--card)" stroke="' + c + '" stroke-width="2"/>'
+          : s.alive
+            ? '<circle cx="' + x + '" cy="' + y + '" r="6" fill="' + c + '" stroke="var(--card)" stroke-width="2"/>'
+            : '<circle cx="' + x + '" cy="' + y + '" r="5.5" fill="var(--card)" stroke="var(--dead)" stroke-width="2"/>';
+        return '<g class="dot" data-i="' + atlas.servers.indexOf(s) + '" data-name="' + esc(s.name) +
+          '" data-handle="' + esc(s.handle || s.did) + '">' + body +
+          '<circle cx="' + x + '" cy="' + y + '" r="14" fill="transparent"/></g>';
+      };
+
       const mapEl = document.getElementById("map");
       mapEl.hidden = false;
       mapEl.innerHTML =
         '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="semantic map of MCP servers">' +
-        mapped.map((s, i) =>
-          '<g class="dot" data-i="' + atlas.servers.indexOf(s) + '">' +
-          '<circle cx="' + px(s.x) + '" cy="' + py(s.y) + '" r="5" fill="' + color(s) + '"/>' +
-          '<text x="' + px(s.x) + '" y="' + (py(s.y) + 18) + '" text-anchor="middle">' + esc(s.name) + "</text></g>"
-        ).join("") + "</svg>";
-      mapEl.querySelectorAll(".dot").forEach((dot) => {
-        dot.addEventListener("click", () => {
-          document.getElementById("s-" + dot.dataset.i)?.scrollIntoView({ behavior: "smooth", block: "center" });
+        mapped.map(dot).join("") + '</svg><div class="tip" id="tip"></div>';
+      document.getElementById("map-caption").hidden = false;
+
+      const legend = document.getElementById("map-legend");
+      legend.hidden = false;
+      legend.innerHTML = dids.map((did) => {
+        const s = atlas.servers.find((v) => v.did === did);
+        return '<span><span class="swatch" style="background:' + slot(did) + '"></span>@' +
+          esc(s.handle || did) + "</span>";
+      }).join("");
+
+      const tip = document.getElementById("tip");
+      const svg = mapEl.querySelector("svg");
+      mapEl.querySelectorAll(".dot").forEach((g) => {
+        g.addEventListener("click", () => {
+          document.getElementById("s-" + g.dataset.i)?.scrollIntoView({ behavior: "smooth", block: "center" });
         });
+        g.addEventListener("pointerenter", () => {
+          const c = g.querySelector("circle");
+          const r = mapEl.getBoundingClientRect();
+          const scale = r.width / W;
+          tip.textContent = g.dataset.name + " · @" + g.dataset.handle;
+          tip.style.left = c.getAttribute("cx") * scale + "px";
+          tip.style.top = c.getAttribute("cy") * (svg.getBoundingClientRect().height / H) + "px";
+          tip.style.display = "block";
+        });
+        g.addEventListener("pointerleave", () => { tip.style.display = "none"; });
       });
     }
     root.innerHTML = atlas.servers.map((s, i) => {
