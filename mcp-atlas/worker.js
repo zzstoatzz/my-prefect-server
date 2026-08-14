@@ -56,6 +56,19 @@ const PAGE = `<!DOCTYPE html>
   .subtitle { color: var(--muted); font-size: 0.85rem; margin: 0.25rem 0 1.4rem; max-width: 46rem; }
   .subtitle a { color: var(--muted); }
 
+  /* ---- search ---- */
+  .search-wrap { margin-bottom: 0.9rem; }
+  #q {
+    width: 100%; border-radius: 14px; padding: 0.7rem 1rem;
+    font: inherit; font-size: 0.9rem; color: var(--fg); outline: none;
+    transition: border-color 0.2s;
+  }
+  #q::placeholder { color: var(--muted); opacity: 0.75; }
+  #q:focus { border-color: rgba(88,166,255,0.5); }
+
+  .card.dim { opacity: 0.32; }
+  .card .score { margin-left: 0.4rem; font-size: 0.66rem; color: var(--accent); font-variant-numeric: tabular-nums; }
+
   /* ---- the map: its own panel, nothing on top of it ---- */
   .map-panel {
     position: relative; border-radius: 16px;
@@ -183,6 +196,9 @@ const PAGE = `<!DOCTYPE html>
   <code>tech.waow.mcp.server</code> record on its author's own PDS. this page is one view over them.
   <a href="/api/atlas.json">atlas.json</a></p>
 
+  <div class="search-wrap">
+    <input id="q" class="glassy" type="search" placeholder="find a server in english — 'price used gpus', 'draw into my repo', …" autocomplete="off" spellcheck="false">
+  </div>
   <div class="map-panel glassy">
     <canvas id="atlas"></canvas>
     <div id="atlas-tip"></div>
@@ -309,6 +325,55 @@ fetch("/api/atlas.json").then((r) => r.ok ? r.json() : null).then((atlas) => {
     });
   });
 
+  // ---- search: english in, ranked grid + dimmed constellation out
+  const qEl = document.getElementById("q");
+  let searchSeq = 0;
+  let matchSet = null; // null = no active search; Set of indices otherwise
+  async function runSearch(q) {
+    const seq = ++searchSeq;
+    if (!q) {
+      matchSet = null;
+      servers.forEach((_, i) => {
+        const card = document.getElementById("card-" + i);
+        card.classList.remove("dim");
+        card.style.order = "";
+        card.querySelector(".score")?.remove();
+      });
+      draw();
+      return;
+    }
+    const resp = await fetch("/api/search?q=" + encodeURIComponent(q));
+    if (!resp.ok || seq !== searchSeq) return;
+    const { results } = await resp.json();
+    if (seq !== searchSeq) return;
+    const scores = new Map(results.map((r) => [r.i, r.score]));
+    const ranked = [...results].sort((a, b) => b.score - a.score);
+    const cut = ranked.length ? Math.max(0.6 * ranked[0].score, ranked[0].score - 0.12) : 0;
+    matchSet = new Set(ranked.filter((r) => r.score >= cut).map((r) => r.i));
+    ranked.forEach((r, rank) => {
+      const card = document.getElementById("card-" + r.i);
+      card.style.order = rank;
+      card.classList.toggle("dim", !matchSet.has(r.i));
+      card.querySelector(".score")?.remove();
+      if (matchSet.has(r.i)) {
+        const el = document.createElement("span");
+        el.className = "score";
+        el.textContent = scores.get(r.i).toFixed(2);
+        card.querySelector(".card-head").appendChild(el);
+      }
+    });
+    draw();
+  }
+  let debounce;
+  qEl.addEventListener("input", () => {
+    clearTimeout(debounce);
+    debounce = setTimeout(() => runSearch(qEl.value.trim()), 350);
+  });
+  qEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { clearTimeout(debounce); runSearch(qEl.value.trim()); }
+    if (e.key === "Escape") { qEl.value = ""; runSearch(""); }
+  });
+
   // ---- constellation: contained, fully interactive, selection card inside
   const canvas = document.getElementById("atlas");
   const tipEl = document.getElementById("atlas-tip");
@@ -348,6 +413,7 @@ fetch("/api/atlas.json").then((r) => r.ok ? r.json() : null).then((atlas) => {
       const c = cssVar(slot(p.s.did));
       const active = hovered === p || selected === p;
       ctx.save();
+      if (matchSet && !matchSet.has(p.i)) ctx.globalAlpha = 0.22;
       ctx.shadowColor = c; ctx.shadowBlur = active ? 20 : 10;
       ctx.beginPath();
       ctx.arc(p.px, p.py, active ? 7.5 : 6, 0, Math.PI * 2);
@@ -413,9 +479,55 @@ fetch("/api/atlas.json").then((r) => r.ok ? r.json() : null).then((atlas) => {
 </body>
 </html>`;
 
+const EMBED_MODEL = "@cf/baai/bge-base-en-v1.5";
+
+const serverDoc = (s) =>
+  [
+    s.name,
+    s.description,
+    ...(s.tools ?? []).map((t) => t.name + (t.description ? ": " + t.description : "")),
+  ].join("\n").slice(0, 2000);
+
+const cosine = (a, b) => {
+  let dot = 0, na = 0, nb = 0;
+  for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+  return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
+};
+
 export default {
   async fetch(request, env) {
-    const { pathname } = new URL(request.url);
+    const { pathname, searchParams } = new URL(request.url);
+
+    if (pathname === "/api/search") {
+      const q = (searchParams.get("q") ?? "").trim().slice(0, 500);
+      if (!q) return Response.json({ query: q, results: [] });
+      const [atlasRaw, vectorsRaw] = await Promise.all([
+        env.ATLAS.get("atlas.json"),
+        env.ATLAS.get("vectors.json"),
+      ]);
+      const atlas = atlasRaw ? JSON.parse(atlasRaw) : { servers: [] };
+      const vectors = vectorsRaw ? JSON.parse(vectorsRaw) : null;
+      let results;
+      if (vectors && vectors.length === atlas.servers.length) {
+        const emb = await env.AI.run(EMBED_MODEL, { text: [q] });
+        const qv = emb.data[0];
+        results = atlas.servers
+          .map((s, i) => ({ i, name: s.name, handle: s.handle, score: cosine(qv, vectors[i]) }))
+          .sort((a, b) => b.score - a.score);
+      } else {
+        // vectors missing (embed failed at ingest) — keyword fallback
+        const terms = q.toLowerCase().split(/\\s+/).filter(Boolean);
+        results = atlas.servers
+          .map((s, i) => {
+            const doc = serverDoc(s).toLowerCase();
+            return { i, name: s.name, handle: s.handle, score: terms.filter((t) => doc.includes(t)).length / terms.length };
+          })
+          .sort((a, b) => b.score - a.score);
+      }
+      return Response.json({ query: q, results }, {
+        headers: { "access-control-allow-origin": "*" },
+      });
+    }
 
     if (pathname === "/api/atlas.json") {
       if (request.method === "POST") {
@@ -424,12 +536,24 @@ export default {
           return new Response("unauthorized", { status: 401 });
         }
         const body = await request.text();
+        let atlas;
         try {
-          JSON.parse(body);
+          atlas = JSON.parse(body);
         } catch {
           return new Response("not json", { status: 400 });
         }
         await env.ATLAS.put("atlas.json", body);
+        // embed every server now so /api/search only embeds the query.
+        // failure is non-fatal: search falls back to keywords until the
+        // next successful ingest.
+        try {
+          const docs = (atlas.servers ?? []).map(serverDoc);
+          const emb = docs.length ? await env.AI.run(EMBED_MODEL, { text: docs }) : { data: [] };
+          await env.ATLAS.put("vectors.json", JSON.stringify(emb.data));
+        } catch (err) {
+          await env.ATLAS.delete("vectors.json");
+          return new Response("ok (embed failed: " + err + ")");
+        }
         return new Response("ok");
       }
       const data = await env.ATLAS.get("atlas.json");
