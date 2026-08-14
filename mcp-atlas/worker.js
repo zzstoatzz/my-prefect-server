@@ -30,6 +30,23 @@ const PAGE = `<!DOCTYPE html>
     font-size: 14px; background: var(--bg); color: var(--fg); line-height: 1.55;
     -webkit-font-smoothing: antialiased;
   }
+  /* ambient color field the glass refracts */
+  body::before {
+    content: ""; position: fixed; inset: -20%; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(38% 34% at 18% 12%, rgba(57,135,229,0.13), transparent 70%),
+      radial-gradient(34% 30% at 84% 22%, rgba(25,158,112,0.11), transparent 70%),
+      radial-gradient(30% 30% at 60% 88%, rgba(217,89,38,0.09), transparent 70%);
+    filter: blur(60px);
+  }
+  .glassy {
+    background: rgba(22,27,34,0.5);
+    backdrop-filter: blur(18px) saturate(1.5);
+    -webkit-backdrop-filter: blur(18px) saturate(1.5);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-top-color: rgba(255,255,255,0.12);
+    box-shadow: 0 10px 32px rgba(0,0,0,0.35);
+  }
   a { color: var(--accent); }
   main { max-width: 1060px; margin: 0 auto; padding: 2.2rem clamp(1rem, 3vw, 2rem) 3rem; }
 
@@ -41,8 +58,8 @@ const PAGE = `<!DOCTYPE html>
 
   /* ---- the map: its own panel, nothing on top of it ---- */
   .map-panel {
-    position: relative; border: 1px solid var(--border); border-radius: 12px;
-    background: var(--surface); overflow: hidden; margin-bottom: 0.6rem;
+    position: relative; border-radius: 16px;
+    overflow: hidden; margin-bottom: 0.6rem;
   }
   #atlas { display: block; width: 100%; height: 340px; touch-action: manipulation; }
   #atlas-tip {
@@ -54,9 +71,12 @@ const PAGE = `<!DOCTYPE html>
   #sel {
     position: absolute; z-index: 6; left: 0.8rem; right: 0.8rem; bottom: 0.8rem;
     max-width: 26rem;
-    background: var(--surface-2); border: 1px solid var(--border-strong);
-    border-radius: 10px; padding: 0.8rem 1rem;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+    background: rgba(28,33,41,0.72);
+    backdrop-filter: blur(24px) saturate(1.6);
+    -webkit-backdrop-filter: blur(24px) saturate(1.6);
+    border: 1px solid rgba(255,255,255,0.1); border-top-color: rgba(255,255,255,0.16);
+    border-radius: 14px; padding: 0.8rem 1rem;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.55);
     transform: translateY(8px); opacity: 0; pointer-events: none;
     transition: transform 0.18s ease, opacity 0.18s ease;
   }
@@ -97,16 +117,26 @@ const PAGE = `<!DOCTYPE html>
     grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   }
   .card {
-    border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+    border-radius: 16px; overflow: hidden;
     padding: 1rem 1.1rem 0.9rem; display: flex; flex-direction: column; gap: 0.55rem;
-    border-top: 2px solid var(--pub, var(--border));
-    transition: border-color 0.15s, box-shadow 0.3s;
+    transition: border-color 0.2s, box-shadow 0.3s;
     scroll-margin-top: 1.5rem;
   }
-  .card:hover { border-color: var(--border-strong); border-top-color: var(--pub); }
-  .card.flash { box-shadow: 0 0 0 2px var(--pub); }
-  .card-head { display: flex; align-items: center; gap: 0.55rem; }
-  .card-head .name { font-weight: 600; font-size: 0.95rem; }
+  .card:hover { border-color: color-mix(in oklab, var(--pub) 45%, transparent); }
+  .card.flash { box-shadow: 0 0 0 2px var(--pub), 0 10px 32px rgba(0,0,0,0.35); }
+  .card-head { display: flex; align-items: center; gap: 0.5rem; min-width: 0; }
+  .card-head .name { font-weight: 600; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lang {
+    flex: none; width: 18px; height: 18px; border-radius: 5px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 0.58rem; font-weight: 700; letter-spacing: 0.02em;
+  }
+  .lang.python { background: #3776ab; color: #ffd43b; }
+  .lang.typescript { background: #3178c6; color: #fff; }
+  .lang.javascript { background: #f7df1e; color: #000; }
+  .lang.go { background: #00add8; color: #fff; }
+  .lang.rust { background: #b7410e; color: #fff; }
+  .lang.zig { background: #f7a41d; color: #000; }
   .card-head .name a { color: var(--fg); text-decoration: none; }
   .card-head .name a:hover { text-decoration: underline; }
   .pill {
@@ -118,23 +148,25 @@ const PAGE = `<!DOCTYPE html>
   .pill.down { color: var(--red); border-color: rgba(248,81,73,0.4); }
   .pill.local { color: var(--muted); }
   .card .desc { color: var(--muted); font-size: 0.8rem; }
-  .chips { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
+  .chips { display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; min-width: 0; }
   .chip {
-    font-size: 0.7rem; border: 1px solid var(--border); border-radius: 6px;
-    padding: 0.05rem 0.4rem; color: var(--fg); background: rgba(13,17,23,0.4);
+    font-size: 0.66rem; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;
+    padding: 0.02rem 0.38rem; color: var(--muted); background: rgba(13,17,23,0.45);
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .chip[title] { cursor: help; }
-  .chip.req { border-color: rgba(248,81,73,0.45); }
-  .chips .label { color: var(--muted); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.05em; margin-right: 0.15rem; }
+  .chip.req { border-color: rgba(248,81,73,0.45); color: var(--fg); }
+  .chips .label { color: var(--muted); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.06em; margin-right: 0.2rem; flex: none; }
   .more {
     font-size: 0.7rem; color: var(--accent); background: none; border: 0;
     cursor: pointer; padding: 0.05rem 0.3rem; font-family: inherit;
   }
   .more:hover { text-decoration: underline; }
   .card-foot {
-    margin-top: auto; padding-top: 0.5rem; border-top: 1px solid var(--border);
-    display: flex; align-items: center; gap: 0.9rem; font-size: 0.74rem;
+    margin-top: auto; padding-top: 0.5rem; border-top: 1px solid rgba(255,255,255,0.06);
+    display: flex; align-items: center; gap: 0.45rem; font-size: 0.74rem;
   }
+  .card-foot .pub-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--pub); }
   .card-foot .pub-name { color: var(--muted); text-decoration: none; }
   .card-foot .pub-name:hover { color: var(--accent); }
   .card-foot .links { margin-left: auto; display: flex; gap: 0.8rem; }
@@ -151,7 +183,7 @@ const PAGE = `<!DOCTYPE html>
   <code>tech.waow.mcp.server</code> record on its author's own PDS. this page is one view over them.
   <a href="/api/atlas.json">atlas.json</a></p>
 
-  <div class="map-panel">
+  <div class="map-panel glassy">
     <canvas id="atlas"></canvas>
     <div id="atlas-tip"></div>
     <div id="sel">
@@ -227,7 +259,8 @@ fetch("/api/atlas.json").then((r) => r.ok ? r.json() : null).then((atlas) => {
     '<span class="note">closer dots = more similar servers · filled = hosted, hollow = local, red = down</span>';
 
   // ---- cards: everything visible at rest, no hidden state
-  const MAX_CHIPS = 6;
+  const MAX_CHIPS = 4;
+  const LANGS = { python: "py", typescript: "TS", javascript: "JS", go: "Go", rust: "rs", zig: "zig" };
   grid.innerHTML = servers.map((s, i) => {
     const st = statusOf(s);
     const repo = safeUrl(s.repo), url = safeUrl(s.url);
@@ -250,13 +283,17 @@ fetch("/api/atlas.json").then((r) => r.ok ? r.json() : null).then((atlas) => {
       ? '<div class="chips"><span class="label">install</span>' +
         s.packages.map((p) => '<span class="chip">' + esc(p.registry) + ":" + esc(p.identifier) + "</span>").join("") + "</div>"
       : "";
-    return '<article class="card" id="card-' + i + '" style="--pub:var(' + slot(s.did) + ')">' +
-      '<div class="card-head"><span class="name">' +
+    const lang = LANGS[s.language]
+      ? '<span class="lang ' + esc(s.language) + '" title="' + esc(s.language) + '">' + LANGS[s.language] + "</span>"
+      : "";
+    return '<article class="card glassy" id="card-' + i + '" style="--pub:var(' + slot(s.did) + ')">' +
+      '<div class="card-head">' + lang + '<span class="name">' +
       (repo ? '<a href="' + esc(repo) + '">' + esc(s.name) + "</a>" : esc(s.name)) +
       '</span><span class="pill ' + st.cls + '">' + st.label + "</span></div>" +
       '<div class="desc">' + esc(s.description) + "</div>" +
       toolsRow + envRow + pkgRow +
       '<div class="card-foot">' +
+      '<span class="pub-dot"></span>' +
       '<a class="pub-name" href="https://pdsls.dev/at://' + esc(s.did) + '/tech.waow.mcp.server">@' + esc(s.handle || s.did) + "</a>" +
       '<span class="links">' +
       (url ? '<a href="' + esc(url) + '">endpoint</a>' : "") +

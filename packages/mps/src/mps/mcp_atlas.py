@@ -99,6 +99,7 @@ def normalize_record(
 
     transport = value.get("transport")
     framework = value.get("framework")
+    language = value.get("language")
     return {
         "did": did,
         "handle": handle,
@@ -109,6 +110,7 @@ def normalize_record(
         "url": _http_url(value.get("url")),
         "manifest": _http_url(value.get("manifest")),
         "framework": framework.strip() if isinstance(framework, str) else None,
+        "language": language.strip()[:32] if isinstance(language, str) else None,
         "transport": transport if transport in TRANSPORTS else None,
         "tools": tools,
         "environment": environment,

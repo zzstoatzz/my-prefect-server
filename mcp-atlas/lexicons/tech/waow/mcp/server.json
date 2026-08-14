@@ -42,6 +42,13 @@
             "format": "uri",
             "description": "URL of a machine-readable manifest (e.g. a raw fastmcp.json) describing how to run the server from source."
           },
+          "language": {
+            "type": "string",
+            "knownValues": ["python", "typescript", "javascript", "go", "rust", "zig"],
+            "maxGraphemes": 32,
+            "maxLength": 320,
+            "description": "Implementation language. Informational — clients never need it to run or connect."
+          },
           "framework": {
             "type": "string",
             "knownValues": ["fastmcp", "mcp-sdk"],

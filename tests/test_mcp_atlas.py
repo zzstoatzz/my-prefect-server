@@ -25,6 +25,7 @@ def test_normalize_minimal_record():
         "url": None,
         "manifest": None,
         "framework": None,
+        "language": None,
         "transport": None,
         "tools": [],
         "environment": [],
@@ -45,6 +46,7 @@ def test_normalize_full_record():
             "url": "https://example.com/mcp",
             "manifest": "https://example.com/fastmcp.json",
             "framework": "fastmcp",
+            "language": "typescript",
             "transport": "http",
             "tools": [
                 {"name": "search_gear"},
@@ -74,6 +76,7 @@ def test_normalize_full_record():
     assert entry["url"] == "https://example.com/mcp"
     assert entry["framework"] == "fastmcp"
     assert entry["transport"] == "http"
+    assert entry["language"] == "typescript"
     assert entry["tools"] == [
         {"name": "search_gear", "description": None},
         {"name": "price_snapshot", "description": "distribution of asks"},
