@@ -31,6 +31,9 @@ const PAGE = `<!doctype html>
   h1 { font-size: 1.4rem; margin: 0 0 .25rem; font-weight: 600; }
   .sub { color: var(--muted); margin: 0 0 2rem; font-size: .85rem; }
   .sub a { color: inherit; }
+  .stats { display: flex; gap: 2rem; flex-wrap: wrap; margin: 0 0 1.6rem; }
+  .stat .n { font-size: 1.5rem; font-weight: 600; display: block; }
+  .stat .l { color: var(--muted); font-size: .75rem; }
   .server {
     border: 1px solid var(--line); border-radius: 8px; background: var(--card);
     padding: 1rem 1.1rem; margin-bottom: .9rem;
@@ -58,6 +61,7 @@ const PAGE = `<!doctype html>
   <p class="sub">MCP servers, self-published to the atmosphere. each entry is a
   <code>tech.waow.mcp.server</code> record on its author's own PDS — this page is
   just one view over them. <a href="/api/atlas.json">atlas.json</a></p>
+  <div id="stats" class="stats"></div>
   <div id="servers"><p class="empty">loading…</p></div>
   <footer>
     crawled from the network via <a href="https://relay.waow.tech">relay</a> ·
@@ -76,6 +80,18 @@ const PAGE = `<!doctype html>
       root.innerHTML = '<p class="empty">no servers crawled yet.</p>';
       return;
     }
+    const publishers = new Set(atlas.servers.map((s) => s.did)).size;
+    const remotes = atlas.servers.filter((s) => s.url);
+    const live = remotes.filter((s) => s.alive).length;
+    const tools = atlas.servers.reduce((n, s) => n + (s.tools?.length ?? 0), 0);
+    document.getElementById("stats").innerHTML = [
+      [atlas.servers.length, "servers"],
+      [publishers, "publishers"],
+      [remotes.length ? live + "/" + remotes.length : "—", "remotes live"],
+      [tools, "tools"],
+    ].map(([n, l]) =>
+      '<div class="stat"><span class="n">' + esc(n) + '</span><span class="l">' + l + "</span></div>"
+    ).join("");
     root.innerHTML = atlas.servers.map((s) => {
       const repo = safeUrl(s.repo), url = safeUrl(s.url);
       const title = repo
