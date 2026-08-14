@@ -25,6 +25,7 @@ def test_normalize_minimal_record():
         "url": None,
         "manifest": None,
         "framework": None,
+        "transport": None,
         "tools": [],
         "createdAt": None,
     }
@@ -42,7 +43,11 @@ def test_normalize_full_record():
             "url": "https://example.com/mcp",
             "manifest": "https://example.com/fastmcp.json",
             "framework": "fastmcp",
-            "tools": ["search_gear", "price_snapshot"],
+            "transport": "http",
+            "tools": [
+                {"name": "search_gear"},
+                {"name": "price_snapshot", "description": "distribution of asks"},
+            ],
             "createdAt": "2026-08-13T00:00:00Z",
         },
     )
@@ -50,7 +55,11 @@ def test_normalize_full_record():
     assert entry["repo"] == "https://example.com/repo"
     assert entry["url"] == "https://example.com/mcp"
     assert entry["framework"] == "fastmcp"
-    assert entry["tools"] == ["search_gear", "price_snapshot"]
+    assert entry["transport"] == "http"
+    assert entry["tools"] == [
+        {"name": "search_gear", "description": None},
+        {"name": "price_snapshot", "description": "distribution of asks"},
+    ]
     assert entry["createdAt"] == "2026-08-13T00:00:00Z"
 
 
@@ -71,18 +80,25 @@ def test_hostile_record_clamped():
             "description": "d" * 10_000,
             "repo": "javascript:alert(1)",
             "url": "ftp://nope",
-            "tools": ["ok"] + [42, None, ""] + ["t"] * 200,
+            "tools": ["ok"]
+            + [42, None, ""]
+            + [{"name": "t" * 500, "description": 9}] * 200,
+            "transport": "carrier-pigeon",
             "framework": 7,
             "createdAt": {"$bad": True},
         },
     )
     assert entry is not None
-    assert len(entry["name"]) == 128
+    assert len(entry["name"]) == 64
     assert len(entry["description"]) == MAX_DESCRIPTION
     assert entry["repo"] is None
     assert entry["url"] is None
     assert entry["framework"] is None
     assert len(entry["tools"]) == MAX_TOOLS
+    assert entry["tools"][0] == {"name": "ok", "description": None}
+    assert len(entry["tools"][1]["name"]) == 128
+    assert entry["tools"][1]["description"] is None
+    assert entry["transport"] is None
     assert entry["createdAt"] is None
 
 
@@ -108,7 +124,7 @@ def _entry(name, description, tools):
         "name": name,
         "description": description,
         "framework": None,
-        "tools": tools,
+        "tools": [{"name": t, "description": None} for t in tools],
     }
 
 

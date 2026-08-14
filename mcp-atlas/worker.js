@@ -60,6 +60,7 @@ const PAGE = `<!doctype html>
   .by a:hover { text-decoration: underline; }
   .desc { margin: .5rem 0 .4rem; font-size: .875rem; }
   .tools { color: var(--muted); font-size: .78rem; word-break: break-word; }
+  .tools span[title] { text-decoration: underline dotted; cursor: help; }
   .links { font-size: .78rem; margin-top: .45rem; }
   .links a { color: var(--accent); margin-right: 1rem; }
   footer { color: var(--muted); font-size: .75rem; margin-top: 2.5rem; }
@@ -141,7 +142,11 @@ const PAGE = `<!doctype html>
       const author = '<span class="by"><a href="https://bsky.app/profile/' +
         esc(s.did) + '">@' + esc(s.handle || s.did) + "</a></span>";
       const tools = s.tools?.length
-        ? '<div class="tools">tools: ' + s.tools.map(esc).join(", ") + "</div>"
+        ? '<div class="tools">tools: ' + s.tools.map((t) =>
+            t.description
+              ? '<span title="' + esc(t.description) + '">' + esc(t.name) + "</span>"
+              : esc(t.name)
+          ).join(", ") + "</div>"
         : "";
       const links = [
         url && '<a href="' + esc(url) + '">endpoint</a>',

@@ -12,9 +12,12 @@ from typing import Any
 
 COLLECTION = "tech.waow.mcp.server"
 
-MAX_TOOLS = 64
-MAX_NAME = 128
+MAX_TOOLS = 128
+MAX_NAME = 64
+MAX_TOOL_NAME = 128
+MAX_TOOL_DESCRIPTION = 300
 MAX_DESCRIPTION = 500
+TRANSPORTS = ("http", "stdio")
 
 
 def _http_url(value: Any) -> str | None:
@@ -41,12 +44,30 @@ def normalize_record(
         return None
 
     tools_raw = value.get("tools")
-    tools = [
-        t[:MAX_NAME]
-        for t in (tools_raw if isinstance(tools_raw, list) else [])
-        if isinstance(t, str) and t.strip()
-    ][:MAX_TOOLS]
+    tools: list[dict[str, Any]] = []
+    for item in tools_raw if isinstance(tools_raw, list) else []:
+        # lexicon shape is #tool objects; tolerate bare strings from
+        # pre-v1 records and hand-written ones
+        if isinstance(item, str):
+            item = {"name": item}
+        if not isinstance(item, dict):
+            continue
+        tool_name = item.get("name")
+        if not isinstance(tool_name, str) or not tool_name.strip():
+            continue
+        tool_description = item.get("description")
+        tools.append(
+            {
+                "name": tool_name.strip()[:MAX_TOOL_NAME],
+                "description": tool_description.strip()[:MAX_TOOL_DESCRIPTION]
+                if isinstance(tool_description, str) and tool_description.strip()
+                else None,
+            }
+        )
+        if len(tools) == MAX_TOOLS:
+            break
 
+    transport = value.get("transport")
     framework = value.get("framework")
     return {
         "did": did,
@@ -58,6 +79,7 @@ def normalize_record(
         "url": _http_url(value.get("url")),
         "manifest": _http_url(value.get("manifest")),
         "framework": framework.strip() if isinstance(framework, str) else None,
+        "transport": transport if transport in TRANSPORTS else None,
         "tools": tools,
         "createdAt": value.get("createdAt")
         if isinstance(value.get("createdAt"), str)
@@ -85,7 +107,8 @@ def pds_from_did_doc(doc: dict[str, Any]) -> str | None:
 def _tokens(entry: dict[str, Any]) -> list[str]:
     text = " ".join(
         [entry["name"], entry["description"], entry.get("framework") or ""]
-        + entry["tools"]
+        + [t["name"] for t in entry["tools"]]
+        + [t["description"] or "" for t in entry["tools"]]
     )
     return [
         t

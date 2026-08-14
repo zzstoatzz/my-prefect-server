@@ -4,49 +4,81 @@
   "defs": {
     "main": {
       "type": "record",
-      "description": "A self-published declaration that this identity maintains an MCP server. One record per server, on the publisher's own PDS. The atlas at mcp.waow.tech is one view over these records; anyone can build another.",
+      "description": "A self-published declaration that this identity maintains an MCP (Model Context Protocol) server. One record per server, on the publisher's own PDS; the record key is conventionally a slug of the server name so redeploys update in place. Directories (e.g. mcp.waow.tech) are projections over these records.",
       "key": "any",
       "record": {
         "type": "object",
-        "required": ["name", "description"],
+        "required": ["name", "description", "createdAt"],
         "properties": {
           "name": {
             "type": "string",
-            "maxLength": 128,
+            "maxGraphemes": 64,
+            "maxLength": 640,
             "description": "Short name of the server (e.g. 'partscout')."
           },
           "description": {
             "type": "string",
             "maxGraphemes": 500,
+            "maxLength": 5000,
             "description": "What the server does, one paragraph."
           },
-          "repo": {
+          "transport": {
             "type": "string",
-            "format": "uri",
-            "description": "Source repository URL."
+            "knownValues": ["http", "stdio"],
+            "description": "How clients connect. 'http' servers are hosted at `url`; 'stdio' servers are run locally from `repo`."
           },
           "url": {
             "type": "string",
             "format": "uri",
             "description": "Remote endpoint for hosted servers (streamable HTTP). Omit for local-only servers."
           },
-          "framework": {
+          "repo": {
             "type": "string",
-            "maxLength": 64,
-            "description": "Authoring framework, e.g. 'fastmcp'. Informational."
+            "format": "uri",
+            "description": "Source repository URL."
           },
           "manifest": {
             "type": "string",
             "format": "uri",
             "description": "URL of a machine-readable manifest (e.g. a raw fastmcp.json) describing how to run the server from source."
           },
+          "framework": {
+            "type": "string",
+            "knownValues": ["fastmcp", "mcp-sdk"],
+            "maxGraphemes": 32,
+            "maxLength": 320,
+            "description": "Authoring framework. Informational."
+          },
           "tools": {
             "type": "array",
-            "maxLength": 64,
-            "items": { "type": "string", "maxLength": 128 },
-            "description": "Tool names the server exposes. Advisory; crawlers may verify by connecting."
+            "maxLength": 128,
+            "items": { "type": "ref", "ref": "#tool" },
+            "description": "Tools the server exposes. Advisory; crawlers may verify by connecting."
           },
-          "createdAt": { "type": "string", "format": "datetime" }
+          "createdAt": {
+            "type": "string",
+            "format": "datetime",
+            "description": "Client-declared timestamp when this record was created."
+          }
+        }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "description": "One tool the server exposes.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxGraphemes": 128,
+          "maxLength": 1280,
+          "description": "Tool name as served over MCP."
+        },
+        "description": {
+          "type": "string",
+          "maxGraphemes": 300,
+          "maxLength": 3000,
+          "description": "What the tool does, one line."
         }
       }
     }
