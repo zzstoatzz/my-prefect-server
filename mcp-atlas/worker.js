@@ -34,6 +34,18 @@ const PAGE = `<!doctype html>
   .stats { display: flex; gap: 2rem; flex-wrap: wrap; margin: 0 0 1.6rem; }
   .stat .n { font-size: 1.5rem; font-weight: 600; display: block; }
   .stat .l { color: var(--muted); font-size: .75rem; }
+  .map {
+    border: 1px solid var(--line); border-radius: 8px; background: var(--card);
+    margin: 0 0 1.6rem; overflow: hidden;
+  }
+  .map svg { display: block; width: 100%; height: auto; }
+  .map .dot { cursor: pointer; }
+  .map .dot circle { transition: r .15s; }
+  .map .dot:hover circle { r: 7; }
+  .map text {
+    font: 11px ui-monospace, "SF Mono", Menlo, monospace;
+    fill: var(--muted); pointer-events: none;
+  }
   .server {
     border: 1px solid var(--line); border-radius: 8px; background: var(--card);
     padding: 1rem 1.1rem; margin-bottom: .9rem;
@@ -62,6 +74,7 @@ const PAGE = `<!doctype html>
   <code>tech.waow.mcp.server</code> record on its author's own PDS — this page is
   just one view over them. <a href="/api/atlas.json">atlas.json</a></p>
   <div id="stats" class="stats"></div>
+  <div id="map" class="map" hidden></div>
   <div id="servers"><p class="empty">loading…</p></div>
   <footer>
     crawled from the network via <a href="https://relay.waow.tech">relay</a> ·
@@ -92,7 +105,30 @@ const PAGE = `<!doctype html>
     ].map(([n, l]) =>
       '<div class="stat"><span class="n">' + esc(n) + '</span><span class="l">' + l + "</span></div>"
     ).join("");
-    root.innerHTML = atlas.servers.map((s) => {
+    const mapped = atlas.servers.filter((s) => typeof s.x === "number" && typeof s.y === "number");
+    if (mapped.length > 1) {
+      const W = 720, H = 420, pad = 30;
+      const px = (v) => pad + v * (W - 2 * pad);
+      const py = (v) => pad + v * (H - 2 * pad);
+      const color = (s) => !s.url
+        ? "var(--muted)"
+        : (s.alive ? "var(--accent)" : "var(--dead)");
+      const mapEl = document.getElementById("map");
+      mapEl.hidden = false;
+      mapEl.innerHTML =
+        '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="semantic map of MCP servers">' +
+        mapped.map((s, i) =>
+          '<g class="dot" data-i="' + atlas.servers.indexOf(s) + '">' +
+          '<circle cx="' + px(s.x) + '" cy="' + py(s.y) + '" r="5" fill="' + color(s) + '"/>' +
+          '<text x="' + px(s.x) + '" y="' + (py(s.y) + 18) + '" text-anchor="middle">' + esc(s.name) + "</text></g>"
+        ).join("") + "</svg>";
+      mapEl.querySelectorAll(".dot").forEach((dot) => {
+        dot.addEventListener("click", () => {
+          document.getElementById("s-" + dot.dataset.i)?.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+      });
+    }
+    root.innerHTML = atlas.servers.map((s, i) => {
       const repo = safeUrl(s.repo), url = safeUrl(s.url);
       const title = repo
         ? '<a href="' + esc(repo) + '">' + esc(s.name) + "</a>"
@@ -111,7 +147,7 @@ const PAGE = `<!doctype html>
         url && '<a href="' + esc(url) + '">endpoint</a>',
         s.uri && '<a href="https://pdsls.dev/' + esc(s.uri) + '">record</a>',
       ].filter(Boolean).join("");
-      return '<div class="server">' + author + "<h2>" + title + "</h2>" + status +
+      return '<div class="server" id="s-' + i + '">' + author + "<h2>" + title + "</h2>" + status +
         '<p class="desc">' + esc(s.description) + "</p>" + tools +
         (links ? '<div class="links">' + links + "</div>" : "") + "</div>";
     }).join("");

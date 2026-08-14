@@ -7,6 +7,7 @@ is kept pure so it can be tested against record shapes we don't control.
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 COLLECTION = "tech.waow.mcp.server"
@@ -79,3 +80,84 @@ def pds_from_did_doc(doc: dict[str, Any]) -> str | None:
             endpoint = svc.get("serviceEndpoint")
             return endpoint if isinstance(endpoint, str) else None
     return None
+
+
+def _tokens(entry: dict[str, Any]) -> list[str]:
+    text = " ".join(
+        [entry["name"], entry["description"], entry.get("framework") or ""]
+        + entry["tools"]
+    )
+    return [
+        t
+        for t in "".join(c if c.isalnum() else " " for c in text.lower()).split()
+        if len(t) > 2
+    ]
+
+
+def atlas_positions(entries: list[dict[str, Any]]) -> list[tuple[float, float]]:
+    """2D semantic positions in [0,1]² from tf-idf + power-iteration PCA.
+
+    Deliberately dependency-free: at directory scale (tens to hundreds of
+    servers) a tf-idf doc-term matrix projected onto its top two principal
+    components is enough for "similar servers sit near each other", and it
+    keeps numpy/umap out of the flow's pod. Swap for real embeddings + UMAP
+    when the corpus outgrows it. Deterministic for a given atlas.
+    """
+    n = len(entries)
+    if n == 0:
+        return []
+    if n == 1:
+        return [(0.5, 0.5)]
+
+    docs = [_tokens(e) for e in entries]
+    vocab: dict[str, int] = {}
+    df: dict[str, int] = {}
+    for doc in docs:
+        for term in set(doc):
+            vocab.setdefault(term, len(vocab))
+            df[term] = df.get(term, 0) + 1
+
+    rows: list[list[float]] = []
+    for doc in docs:
+        vec = [0.0] * len(vocab)
+        for term in doc:
+            vec[vocab[term]] += 1.0
+        for term in set(doc):
+            j = vocab[term]
+            vec[j] = (vec[j] / len(doc)) * math.log((1 + n) / (1 + df[term]))
+        norm = math.sqrt(sum(v * v for v in vec)) or 1.0
+        rows.append([v / norm for v in vec])
+
+    dim = len(vocab)
+    means = [sum(r[j] for r in rows) / n for j in range(dim)]
+    centered = [[r[j] - means[j] for j in range(dim)] for r in rows]
+
+    def project(component: list[float]) -> list[float]:
+        return [sum(r[j] * component[j] for j in range(dim)) for r in centered]
+
+    def power_iterate(deflate: list[float] | None) -> list[float]:
+        # seeded deterministically; deflation removes the first component
+        comp = [math.sin(j + 1.0) for j in range(dim)]
+        for _ in range(60):
+            if deflate is not None:
+                dot = sum(a * b for a, b in zip(comp, deflate))
+                comp = [a - dot * b for a, b in zip(comp, deflate)]
+            scores = project(comp)
+            comp = [
+                sum(scores[i] * centered[i][j] for i in range(n)) for j in range(dim)
+            ]
+            norm = math.sqrt(sum(c * c for c in comp)) or 1.0
+            comp = [c / norm for c in comp]
+        return comp
+
+    first = power_iterate(None)
+    second = power_iterate(first)
+    xs, ys = project(first), project(second)
+
+    def rescale(vals: list[float]) -> list[float]:
+        lo, hi = min(vals), max(vals)
+        if hi - lo < 1e-12:
+            return [0.5] * len(vals)
+        return [0.1 + 0.8 * (v - lo) / (hi - lo) for v in vals]
+
+    return list(zip(rescale(xs), rescale(ys)))

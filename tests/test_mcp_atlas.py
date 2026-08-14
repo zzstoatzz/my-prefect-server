@@ -1,6 +1,7 @@
 from mps.mcp_atlas import (
     MAX_DESCRIPTION,
     MAX_TOOLS,
+    atlas_positions,
     handle_from_did_doc,
     normalize_record,
     pds_from_did_doc,
@@ -100,3 +101,45 @@ def test_did_doc_helpers():
         pds_from_did_doc({"service": [{"id": "#atproto_pds", "serviceEndpoint": 5}]})
         is None
     )
+
+
+def _entry(name, description, tools):
+    return {
+        "name": name,
+        "description": description,
+        "framework": None,
+        "tools": tools,
+    }
+
+
+def test_positions_edge_counts():
+    assert atlas_positions([]) == []
+    assert atlas_positions([_entry("a", "b", [])]) == [(0.5, 0.5)]
+
+
+def test_positions_semantic_neighbors():
+    entries = [
+        _entry(
+            "pdsx", "crud over atproto pds records", ["list_records", "create_record"]
+        ),
+        _entry(
+            "tangled",
+            "git collaboration records on atproto pds",
+            ["list_records", "get_record"],
+        ),
+        _entry(
+            "partscout", "pricing computer hardware ebay listings", ["price_snapshot"]
+        ),
+    ]
+    pts = atlas_positions(entries)
+    assert len(pts) == 3
+    assert all(0.0 <= x <= 1.0 and 0.0 <= y <= 1.0 for x, y in pts)
+    assert pts == atlas_positions(entries)  # deterministic
+
+    def dist(a, b):
+        return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
+
+    # the two record-CRUD servers should sit closer to each other than
+    # either sits to the ebay pricer
+    assert dist(pts[0], pts[1]) < dist(pts[0], pts[2])
+    assert dist(pts[0], pts[1]) < dist(pts[1], pts[2])

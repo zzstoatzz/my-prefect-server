@@ -21,6 +21,7 @@ from typing import Any
 import httpx
 from mps.mcp_atlas import (
     COLLECTION,
+    atlas_positions,
     handle_from_did_doc,
     normalize_record,
     pds_from_did_doc,
@@ -192,6 +193,8 @@ def mcp_atlas() -> None:
         entries.extend(future.result())
     entries = probe_liveness(entries)
     entries.sort(key=lambda e: (e["createdAt"] or "", e["uri"]), reverse=True)
+    for entry, (x, y) in zip(entries, atlas_positions(entries)):
+        entry["x"], entry["y"] = round(x, 4), round(y, 4)
 
     atlas = {
         "generatedAt": datetime.datetime.now(datetime.UTC).isoformat(),
