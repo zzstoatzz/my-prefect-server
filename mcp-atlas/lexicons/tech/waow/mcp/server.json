@@ -1,0 +1,54 @@
+{
+  "lexicon": 1,
+  "id": "tech.waow.mcp.server",
+  "defs": {
+    "main": {
+      "type": "record",
+      "description": "A self-published declaration that this identity maintains an MCP server. One record per server, on the publisher's own PDS. The atlas at mcp.waow.tech is one view over these records; anyone can build another.",
+      "key": "any",
+      "record": {
+        "type": "object",
+        "required": ["name", "description"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Short name of the server (e.g. 'partscout')."
+          },
+          "description": {
+            "type": "string",
+            "maxGraphemes": 500,
+            "description": "What the server does, one paragraph."
+          },
+          "repo": {
+            "type": "string",
+            "format": "uri",
+            "description": "Source repository URL."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Remote endpoint for hosted servers (streamable HTTP). Omit for local-only servers."
+          },
+          "framework": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "Authoring framework, e.g. 'fastmcp'. Informational."
+          },
+          "manifest": {
+            "type": "string",
+            "format": "uri",
+            "description": "URL of a machine-readable manifest (e.g. a raw fastmcp.json) describing how to run the server from source."
+          },
+          "tools": {
+            "type": "array",
+            "maxLength": 64,
+            "items": { "type": "string", "maxLength": 128 },
+            "description": "Tool names the server exposes. Advisory; crawlers may verify by connecting."
+          },
+          "createdAt": { "type": "string", "format": "datetime" }
+        }
+      }
+    }
+  }
+}
