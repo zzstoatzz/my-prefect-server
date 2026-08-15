@@ -1,0 +1,6 @@
+[project]
+name = "mcp-atlas-server"
+version = "0.1.0"
+description = "search the mcp atlas from inside an agent"
+requires-python = ">=3.12"
+dependencies = ["fastmcp>=2.12", "httpx>=0.27"]
