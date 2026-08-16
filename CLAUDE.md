@@ -21,7 +21,23 @@ this file is a set of notes for us:
 - use `jq` for JSON processing, not python
 - prefect docs are on disk at `~/github.com/prefecthq/prefect/docs` — read before guessing
 - use justfile recipes instead of ad-hoc commands
-- push to configured remotes. This repo currently has `origin` (tangled.org);
+- **a state's `name` is independent of its `type`** — `Cached` and `RolledBack`
+  are stock COMPLETED-type states with their own names
+  (`docs/v3/concepts/states.mdx`). returning a manually-constructed state from a
+  task or flow makes the run enter it verbatim, name included
+  (`return_value_to_state`, `src/prefect/states.py`). use this instead of
+  inventing a boolean return or swallowing errors silently: a run that did its
+  job with a dead upstream returns `Completed(name="Degraded", message=...)`.
+  it stays visible and filterable in the UI, and because the state-change event
+  is `prefect.flow-run.{state.name}` (`server/models/events.py`), the
+  `flow-run failure -> discord` automation — which expects
+  `Failed`/`TimedOut`/`Crashed` — does not page for it. adding a name to the
+  automation's `expect` list is how you'd opt a custom state back into alerting.
+- retries belong on any task that touches the network. house policy is
+  `retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1`. don't
+  `try/except` inside the task to "handle" a transient error — catching it means
+  the engine never retries. let it raise, and decide at the join point whether
+  a dead source degrades the run or fails it.- push to configured remotes. This repo currently has `origin` (tangled.org);
   if a `github` mirror remote is present in a checkout, push that too.
 - after server restart, re-fetch kubeconfig with `just kubeconfig`
 - **flow execution runs on the `home-pool` *process* worker on the home box (heavypad)** — a systemd unit polling the server outbound over Tailscale (`deploy/home-worker/`). the `kubernetes-pool` bullets below describe the retained-but-unused k8s fallback path (no k8s worker runs in normal operation), and the analytics paths are hostPaths under `/home/stoat/prefect-analytics`, not a k8s PVC.

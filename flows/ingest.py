@@ -12,6 +12,7 @@ Requires:
 """
 
 import datetime
+import logging
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -22,6 +23,8 @@ from prefect.artifacts import create_table_artifact
 from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
+from prefect.futures import PrefectFuture
+from prefect.states import Completed
 
 from mps.db import (
     write_emails,
@@ -43,6 +46,22 @@ from mps.likes import LikeRecord, LikedPost, fetch_likes, summarize_embed
 from mps.tangled import PDS_BASE, TangledItem, fetch_items, fetch_repo_at_uris
 
 GITHUB_API = "https://api.github.com"
+
+# every external fetch here is one blip away from failing the whole hourly run.
+# 3 jittered attempts absorbs the transient timeouts we actually see; anything
+# still down after that degrades the run rather than failing it (see _tolerate).
+NETWORK_RETRIES: dict[str, Any] = {
+    "retries": 3,
+    "retry_delay_seconds": [2, 5, 10],
+    "retry_jitter_factor": 1,
+}
+
+# likes are upserted by at_uri and listRecords returns newest-first, so an
+# hourly run only needs the newest pages. walking the whole history (back to
+# 2024) every hour re-fetched records that cannot have changed, each page
+# another chance at the timeout that killed ingest-81cdf915. 300 newest likes
+# is far more than an hour ever produces. pass max_pages=None to backfill.
+LIKES_PAGES = 3
 
 
 def gh_client(token: str, transport: httpx.BaseTransport | None = None) -> httpx.Client:
@@ -88,7 +107,7 @@ def load_token() -> str:
     return Secret.load("github-token").get()
 
 
-@task
+@task(**NETWORK_RETRIES)
 def fetch_notifications(token: str, only_unread: bool = True) -> list[IssueRef]:
     """Fetch notifications and parse into IssueRef objects (Issues/PRs only)."""
     logger = get_run_logger()
@@ -123,6 +142,7 @@ def fetch_notifications(token: str, only_unread: bool = True) -> list[IssueRef]:
 
 
 @task(
+    **NETWORK_RETRIES,
     cache_policy=ByRepoAndNumber(),
     # short enough that a merge/close disappears from the hub within hours —
     # stored rows only update on re-fetch, so this bounds state staleness
@@ -162,7 +182,7 @@ def fetch_issue_or_pr(ref: IssueRef, token: str) -> IssueOrPR | None:
     )
 
 
-@task
+@task(**NETWORK_RETRIES)
 def fetch_authored_items(token: str, username: str = "zzstoatzz") -> list[IssueRef]:
     """Fetch open issues/PRs authored by the user via the search API."""
     logger = get_run_logger()
@@ -241,7 +261,7 @@ def stored_open_refs() -> list[IssueRef]:
 # --- tangled tasks ---
 
 
-@task
+@task(**NETWORK_RETRIES)
 def fetch_all_tangled_items() -> list[TangledItem]:
     """Fetch issues, PRs, and comments from the tangled.org PDS."""
     logger = get_run_logger()
@@ -261,7 +281,7 @@ def fetch_all_tangled_items() -> list[TangledItem]:
 # --- email tasks ---
 
 
-@task
+@task(**NETWORK_RETRIES)
 def fetch_emails() -> list[EmailItem]:
     """Fetch recent inbox mail from the local hydroxide bridge.
 
@@ -301,7 +321,7 @@ def persist_emails(items: list[EmailItem]) -> int:
 USER_NS_PREFIX = "phi-users-"
 
 
-@task
+@task(**NETWORK_RETRIES)
 def fetch_phi_memory(
     tpuf_key: str,
 ) -> tuple[list[PhiObservation], list[PhiInteraction]]:
@@ -373,12 +393,12 @@ def fetch_phi_memory(
     return observations, interactions
 
 
-@task
-def fetch_nate_likes() -> list[LikeRecord]:
+@task(**NETWORK_RETRIES)
+def fetch_nate_likes(max_pages: int | None = LIKES_PAGES) -> list[LikeRecord]:
     """Fetch recent likes from nate's PDS."""
     logger = get_run_logger()
     with httpx.Client(base_url=PDS_BASE, timeout=30) as client:
-        likes = fetch_likes(client)
+        likes = fetch_likes(client, max_pages=max_pages)
     logger.info(f"fetched {len(likes)} likes from PDS")
     return likes
 
@@ -388,7 +408,7 @@ def persist_likes(items: list[LikeRecord]) -> int:
     return write_likes(items, _db_path())
 
 
-@task
+@task(**NETWORK_RETRIES)
 def resolve_liked_posts(db_path: str) -> list[LikedPost]:
     """Find recent unresolved likes and batch-resolve post content via public API."""
     import duckdb
@@ -506,12 +526,34 @@ def persist_tangled(items: list[TangledItem]) -> int:
 # --- flow ---
 
 
+def _tolerate[T](
+    future: PrefectFuture[T],
+    source: str,
+    default: T,
+    degraded: list[str],
+    logger: logging.Logger,
+) -> T:
+    """Resolve a fetch that stayed down through all its retries.
+
+    Every persist below is already guarded on an empty source, so one dead
+    upstream should cost us that source for an hour — not the github, tangled
+    and phi rows the same run already fetched successfully.
+    """
+    value = future.result(raise_on_failure=False)
+    if isinstance(value, BaseException):
+        logger.warning(f"{source} unavailable this run: {value!r}")
+        degraded.append(source)
+        return default
+    return value
+
+
 @flow(name="ingest", log_prints=True, timeout_seconds=1800)
 def ingest(only_unread: bool = True):
     """
     Fetch GitHub, tangled.org, and phi memory concurrently, then persist sequentially.
     """
     logger = get_run_logger()
+    degraded: list[str] = []
 
     token = load_token()
 
@@ -550,15 +592,17 @@ def ingest(only_unread: bool = True):
     logger.info(f"resolved {len(gh_items)} github issues/PRs")
 
     # wait for tangled + phi fetches
-    tangled_items = tangled_future.result()
+    tangled_items = _tolerate(tangled_future, "tangled", [], degraded, logger)
     logger.info(f"fetched {len(tangled_items)} tangled items")
 
-    phi_observations, phi_interactions = phi_future.result()
+    phi_observations, phi_interactions = _tolerate(
+        phi_future, "phi", ([], []), degraded, logger
+    )
 
-    likes = likes_future.result()
+    likes = _tolerate(likes_future, "likes", [], degraded, logger)
     logger.info(f"fetched {len(likes)} likes")
 
-    emails = email_future.result()
+    emails = _tolerate(email_future, "email", [], degraded, logger)
 
     # sequential writes — same process, no DuckDB lock contention
     if gh_items:
@@ -608,6 +652,15 @@ def ingest(only_unread: bool = True):
         ],
         description="rows fetched per source this run",
     )
+
+    if degraded:
+        # a COMPLETED-type state with its own name: the run did its job with
+        # what it could reach, and the failure automation only expects
+        # Failed/TimedOut/Crashed, so this stays visible without paging.
+        return Completed(
+            name="Degraded",
+            message=f"persisted what we could; unavailable: {', '.join(degraded)}",
+        )
 
 
 if __name__ == "__main__":

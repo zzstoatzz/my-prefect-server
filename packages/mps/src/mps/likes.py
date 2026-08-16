@@ -57,10 +57,18 @@ def summarize_embed(embed: dict) -> tuple[str, str]:
     return "", ""
 
 
-def fetch_likes(client: httpx.Client) -> list[LikeRecord]:
-    """Fetch like records from nate's PDS. Cursor-based pagination."""
+def fetch_likes(
+    client: httpx.Client, max_pages: int | None = None
+) -> list[LikeRecord]:
+    """Fetch like records from nate's PDS. Cursor-based pagination.
+
+    listRecords returns newest-first, so `max_pages` bounds an incremental
+    walk to the only end of the history that can contain anything new. Pass
+    None to walk everything (backfill).
+    """
     cursor: str | None = None
     items: list[LikeRecord] = []
+    pages = 0
 
     while True:
         params: dict[str, str | int] = {
@@ -86,8 +94,9 @@ def fetch_likes(client: httpx.Client) -> list[LikeRecord]:
                 )
             )
 
+        pages += 1
         cursor = data.get("cursor")
-        if not cursor:
+        if not cursor or (max_pages is not None and pages >= max_pages):
             break
 
     return items
