@@ -46,6 +46,13 @@ TAIL_WINDOW_S = 20
 COMPACTION_MAX_LAG_S = 48 * 3600
 SEAL_MAX_S = 10.0
 
+# stream holds ingest closed at startup until the tombstone rebuild finishes
+# (measured ~4 min on 2026-08-16). A non-advancing tail inside this window is
+# a deploy booting, not an outage — report it as "starting", don't page. A
+# process that is still stuck past the grace pages on the next sweep, and a
+# crash-loop keeps failing the shallow site check regardless.
+STARTUP_GRACE_S = 6 * 60
+
 FLEET: list[tuple[str, str]] = [
     # (name, url) — a 200 within TIMEOUT_S (one retry) is healthy
     ("stream site", "https://stream.waow.tech/"),
@@ -89,6 +96,25 @@ def _status_int(body: str, label: str) -> int | None:
     return None
 
 
+def _uptime_seconds(raw: str | None) -> int | None:
+    """Parse /status uptime strings like '38s', '42m', '1h 3m', '11d 6h'."""
+    if not raw:
+        return None
+    total, num = 0, ""
+    units = {"d": 86400, "h": 3600, "m": 60, "s": 1}
+    for ch in raw:
+        if ch.isdigit():
+            num += ch
+        elif ch in units and num:
+            total += int(num) * units[ch]
+            num = ""
+        elif ch == " ":
+            continue
+        else:
+            return None
+    return total if not num else None
+
+
 def _metric(metrics: str, name: str) -> float | None:
     for line in metrics.splitlines():
         if line.startswith(name) and (line[len(name)] in " {"):
@@ -115,12 +141,18 @@ def check_stream_deep() -> CheckResult:
     text_b = body_b.decode()
     seq_b = _status_int(text_b, "upstream seq")
 
+    starting = False
+    uptime_s = _uptime_seconds(_status_fields(text_b).get("uptime"))
     if seq_a is None or seq_b is None:
         problems.append("could not parse upstream seq from /status")
     elif seq_b <= seq_a:
-        # "state live" only means the process serves; the tail is alive only
-        # if the seq moved across the window
-        problems.append(f"tail not advancing: seq {seq_a} -> {seq_b} over {TAIL_WINDOW_S}s")
+        if uptime_s is not None and uptime_s < STARTUP_GRACE_S:
+            # deploy booting: ingest holds until the tombstone rebuild ends
+            starting = True
+        else:
+            # "state live" only means the process serves; the tail is alive
+            # only if the seq moved across the window
+            problems.append(f"tail not advancing: seq {seq_a} -> {seq_b} over {TAIL_WINDOW_S}s")
 
     _, metrics_raw = _get("https://stream.waow.tech/metrics")
     metrics = metrics_raw.decode()
@@ -141,6 +173,8 @@ def check_stream_deep() -> CheckResult:
         f"seq +{(seq_b or 0) - (seq_a or 0)}/{TAIL_WINDOW_S}s, "
         f"phase {fields.get('phase', '?')}, uptime {fields.get('uptime', '?')}"
     )
+    if starting:
+        detail = f"starting (tail held for startup rebuild): {detail}"
     if problems:
         for p in problems:
             logger.warning("stream: %s", p)
