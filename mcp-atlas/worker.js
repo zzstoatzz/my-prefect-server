@@ -735,10 +735,10 @@ console.log((await resp.json()).uri);</code></pre>
 
   <section class="glassy">
     <h2><span class="n">3</span>you're on the map</h2>
-    <p>the crawler sweeps the network every 6 hours via relay
-    <code>listReposByCollection</code>. after the next sweep your server appears on
-    <a href="/">the atlas</a> — hosted servers also get a liveness probe against their
-    <code>url</code>. inspect your record any time at
+    <p>the atlas refreshes <strong>every few minutes</strong> — new records reach it off
+    the firehose via <a href="https://microcosm.blue">microcosm</a>'s UFOs index, with a
+    full relay sweep every 6 hours reconciling the long tail. hosted servers get a
+    liveness probe against their <code>url</code>. inspect your record any time at
     <code>pdsls.dev/at://&lt;your-did&gt;/tech.waow.mcp.server</code>.</p>
   </section>
 
@@ -819,7 +819,198 @@ const cosine = (a, b) => {
   return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
 };
 
+// ---- freshness: rebuild the atlas from the network on a cron tick ----
+// UFOs (microcosm.blue) indexes every record in the collection off the
+// firehose, so new/updated servers land here in minutes. the 6-hourly
+// prefect sweep stays authoritative for the full network (it reconciles
+// deletes); this path only upserts.
+
+const UFOS = "https://ufos-api.microcosm.blue";
+const SLINGSHOT = "https://slingshot.microcosm.blue";
+const COLLECTION = "tech.waow.mcp.server";
+const UA = "mcp-atlas-worker (mcp.waow.tech)";
+
+const clampStr = (v, max) => (typeof v === "string" ? v.slice(0, max) : null);
+
+// mirror of mps.mcp_atlas.normalize_record — UFOs bodies are author-controlled
+const normalizeEntry = (did, rkey, rec) => {
+  if (!rec || typeof rec !== "object") return null;
+  const name = clampStr(rec.name, 64);
+  const description = clampStr(rec.description, 1000);
+  if (!name || !description) return null;
+  const list = (v, max) => (Array.isArray(v) ? v.slice(0, max) : []);
+  return {
+    did,
+    uri: `at://${did}/${COLLECTION}/${rkey}`,
+    name,
+    description,
+    transport: clampStr(rec.transport, 32),
+    url: clampStr(rec.url, 500),
+    repo: clampStr(rec.repo, 500),
+    manifest: clampStr(rec.manifest, 500),
+    language: clampStr(rec.language, 32),
+    framework: clampStr(rec.framework, 32),
+    createdAt: clampStr(rec.createdAt, 64),
+    tools: list(rec.tools, 128)
+      .map((t) => typeof t === "string" ? { name: clampStr(t, 128) } : t && typeof t === "object"
+        ? { name: clampStr(t.name, 128), description: clampStr(t.description, 300) } : null)
+      .filter((t) => t?.name),
+    environment: list(rec.environment, 32)
+      .map((v) => v && typeof v === "object"
+        ? { name: clampStr(v.name, 64), required: !!v.required, description: clampStr(v.description, 300) } : null)
+      .filter((v) => v?.name),
+    packages: list(rec.packages, 8)
+      .map((p) => p && typeof p === "object"
+        ? { registry: clampStr(p.registry, 32), identifier: clampStr(p.identifier, 128), version: clampStr(p.version, 64) } : null)
+      .filter((p) => p?.registry && p?.identifier),
+  };
+};
+
+// port of mps.mcp_atlas.atlas_positions — tf-idf + power-iteration PCA
+const atlasTokens = (e) => {
+  const text = [e.name, e.description, e.framework ?? "",
+    ...(e.tools ?? []).map((t) => t.name), ...(e.tools ?? []).map((t) => t.description ?? "")].join(" ");
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, " ").split(" ").filter((t) => t.length > 2);
+};
+
+function atlasPositions(entries) {
+  const n = entries.length;
+  if (n === 0) return [];
+  if (n === 1) return [[0.5, 0.5]];
+  const docs = entries.map(atlasTokens);
+  const vocab = new Map(), df = new Map();
+  for (const doc of docs) for (const term of new Set(doc)) {
+    if (!vocab.has(term)) vocab.set(term, vocab.size);
+    df.set(term, (df.get(term) ?? 0) + 1);
+  }
+  const dim = vocab.size;
+  const rows = docs.map((doc) => {
+    const vec = new Float64Array(dim);
+    for (const term of doc) vec[vocab.get(term)] += 1;
+    for (const term of new Set(doc)) {
+      const j = vocab.get(term);
+      vec[j] = (vec[j] / doc.length) * Math.log((1 + n) / (1 + df.get(term)));
+    }
+    const norm = Math.hypot(...vec) || 1;
+    return vec.map((v) => v / norm);
+  });
+  const means = new Float64Array(dim);
+  for (const r of rows) for (let j = 0; j < dim; j++) means[j] += r[j] / n;
+  const centered = rows.map((r) => r.map((v, j) => v - means[j]));
+  const project = (comp) => centered.map((r) => r.reduce((s, v, j) => s + v * comp[j], 0));
+  const powerIterate = (deflate) => {
+    let comp = Float64Array.from({ length: dim }, (_, j) => Math.sin(j + 1));
+    for (let it = 0; it < 60; it++) {
+      if (deflate) {
+        const dot = comp.reduce((s, v, j) => s + v * deflate[j], 0);
+        comp = comp.map((v, j) => v - dot * deflate[j]);
+      }
+      const scores = project(comp);
+      const next = new Float64Array(dim);
+      for (let i = 0; i < n; i++) for (let j = 0; j < dim; j++) next[j] += scores[i] * centered[i][j];
+      const norm = Math.hypot(...next) || 1;
+      comp = next.map((v) => v / norm);
+    }
+    return comp;
+  };
+  const first = powerIterate(null);
+  const second = powerIterate(first);
+  const rescale = (vals) => {
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    if (hi - lo < 1e-12) return vals.map(() => 0.5);
+    return vals.map((v) => 0.1 + 0.8 * (v - lo) / (hi - lo));
+  };
+  const xs = rescale(project(first)), ys = rescale(project(second));
+  return entries.map((_, i) => [xs[i], ys[i]]);
+}
+
+async function probeLiveness(entries) {
+  const probe = (url, timeoutMs) => fetch(url, {
+    method: "POST",
+    headers: {
+      "User-Agent": UA,
+      "Accept": "application/json, text/event-stream",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0", id: 1, method: "initialize",
+      params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "mcp-atlas-crawler", version: "0.1" } },
+    }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  await Promise.all(entries.map(async (e) => {
+    if (!e.url || !/^https?:\/\//.test(e.url)) { e.alive = null; e.authRequired = null; return; }
+    // hosted endpoints cold-start; one failure gets a second, longer try so
+    // a 5-minute cron doesn't flap servers between live and down
+    for (const timeoutMs of [5000, 10000]) {
+      try {
+        const resp = await probe(e.url, timeoutMs);
+        e.authRequired = resp.status === 401 || resp.status === 403;
+        e.alive = resp.ok || e.authRequired;
+        if (e.alive) return;
+      } catch {
+        e.alive = false;
+        e.authRequired = false;
+      }
+    }
+  }));
+}
+
+// KV write + embed-if-changed, shared by the cron and the flow's POST
+async function storeAtlas(env, atlas) {
+  const [xy, prevHash] = [atlasPositions(atlas.servers), await env.ATLAS.get("docs.hash")];
+  atlas.servers.forEach((s, i) => { s.x = +xy[i][0].toFixed(4); s.y = +xy[i][1].toFixed(4); });
+  await env.ATLAS.put("atlas.json", JSON.stringify(atlas));
+  const docs = atlas.servers.map(serverDoc);
+  const hash = String(docs.join(" ").length) + ":" + [...docs.join(" ")].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0);
+  if (hash === prevHash) return;
+  try {
+    const emb = docs.length ? await env.AI.run(EMBED_MODEL, { text: docs }) : { data: [] };
+    await env.ATLAS.put("vectors.json", JSON.stringify(emb.data));
+    await env.ATLAS.put("docs.hash", hash);
+  } catch {
+    await env.ATLAS.delete("vectors.json");
+    await env.ATLAS.delete("docs.hash");
+  }
+}
+
+async function refreshFromNetwork(env) {
+  const existingRaw = await env.ATLAS.get("atlas.json");
+  const existing = existingRaw ? JSON.parse(existingRaw) : { servers: [] };
+  const byUri = new Map(existing.servers.map((s) => [s.uri, s]));
+  const handleByDid = new Map(existing.servers.filter((s) => s.handle).map((s) => [s.did, s.handle]));
+
+  const resp = await fetch(`${UFOS}/records?collection=${COLLECTION}`, {
+    headers: { "User-Agent": UA }, signal: AbortSignal.timeout(15000),
+  });
+  if (!resp.ok) throw new Error(`ufos ${resp.status}`);
+  for (const r of await resp.json()) {
+    const entry = normalizeEntry(r.did, r.rkey, r.record);
+    if (entry) byUri.set(entry.uri, { ...byUri.get(entry.uri), ...entry });
+  }
+
+  const servers = [...byUri.values()];
+  await Promise.all([...new Set(servers.map((s) => s.did))].filter((d) => !handleByDid.has(d)).map(async (did) => {
+    try {
+      const doc = await (await fetch(
+        `${SLINGSHOT}/xrpc/blue.microcosm.identity.resolveMiniDoc?identifier=${encodeURIComponent(did)}`,
+        { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(10000) },
+      )).json();
+      if (doc.handle) handleByDid.set(did, doc.handle);
+    } catch { /* keep did as display name until the next tick */ }
+  }));
+  for (const s of servers) s.handle = handleByDid.get(s.did) ?? s.handle ?? null;
+
+  await probeLiveness(servers);
+  servers.sort((a, b) => (a.handle ?? a.did).localeCompare(b.handle ?? b.did) || a.name.localeCompare(b.name));
+  await storeAtlas(env, { generatedAt: new Date().toISOString(), servers });
+}
+
 export default {
+  async scheduled(_event, env, ctx) {
+    ctx.waitUntil(refreshFromNetwork(env));
+  },
+
   async fetch(request, env) {
     const { pathname, searchParams } = new URL(request.url);
 
@@ -854,6 +1045,15 @@ export default {
       });
     }
 
+    if (pathname === "/api/refresh" && request.method === "POST") {
+      const auth = request.headers.get("authorization") ?? "";
+      if (auth !== `Bearer ${env.INGEST_TOKEN}`) {
+        return new Response("unauthorized", { status: 401 });
+      }
+      await refreshFromNetwork(env);
+      return new Response("refreshed");
+    }
+
     if (pathname === "/api/atlas.json") {
       if (request.method === "POST") {
         const auth = request.headers.get("authorization") ?? "";
@@ -867,18 +1067,8 @@ export default {
         } catch {
           return new Response("not json", { status: 400 });
         }
-        await env.ATLAS.put("atlas.json", body);
-        // embed every server now so /api/search only embeds the query.
-        // failure is non-fatal: search falls back to keywords until the
-        // next successful ingest.
-        try {
-          const docs = (atlas.servers ?? []).map(serverDoc);
-          const emb = docs.length ? await env.AI.run(EMBED_MODEL, { text: docs }) : { data: [] };
-          await env.ATLAS.put("vectors.json", JSON.stringify(emb.data));
-        } catch (err) {
-          await env.ATLAS.delete("vectors.json");
-          return new Response("ok (embed failed: " + err + ")");
-        }
+        atlas.servers ??= [];
+        await storeAtlas(env, atlas);
         return new Response("ok");
       }
       const data = await env.ATLAS.get("atlas.json");
