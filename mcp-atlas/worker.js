@@ -50,6 +50,13 @@ const PAGE = `<!DOCTYPE html>
   a { color: var(--accent); }
   main { max-width: 1060px; margin: 0 auto; padding: 2.2rem clamp(1rem, 3vw, 2rem) 3rem; }
 
+  .head-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  .cta {
+    margin-left: auto; border-radius: 999px; padding: 0.42rem 0.95rem;
+    font-size: 0.78rem; color: var(--fg); text-decoration: none; white-space: nowrap;
+    transition: border-color 0.2s;
+  }
+  .cta:hover { border-color: rgba(88,166,255,0.55); color: var(--accent); }
   h1 { font-size: 1.3rem; font-weight: 600; letter-spacing: -0.02em; }
   h1 .src { font-size: 0.55rem; color: var(--muted); text-decoration: none; font-weight: 400; vertical-align: middle; }
   h1 .src:hover { color: var(--accent); }
@@ -191,7 +198,10 @@ const PAGE = `<!DOCTYPE html>
 </head>
 <body>
 <main>
-  <h1>mcp atlas <a class="src" href="https://tangled.org/zzstoatzz.io/my-prefect-server/tree/main/mcp-atlas">[src]</a></h1>
+  <div class="head-row">
+    <h1>mcp atlas <a class="src" href="https://tangled.org/zzstoatzz.io/my-prefect-server/tree/main/mcp-atlas">[src]</a></h1>
+    <a class="cta glassy" href="/publish">get your server listed →</a>
+  </div>
   <p class="subtitle">MCP servers, self-published to the atmosphere — each entry is a
   <code>tech.waow.mcp.server</code> record on its author's own PDS. this page is one view over them.
   <a href="/api/atlas.json">atlas.json</a></p>
@@ -224,6 +234,7 @@ const PAGE = `<!DOCTYPE html>
     <code>listReposByCollection</code> · lexicon published at
     <a href="https://pdsls.dev/at://did:plc:xbtmt2zjwlrfegqvch7fboei/com.atproto.lexicon.schema/tech.waow.mcp.server">com.atproto.lexicon.schema</a><br>
     publish yours: put a <code>tech.waow.mcp.server</code> record on your PDS — the next crawl finds it.
+    <a href="/publish">step-by-step instructions →</a>
   </footer>
 </main>
 <script>
@@ -409,6 +420,30 @@ fetch("/api/atlas.json").then((r) => r.ok ? r.json() : null).then((atlas) => {
     const ctx = canvas.getContext("2d");
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+    // faint links from each server to its nearest semantic neighbor,
+    // so proximity reads as structure instead of scatter
+    ctx.save();
+    ctx.strokeStyle = "rgba(139,148,158,0.16)";
+    ctx.lineWidth = 1;
+    const drawnLinks = new Set();
+    for (const p of pts) {
+      let best = null, bestD = Infinity;
+      for (const q of pts) {
+        if (q === p) continue;
+        const d = Math.hypot(q.px - p.px, q.py - p.py);
+        if (d < bestD) { bestD = d; best = q; }
+      }
+      if (!best) continue;
+      const key = [Math.min(p.i, best.i), Math.max(p.i, best.i)].join("-");
+      if (drawnLinks.has(key)) continue;
+      drawnLinks.add(key);
+      ctx.beginPath();
+      ctx.moveTo(p.px, p.py);
+      ctx.lineTo(best.px, best.py);
+      ctx.stroke();
+    }
+    ctx.restore();
+    const w = canvas.clientWidth;
     for (const p of pts) {
       const c = cssVar(slot(p.s.did));
       const active = hovered === p || selected === p;
@@ -425,6 +460,13 @@ fetch("/api/atlas.json").then((r) => r.ok ? r.json() : null).then((atlas) => {
         ctx.beginPath(); ctx.arc(p.px, p.py, 12, 0, Math.PI * 2);
         ctx.strokeStyle = c; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.6; ctx.stroke();
       }
+      // name label, flipped to the left near the right edge
+      ctx.shadowBlur = 0;
+      ctx.font = "11px 'SF Mono', ui-monospace, monospace";
+      ctx.fillStyle = active ? cssVar("--fg") : cssVar("--muted");
+      const flip = p.px > w - 110;
+      ctx.textAlign = flip ? "right" : "left";
+      ctx.fillText(p.s.name, p.px + (flip ? -12 : 12), p.py + 4);
       ctx.restore();
     }
   }
@@ -474,6 +516,248 @@ fetch("/api/atlas.json").then((r) => r.ok ? r.json() : null).then((atlas) => {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") select(null); });
   window.addEventListener("resize", layout);
   layout();
+});
+</script>
+</body>
+</html>`;
+
+const PUBLISH_PAGE = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>publish to the mcp atlas</title>
+<meta property="og:title" content="publish to the mcp atlas">
+<meta property="og:description" content="get your MCP server listed on mcp.waow.tech — one record on your own PDS">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='9' cy='22' r='4' fill='%233987e5'/%3E%3Ccircle cx='22' cy='9' r='4' fill='%23199e70'/%3E%3Ccircle cx='24' cy='24' r='3' fill='%23d95926'/%3E%3Cpath d='M9 22 L22 9 M22 9 L24 24' stroke='%238b949e' stroke-width='1' opacity='0.5'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0d1117; --fg: #e6edf3; --muted: #8b949e;
+    --border: #21262d; --border-strong: #30363d;
+    --surface: #161b22; --accent: #58a6ff;
+    --green: #6fbf73; --red: #f85149;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'SF Mono', 'Cascadia Code', ui-monospace, monospace;
+    font-size: 14px; background: var(--bg); color: var(--fg); line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: ""; position: fixed; inset: -20%; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(38% 34% at 18% 12%, rgba(57,135,229,0.13), transparent 70%),
+      radial-gradient(34% 30% at 84% 22%, rgba(25,158,112,0.11), transparent 70%),
+      radial-gradient(30% 30% at 60% 88%, rgba(217,89,38,0.09), transparent 70%);
+    filter: blur(60px);
+  }
+  .glassy {
+    background: rgba(22,27,34,0.5);
+    backdrop-filter: blur(18px) saturate(1.5);
+    -webkit-backdrop-filter: blur(18px) saturate(1.5);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-top-color: rgba(255,255,255,0.12);
+    box-shadow: 0 10px 32px rgba(0,0,0,0.35);
+  }
+  a { color: var(--accent); }
+  main { max-width: 760px; margin: 0 auto; padding: 2.2rem clamp(1rem, 3vw, 2rem) 3rem; }
+  .back { font-size: 0.8rem; color: var(--muted); text-decoration: none; }
+  .back:hover { color: var(--accent); }
+  h1 { font-size: 1.3rem; font-weight: 600; letter-spacing: -0.02em; margin: 0.6rem 0 0.3rem; }
+  .subtitle { color: var(--muted); font-size: 0.85rem; margin-bottom: 1.8rem; }
+  .subtitle code, p code, li code, td code { color: var(--fg); background: rgba(255,255,255,0.06); border-radius: 4px; padding: 0.05rem 0.3rem; font-size: 0.92em; }
+  section { border-radius: 16px; padding: 1.2rem 1.4rem; margin-bottom: 1.1rem; }
+  section h2 { font-size: 0.95rem; font-weight: 600; margin-bottom: 0.5rem; }
+  section h2 .n { color: var(--accent); margin-right: 0.4rem; }
+  section p, section li { font-size: 0.85rem; color: var(--muted); }
+  section p strong { color: var(--fg); font-weight: 600; }
+  section ul { padding-left: 1.2rem; margin: 0.4rem 0; }
+  .tabs { display: flex; gap: 0.4rem; margin: 0.8rem 0 0; }
+  .tab {
+    font: inherit; font-size: 0.78rem; color: var(--muted); cursor: pointer;
+    background: rgba(13,17,23,0.45); border: 1px solid rgba(255,255,255,0.08);
+    border-bottom: 0; border-radius: 8px 8px 0 0; padding: 0.35rem 0.9rem;
+  }
+  .tab.active { color: var(--fg); background: rgba(13,17,23,0.8); border-color: rgba(255,255,255,0.14); }
+  pre {
+    background: rgba(13,17,23,0.8); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 0 10px 10px 10px; padding: 0.9rem 1rem; overflow-x: auto;
+    font-size: 0.78rem; line-height: 1.5; color: var(--fg);
+  }
+  pre .c { color: var(--muted); }
+  .panel[hidden] { display: none; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 0.6rem; }
+  th, td { text-align: left; padding: 0.35rem 0.6rem 0.35rem 0; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  td { color: var(--muted); }
+  td:first-child { color: var(--fg); white-space: nowrap; }
+  .req { color: var(--red); }
+  footer { color: var(--muted); font-size: 0.74rem; margin-top: 2rem; }
+</style>
+</head>
+<body>
+<main>
+  <a class="back" href="/">← mcp atlas</a>
+  <h1>publish your MCP server</h1>
+  <p class="subtitle">the atlas doesn't have a database of servers — it crawls
+  <code>tech.waow.mcp.server</code> records that authors publish on their <strong>own</strong>
+  atproto PDS. one record, on your identity, and every crawl finds you. no signup, no approval.</p>
+
+  <section class="glassy">
+    <h2><span class="n">1</span>get an app password</h2>
+    <p>any atproto account works — a <a href="https://bsky.app">Bluesky</a> account included.
+    create an app password at
+    <a href="https://bsky.app/settings/app-passwords">settings → app passwords</a>
+    (never your real password). your handle (like <code>alice.bsky.social</code>) is the other
+    thing you need.</p>
+  </section>
+
+  <section class="glassy">
+    <h2><span class="n">2</span>publish the record</h2>
+    <p>edit the server details, then run it. the record key is your server's name, so
+    re-running <strong>updates in place</strong> — safe to wire into your deploy.</p>
+    <div class="tabs" role="tablist">
+      <button class="tab active" data-tab="py">python</button>
+      <button class="tab" data-tab="ts">typescript</button>
+    </div>
+    <pre class="panel" id="panel-py"><code><span class="c"># publish.py — uv run --with httpx publish.py</span>
+<span class="c"># requires: BSKY_HANDLE and BSKY_APP_PASSWORD in the environment</span>
+import os, re
+from datetime import datetime, timezone
+
+import httpx
+
+SERVER = {
+    "$type": "tech.waow.mcp.server",
+    "name": "my-server",
+    "description": "what your server does, one paragraph.",
+    "transport": "http",              <span class="c"># or "stdio" for run-locally servers</span>
+    "url": "https://my-server.example.com/mcp",   <span class="c"># omit for stdio</span>
+    "repo": "https://github.com/you/my-server",
+    "language": "python",
+    "tools": [
+        {"name": "my_tool", "description": "what it does, one line."},
+    ],
+    "createdAt": datetime.now(timezone.utc).isoformat(),
+}
+
+handle = os.environ["BSKY_HANDLE"]
+password = os.environ["BSKY_APP_PASSWORD"]
+
+<span class="c"># handle → DID → PDS</span>
+did = httpx.get(
+    "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle",
+    params={"handle": handle},
+).json()["did"]
+doc = httpx.get(f"https://plc.directory/{did}").json()
+pds = next(s["serviceEndpoint"] for s in doc["service"] if s["id"] == "#atproto_pds")
+
+<span class="c"># sign in and put the record on YOUR pds</span>
+session = httpx.post(
+    f"{pds}/xrpc/com.atproto.server.createSession",
+    json={"identifier": handle, "password": password},
+).json()
+rkey = re.sub(r"[^a-z0-9-]+", "-", SERVER["name"].lower()).strip("-")
+resp = httpx.post(
+    f"{pds}/xrpc/com.atproto.repo.putRecord",
+    headers={"Authorization": f"Bearer {session['accessJwt']}"},
+    json={
+        "repo": did,
+        "collection": "tech.waow.mcp.server",
+        "rkey": rkey,
+        "record": SERVER,
+    },
+)
+resp.raise_for_status()
+print(resp.json()["uri"])</code></pre>
+    <pre class="panel" id="panel-ts" hidden><code><span class="c">// publish.ts — bun run publish.ts</span>
+<span class="c">// requires: BSKY_HANDLE and BSKY_APP_PASSWORD in the environment</span>
+const SERVER = {
+  $type: "tech.waow.mcp.server",
+  name: "my-server",
+  description: "what your server does, one paragraph.",
+  transport: "http",                <span class="c">// or "stdio" for run-locally servers</span>
+  url: "https://my-server.example.com/mcp",     <span class="c">// omit for stdio</span>
+  repo: "https://github.com/you/my-server",
+  language: "typescript",
+  tools: [
+    { name: "my_tool", description: "what it does, one line." },
+  ],
+  createdAt: new Date().toISOString(),
+};
+
+const handle = process.env.BSKY_HANDLE!;
+const password = process.env.BSKY_APP_PASSWORD!;
+
+<span class="c">// handle → DID → PDS</span>
+const { did } = await (await fetch(
+  "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=" + handle,
+)).json();
+const doc = await (await fetch("https://plc.directory/" + did)).json();
+const pds = doc.service.find((s) => s.id === "#atproto_pds").serviceEndpoint;
+
+<span class="c">// sign in and put the record on YOUR pds</span>
+const session = await (await fetch(pds + "/xrpc/com.atproto.server.createSession", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ identifier: handle, password }),
+})).json();
+const rkey = SERVER.name.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+const resp = await fetch(pds + "/xrpc/com.atproto.repo.putRecord", {
+  method: "POST",
+  headers: {
+    "content-type": "application/json",
+    authorization: "Bearer " + session.accessJwt,
+  },
+  body: JSON.stringify({
+    repo: did,
+    collection: "tech.waow.mcp.server",
+    rkey,
+    record: SERVER,
+  }),
+});
+if (!resp.ok) throw new Error(await resp.text());
+console.log((await resp.json()).uri);</code></pre>
+  </section>
+
+  <section class="glassy">
+    <h2><span class="n">3</span>you're on the map</h2>
+    <p>the crawler sweeps the network every 6 hours via relay
+    <code>listReposByCollection</code>. after the next sweep your server appears on
+    <a href="/">the atlas</a> — hosted servers also get a liveness probe against their
+    <code>url</code>. inspect your record any time at
+    <code>pdsls.dev/at://&lt;your-did&gt;/tech.waow.mcp.server</code>.</p>
+  </section>
+
+  <section class="glassy">
+    <h2>record reference</h2>
+    <p>full schema lives on the network as
+    <a href="https://pdsls.dev/at://did:plc:xbtmt2zjwlrfegqvch7fboei/com.atproto.lexicon.schema/tech.waow.mcp.server">com.atproto.lexicon.schema</a>.
+    the useful fields:</p>
+    <table>
+      <tr><th>field</th><th>meaning</th></tr>
+      <tr><td>name <span class="req">*</span></td><td>short name, also used as the record key</td></tr>
+      <tr><td>description <span class="req">*</span></td><td>what the server does — this powers english search</td></tr>
+      <tr><td>createdAt <span class="req">*</span></td><td>ISO timestamp</td></tr>
+      <tr><td>transport</td><td><code>http</code> (hosted at <code>url</code>) or <code>stdio</code> (run locally from <code>repo</code>)</td></tr>
+      <tr><td>url</td><td>remote endpoint for hosted servers</td></tr>
+      <tr><td>repo</td><td>source repository</td></tr>
+      <tr><td>language</td><td><code>python</code>, <code>typescript</code>, <code>javascript</code>, <code>go</code>, <code>rust</code>, <code>zig</code></td></tr>
+      <tr><td>tools</td><td>list of <code>{name, description}</code> — also powers search</td></tr>
+      <tr><td>environment</td><td>list of <code>{name, required, description}</code> env vars clients must set</td></tr>
+      <tr><td>packages</td><td>list of <code>{registry, identifier, version}</code> — <code>pypi</code>, <code>npm</code>, <code>oci</code>, …</td></tr>
+    </table>
+  </section>
+
+  <footer>records stay on your PDS, under your control — delete the record and you're off
+  the atlas at the next crawl. questions: <a href="https://bsky.app/profile/zzstoatzz.io">@zzstoatzz.io</a></footer>
+</main>
+<script>
+document.querySelectorAll(".tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b === btn));
+    document.querySelectorAll(".panel").forEach((p) => { p.hidden = p.id !== "panel-" + btn.dataset.tab; });
+  });
 });
 </script>
 </body>
@@ -568,6 +852,11 @@ export default {
 
     if (pathname === "/") {
       return new Response(PAGE, {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+    if (pathname === "/publish") {
+      return new Response(PUBLISH_PAGE, {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     }
