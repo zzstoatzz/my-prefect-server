@@ -584,7 +584,11 @@ const PUBLISH_PAGE = `<!DOCTYPE html>
     border-radius: 0 10px 10px 10px; padding: 0.9rem 1rem; overflow-x: auto;
     font-size: 0.78rem; line-height: 1.5; color: var(--fg);
   }
-  pre .c { color: var(--muted); }
+  pre .c, pre .com { color: var(--muted); font-style: italic; }
+  pre .str { color: #a5d6ff; }
+  pre .kw { color: #ff7b72; }
+  pre .num { color: #79c0ff; }
+  pre .fn { color: #d2a8ff; }
   .panel[hidden] { display: none; }
   table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin-top: 0.6rem; }
   th, td { text-align: left; padding: 0.35rem 0.6rem 0.35rem 0; border-bottom: 1px solid rgba(255,255,255,0.06); vertical-align: top; }
@@ -620,8 +624,11 @@ const PUBLISH_PAGE = `<!DOCTYPE html>
       <button class="tab active" data-tab="py">python</button>
       <button class="tab" data-tab="ts">typescript</button>
     </div>
-    <pre class="panel" id="panel-py"><code><span class="c"># publish.py — uv run --with httpx publish.py</span>
-<span class="c"># requires: BSKY_HANDLE and BSKY_APP_PASSWORD in the environment</span>
+    <pre class="panel" id="panel-py"><code><span class="c"># publish.py — run with: uv run publish.py</span>
+<span class="c"># /// script</span>
+<span class="c"># requires-python = ">=3.11"</span>
+<span class="c"># dependencies = ["httpx"]</span>
+<span class="c"># ///</span>
 import os, re
 from datetime import datetime, timezone
 
@@ -641,6 +648,7 @@ SERVER = {
     "createdAt": datetime.now(timezone.utc).isoformat(),
 }
 
+<span class="c"># export BSKY_HANDLE=you.bsky.social BSKY_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx</span>
 handle = os.environ["BSKY_HANDLE"]
 password = os.environ["BSKY_APP_PASSWORD"]
 
@@ -653,10 +661,12 @@ doc = httpx.get(f"https://plc.directory/{did}").json()
 pds = next(s["serviceEndpoint"] for s in doc["service"] if s["id"] == "#atproto_pds")
 
 <span class="c"># sign in and put the record on YOUR pds</span>
-session = httpx.post(
+login = httpx.post(
     f"{pds}/xrpc/com.atproto.server.createSession",
     json={"identifier": handle, "password": password},
-).json()
+)
+login.raise_for_status()
+session = login.json()
 rkey = re.sub(r"[^a-z0-9-]+", "-", SERVER["name"].lower()).strip("-")
 resp = httpx.post(
     f"{pds}/xrpc/com.atproto.repo.putRecord",
@@ -670,8 +680,7 @@ resp = httpx.post(
 )
 resp.raise_for_status()
 print(resp.json()["uri"])</code></pre>
-    <pre class="panel" id="panel-ts" hidden><code><span class="c">// publish.ts — bun run publish.ts</span>
-<span class="c">// requires: BSKY_HANDLE and BSKY_APP_PASSWORD in the environment</span>
+    <pre class="panel" id="panel-ts" hidden><code><span class="c">// publish.ts — run with: bun run publish.ts (no dependencies, node 24+ works too)</span>
 const SERVER = {
   $type: "tech.waow.mcp.server",
   name: "my-server",
@@ -686,8 +695,10 @@ const SERVER = {
   createdAt: new Date().toISOString(),
 };
 
-const handle = process.env.BSKY_HANDLE!;
-const password = process.env.BSKY_APP_PASSWORD!;
+<span class="c">// export BSKY_HANDLE=you.bsky.social BSKY_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx</span>
+const handle = process.env.BSKY_HANDLE;
+const password = process.env.BSKY_APP_PASSWORD;
+if (!handle || !password) throw new Error("set BSKY_HANDLE and BSKY_APP_PASSWORD");
 
 <span class="c">// handle → DID → PDS</span>
 const { did } = await (await fetch(
@@ -697,11 +708,13 @@ const doc = await (await fetch("https://plc.directory/" + did)).json();
 const pds = doc.service.find((s) => s.id === "#atproto_pds").serviceEndpoint;
 
 <span class="c">// sign in and put the record on YOUR pds</span>
-const session = await (await fetch(pds + "/xrpc/com.atproto.server.createSession", {
+const login = await fetch(pds + "/xrpc/com.atproto.server.createSession", {
   method: "POST",
   headers: { "content-type": "application/json" },
   body: JSON.stringify({ identifier: handle, password }),
-})).json();
+});
+if (!login.ok) throw new Error("login failed: " + await login.text());
+const session = await login.json();
 const rkey = SERVER.name.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
 const resp = await fetch(pds + "/xrpc/com.atproto.repo.putRecord", {
   method: "POST",
@@ -758,6 +771,34 @@ document.querySelectorAll(".tab").forEach((btn) => {
     document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b === btn));
     document.querySelectorAll(".panel").forEach((p) => { p.hidden = p.id !== "panel-" + btn.dataset.tab; });
   });
+});
+
+// tiny theme-native highlighter — strings, comments, keywords, numbers, calls
+const escHtml = (s) => s.replace(/[&<>"']/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+function highlight(code, lang) {
+  const rules = [
+    ["str", lang === "py" ? /[rf]?"[^"\\n]*"|[rf]?'[^'\\n]*'/ : /"[^"\\n]*"|'[^'\\n]*'/],
+    ["com", lang === "py" ? /#[^\\n]*/ : /[/][/][^\\n]*/],
+    ["kw", lang === "py"
+      ? /\\b(?:import|from|for|in|if|else|elif|def|return|not|and|or|True|False|None)\\b/
+      : /\\b(?:const|let|var|await|async|new|throw|return|if|else|function|of|in|true|false|null)\\b/],
+    ["num", /\\b\\d+\\b/],
+    ["fn", /\\b[A-Za-z_][A-Za-z0-9_]*(?=\\()/],
+  ];
+  const master = new RegExp(rules.map(([, r]) => "(" + r.source + ")").join("|"), "g");
+  let out = "", last = 0, m;
+  while ((m = master.exec(code)) !== null) {
+    out += escHtml(code.slice(last, m.index));
+    const cls = rules[m.slice(1).findIndex((g) => g !== undefined)][0];
+    out += '<span class="' + cls + '">' + escHtml(m[0]) + "</span>";
+    last = m.index + m[0].length;
+  }
+  return out + escHtml(code.slice(last));
+}
+document.querySelectorAll(".panel code").forEach((code) => {
+  const lang = code.closest(".panel").id === "panel-py" ? "py" : "ts";
+  code.innerHTML = highlight(code.textContent, lang);
 });
 </script>
 </body>
