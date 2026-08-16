@@ -21,23 +21,16 @@ this file is a set of notes for us:
 - use `jq` for JSON processing, not python
 - prefect docs are on disk at `~/github.com/prefecthq/prefect/docs` — read before guessing
 - use justfile recipes instead of ad-hoc commands
-- **a state's `name` is independent of its `type`** — `Cached` and `RolledBack`
-  are stock COMPLETED-type states with their own names
-  (`docs/v3/concepts/states.mdx`). returning a manually-constructed state from a
-  task or flow makes the run enter it verbatim, name included
-  (`return_value_to_state`, `src/prefect/states.py`). use this instead of
-  inventing a boolean return or swallowing errors silently: a run that did its
-  job with a dead upstream returns `Completed(name="Degraded", message=...)`.
-  it stays visible and filterable in the UI, and because the state-change event
-  is `prefect.flow-run.{state.name}` (`server/models/events.py`), the
-  `flow-run failure -> discord` automation — which expects
-  `Failed`/`TimedOut`/`Crashed` — does not page for it. adding a name to the
-  automation's `expect` list is how you'd opt a custom state back into alerting.
-- retries belong on any task that touches the network. house policy is
-  `retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1`. don't
-  `try/except` inside the task to "handle" a transient error — catching it means
-  the engine never retries. let it raise, and decide at the join point whether
-  a dead source degrades the run or fails it.- push to configured remotes. This repo currently has `origin` (tangled.org);
+- **a state's `name` is independent of its `type`** — return
+  `Completed(name="Degraded", message=...)` from a flow whose run did its job
+  with a dead upstream, instead of a boolean or a silent swallow. it stays
+  visible and filterable, and does not page. `docs/prefect-patterns.md`
+- retries belong on every task that touches the network:
+  `retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1`. never
+  `try/except` a transient error inside the task — catching it means the engine
+  never retries. let it raise; decide at the join point whether a dead source
+  degrades the run or fails it
+- push to configured remotes. This repo currently has `origin` (tangled.org);
   if a `github` mirror remote is present in a checkout, push that too.
 - after server restart, re-fetch kubeconfig with `just kubeconfig`
 - **flow execution runs on the `home-pool` *process* worker on the home box (heavypad)** — a systemd unit polling the server outbound over Tailscale (`deploy/home-worker/`). the `kubernetes-pool` bullets below describe the retained-but-unused k8s fallback path (no k8s worker runs in normal operation), and the analytics paths are hostPaths under `/home/stoat/prefect-analytics`, not a k8s PVC.
@@ -51,56 +44,18 @@ this file is a set of notes for us:
 - we maintain prefect-dbt — never suggest replacing PrefectDbtOrchestrator with subprocess calls
 - `analytics.duckdb` is single-writer: every RW open must hold the `analytics-duckdb-writer` global concurrency limit (limit=1) via `mps.lock.analytics_write_slot` — new write paths go through `mps.db._write_conn` or wrap the slot themselves. readers snapshot the file to `/tmp` instead of locking
 
-## agent tooling — MCP surfaces and what they actually do
+## agent tooling
 
-the `mps` plugin in `plugins/mps/` bundles two MCP servers. know what each one
-can do before hand-rolling `curl`, and before claiming something isn't possible.
-
-- **pdsx** (`https://pdsx-by-zzstoatzz.fastmcp.app/mcp`) — full PDS record
-  **CRUD**: `list_records`, `get_record`, `describe_repo`, `query`, `whoami`,
-  and `create_record` / `update_record` / `delete_record`. it is **not
-  read-only**. use it for cost snapshots, phi docket, and any
-  `io.zzstoatzz.*` record work instead of resolving handle → DID → PDS by hand.
-  the only CLI carve-outs are blob upload (`pdsx upload-blob` — base64 through a
-  JSON-RPC boundary is the wrong shape), batch JSONL ops with concurrency, and
-  permissioned spaces. source: `~/github.com/zzstoatzz/pdsx`.
-- **prefect** (`uvx --from prefect-mcp prefect-mcp-server`) — read-only
-  diagnostics. this one genuinely is read-only, but that's a *scope* decision
-  about a very large API, not a principle about MCP. do not generalize it to
-  other servers. mutations go through `just prefect ...`.
-  - configured at **local** scope for this project (`claude mcp list` →
-    `prefect`), pointed at `https://$DOMAIN/api` with `PREFECT_API_AUTH_STRING`
-    from `.env`, so the credential stays out of the repo. it reads our server,
-    not Cloud — `get_identity` returns our `api_url` and version.
-  - there is *also* a `claude.ai Prefect` connector (`prefect.fastmcp.app`)
-    in the client list. that one is the hosted **Cloud** MCP and is unrelated
-    to this server; don't confuse the two when reading tool output.
-  - it makes a decent API fuzzer: it sends filter shapes the UI never does.
-    every gap fixed in prefect-server v0.0.19–v0.0.21 (flow-run time filters,
-    `GET /api/version`, tags/labels/parameters persistence, a real PATCH, the
-    work-pool default-queue bug) was found by pointing it at prod and reading
-    what came back.
-
-if you are about to say "the MCP can't do X" or offer to build a missing tool,
-grep its tool list first. that has been wrong more than once.
+before hand-rolling `curl` — or saying "the MCP can't do X" and offering to
+build a tool — grep the tool list of the two MCP servers in `plugins/mps/`.
+pdsx does full record CRUD (not read-only); the prefect one is read-only by
+scope, and mutations go through `just prefect ...`. details and the
+Cloud-vs-ours confusion: `docs/agent-tooling.md`.
 
 ## costs
 
-- `COSTS.md` in each repo fetches a live figure from
-  `https://hub.waow.tech/api/costs.json`. **as of 2026-08-13 most of those
-  figures are wrong**: 7 of 10 repos report `$0` because the snippets
-  exact-match a `service` name (`leaflet-search-backend`) while fly and
-  cloudflare line items gained component suffixes
-  (`leaflet-search-backend:compute`) on 2026-06-17. prefix-match to get the
-  real number until the generator is fixed.
-- attribution currently infers project ownership from resource-name substrings
-  in `packages/mps/src/mps/costs/projects.py`. that is the wrong model and is
-  being replaced: **each project should declare what it owns**. resource names
-  outlive renames (`pub-search`'s fly apps are still `leaflet-search-*`) and
-  collide (bare `relay` vs plyr's `relay-api`), so inference silently
-  mis-attributes and nothing fails loudly. the collector's job is to reconcile
-  declarations and report conflicts + orphans — ~20 live services are claimed
-  by no repo today.
+`COSTS.md` figures are mostly wrong today — prefix-match the service name, and
+prefer declared ownership over inferred. background: `docs/costs.md`.
 
 ## running flows ad hoc
 
@@ -119,3 +74,10 @@ grep its tool list first. that has been wrong more than once.
 - `prefect.yaml` is the source of truth for deployment schedules, triggers,
   parameters, and per-deployment job variables. Re-register with
   `just prefect deploy --all` after dependency or flow changes.
+
+## docs
+
+- `docs/prefect-patterns.md` — named states, retries, degrade-vs-fail
+- `docs/agent-tooling.md` — what the MCP surfaces actually do
+- `docs/costs.md` — cost reporting: known-wrong state, declared-ownership model
+- `docs/incidents/` — post-mortems. incident narration goes here, not in this file
