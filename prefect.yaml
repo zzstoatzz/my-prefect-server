@@ -615,24 +615,6 @@ deployments:
       - cron: "0 4 * * *"
         active: true
 
-  - name: mcp-atlas
-    entrypoint: flows/mcp_atlas.py:mcp_atlas
-    # crawls tech.waow.mcp.server records off publishers' PDSes (relay
-    # listReposByCollection → per-DID listRecords → MCP initialize probe) and
-    # POSTs the atlas to mcp.waow.tech's worker (bearer token, no CF creds).
-    work_pool:
-      name: home-pool
-      job_variables:
-        command: >-
-          uv run
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
-          prefect flow-run execute
-        env:
-          MCP_ATLAS_INGEST_TOKEN: "{{ prefect.blocks.secret.mcp-atlas-ingest-token }}"
-    concurrency_limit: *cancel_new
-    schedules:
-      - cron: "45 */6 * * *"  # every 6h, offset from leaflet-atlas's top-of-hour marks
-
   - name: watch-fastmcp
     entrypoint: flows/watch_fastmcp.py:watch_fastmcp
     # emits github.<reason> events; notifies nobody. Conditional requests that
