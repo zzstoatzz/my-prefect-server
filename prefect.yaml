@@ -306,11 +306,20 @@ deployments:
 
   - name: typeahead-enrich-backfill
     entrypoint: flows/typeahead_enrich_backfill.py:typeahead_enrich_backfill
-    # one-shot/chained backfill for the ~6M actors stuck at profile_checked_at=0
-    # (the hourly cron's 200/run cold floor would take ~3.5 years). NO schedule —
-    # run manually, dry_run=true + small limit first, then chain paced runs via
-    # the returned last_rowid. concurrency 1: never two walkers on the queue.
+    # THE OWNER of typeahead's profile backlog (~6M actors at
+    # profile_checked_at=0). The worker's hourly Cloudflare cron is sized to
+    # arrivals only and never drains history (its CLAUDE.md cron contract);
+    # this drains 250k/day oldest-first off idx_actors_refresh_queue — backlog
+    # gone in under a month, then each run clears the residue. Self-consuming
+    # queue, no cursor state between runs. concurrency 1: never two walkers.
+    # 20:00 UTC sits clear of costs 08:00, index 09:00, atlas 00/06/12/18,
+    # and the 13:00 cluster.
     concurrency_limit: 1
+    parameters:
+      limit: 250000
+      dry_run: false
+    schedules:
+      - cron: "0 20 * * *"
     work_pool:
       name: home-pool
       job_variables:

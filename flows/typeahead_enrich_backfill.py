@@ -1,18 +1,28 @@
-"""backfill profile enrichment for typeahead actors stuck at profile_checked_at=0.
+"""drain the typeahead profile-enrichment backlog (profile_checked_at=0).
 
-~6M actors (the PLC backfill + recent firehose era) are enqueued at
-profile_checked_at=0, tied for the hourly cron's 200/run cold floor — a
-~3.5 year drain at that rate. This flow walks the queue directly:
-rowid-cursor pages of unchecked actors → app.bsky.actor.getProfiles
-(25 DIDs/call) → the same score formula and write guards the worker's
-cron uses → paced turso batches.
+THE OWNER of the multi-million-actor profile backlog, per typeahead's cron
+contract (its CLAUDE.md): the worker's hourly Cloudflare cron is sized to
+keep pace with arrivals (~2,900 new actors/hour) and explicitly does NOT
+drain history — that is this flow's job. Scheduled daily; each run walks
+the queue oldest-first → app.bsky.actor.getProfiles (25 DIDs/call) → the
+same score formula and write guards the worker uses → paced turso batches.
 
-NOT scheduled. Run small trials first, then chain paced larger runs:
+The queue is self-consuming: selection is a keyset walk over typeahead's
+partial index idx_actors_refresh_queue (ON actors(updated_at) WHERE
+profile_checked_at = 0 AND handle != ''), and stamping profile_checked_at
+removes a row from the index — so every run starts at the true queue head
+with no cursor state carried between runs. The worker's hourly event queue
+reads the same index newest-first; this flow reads oldest-first, so the two
+meet in the middle and never fight over rows. handle='' actors are NOT this
+flow's scope — they are the identity backlog (typeahead-plc-identity).
+
+At the scheduled limit=250,000/day the ~6M backlog drains in under a month,
+and once drained each run just clears whatever the hourly cron's headroom
+left behind. Trials by hand:
 
     prefect deployment run 'typeahead-enrich-backfill/typeahead-enrich-backfill' \
         -p limit=100 -p dry_run=true            # look, no writes
     prefect deployment run ... -p limit=1000 -p dry_run=false
-    prefect deployment run ... -p limit=50000 -p dry_run=false -p start_rowid=<last_rowid from prior run>
 
 Faithfulness notes (drift here corrupts ranking, so ported exactly):
   - score: utils.ts computeAuthorityScore, including the hasAggregates guard —
@@ -43,7 +53,7 @@ APPVIEW = "https://public.api.bsky.app/xrpc/app.bsky.actor.getProfiles"
 BSKY_MOD_DID = "did:plc:ar7c4by46qjdydhdevvrndac"
 MOD_HIDE_VALS = {"!hide", "!takedown", "!suspend", "spam"}
 GETPROFILES_MAX = 25
-SELECT_PAGE = 500  # rowid-scan page; filtered client-side is fine at this size
+SELECT_PAGE = 500  # keyset page off idx_actors_refresh_queue
 
 
 def _turso() -> tuple[str, dict[str, str]]:
@@ -120,14 +130,12 @@ def _avatar_cid(avatar_url: str) -> str:
 @flow(name="typeahead-enrich-backfill", log_prints=True, timeout_seconds=14400)
 def typeahead_enrich_backfill(
     limit: int = 100,
-    start_rowid: int = 0,
     dids_per_second: float = 25.0,
     write_batch: int = 50,
     dry_run: bool = True,
 ) -> dict[str, Any]:
     """
-    limit:           actors to process this run (trial: 100; paced big runs: 50k+)
-    start_rowid:     resume cursor — pass the prior run's returned last_rowid
+    limit:           actors to process this run (trial: 100; scheduled: 250k)
     dids_per_second: appview pacing. 25 = one getProfiles call/s. measured
                      capacity ~154/s but the hourly cron shares the budget;
                      stay well under until a trial shows otherwise.
@@ -142,8 +150,13 @@ def typeahead_enrich_backfill(
     processed = found = not_found = hidden_set = 0
     pending_writes: list[dict[str, Any]] = []
     samples: list[str] = []
-    cursor = start_rowid
-    last_rowid = start_rowid
+    # keyset over (updated_at, rowid) — the order idx_actors_refresh_queue
+    # provides, so both the filter and the ORDER BY are index-served. The
+    # guarded `>= ?1 AND (> ?1 OR ...)` shape is deliberate: the plain
+    # OR-keyset degrades to a full index scan on Turso when the values arrive
+    # as bound params (typeahead's Aug 2026 staleness incident; its smoke
+    # suite EXPLAIN-guards the same shape on idx_actors_updated_at).
+    cur_updated, cur_rowid = 0, 0
     call_interval = GETPROFILES_MAX / max(dids_per_second, 0.1)
 
     def flush_writes() -> None:
@@ -155,15 +168,18 @@ def typeahead_enrich_backfill(
 
     while processed < limit:
         page = _tq(http, [{
-            "sql": "SELECT rowid, did FROM actors WHERE rowid > ?1 AND profile_checked_at = 0 "
-                   "ORDER BY rowid LIMIT ?2",
-            "args": [_arg(cursor), _arg(min(SELECT_PAGE, limit - processed))],
+            "sql": "SELECT rowid, did, updated_at FROM actors "
+                   "WHERE profile_checked_at = 0 AND handle != '' "
+                   "AND updated_at >= ?1 AND (updated_at > ?1 OR rowid > ?2) "
+                   "ORDER BY updated_at, rowid LIMIT ?3",
+            "args": [_arg(cur_updated), _arg(cur_rowid),
+                     _arg(min(SELECT_PAGE, limit - processed))],
         }])[0].get("rows", [])
         if not page:
-            logger.info("queue drained at rowid %s", cursor)
+            logger.info("queue drained at updated_at=%s rowid=%s", cur_updated, cur_rowid)
             break
         rows = [(int(r[0]["value"]), r[1]["value"]) for r in page]
-        cursor = rows[-1][0]
+        cur_updated, cur_rowid = int(page[-1][2]["value"]), rows[-1][0]
 
         for i in range(0, len(rows), GETPROFILES_MAX):
             batch = rows[i : i + GETPROFILES_MAX]
@@ -187,7 +203,6 @@ def typeahead_enrich_backfill(
 
             for rowid, did in batch:
                 processed += 1
-                last_rowid = rowid
                 p = profiles.get(did)
                 if not p:
                     not_found += 1
@@ -264,7 +279,7 @@ def typeahead_enrich_backfill(
         "found": found,
         "not_found": not_found,
         "hidden_set": hidden_set,
-        "last_rowid": last_rowid,
+        "queue_cursor": {"updated_at": cur_updated, "rowid": cur_rowid},
         "samples": samples,
     }
     logger.info("done: %s", json.dumps(summary, indent=2))
