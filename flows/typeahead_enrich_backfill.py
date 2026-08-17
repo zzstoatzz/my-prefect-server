@@ -266,8 +266,8 @@ def typeahead_enrich_backfill(
                 time.sleep(call_interval - elapsed)
 
         logger.info(
-            "progress: processed=%d found=%d not_found=%d hidden=%d cursor=%d",
-            processed, found, not_found, hidden_set, cursor,
+            "progress: processed=%d found=%d not_found=%d hidden=%d cursor=(%d,%d)",
+            processed, found, not_found, hidden_set, cur_updated, cur_rowid,
         )
 
     if not dry_run:
