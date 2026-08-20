@@ -8,6 +8,12 @@ dependencies = [
     "duckdb>=1.0",
     "pydantic>=2",
     "pydantic-ai-slim[anthropic,prefect]",
+    # anthropic 1.0.0 (2026-08-20) accepts only httpx2 clients; pydantic-ai's
+    # anthropic provider (through 2.32.1) still hands it an httpx.AsyncClient,
+    # and its own pin is an unbounded anthropic>=0.108. phi-memory-synthesis
+    # broke ten minutes after the release. lift once pydantic-ai's provider
+    # moves to httpx2.
+    "anthropic<1",
     "turbopuffer",
     "openai",
     "pdsx",

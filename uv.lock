@@ -1583,6 +1583,7 @@ name = "mps"
 version = "0.1.0"
 source = { editable = "packages/mps" }
 dependencies = [
+    { name = "anthropic" },
     { name = "duckdb" },
     { name = "genai-prices" },
     { name = "httpx" },
@@ -1597,6 +1598,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anthropic", specifier = "<1" },
     { name = "duckdb", specifier = ">=1.0" },
     { name = "genai-prices", specifier = ">=0.0.62" },
     { name = "httpx", specifier = ">=0.27" },
