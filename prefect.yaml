@@ -223,7 +223,7 @@ deployments:
   - name: leaflet-atlas
     entrypoint: flows/atlas.py:rebuild_atlas
     # Canary for the job-variable-driven secret pattern: secrets are
-    # injected as env vars (resolved from Secret blocks at deploy time),
+    # injected as env vars (resolved by the mps-secrets plugin at flow-run start),
     # so flow code never calls Secret.load() and tasks just inherit env.
     work_pool:
       name: home-pool
@@ -238,17 +238,19 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          PREFECT_PLUGINS_ENABLED: "true"
+          PREFECT_PLUGINS_ALLOW: mps-secrets
           OMP_NUM_THREADS: "1"
           OPENBLAS_NUM_THREADS: "1"
           MKL_NUM_THREADS: "1"
           VECLIB_MAXIMUM_THREADS: "1"
           NUMBA_NUM_THREADS: "1"
           MALLOC_ARENA_MAX: "2"
-          TURBOPUFFER_API_KEY: "{{ prefect.blocks.secret.tpuf-token }}"
-          CLOUDFLARE_API_TOKEN: "{{ prefect.blocks.secret.cloudflare-api-token }}"
-          ANTHROPIC_API_KEY: "{{ prefect.blocks.secret.anthropic-api-key }}"
-          TURSO_URL: "{{ prefect.blocks.secret.turso-url }}"
-          TURSO_TOKEN: "{{ prefect.blocks.secret.turso-token }}"
+          TURBOPUFFER_API_KEY: prefect-block://tpuf-token
+          CLOUDFLARE_API_TOKEN: prefect-block://cloudflare-api-token
+          ANTHROPIC_API_KEY: prefect-block://anthropic-api-key
+          TURSO_URL: prefect-block://turso-url
+          TURSO_TOKEN: prefect-block://turso-token
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
@@ -267,8 +269,8 @@ deployments:
 
   - name: costs
     entrypoint: flows/costs.py:costs
-    # provider billing tokens injected from Secret blocks (resolved at deploy
-    # time); connectors read os.environ. atproto creds load via Secret.load in
+    # provider billing tokens injected from Secret blocks (resolved by the
+    # mps-secrets plugin at flow-run start); connectors read os.environ. atproto creds load via Secret.load in
     # the flow, matching pds-records. CLOUDFLARE_API_TOKEN block already exists;
     # create fly-api-token / hcloud-token / neon-api-key blocks before deploying.
     # runs on the home box (heavypad) — decoupled from the hub (writes to PDS,
@@ -281,12 +283,14 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
-          CLOUDFLARE_API_TOKEN: "{{ prefect.blocks.secret.cloudflare-api-token }}"
+          PREFECT_PLUGINS_ENABLED: "true"
+          PREFECT_PLUGINS_ALLOW: mps-secrets
+          CLOUDFLARE_API_TOKEN: prefect-block://cloudflare-api-token
           # account-scoped CF tokens can't list /accounts; account id isn't
           # secret (it's in dashboard URLs / wrangler.jsonc), so inline it.
           CLOUDFLARE_ACCOUNT_ID: "3e9ba01cd687b3c4d29033908177072e"
-          FLY_API_TOKEN: "{{ prefect.blocks.secret.fly-api-token }}"
-          NEON_API_KEY: "{{ prefect.blocks.secret.neon-api-key }}"
+          FLY_API_TOKEN: prefect-block://fly-api-token
+          NEON_API_KEY: prefect-block://neon-api-key
           # hetzner is NOT here: its tokens are project-scoped (one per cloud
           # project), so the flow loads the `hetzner-tokens` Secret block (a
           # dict of {name: token}) and merges them. Cloud is the whole Hetzner
@@ -328,8 +332,10 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
-          TURSO_URL: "{{ prefect.blocks.secret.typeahead-turso-url }}"
-          TURSO_AUTH_TOKEN: "{{ prefect.blocks.secret.typeahead-turso-token }}"
+          PREFECT_PLUGINS_ENABLED: "true"
+          PREFECT_PLUGINS_ALLOW: mps-secrets
+          TURSO_URL: prefect-block://typeahead-turso-url
+          TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
   - name: typeahead-index
     entrypoint: flows/typeahead_index.py:typeahead_index
     # the typeahead snapshot builder (Zig MODE=indexer), lifted off Fly onto the
@@ -346,16 +352,18 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          PREFECT_PLUGINS_ENABLED: "true"
+          PREFECT_PLUGINS_ALLOW: mps-secrets
           # typeahead-specific turso blocks — the shared `turso-url`/`turso-token`
           # blocks point at the LEAFLET db (they're the atlas flow's). These hold
           # the full libsql:// URL; the flow strips the scheme to the bare host
           # the indexer's TursoClient expects.
-          TURSO_URL: "{{ prefect.blocks.secret.typeahead-turso-url }}"
-          TURSO_AUTH_TOKEN: "{{ prefect.blocks.secret.typeahead-turso-token }}"
-          INDEX_R2_ENDPOINT: "{{ prefect.blocks.secret.index-r2-endpoint }}"
-          INDEX_R2_BUCKET: "{{ prefect.blocks.secret.index-r2-bucket }}"
-          INDEX_R2_ACCESS_KEY_ID: "{{ prefect.blocks.secret.index-r2-access-key-id }}"
-          INDEX_R2_SECRET_ACCESS_KEY: "{{ prefect.blocks.secret.index-r2-secret-access-key }}"
+          TURSO_URL: prefect-block://typeahead-turso-url
+          TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
+          INDEX_R2_ENDPOINT: prefect-block://index-r2-endpoint
+          INDEX_R2_BUCKET: prefect-block://index-r2-bucket
+          INDEX_R2_ACCESS_KEY_ID: prefect-block://index-r2-access-key-id
+          INDEX_R2_SECRET_ACCESS_KEY: prefect-block://index-r2-secret-access-key
           # persistent NVMe paths — process runs execute in ephemeral /tmp.
           INDEXER_HOME: /home/stoat/typeahead-index
           INDEX_BUILD_ROOT: /home/stoat/typeahead-index/build
@@ -401,10 +409,12 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          PREFECT_PLUGINS_ENABLED: "true"
+          PREFECT_PLUGINS_ALLOW: mps-secrets
           # full libsql:// URL — unlike typeahead-index, this flow does NOT strip
           # the scheme; the python script rewrites it to https itself.
-          TURSO_URL: "{{ prefect.blocks.secret.typeahead-turso-url }}"
-          TURSO_AUTH_TOKEN: "{{ prefect.blocks.secret.typeahead-turso-token }}"
+          TURSO_URL: prefect-block://typeahead-turso-url
+          TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
           # persistent NVMe — process runs execute in an ephemeral /tmp, and the
           # bundle cache is ~28GB that we do NOT want to re-download weekly.
           PLC_BUNDLE_DIR: /home/stoat/typeahead-plc
@@ -445,15 +455,17 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          PREFECT_PLUGINS_ENABLED: "true"
+          PREFECT_PLUGINS_ALLOW: mps-secrets
           # shared turso blocks ARE the leaf db (atlas uses the same ones);
           # pub-search's client wants the full libsql:// URL — no stripping.
-          TURSO_URL: "{{ prefect.blocks.secret.turso-url }}"
-          TURSO_TOKEN: "{{ prefect.blocks.secret.turso-token }}"
+          TURSO_URL: prefect-block://turso-url
+          TURSO_TOKEN: prefect-block://turso-token
           # pub-search's own R2 bucket (leaflet-search-index) — NOT typeahead's.
-          INDEX_R2_ENDPOINT: "{{ prefect.blocks.secret.leaflet-index-r2-endpoint }}"
-          INDEX_R2_BUCKET: "{{ prefect.blocks.secret.leaflet-index-r2-bucket }}"
-          INDEX_R2_ACCESS_KEY_ID: "{{ prefect.blocks.secret.leaflet-index-r2-access-key-id }}"
-          INDEX_R2_SECRET_ACCESS_KEY: "{{ prefect.blocks.secret.leaflet-index-r2-secret-access-key }}"
+          INDEX_R2_ENDPOINT: prefect-block://leaflet-index-r2-endpoint
+          INDEX_R2_BUCKET: prefect-block://leaflet-index-r2-bucket
+          INDEX_R2_ACCESS_KEY_ID: prefect-block://leaflet-index-r2-access-key-id
+          INDEX_R2_SECRET_ACCESS_KEY: prefect-block://leaflet-index-r2-secret-access-key
           # persistent repo/scratch root (process runs execute in ephemeral /tmp;
           # the ~600MB build itself is fine in the run's tmp via BUILD_DIR default)
           BUILDER_HOME: /home/stoat/pub-search-snapshot
@@ -684,10 +696,12 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          PREFECT_PLUGINS_ENABLED: "true"
+          PREFECT_PLUGINS_ALLOW: mps-secrets
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-          ANTHROPIC_API_KEY: "{{ prefect.blocks.secret.anthropic-api-key }}"
+          ANTHROPIC_API_KEY: prefect-block://anthropic-api-key
 
   - name: pi-pr
     entrypoint: flows/pi_pr.py:pi_pr
