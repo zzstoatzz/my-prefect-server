@@ -488,11 +488,16 @@ deployments:
           --with boto3
           prefect flow-run execute
         env:
+          # canary for the mps-secrets startup plugin: job_variables carry block
+          # NAMES; the plugin resolves them in-process at `import prefect`, so
+          # no plaintext lands in the orchestration db / deployment reads.
           # project-scoped: a token minted for the `bisk` bucket only (object rw),
           # not shared with typeahead's index-r2-* creds.
-          BISK_R2_ENDPOINT: "{{ prefect.blocks.secret.bisk-r2-endpoint }}"
-          BISK_R2_ACCESS_KEY_ID: "{{ prefect.blocks.secret.bisk-r2-access-key-id }}"
-          BISK_R2_SECRET_ACCESS_KEY: "{{ prefect.blocks.secret.bisk-r2-secret-access-key }}"
+          PREFECT_PLUGINS_ENABLED: "true"
+          PREFECT_PLUGINS_ALLOW: mps-secrets
+          BISK_R2_ENDPOINT: prefect-block://bisk-r2-endpoint
+          BISK_R2_ACCESS_KEY_ID: prefect-block://bisk-r2-access-key-id
+          BISK_R2_SECRET_ACCESS_KEY: prefect-block://bisk-r2-secret-access-key
           BISK_R2_BUCKET: bisk
     concurrency_limit: *cancel_new
     schedules:

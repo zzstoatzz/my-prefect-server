@@ -40,6 +40,9 @@ atlas = [
     "numba>=0.60",
 ]
 
+[project.entry-points."prefect.plugins"]
+mps-secrets = "mps.secrets_plugin"
+
 [tool.hatch.build.targets.wheel]
 packages = ["packages/mps/src/mps"]
 
