@@ -25,6 +25,12 @@ prefect *args:
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
         uv run --with prefect prefect {{args}}
 
+# push main to both remotes; github first, since the tangled push triggers
+# CI that installs the package from the github mirror
+push:
+    git push github main
+    git push origin main
+
 # --- infrastructure ---
 
 # initialize terraform

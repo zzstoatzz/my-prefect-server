@@ -31,7 +31,15 @@ steps:
       SHA="$(git rev-parse HEAD)"
       # ls-remote matches ref names, not object ids — querying the sha directly
       # reports "no match" even when the commit is present. Compare main instead.
-      MIRROR="$(git ls-remote https://github.com/zzstoatzz/my-prefect-server.git refs/heads/main | cut -f1)"
+      # The two pushes race (tangled triggers this workflow, github serves the
+      # install), so give the mirror a couple of minutes to catch up before
+      # failing.
+      for i in $(seq 1 12); do
+        MIRROR="$(git ls-remote https://github.com/zzstoatzz/my-prefect-server.git refs/heads/main | cut -f1)"
+        [ "$MIRROR" = "$SHA" ] && break
+        echo "github mirror main is ${MIRROR:-missing}, want ${SHA} — waiting (${i}/12)" >&2
+        sleep 10
+      done
       if [ "$MIRROR" != "$SHA" ]; then
         echo "github mirror main is ${MIRROR:-missing}, deploying ${SHA} — push github first" >&2
         exit 1
