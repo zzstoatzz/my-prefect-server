@@ -106,7 +106,7 @@ def build_atlas(repo_dir: Path) -> Path:
     TURSO_URL / TURSO_TOKEN from the inherited environment.
     """
     logger = get_run_logger()
-    output = repo_dir / "site" / "atlas.json"
+    output = repo_dir / "site" / "atlas.json.gz"
 
     result = subprocess.run(
         [
@@ -130,7 +130,7 @@ def build_atlas(repo_dir: Path) -> Path:
     for line in result.stdout.strip().splitlines():
         logger.info(line)
 
-    logger.info(f"atlas.json: {output.stat().st_size / 1024:.0f} KB")
+    logger.info(f"atlas.json.gz: {output.stat().st_size / 1024:.0f} KB")
     return output
 
 
