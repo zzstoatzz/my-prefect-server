@@ -21,7 +21,7 @@
 
 image:
   repository: atcr.io/zzstoatzz.io/prefect-server
-  tag: "ReleaseFast-a3aee7d"
+  tag: "3487a1e96c9313df17befd4c744da25d0946e464"
   pullPolicy: IfNotPresent
   pullSecrets:
     - atcr-creds
@@ -54,6 +54,11 @@ extraEnv:
     value: "1209600"   # 14d for flow_runs; events use PREFECT_SERVER_EVENTS_RETENTION_PERIOD default 7d
   - name: PREFECT_SERVER_UI_SHOW_PROMOTIONAL_CONTENT
     value: "false"
+  - name: LOGFIRE_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: logfire
+        key: token
 
 auth:
   enabled: true
