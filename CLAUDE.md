@@ -77,8 +77,6 @@ prefer declared ownership over inferred. background: `docs/costs.md`.
 
 ## docs
 
-- `docs/prefect-patterns.md` — named states, retries, degrade-vs-fail
-- `docs/agent-tooling.md` — what the MCP surfaces actually do
-- `docs/costs.md` — cost reporting: known-wrong state, declared-ownership model
-- `docs/incidents/` — post-mortems. incident narration goes here, not in this file
-- historical/planning docs live in `docs/`, never the repo root
+- reference material lives in `docs/` — list it before guessing. post-mortems
+  go in `docs/incidents/`; historical/planning docs go in `docs/`, never the
+  repo root or this file
