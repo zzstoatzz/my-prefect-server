@@ -81,5 +81,4 @@ prefer declared ownership over inferred. background: `docs/costs.md`.
 - `docs/agent-tooling.md` — what the MCP surfaces actually do
 - `docs/costs.md` — cost reporting: known-wrong state, declared-ownership model
 - `docs/incidents/` — post-mortems. incident narration goes here, not in this file
-- `docs/eu-migration-playbook.md`, `docs/semble-adoption.md` — historical, completed; kept as executed playbooks
 - historical/planning docs live in `docs/`, never the repo root
