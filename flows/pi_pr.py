@@ -21,7 +21,7 @@ from prefect.blocks.system import Secret
 from pydantic import BaseModel, Field
 
 from mps.pi import minimal_env, run_pi, screen_prompt
-from mps.tangled import create_pull
+from mps.tangled import build_patch, create_pull
 
 Repo = Literal["my-prefect-server", "find-bufo", "bot", "tangled-mcp"]
 
@@ -38,30 +38,6 @@ class Agent(BaseModel):
     thinking: Literal["off", "minimal", "low", "medium", "high", "xhigh"] = Field(
         default="medium", json_schema_extra=dict(position=2)
     )
-
-
-def build_patch(cwd: str, base: str, title: str, author: str) -> str:
-    """commit whatever pi changed and render it as a git format-patch."""
-    subprocess.run(["git", "add", "-A"], cwd=cwd, check=True)
-    status = subprocess.run(
-        ["git", "status", "--porcelain"], cwd=cwd, capture_output=True, text=True
-    ).stdout.strip()
-    if not status:
-        return ""
-    subprocess.run(
-        ["git", "-c", f"user.name={author}", "-c", f"user.email={author}@users.noreply",
-         "commit", "-m", title],
-        cwd=cwd,
-        check=True,
-        capture_output=True,
-    )
-    return subprocess.run(
-        ["git", "format-patch", f"{base}..HEAD", "--stdout"],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
 
 
 @flow(name="pi-pr", log_prints=True, timeout_seconds=2400)

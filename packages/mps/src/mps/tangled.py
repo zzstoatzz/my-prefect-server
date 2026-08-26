@@ -137,6 +137,7 @@ def fetch_items(
 
 import gzip as _gzip
 import os as _os
+import subprocess as _subprocess
 import time as _time
 from datetime import datetime as _dt
 from datetime import timezone as _tz
@@ -203,6 +204,30 @@ def _resolve_repo_record(owner_did: str, name: str) -> tuple[str, dict[str, Any]
         cursor = page.get("cursor")
         if not cursor or not items:
             raise ValueError(f"repo '{name}' not found for owner {owner_did}")
+
+
+def build_patch(cwd: str, base: str, title: str, author: str) -> str:
+    """commit whatever changed in the working tree and render it as a git format-patch."""
+    _subprocess.run(["git", "add", "-A"], cwd=cwd, check=True)
+    status = _subprocess.run(
+        ["git", "status", "--porcelain"], cwd=cwd, capture_output=True, text=True
+    ).stdout.strip()
+    if not status:
+        return ""
+    _subprocess.run(
+        ["git", "-c", f"user.name={author}", "-c", f"user.email={author}@users.noreply",
+         "commit", "-m", title],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+    )
+    return _subprocess.run(
+        ["git", "format-patch", f"{base}..HEAD", "--stdout"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
 
 
 def create_pull(

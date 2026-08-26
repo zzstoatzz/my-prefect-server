@@ -711,6 +711,16 @@ deployments:
     # requires pi installed + openai-codex creds on the worker.
     work_pool: *home
 
+  - name: dep-bump
+    entrypoint: flows/dep_bump.py:dep_bump
+    # the local dependabot: re-pin a released dependency across its zat.dev
+    # downstreams, run each repo's zig test suite in a throwaway clone, and
+    # open a tangled PR only for the green ones. no schedule — triggered ad
+    # hoc for now; the end state is the upstream release ritual kicking it
+    # with the fresh tag. home-pool because the zig toolchain lives there
+    # (same reason as stream-admission).
+    work_pool: *home
+
   - name: stream-admission
     entrypoint: flows/stream_admission.py:stream_admission
     # stream's 21-suite gate, on bare metal instead of spindle's microVM. the
