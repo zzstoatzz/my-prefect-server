@@ -30,6 +30,7 @@ Repo = Literal["jetstream", "zlay", "stream", "zds"]
 
 OWNER = "zat.dev"
 CLONE_URL = "https://tangled.sh/{owner}/{repo}.git"
+PUSH_URL = "git@tangled.org:{owner}/{repo}"
 URL_TEMPLATE = "https://tangled.org/{owner}/{dep}/archive/{version}.tar.gz"
 
 
@@ -45,12 +46,20 @@ def dep_bump(
     repos: list[Repo],
     url_template: str = URL_TEMPLATE,
     dry_run: bool = False,
+    push_to_main: bool = False,
 ) -> dict[str, Any]:
-    """re-pin `dep` to `version` in each downstream; PR the ones whose tests pass."""
+    """re-pin `dep` to `version` in each downstream; land the ones whose tests pass.
+
+    green suites become a tangled PR by default; with `push_to_main` the pin
+    commit is pushed straight to the repo's default branch instead. pushing a
+    service repo deploys it — push-to-main is the deploy gate in this family
+    of repos, which is exactly the point: an adopted upstream release ships.
+    requires the worker's ssh key to be authorized on tangled.
+    """
     url = url_template.format(owner=OWNER, dep=dep, version=version)
     env = minimal_env()
     handle = password = None
-    if not dry_run:
+    if not dry_run and not push_to_main:
         handle = Secret.load("atproto-handle").get()
         password = Secret.load("atproto-password").get()
 
@@ -94,6 +103,23 @@ def dep_bump(
             results[repo] = {"tested": True, "pull_uri": None, "patch_bytes": len(patch)}
             continue
 
+        if push_to_main:
+            # build_patch already committed the pin on the default branch
+            pushed, push_out = _run(
+                ["git",
+                 "-c", "core.sshCommand=ssh -o StrictHostKeyChecking=accept-new",
+                 "push", PUSH_URL.format(owner=OWNER, repo=repo), "HEAD"],
+                cwd,
+                env,
+            )
+            if not pushed:
+                print(f"{repo}: push FAILED\n{push_out}")
+                results[repo] = {"tested": True, "pull_uri": None, "error": "push failed"}
+                continue
+            print(f"{repo}: pushed pin to main")
+            results[repo] = {"tested": True, "pull_uri": None, "pushed": True, "error": None}
+            continue
+
         body = f"automated pin bump: `{dep}` -> `{version}`. tests passed at `{base[:9]}`."
         pull = create_pull(OWNER, repo, title, patch, body, handle, password)
         print(f"{repo}: pull created: {pull['uri']}")
@@ -108,5 +134,14 @@ if __name__ == "__main__":
     parser.add_argument("--version", required=True)
     parser.add_argument("--repos", nargs="+", required=True)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--push-to-main", action="store_true")
     args = parser.parse_args()
-    print(dep_bump(args.dep, args.version, args.repos, dry_run=args.dry_run))
+    print(
+        dep_bump(
+            args.dep,
+            args.version,
+            args.repos,
+            dry_run=args.dry_run,
+            push_to_main=args.push_to_main,
+        )
+    )
