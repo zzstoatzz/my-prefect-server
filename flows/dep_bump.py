@@ -60,8 +60,9 @@ def dep_bump(
     env = minimal_env()
     handle = password = None
     if not dry_run and not push_to_main:
-        handle = Secret.load("atproto-handle").get()
-        password = Secret.load("atproto-password").get()
+        # PRs are authored by gardener, the maintenance identity, not the operator
+        handle = Secret.load("gardener-handle").get()
+        password = Secret.load("gardener-password").get()
 
     results: dict[str, Any] = {}
     for repo in repos:
@@ -92,7 +93,7 @@ def dep_bump(
             continue
 
         title = f"deps: {dep} {version}"
-        patch = build_patch(cwd, base, title, "dep-bump")
+        patch = build_patch(cwd, base, title, "gardener", email="gardener@zat.dev")
         if not patch:
             print(f"{repo}: already on {version} — nothing to propose")
             results[repo] = {"tested": True, "pull_uri": None, "error": None}

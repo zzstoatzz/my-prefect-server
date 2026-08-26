@@ -206,7 +206,7 @@ def _resolve_repo_record(owner_did: str, name: str) -> tuple[str, dict[str, Any]
             raise ValueError(f"repo '{name}' not found for owner {owner_did}")
 
 
-def build_patch(cwd: str, base: str, title: str, author: str) -> str:
+def build_patch(cwd: str, base: str, title: str, author: str, email: str | None = None) -> str:
     """commit whatever changed in the working tree and render it as a git format-patch."""
     _subprocess.run(["git", "add", "-A"], cwd=cwd, check=True)
     status = _subprocess.run(
@@ -215,7 +215,8 @@ def build_patch(cwd: str, base: str, title: str, author: str) -> str:
     if not status:
         return ""
     _subprocess.run(
-        ["git", "-c", f"user.name={author}", "-c", f"user.email={author}@users.noreply",
+        ["git", "-c", f"user.name={author}",
+         "-c", f"user.email={email or f'{author}@users.noreply'}",
          "commit", "-m", title],
         cwd=cwd,
         check=True,
