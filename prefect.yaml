@@ -83,6 +83,7 @@ deployments:
           uv run
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           --with 'fastmcp>=4.0.0b5'
+          --with 'fastmcp-slim>=4.0.0b5'
           prefect flow-run execute
     schedules:
       - cron: "12 * * * *"
