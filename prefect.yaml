@@ -332,14 +332,16 @@ deployments:
     # THE OWNER of typeahead's profile backlog (~6M actors at
     # profile_checked_at=0). The worker's hourly Cloudflare cron is sized to
     # arrivals only and never drains history (its CLAUDE.md cron contract);
-    # this drains 250k/day oldest-first off idx_actors_refresh_queue — backlog
-    # gone in under a month, then each run clears the residue. Self-consuming
+    # this is the permanent steady-state enrichment engine: time-budgeted
+    # (3.5h wall clock, inside the 4h timeout guard), oldest-first off
+    # idx_actors_refresh_queue, draining the historical backlog and then the
+    # daily arrivals + firehose resets forever after. Self-consuming
     # queue, no cursor state between runs. concurrency 1: never two walkers.
     # 20:00 UTC sits clear of costs 08:00, index 09:00, atlas 00/06/12/18,
     # and the 13:00 cluster.
     concurrency_limit: 1
     parameters:
-      limit: 250000
+      limit: null
       dry_run: false
     schedules:
       - cron: "0 20 * * *"

@@ -1,11 +1,14 @@
-"""drain the typeahead profile-enrichment backlog (profile_checked_at=0).
+"""typeahead's steady-state profile-enrichment engine (profile_checked_at=0).
 
-THE OWNER of the multi-million-actor profile backlog, per typeahead's cron
-contract (its CLAUDE.md): the worker's hourly Cloudflare cron is sized to
-keep pace with arrivals (~2,900 new actors/hour) and explicitly does NOT
-drain history — that is this flow's job. Scheduled daily; each run walks
-the queue oldest-first → app.bsky.actor.getProfiles (25 DIDs/call) → the
-same score formula and write guards the worker uses → paced turso batches.
+PERMANENT infrastructure, not a temporary backfill — do not delete as stale.
+New actors arrive at ~2,900/hour (~70k/day) and every one enters the
+profile_checked_at=0 queue, plus firehose profile/identity events reset
+existing actors back into it. The worker's hourly Cloudflare cron is
+arrivals-triage/moderation-freshness only, capped at 200 events/run
+(~4,800/day) by typeahead's cron contract (its CLAUDE.md) — so without this
+flow the queue grows ~65k/day forever. Scheduled daily; each run walks the
+queue oldest-first → app.bsky.actor.getProfiles (25 DIDs/call) → the same
+score formula and write guards the worker uses → paced turso batches.
 
 The queue is self-consuming: selection is a keyset walk over typeahead's
 partial index idx_actors_refresh_queue (ON actors(updated_at) WHERE
@@ -16,13 +19,20 @@ reads the same index newest-first; this flow reads oldest-first, so the two
 meet in the middle and never fight over rows. handle='' actors are NOT this
 flow's scope — they are the identity backlog (typeahead-plc-identity).
 
-At the scheduled limit=250,000/day the ~6M backlog drains in under a month,
-and once drained each run just clears whatever the hourly cron's headroom
-left behind. Trials by hand:
+Scheduled runs are time-budgeted (budget_seconds), not count-budgeted: the
+run drains whatever fits in the budget and reports how much it processed.
+The old fixed limit=250k raced effective pace against the 4h timeout and
+lost twice (Aug 26/27 2026 TimedOut runs) — pace drifts with turso latency,
+appview timeouts, and 429 backoffs, so a count budget can always time out;
+a time budget cannot. limit remains as an optional cap for hand trials:
 
     prefect deployment run 'typeahead-enrich-backfill/typeahead-enrich-backfill' \
         -p limit=100 -p dry_run=true            # look, no writes
     prefect deployment run ... -p limit=1000 -p dry_run=false
+
+Once the historical backlog is gone (2,584,171 rows as of 2026-08-28) each
+run shrinks to arrivals plus whatever the hourly cron's cap left behind —
+but it never becomes optional; it is how the corpus stays enriched.
 
 Faithfulness notes (drift here corrupts ranking, so ported exactly):
   - score: utils.ts computeAuthorityScore, including the hasAggregates guard —
@@ -129,13 +139,19 @@ def _avatar_cid(avatar_url: str) -> str:
 
 @flow(name="typeahead-enrich-backfill", log_prints=True, timeout_seconds=14400)
 def typeahead_enrich_backfill(
-    limit: int = 100,
+    limit: int | None = 100,
+    budget_seconds: float = 12600,
     dids_per_second: float = 50.0,
     write_batch: int = 50,
     dry_run: bool = True,
 ) -> dict[str, Any]:
     """
-    limit:           actors to process this run (trial: 100; scheduled: 250k)
+    limit:           optional cap on actors this run (trial: 100; scheduled
+                     runs pass None and are bounded by budget_seconds alone)
+    budget_seconds:  wall-clock budget; the run stops starting new work once
+                     elapsed. 12600 (3.5h) sits comfortably inside the 14400s
+                     timeout_seconds dead-man guard — a run can never TimeOut
+                     by design, only by hanging.
     dids_per_second: appview pacing. 50 = two getProfiles calls/s. measured
                      capacity ~154/s but the hourly cron shares the budget.
                      25 made the 250k run miss the 4h timeout once per-page
@@ -161,6 +177,8 @@ def typeahead_enrich_backfill(
     # suite EXPLAIN-guards the same shape on idx_actors_updated_at).
     cur_updated, cur_rowid = 0, 0
     call_interval = GETPROFILES_MAX / max(dids_per_second, 0.1)
+    deadline = time.monotonic() + budget_seconds
+    budget_spent = False
 
     def flush_writes() -> None:
         nonlocal pending_writes
@@ -169,14 +187,17 @@ def typeahead_enrich_backfill(
             _tq(http, chunk)
             time.sleep(0.15)
 
-    while processed < limit:
+    while limit is None or processed < limit:
+        if time.monotonic() >= deadline:
+            budget_spent = True
+            break
+        page_size = SELECT_PAGE if limit is None else min(SELECT_PAGE, limit - processed)
         page = _tq(http, [{
             "sql": "SELECT rowid, did, updated_at FROM actors "
                    "WHERE profile_checked_at = 0 AND handle != '' "
                    "AND updated_at >= ?1 AND (updated_at > ?1 OR rowid > ?2) "
                    "ORDER BY updated_at, rowid LIMIT ?3",
-            "args": [_arg(cur_updated), _arg(cur_rowid),
-                     _arg(min(SELECT_PAGE, limit - processed))],
+            "args": [_arg(cur_updated), _arg(cur_rowid), _arg(page_size)],
         }])[0].get("rows", [])
         if not page:
             logger.info("queue drained at updated_at=%s rowid=%s", cur_updated, cur_rowid)
@@ -185,6 +206,9 @@ def typeahead_enrich_backfill(
         cur_updated, cur_rowid = int(page[-1][2]["value"]), rows[-1][0]
 
         for i in range(0, len(rows), GETPROFILES_MAX):
+            if time.monotonic() >= deadline:
+                budget_spent = True
+                break
             batch = rows[i : i + GETPROFILES_MAX]
             dids = [d for _, d in batch]
             t0 = time.time()
@@ -276,8 +300,12 @@ def typeahead_enrich_backfill(
     if not dry_run:
         flush_writes()
 
+    if budget_spent:
+        logger.info("budget of %.0fs spent; stopping with queue remaining", budget_seconds)
+
     summary = {
         "dry_run": dry_run,
+        "budget_spent": budget_spent,
         "processed": processed,
         "found": found,
         "not_found": not_found,
