@@ -130,15 +130,18 @@ def _avatar_cid(avatar_url: str) -> str:
 @flow(name="typeahead-enrich-backfill", log_prints=True, timeout_seconds=14400)
 def typeahead_enrich_backfill(
     limit: int = 100,
-    dids_per_second: float = 25.0,
+    dids_per_second: float = 50.0,
     write_batch: int = 50,
     dry_run: bool = True,
 ) -> dict[str, Any]:
     """
     limit:           actors to process this run (trial: 100; scheduled: 250k)
-    dids_per_second: appview pacing. 25 = one getProfiles call/s. measured
-                     capacity ~154/s but the hourly cron shares the budget;
-                     stay well under until a trial shows otherwise.
+    dids_per_second: appview pacing. 50 = two getProfiles calls/s. measured
+                     capacity ~154/s but the hourly cron shares the budget.
+                     25 made the 250k run miss the 4h timeout once per-page
+                     overhead (turso + write flushes) ate the pacing slack —
+                     and with the queue tail ~94% not_found, real appview
+                     load is far below the pace anyway.
     write_batch:     turso statements per pipeline request (paced 150ms apart —
                      turso is single-writer; never blast it)
     dry_run:         fetch + compute + report, write nothing (default!)
