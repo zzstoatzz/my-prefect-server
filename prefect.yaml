@@ -70,6 +70,26 @@ deployments:
       - cron: "3,18,33,48 * * * *"
         active: true
 
+  - name: mcp-fleet-health
+    entrypoint: flows/mcp_fleet_health.py:mcp_fleet_health
+    # protocol-level health for the public MCP servers in the atlas registry:
+    # each must negotiate and serve tool discovery through a ClientGroup, not
+    # just return a 200. down servers emit `fleet-health.unhealthy` (resource
+    # mcp-fleet-health) and page through the existing fleet automation.
+    # fastmcp is pinned to the commit that introduced ClientGroup (#4904);
+    # repoint to a version floor once a 4.0 prerelease ships it.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
+          --with 'fastmcp @ git+https://github.com/PrefectHQ/fastmcp.git@2a2080c6c787a8171a61365f334233735377ade5'
+          prefect flow-run execute
+    schedules:
+      - cron: "12 * * * *"
+        active: true
+
   - name: diagnostics
     entrypoint: flows/diagnostics.py:diagnostics
     # retargeted to the home box (heavypad) via the process work pool — canary
