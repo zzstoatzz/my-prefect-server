@@ -76,15 +76,13 @@ deployments:
     # each must negotiate and serve tool discovery through a ClientGroup, not
     # just return a 200. down servers emit `fleet-health.unhealthy` (resource
     # mcp-fleet-health) and page through the existing fleet automation.
-    # fastmcp is pinned to the commit that introduced ClientGroup (#4904);
-    # repoint to a version floor once a 4.0 prerelease ships it.
     work_pool:
       name: home-pool
       job_variables:
         command: >-
           uv run
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
-          --with 'fastmcp @ git+https://github.com/PrefectHQ/fastmcp.git@2a2080c6c787a8171a61365f334233735377ade5'
+          --with 'fastmcp>=4.0.0b5'
           prefect flow-run execute
     schedules:
       - cron: "12 * * * *"
