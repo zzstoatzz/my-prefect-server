@@ -327,6 +327,32 @@ deployments:
     schedules:
       - cron: "0 8 * * *"  # daily at 08:00 UTC
 
+  - name: bufo-traffic
+    entrypoint: flows/bufo_traffic.py:bufo_traffic
+    # rolls find-bufo.com requests from logfire into io.zzstoatzz.bufo.traffic
+    # PDS records (one per day); the bot stats page draws its traffic charts
+    # from them. hourly so the current day converges; each run re-rolls a
+    # 2-day trailing window and upserts, so runs are idempotent. runs on the
+    # home box — a single small POST to logfire and a few PDS put_records.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
+          prefect flow-run execute
+        env:
+          PREFECT_PLUGINS_ENABLED: "true"
+          PREFECT_PLUGINS_ALLOW: mps-secrets
+          LOGFIRE_READ_TOKEN: prefect-block://logfire-read-token
+    parameters:
+      config:
+        dry_run: false
+        days_back: 2
+    concurrency_limit: *cancel_new
+    schedules:
+      - cron: "7 * * * *"  # hourly, off the hour so it never races ingest
+
   - name: typeahead-enrich-backfill
     entrypoint: flows/typeahead_enrich_backfill.py:typeahead_enrich_backfill
     # THE OWNER of typeahead's profile backlog (~6M actors at
