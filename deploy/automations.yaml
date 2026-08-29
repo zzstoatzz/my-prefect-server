@@ -107,3 +107,44 @@ automations:
         block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
         subject: "{{ resource.name }}"
         body: "{{ payload.brief }}"
+
+  - name: flow-run failure -> autofix
+    description: >-
+      Same trigger as the discord alert, but it starts the autofix deployment
+      with the failed run's id. Read-only for now: pi diagnoses, nothing is
+      changed. threshold/within collapses a burst of failures into one run.
+      autofix itself never reaches Failed, so it cannot re-trigger this.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - prefect.flow-run.Failed
+        - prefect.flow-run.Crashed
+        - prefect.flow-run.TimedOut
+      threshold: 1
+      within: 600
+    actions:
+      - type: run-deployment
+        source: selected
+        deployment: autofix
+        parameters:
+          flow_run_id: "{{ flow_run.id }}"
+
+  - name: autofix diagnosed -> discord
+    description: >-
+      pi's read-only diagnosis of a failed run, delivered next to the alert
+      it answers. autofix.py holds no webhook credential.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - autofix.diagnosed
+      threshold: 1
+      within: 60
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "autofix: {{ resource.name }}"
+        body: "{{ payload.diagnosis }}"
