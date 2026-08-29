@@ -139,11 +139,13 @@ class Archive:
             for s in page["segments"]
         ]
 
-    def collections(self, seg: SegmentListing) -> tuple[SegmentListing, list[tuple[str, int]]]:
+    def collections(self, seg: SegmentListing) -> tuple[SegmentListing, list[tuple[str, int]]] | None:
         """The segment's per-collection counts, with the listing they belong to. Compaction can rewrite a
-        segment between listing and reading; the header's checksum is the identity of the bytes, so when it
-        differs from the listing's, wait for the rewrite to settle, re-list, and read again."""
-        for delay in (1, 3, 6, 10, 15):
+        segment between listing and reading, and a rewrite of a live-era segment can take minutes; the
+        header's checksum is the identity of the bytes, so when it differs from the listing's, re-list and
+        read again a few times, then give the segment up for this run — the next run's checksum
+        reconciliation picks it up."""
+        for delay in (1, 3, 6):
             path = f"/xrpc/network.bsky.jetstream.getSegment?name={seg.name}"
             status, raw = self._get(path, f"0-{HEADER_LEN - 1}")
             if status != 206:
@@ -161,7 +163,7 @@ class Archive:
             if not fresh or fresh[0].idx != seg.idx:
                 raise RuntimeError(f"{seg.name}: vanished from listSegments")
             seg = fresh[0]
-        raise RuntimeError(f"{seg.name}: header checksum kept disagreeing with listSegments")
+        return None
 
 
 def segment_record(seg: SegmentListing, collections: list[tuple[str, int]]) -> dict:
@@ -209,11 +211,17 @@ def stale_or_new(listing: list[SegmentListing], known: dict[int, str]) -> list[S
 
 
 @task(retries=2, retry_delay_seconds=15, log_prints=True)
-def ingest_batch(archive: Archive, strata: Strata, segs: list[SegmentListing], archive_segments: int) -> int:
+def ingest_batch(archive: Archive, strata: Strata, segs: list[SegmentListing], archive_segments: int) -> tuple[int, int]:
+    """Returns (ingested, skipped); skipped segments were mid-rewrite and are left for the next run."""
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-        records = [segment_record(s, c) for s, c in pool.map(archive.collections, segs)]
-    strata.ingest(records, archive_segments)
-    return len(records)
+        read = list(pool.map(archive.collections, segs))
+    records = [segment_record(s, c) for r in read if r is not None for s, c in [r]]
+    skipped = [s.name for s, r in zip(segs, read) if r is None]
+    if skipped:
+        print(f"skipped {len(skipped)} segment(s) still being rewritten: {', '.join(skipped)}")
+    if records:
+        strata.ingest(records, archive_segments)
+    return len(records), len(skipped)
 
 
 @flow(name="ingest-segment-collections", log_prints=True)
@@ -227,15 +235,17 @@ def ingest_segment_collections(max_segments: int = 2000) -> int:
     todo = stale_or_new(listing, known)
     log.info("archive lists %d sealed segments; worker holds %d; %d to read", len(listing), len(known), len(todo))
 
-    done = 0
+    done = skipped = 0
     for i in range(0, min(len(todo), max_segments), BATCH):
         chunk = todo[i : i + BATCH]
-        done += ingest_batch(archive, strata_api, chunk, len(listing))
-        log.info("ingested %d/%d (through idx %d)", done, min(len(todo), max_segments), chunk[-1].idx)
+        ingested, missed = ingest_batch(archive, strata_api, chunk, len(listing))
+        done += ingested
+        skipped += missed
+        log.info("ingested %d/%d (through idx %d), %d skipped", done, min(len(todo), max_segments), chunk[-1].idx, skipped)
 
     create_markdown_artifact(
         key="strata",
-        markdown=f"| sealed | held before | needed | ingested this run |\n|---|---|---|---|\n| {len(listing)} | {len(known)} | {len(todo)} | {done} |",
+        markdown=f"| sealed | held before | needed | ingested this run | skipped (mid-rewrite) |\n|---|---|---|---|---|\n| {len(listing)} | {len(known)} | {len(todo)} | {done} | {skipped} |",
         description="strata ingest progress",
     )
     return done
