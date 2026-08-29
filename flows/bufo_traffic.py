@@ -6,7 +6,7 @@ current day converges as its hours fill in. `days_back` is the only knob: the
 first run used 15 to backfill everything logfire still held (2026-08-15 on).
 
 The record is what the bot stats page draws "requests all time" and the
-per-bucket rate from — it reads `io.zzstoatzz.bufo.traffic` straight off the
+per-bucket rate from — it reads `com.find-bufo.traffic` straight off the
 public PDS, so this flow is the whole pipeline.
 
 Read token: `LOGFIRE_READ_TOKEN` (Secret block `logfire-read-token`, project
