@@ -329,7 +329,7 @@ deployments:
 
   - name: bufo-traffic
     entrypoint: flows/bufo_traffic.py:bufo_traffic
-    # rolls find-bufo.com requests from logfire into io.zzstoatzz.bufo.traffic
+    # rolls find-bufo.com requests from logfire into com.find-bufo.traffic
     # PDS records (one per day); the bot stats page draws its traffic charts
     # from them. hourly so the current day converges; each run re-rolls a
     # 2-day trailing window and upserts, so runs are idempotent. runs on the

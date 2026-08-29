@@ -1,5 +1,5 @@
 """find-bufo.com request traffic, rolled up from logfire into one PDS record per
-UTC day (`io.zzstoatzz.bufo.traffic`, rkey=YYYY-MM-DD).
+UTC day (`com.find-bufo.traffic`, rkey=YYYY-MM-DD).
 
 logfire only answers 14-day windows and keeps a bounded history; the PDS record
 is the durable, public copy the bot stats page draws "requests all time" from.
@@ -24,7 +24,7 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-COLLECTION = "io.zzstoatzz.bufo.traffic"
+COLLECTION = "com.find-bufo.traffic"
 SERVICE = "find-bufo"
 
 # the zig backend's route vocabulary (server/src/server.zig `routeFor`)
