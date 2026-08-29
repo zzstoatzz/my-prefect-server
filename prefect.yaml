@@ -353,6 +353,30 @@ deployments:
     schedules:
       - cron: "7 * * * *"  # hourly, off the hour so it never races ingest
 
+  - name: bufo-posts
+    entrypoint: flows/bufo_posts.py:bufo_posts
+    # per-bufo index of the bot's quote-posts (io.zzstoatzz.bufo.posts) plus
+    # the quoted-did index, rebuilt from the bot's own PDS repo. the stats
+    # page opens a bufo's posts from one record instead of paging the appview
+    # (which 500s a few hundred posts deep). writes only records whose post
+    # set changed. runs on the home box: ~60 small GETs to the bot's PDS.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
+          prefect flow-run execute
+        env:
+          PREFECT_PLUGINS_ENABLED: "true"
+          PREFECT_PLUGINS_ALLOW: mps-secrets
+    parameters:
+      config:
+        dry_run: false
+    concurrency_limit: *cancel_new
+    schedules:
+      - cron: "23 */6 * * *"  # four times a day; the bot posts rarely
+
   - name: typeahead-enrich-backfill
     entrypoint: flows/typeahead_enrich_backfill.py:typeahead_enrich_backfill
     # THE OWNER of typeahead's profile backlog (~6M actors at
@@ -801,6 +825,7 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          PREFECT_PLUGINS_ENABLED: "true"
           STRATA_URL: https://strata.zat.dev
           STRATA_INGEST_TOKEN: prefect-block://strata-ingest-token
           STREAM_ARCHIVE_KEY: prefect-block://stream-archive-key-strata
