@@ -12,7 +12,8 @@ by the bufo named in the media alt text, and upserts:
   the stats page's per-user lookup
 
 The bot stats page fetches a bufo's record, then hydrates its posts through
-`app.bsky.feed.getPosts` so labels and deletions are honored at view time.
+slingshot (quoted post record + author profile self-labels) so
+`!no-unauthenticated` and deletions are honored at view time.
 
 ad hoc:  uv run python flows/bufo_posts.py            # dry-run: prints a summary
          uv run python flows/bufo_posts.py --write

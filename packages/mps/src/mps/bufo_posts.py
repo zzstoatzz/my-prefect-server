@@ -12,8 +12,10 @@ records into:
 - `io.zzstoatzz.bufo.quoted` / `index` — one record mapping quoted DID →
   post rkeys, for the "which of my posts got a bufo" lookup
 
-the page hydrates rkeys through `app.bsky.feed.getPosts` at view time, so
-labels (`!no-unauthenticated`) and deletions are honored live, not frozen.
+the page hydrates rkeys through slingshot (microcosm's record cache — no
+bluesky appview) at view time: the quoted post record, and the author's
+profile record whose self-labels carry `!no-unauthenticated`, so hidden
+authors and deletions are honored live, not frozen.
 """
 
 from __future__ import annotations
