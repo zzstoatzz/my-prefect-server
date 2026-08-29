@@ -21,6 +21,7 @@ it. Concurrency is capped so a full first walk (≈7k segments) stays polite.
 import json
 import os
 import struct
+import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -140,9 +141,9 @@ class Archive:
 
     def collections(self, seg: SegmentListing) -> tuple[SegmentListing, list[tuple[str, int]]]:
         """The segment's per-collection counts, with the listing they belong to. Compaction can rewrite a
-        segment between listing and reading; when the header disagrees, the segment is re-listed and read
-        again so the record stored matches the bytes that were read."""
-        for attempt in range(3):
+        segment between listing and reading; the header's checksum is the identity of the bytes, so when it
+        differs from the listing's, wait for the rewrite to settle, re-list, and read again."""
+        for delay in (1, 3, 6, 10, 15):
             path = f"/xrpc/network.bsky.jetstream.getSegment?name={seg.name}"
             status, raw = self._get(path, f"0-{HEADER_LEN - 1}")
             if status != 206:
@@ -150,16 +151,17 @@ class Archive:
             header = parse_header(raw)
             if header.checksum == 0:
                 raise RuntimeError(f"{seg.name}: unsealed (checksum 0) despite being listed")
-            if header.event_count == seg.event_count and header.min_seq == seg.min_seq:
+            if f"{header.checksum:016x}" == seg.checksum:
                 status, raw = self._get(path, f"{header.collection_index_offset}-")
                 if status != 206:
                     raise RuntimeError(f"{seg.name}: collection index request returned {status}, not 206")
                 return seg, parse_collection_index(raw)
+            time.sleep(delay)
             fresh = self._list_page(f"&cursor={seg.idx - 1}")
             if not fresh or fresh[0].idx != seg.idx:
                 raise RuntimeError(f"{seg.name}: vanished from listSegments")
             seg = fresh[0]
-        raise RuntimeError(f"{seg.name}: header kept disagreeing with listSegments after 3 attempts")
+        raise RuntimeError(f"{seg.name}: header checksum kept disagreeing with listSegments")
 
 
 def segment_record(seg: SegmentListing, collections: list[tuple[str, int]]) -> dict:
