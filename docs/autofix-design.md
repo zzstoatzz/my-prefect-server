@@ -1,7 +1,9 @@
 # autofix: failed flow run → pi → PR (design spike, 2026-08-29)
 
-status: **spike only.** nothing here is built or wired. no automation was
-changed and pi has not touched anything.
+status: **rung 1 is live (2026-08-29).** `flows/autofix.py` + the
+`flow-run failure -> autofix` and `autofix diagnosed -> discord` automations
+in `deploy/automations.yaml`. pi is read-only: it diagnoses, it changes
+nothing. everything from §2 (the ask channel) onward is still design.
 
 ## the loop we want
 
