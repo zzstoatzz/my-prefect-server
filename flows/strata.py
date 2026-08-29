@@ -126,6 +126,18 @@ class Archive:
             for s in page["segments"]
         ]
 
+    def count_segments(self) -> int:
+        """How many sealed segments the archive lists in total (one page of 1000 per request)."""
+        total = 0
+        cursor = ""
+        while True:
+            _, body = self._get(f"/xrpc/network.bsky.jetstream.listSegments?limit=1000{cursor}")
+            page = json.loads(body)
+            total += len(page["segments"])
+            if not page["segments"] or not page.get("cursor"):
+                return total
+            cursor = f"&cursor={page['cursor']}"
+
     def collections(self, seg: SegmentListing) -> list[tuple[str, int]]:
         path = f"/xrpc/network.bsky.jetstream.getSegment?name={seg.name}"
         status, raw = self._get(path, f"0-{HEADER_LEN - 1}")
@@ -168,11 +180,11 @@ class Strata:
             max_idx = json.load(resp)["maxIdx"]
         return -1 if max_idx is None else int(max_idx)
 
-    def ingest(self, records: list[dict]) -> None:
+    def ingest(self, records: list[dict], archive_segments: int) -> None:
         req = request(
             f"{self._url}/ingest",
             headers={"Authorization": f"Bearer {self._token}", "Content-Type": "application/json"},
-            data=json.dumps({"segments": records}).encode(),
+            data=json.dumps({"segments": records, "archiveSegments": archive_segments}).encode(),
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
@@ -182,10 +194,10 @@ class Strata:
 
 
 @task(retries=2, retry_delay_seconds=15, log_prints=True)
-def ingest_batch(archive: Archive, strata: Strata, segs: list[SegmentListing]) -> int:
+def ingest_batch(archive: Archive, strata: Strata, segs: list[SegmentListing], archive_segments: int) -> int:
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         records = [segment_record(s, c) for s, c in zip(segs, pool.map(archive.collections, segs))]
-    strata.ingest(records)
+    strata.ingest(records, archive_segments)
     return len(records)
 
 
@@ -196,7 +208,8 @@ def ingest_segment_collections(max_segments: int = 2000) -> int:
     archive = Archive(os.environ["STREAM_ARCHIVE_KEY"])
     strata_api = Strata(os.environ["STRATA_URL"], os.environ["STRATA_INGEST_TOKEN"])
     start = strata_api.progress()
-    log.info("worker progress: max idx %d", start)
+    sealed = archive.count_segments()
+    log.info("worker progress: max idx %d of %d sealed segments", start, sealed)
 
     after = start
     done = 0
@@ -206,7 +219,7 @@ def ingest_segment_collections(max_segments: int = 2000) -> int:
             break
         for i in range(0, len(page), BATCH):
             chunk = page[i : i + BATCH]
-            done += ingest_batch(archive, strata_api, chunk)
+            done += ingest_batch(archive, strata_api, chunk, sealed)
             after = chunk[-1].idx
             if done >= max_segments:
                 break
