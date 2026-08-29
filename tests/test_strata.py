@@ -47,3 +47,14 @@ def test_parse_collection_index_rejects_size_mismatch():
     struct.pack_into("<I", raw, 12, 999)
     with pytest.raises(ValueError):
         parse_collection_index(bytes(raw))
+
+
+def test_every_request_carries_the_flow_user_agent():
+    from flows.strata import USER_AGENT, request
+
+    plain = request("https://strata.zat.dev/api/progress")
+    posted = request("https://strata.zat.dev/ingest", headers={"Authorization": "Bearer x"}, data=b"{}", method="POST")
+    assert plain.get_header("User-agent") == USER_AGENT
+    assert posted.get_header("User-agent") == USER_AGENT
+    assert posted.get_header("Authorization") == "Bearer x"
+    assert posted.get_method() == "POST"

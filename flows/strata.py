@@ -33,6 +33,7 @@ LIST_PAGE = 500
 BATCH = 50
 WORKERS = 4
 TIMEOUT_S = 30
+USER_AGENT = "strata-flow/1 (+https://tangled.org/zat.dev/strata)"
 HEADER_LEN = 256
 JSS_MAGIC = b"jss0"
 
@@ -59,6 +60,11 @@ class SegmentHeader:
     min_seq: int
     max_seq: int
     collection_index_offset: int
+
+
+def request(url: str, headers: dict[str, str] | None = None, data: bytes | None = None, method: str = "GET") -> urllib.request.Request:
+    """Every outbound request carries our user-agent: Cloudflare's zone rules 403 the default Python-urllib one."""
+    return urllib.request.Request(url, data=data, headers={"User-Agent": USER_AGENT, **(headers or {})}, method=method)
 
 
 def parse_header(raw: bytes) -> SegmentHeader:
@@ -97,8 +103,7 @@ class Archive:
         headers = dict(self._headers)
         if byte_range:
             headers["Range"] = f"bytes={byte_range}"
-        req = urllib.request.Request(f"{ARCHIVE_URL}{path}", headers=headers)
-        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
+        with urllib.request.urlopen(request(f"{ARCHIVE_URL}{path}", headers), timeout=TIMEOUT_S) as resp:
             return resp.status, resp.read()
 
     def list_segments(self, after_idx: int) -> list[SegmentListing]:
@@ -159,15 +164,15 @@ class Strata:
         self._token = token
 
     def progress(self) -> int:
-        with urllib.request.urlopen(f"{self._url}/api/progress", timeout=TIMEOUT_S) as resp:
+        with urllib.request.urlopen(request(f"{self._url}/api/progress"), timeout=TIMEOUT_S) as resp:
             max_idx = json.load(resp)["maxIdx"]
         return -1 if max_idx is None else int(max_idx)
 
     def ingest(self, records: list[dict]) -> None:
-        req = urllib.request.Request(
+        req = request(
             f"{self._url}/ingest",
-            data=json.dumps({"segments": records}).encode(),
             headers={"Authorization": f"Bearer {self._token}", "Content-Type": "application/json"},
+            data=json.dumps({"segments": records}).encode(),
             method="POST",
         )
         with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
@@ -184,8 +189,8 @@ def ingest_batch(archive: Archive, strata: Strata, segs: list[SegmentListing]) -
     return len(records)
 
 
-@flow(name="strata", log_prints=True)
-def strata(max_segments: int = 2000) -> int:
+@flow(name="ingest-segment-collections", log_prints=True)
+def ingest_segment_collections(max_segments: int = 2000) -> int:
     """Walk sealed segments past the worker's progress and ingest them; returns segments ingested."""
     log = get_run_logger()
     archive = Archive(os.environ["STREAM_ARCHIVE_KEY"])

@@ -786,8 +786,8 @@ deployments:
       limit: 1
       collision_strategy: ENQUEUE
 
-  - name: strata
-    entrypoint: flows/strata.py:strata
+  - name: strata-hourly
+    entrypoint: flows/strata.py:ingest_segment_collections
     # read the shape of the stream archive from outside: per-segment,
     # per-collection counts decoded from segment footers via Range requests,
     # pushed to the strata worker (zat.dev/strata). a few KB per segment; the
