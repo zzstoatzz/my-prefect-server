@@ -74,7 +74,11 @@ WITH hits AS (
     CASE
       WHEN kind = 'span' THEN (attributes->>'http.response.status_code')::int
       ELSE regexp_match(message, '"[A-Z]+ [^"]*" ([0-9]{{3}}) ')[1]::int
-    END AS status
+    END AS status,
+    CASE
+      WHEN kind = 'span' THEN coalesce(attributes->>'client', 'unknown')
+      ELSE 'unknown'
+    END AS client
   FROM records
   WHERE (kind = 'span' AND service_name = '{SERVICE}' AND span_name LIKE 'HTTP %')
      OR (kind = 'log' AND service_name = 'unknown_service'
@@ -90,9 +94,10 @@ SELECT
     ELSE '{UNMATCHED}'
   END AS path,
   status / 100 * 100 AS status,
+  client,
   count(*) AS requests
 FROM hits
-GROUP BY 1, 2, 3
+GROUP BY 1, 2, 3, 4
 ORDER BY 1
 """
 
@@ -106,6 +111,7 @@ class HourRow:
     path: str | None
     status: int | None
     requests: int
+    client: str = "unknown"
 
 
 @dataclass
@@ -114,6 +120,10 @@ class DayTraffic:
     hours: list[int] = field(default_factory=lambda: [0] * 24)
     by_route: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     by_status: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    # which app sent the request: X-Client header, else Origin/Referer host,
+    # else "unknown" (the zig server attributes it on the span; rust-era logs
+    # carry nothing, so they count as unknown)
+    by_client: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
     @property
     def total(self) -> int:
@@ -131,6 +141,7 @@ class DayTraffic:
             "hours": list(self.hours),
             "byRoute": dict(sorted(self.by_route.items(), key=lambda kv: -kv[1])),
             "byStatus": dict(sorted(self.by_status.items())),
+            "byClient": dict(sorted(self.by_client.items(), key=lambda kv: -kv[1])),
             "generatedAt": generated_at.astimezone(dt.UTC).isoformat().replace("+00:00", "Z"),
         }
 
@@ -145,6 +156,7 @@ def rollup(rows: list[HourRow]) -> dict[dt.date, DayTraffic]:
         day.hours[hour.hour] += r.requests
         day.by_route[normalize_route(r.path or "")] += r.requests
         day.by_status[status_class(r.status) if r.status is not None else "unknown"] += r.requests
+        day.by_client[r.client or "unknown"] += r.requests
     return days
 
 
@@ -160,6 +172,7 @@ def parse_rows(payload: dict) -> list[HourRow]:
                 path=row.get("path"),
                 status=int(status) if status is not None else None,
                 requests=int(row["requests"]),
+                client=row.get("client") or "unknown",
             )
         )
     return out
