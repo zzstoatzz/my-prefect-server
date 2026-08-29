@@ -65,3 +65,55 @@ def test_dry_run_renders_without_pi(monkeypatch):
     with prefect_test_harness():
         state = autofix.autofix(uuid4(), dry_run=True, return_state=True)
     assert state.name == "DryRun"
+
+
+def test_split_summary():
+    s, rest = autofix.split_summary(
+        "SUMMARY: retries too short; skip the segment\nbody\nmore"
+    )
+    assert s == "retries too short; skip the segment"
+    assert rest == "body\nmore"
+    s, rest = autofix.split_summary("no header\nbody")
+    assert s == "no header" and rest == "no header\nbody"
+    assert (
+        len(autofix.split_summary("SUMMARY: " + "x" * 999)[0]) == autofix.SUMMARY_LIMIT
+    )
+
+
+def test_checkout_as_of_picks_commit_before_run(tmp_path, monkeypatch):
+    import subprocess
+    from datetime import UTC, datetime
+
+    src = tmp_path / "src"
+    subprocess.run(["git", "init", "-q", "-b", "main", src], check=True)
+    env = {
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+        "PATH": "/usr/bin:/bin:/opt/homebrew/bin",
+    }
+    shas = []
+    for i, date in enumerate(["2026-01-01T00:00:00Z", "2026-01-03T00:00:00Z"]):
+        (src / "f").write_text(str(i))
+        subprocess.run(["git", "add", "f"], cwd=src, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", str(i)],
+            cwd=src,
+            check=True,
+            env={**env, "GIT_AUTHOR_DATE": date, "GIT_COMMITTER_DATE": date},
+        )
+        shas.append(
+            subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=src,
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+        )
+    monkeypatch.setattr(autofix, "REPO_URL", str(src))
+    dst = tmp_path / "dst"
+    got = autofix.checkout_as_of(str(dst), datetime(2026, 1, 2, tzinfo=UTC))
+    assert got == shas[0]
+    assert (dst / "f").read_text() == "0"

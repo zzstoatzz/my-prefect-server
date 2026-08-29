@@ -13,14 +13,16 @@ in Completed(name="Degraded").
 
 import argparse
 import asyncio
+import os
 import subprocess
-import tempfile
 import traceback
+from datetime import timedelta
+from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import UUID
 
 from mps.pi import minimal_env, run_pi, screen_prompt
-from prefect import flow, get_client
+from prefect import flow, get_client, runtime
 from prefect.blocks.system import Secret
 from prefect.client.schemas.filters import (
     FlowRunFilter,
@@ -34,18 +36,23 @@ from prefect.states import Completed
 
 REPO_URL = "https://github.com/zzstoatzz/my-prefect-server.git"
 LOG_LINES = 150
-DISCORD_LIMIT = 1900
+SUMMARY_LIMIT = 240
 
 PROMPT = """\
 you are diagnosing a failed prefect flow run for the operator of this repo.
-the repo checked out in your working directory is the one the run executed.
-you have read-only tools: read the flow's entrypoint and whatever it calls.
+the working directory is the repo at the commit the run executed, with recent
+history. you have read-only tools: read the flow's entrypoint and whatever it
+calls; `git log` is available.
 
-report, in plain language addressed to the operator, under 250 words:
-1. what failed and where (cite file:line where you can)
+your first line must be exactly `SUMMARY: <one sentence, under 200 characters>`
+naming the cause and the action you propose. it is all the operator sees in
+chat; the rest is read on demand.
+
+then, under 200 words:
+1. what failed and where (cite file:line)
 2. the most likely cause
-3. what you would change, as a concrete proposal — you cannot edit anything
-4. what you could not determine and would need to ask
+3. what you would change — you cannot edit anything
+4. what you could not determine
 
 do not speculate about credentials or environment variables beyond what the
 logs show.
@@ -79,6 +86,47 @@ async def gather(flow_run_id: UUID) -> dict[str, Any]:
         "logs": list(reversed(logs)),
         "failed_tasks": failed_tasks,
     }
+
+
+def ui_url(kind: str, id_: UUID) -> str:
+    base = os.environ.get("PREFECT_API_URL", "").removesuffix("/api")
+    return f"{base}/{kind}/{kind[:-1]}/{id_}"
+
+
+def checkout_as_of(cwd: str, when) -> str:
+    """clone main and check out the commit the run's pull step would have seen."""
+    env = minimal_env()
+    since = (when - timedelta(days=14)).strftime("%Y-%m-%d")
+    subprocess.run(
+        ["git", "clone", f"--shallow-since={since}", "--branch", "main", REPO_URL, cwd],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    sha = subprocess.run(
+        ["git", "rev-list", "-1", f"--before={when.isoformat()}", "main"],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "checkout", "-q", sha],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+    return sha
+
+
+def split_summary(diagnosis: str) -> tuple[str, str]:
+    first, _, rest = diagnosis.partition("\n")
+    if first.upper().startswith("SUMMARY:"):
+        return first[len("SUMMARY:") :].strip()[:SUMMARY_LIMIT], rest.strip()
+    return first.strip()[:SUMMARY_LIMIT], diagnosis
 
 
 def render(ctx: dict[str, Any]) -> str:
@@ -118,24 +166,20 @@ def autofix(flow_run_id: UUID, dry_run: bool = False) -> Completed:
         prompt = PROMPT.format(brief=brief)
         screen_prompt(prompt, "read-only", anthropic_key)
 
-        env = minimal_env(ANTHROPIC_API_KEY=anthropic_key)
-        cwd = tempfile.mkdtemp(prefix="autofix-")
-        subprocess.run(
-            ["git", "clone", "--depth", "1", REPO_URL, cwd],
-            check=True,
-            capture_output=True,
-            text=True,
-            env=minimal_env(),
-        )
-        diagnosis = run_pi(
-            prompt,
-            cwd=cwd,
-            provider="anthropic",
-            thinking="medium",
-            tool_mode="read-only",
-            env=env,
-        ).strip()
+        with TemporaryDirectory(prefix="autofix-") as cwd:
+            sha = checkout_as_of(cwd, ctx["run"].start_time)
+            print(f"diagnosing against {sha}")
+            diagnosis = run_pi(
+                prompt,
+                cwd=cwd,
+                provider="anthropic",
+                thinking="medium",
+                tool_mode="read-only",
+                env=minimal_env(ANTHROPIC_API_KEY=anthropic_key),
+            ).strip()
 
+        summary, _ = split_summary(diagnosis)
+        this_run = runtime.flow_run.id
         emit_event(
             event="autofix.diagnosed",
             resource={
@@ -144,11 +188,13 @@ def autofix(flow_run_id: UUID, dry_run: bool = False) -> Completed:
             },
             payload={
                 "deployment": dep_name,
-                "failed_flow_run_id": str(flow_run_id),
-                "diagnosis": diagnosis[:DISCORD_LIMIT],
+                "sha": sha,
+                "summary": summary,
+                "failed_run_url": ui_url("flow-runs", flow_run_id),
+                "autofix_url": ui_url("flow-runs", this_run) if this_run else "",
             },
         )
-        return Completed(name="Diagnosed", message=diagnosis[:500])
+        return Completed(name="Diagnosed", message=summary)
     except Exception:  # noqa: BLE001 — a failing autofix would trigger itself
         err = traceback.format_exc()
         print(err)

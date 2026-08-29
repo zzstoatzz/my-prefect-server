@@ -133,8 +133,9 @@ automations:
 
   - name: autofix diagnosed -> discord
     description: >-
-      pi's read-only diagnosis of a failed run, delivered next to the alert
-      it answers. autofix.py holds no webhook credential.
+      One line: pi's read-only verdict on a failed run, linking the failed run
+      and the autofix run whose logs hold the full diagnosis. autofix.py holds
+      no webhook credential.
     enabled: true
     trigger:
       type: event
@@ -147,4 +148,4 @@ automations:
       - type: send-notification
         block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
         subject: "autofix: {{ resource.name }}"
-        body: "{{ payload.diagnosis }}"
+        body: "{{ payload.summary }}\nfailed run: {{ payload.failed_run_url }}\nfull diagnosis: {{ payload.autofix_url }}"
