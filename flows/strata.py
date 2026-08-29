@@ -7,10 +7,12 @@ against getSegment, so a segment's per-collection counts cost ~1.3 KB and two
 requests instead of its ~270 MB body (docs/jss-format-v1.md in zat.dev/stream;
 measured 2026-08-29 on segment 6000).
 
-The flow is stateless: it asks the strata worker how far it has got, lists
-segments past that via listSegments, decodes each new one, and POSTs batches.
-Reruns are idempotent (the worker upserts). Runs on the home box; this is a
-few KB per segment, not a firehose.
+The flow is stateless and compaction-aware: each run lists every sealed
+segment (a handful of requests), compares checksums with what the worker
+already holds, and re-reads whatever is new or rewritten. Compaction rewrites
+old segments continuously, so a segment's counts legitimately change after it
+was first summarised; matching on checksum catches that. Runs on the home box;
+this is a few KB per segment, not a firehose.
 
 The archive key is rate-limited to 8 Mbps server-side; nothing here comes near
 it. Concurrency is capped so a full first walk (≈7k segments) stays polite.
@@ -106,8 +108,18 @@ class Archive:
         with urllib.request.urlopen(request(f"{ARCHIVE_URL}{path}", headers), timeout=TIMEOUT_S) as resp:
             return resp.status, resp.read()
 
-    def list_segments(self, after_idx: int) -> list[SegmentListing]:
-        cursor = "" if after_idx < 0 else f"&cursor={after_idx}"
+    def list_all(self) -> list[SegmentListing]:
+        """Every sealed segment the archive lists, in index order."""
+        out: list[SegmentListing] = []
+        cursor = ""
+        while True:
+            page = self._list_page(cursor)
+            out.extend(page)
+            if len(page) < LIST_PAGE:
+                return out
+            cursor = f"&cursor={page[-1].idx}"
+
+    def _list_page(self, cursor: str) -> list[SegmentListing]:
         _, body = self._get(f"/xrpc/network.bsky.jetstream.listSegments?limit={LIST_PAGE}{cursor}")
         page = json.loads(body)
         return [
@@ -126,32 +138,28 @@ class Archive:
             for s in page["segments"]
         ]
 
-    def count_segments(self) -> int:
-        """How many sealed segments the archive lists in total (one page of 1000 per request)."""
-        total = 0
-        cursor = ""
-        while True:
-            _, body = self._get(f"/xrpc/network.bsky.jetstream.listSegments?limit=1000{cursor}")
-            page = json.loads(body)
-            total += len(page["segments"])
-            if not page["segments"] or not page.get("cursor"):
-                return total
-            cursor = f"&cursor={page['cursor']}"
-
-    def collections(self, seg: SegmentListing) -> list[tuple[str, int]]:
-        path = f"/xrpc/network.bsky.jetstream.getSegment?name={seg.name}"
-        status, raw = self._get(path, f"0-{HEADER_LEN - 1}")
-        if status != 206:
-            raise RuntimeError(f"{seg.name}: header request returned {status}, not 206")
-        header = parse_header(raw)
-        if header.checksum == 0:
-            raise RuntimeError(f"{seg.name}: unsealed (checksum 0) despite being listed")
-        if header.event_count != seg.event_count or header.min_seq != seg.min_seq:
-            raise RuntimeError(f"{seg.name}: header disagrees with listSegments")
-        status, raw = self._get(path, f"{header.collection_index_offset}-")
-        if status != 206:
-            raise RuntimeError(f"{seg.name}: collection index request returned {status}, not 206")
-        return parse_collection_index(raw)
+    def collections(self, seg: SegmentListing) -> tuple[SegmentListing, list[tuple[str, int]]]:
+        """The segment's per-collection counts, with the listing they belong to. Compaction can rewrite a
+        segment between listing and reading; when the header disagrees, the segment is re-listed and read
+        again so the record stored matches the bytes that were read."""
+        for attempt in range(3):
+            path = f"/xrpc/network.bsky.jetstream.getSegment?name={seg.name}"
+            status, raw = self._get(path, f"0-{HEADER_LEN - 1}")
+            if status != 206:
+                raise RuntimeError(f"{seg.name}: header request returned {status}, not 206")
+            header = parse_header(raw)
+            if header.checksum == 0:
+                raise RuntimeError(f"{seg.name}: unsealed (checksum 0) despite being listed")
+            if header.event_count == seg.event_count and header.min_seq == seg.min_seq:
+                status, raw = self._get(path, f"{header.collection_index_offset}-")
+                if status != 206:
+                    raise RuntimeError(f"{seg.name}: collection index request returned {status}, not 206")
+                return seg, parse_collection_index(raw)
+            fresh = self._list_page(f"&cursor={seg.idx - 1}")
+            if not fresh or fresh[0].idx != seg.idx:
+                raise RuntimeError(f"{seg.name}: vanished from listSegments")
+            seg = fresh[0]
+        raise RuntimeError(f"{seg.name}: header kept disagreeing with listSegments after 3 attempts")
 
 
 def segment_record(seg: SegmentListing, collections: list[tuple[str, int]]) -> dict:
@@ -175,10 +183,10 @@ class Strata:
         self._url = url.rstrip("/")
         self._token = token
 
-    def progress(self) -> int:
-        with urllib.request.urlopen(request(f"{self._url}/api/progress"), timeout=TIMEOUT_S) as resp:
-            max_idx = json.load(resp)["maxIdx"]
-        return -1 if max_idx is None else int(max_idx)
+    def checksums(self) -> dict[int, str]:
+        """What the worker already holds: segment index -> checksum it was summarised at."""
+        with urllib.request.urlopen(request(f"{self._url}/api/checksums"), timeout=TIMEOUT_S) as resp:
+            return {int(s["idx"]): s["checksum"] for s in json.load(resp)["segments"]}
 
     def ingest(self, records: list[dict], archive_segments: int) -> None:
         req = request(
@@ -193,41 +201,39 @@ class Strata:
             raise RuntimeError(f"worker ingested {ingested} of {len(records)}")
 
 
+def stale_or_new(listing: list[SegmentListing], known: dict[int, str]) -> list[SegmentListing]:
+    """Segments to (re)read: not summarised yet, or summarised at a different checksum (compaction rewrote them)."""
+    return [s for s in listing if known.get(s.idx) != s.checksum]
+
+
 @task(retries=2, retry_delay_seconds=15, log_prints=True)
 def ingest_batch(archive: Archive, strata: Strata, segs: list[SegmentListing], archive_segments: int) -> int:
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-        records = [segment_record(s, c) for s, c in zip(segs, pool.map(archive.collections, segs))]
+        records = [segment_record(s, c) for s, c in pool.map(archive.collections, segs)]
     strata.ingest(records, archive_segments)
     return len(records)
 
 
 @flow(name="ingest-segment-collections", log_prints=True)
 def ingest_segment_collections(max_segments: int = 2000) -> int:
-    """Walk sealed segments past the worker's progress and ingest them; returns segments ingested."""
+    """Summarise every sealed segment the worker lacks or holds at a stale checksum; returns segments ingested."""
     log = get_run_logger()
     archive = Archive(os.environ["STREAM_ARCHIVE_KEY"])
     strata_api = Strata(os.environ["STRATA_URL"], os.environ["STRATA_INGEST_TOKEN"])
-    start = strata_api.progress()
-    sealed = archive.count_segments()
-    log.info("worker progress: max idx %d of %d sealed segments", start, sealed)
+    listing = archive.list_all()
+    known = strata_api.checksums()
+    todo = stale_or_new(listing, known)
+    log.info("archive lists %d sealed segments; worker holds %d; %d to read", len(listing), len(known), len(todo))
 
-    after = start
     done = 0
-    while done < max_segments:
-        page = archive.list_segments(after)
-        if not page:
-            break
-        for i in range(0, len(page), BATCH):
-            chunk = page[i : i + BATCH]
-            done += ingest_batch(archive, strata_api, chunk, sealed)
-            after = chunk[-1].idx
-            if done >= max_segments:
-                break
-        log.info("ingested through idx %d (%d this run)", after, done)
+    for i in range(0, min(len(todo), max_segments), BATCH):
+        chunk = todo[i : i + BATCH]
+        done += ingest_batch(archive, strata_api, chunk, len(listing))
+        log.info("ingested %d/%d (through idx %d)", done, min(len(todo), max_segments), chunk[-1].idx)
 
     create_markdown_artifact(
         key="strata",
-        markdown=f"| started after | ingested through | segments this run |\n|---|---|---|\n| {start} | {after} | {done} |",
+        markdown=f"| sealed | held before | needed | ingested this run |\n|---|---|---|---|\n| {len(listing)} | {len(known)} | {len(todo)} | {done} |",
         description="strata ingest progress",
     )
     return done

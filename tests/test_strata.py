@@ -58,3 +58,14 @@ def test_every_request_carries_the_flow_user_agent():
     assert posted.get_header("User-agent") == USER_AGENT
     assert posted.get_header("Authorization") == "Bearer x"
     assert posted.get_method() == "POST"
+
+
+def test_stale_or_new_picks_missing_and_rewritten_segments():
+    from flows.strata import SegmentListing, stale_or_new
+
+    def seg(idx, checksum):
+        return SegmentListing(idx, f"seg_{idx}", 1, checksum, 1, 1, 1, 2, 1, 2)
+
+    listing = [seg(0, "aa"), seg(1, "bb"), seg(2, "cc")]
+    known = {0: "aa", 1: "old"}
+    assert [s.idx for s in stale_or_new(listing, known)] == [1, 2]
