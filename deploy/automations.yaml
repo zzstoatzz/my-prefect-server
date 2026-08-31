@@ -167,3 +167,22 @@ automations:
         block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
         subject: "autofix PR: {{ resource.name }}"
         body: "{{ payload.title }}\n{{ payload.pr_url }}\nfull diagnosis: {{ payload.autofix_url }}"
+
+  - name: sustained burn -> discord
+    description: >-
+      diagnostics found a process (outside the prefect workload) that has held
+      a core for hours on the host. Repeats hourly with the canary until the
+      process is dealt with — that persistence is the point.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - diagnostics.sustained-burn
+      threshold: 1
+      within: 60
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "sustained cpu burn on {{ resource.name }}"
+        body: "{{ payload.burners }}"

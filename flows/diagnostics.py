@@ -21,6 +21,12 @@ Two metrics deserve a note, since both look alarming and are not:
     cache trimming against MemoryHigh, not starvation. `oom_kill` is the
     number that matters.
 
+It also attributes CPU to processes and goes `Completed(name="Degraded")`
+plus a `diagnostics.sustained-burn` event when something outside the
+prefect workload has held a core for hours — a forgotten simulator once ran
+two days at 100% before anyone noticed, because host graphs can say "hot"
+but not "who".
+
 `scan_cache_size` defaults to False on purpose: the uv cache is tens of GB
 and walking it takes minutes while evicting the dentry cache — a probe that
 degrades the thing it measures. Enable it on an infrequent schedule only.
@@ -36,6 +42,8 @@ from typing import Any
 
 from prefect import flow, get_run_logger
 from prefect.artifacts import create_markdown_artifact
+from prefect.events import emit_event
+from prefect.states import Completed
 
 UV_CACHE_DIR = Path(os.environ.get("UV_CACHE_DIR", "~/.cache/uv")).expanduser()
 
@@ -139,6 +147,76 @@ def _flow_runs_in_flight() -> int | None:
     return int(result.stdout.strip() or 0) if result.returncode in (0, 1) else None
 
 
+def _process_samples() -> list[dict[str, Any]]:
+    """One `ps` snapshot with *cumulative* cpu seconds per process.
+
+    cputimes/etimes gives a duty cycle from a single sample, so "has been
+    burning a core for hours" needs no state between runs. procps-only
+    columns; on a platform without them (macOS) this returns [].
+    """
+    try:
+        result = subprocess.run(
+            ["ps", "-eo", "pid=,etimes=,cputimes=,pmem=,args=", "--sort=-cputimes"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if result.returncode != 0:
+        return []
+    return parse_ps(result.stdout)
+
+
+def parse_ps(stdout: str) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for line in stdout.splitlines():
+        fields = line.split(None, 4)
+        if len(fields) < 5 or not fields[0].isdigit():
+            continue
+        pid, etimes, cputimes, pmem, args = fields
+        out.append(
+            {
+                "pid": int(pid),
+                "age_s": int(etimes),
+                "cpu_s": int(cputimes),
+                "mem_pct": float(pmem),
+                "args": args,
+            }
+        )
+    return out
+
+
+# our own workload, and kernel threads — never flagged. flow subprocesses
+# (dbt etc.) are children of `flow-run execute` with their own args, but the
+# age floor below outlives any legitimate flow run's timeout.
+EXPECTED_SUBSTRINGS = ("prefect worker", "flow-run execute")
+
+BURNER_MIN_AGE_S = 2 * 3600
+BURNER_MIN_CPU_S = 3600
+BURNER_MIN_DUTY = 0.5
+
+
+def sustained_burners(procs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Processes that have held a core for hours and are still holding it.
+
+    The bar is deliberately high — this exists to catch a forgotten load
+    generator or runaway daemon, not to page about a busy afternoon.
+    """
+    out = []
+    for p in procs:
+        if p["args"].startswith("["):
+            continue
+        if any(s in p["args"] for s in EXPECTED_SUBSTRINGS):
+            continue
+        if p["age_s"] < BURNER_MIN_AGE_S or p["cpu_s"] < BURNER_MIN_CPU_S:
+            continue
+        if p["cpu_s"] / p["age_s"] < BURNER_MIN_DUTY:
+            continue
+        out.append(p)
+    return sorted(out, key=lambda p: p["cpu_s"], reverse=True)
+
+
 def _cache_entry_counts() -> dict[str, int]:
     """Entry counts per cache subdir — one readdir each, no recursion.
 
@@ -194,6 +272,8 @@ def diagnostics(scan_cache_size: bool = False, cache_scan_timeout: int = 120):
     cgroup = _cgroup_memory()
     disk = shutil.disk_usage("/")
     in_flight = _flow_runs_in_flight()
+    procs = _process_samples()
+    burners = sustained_burners(procs)
     cache_counts = _cache_entry_counts()
     cache_size = _cache_size_bytes(cache_scan_timeout) if scan_cache_size else None
 
@@ -237,6 +317,13 @@ def diagnostics(scan_cache_size: bool = False, cache_scan_timeout: int = 120):
         ("uv cache size", _gib(cache_size) if scan_cache_size else "not scanned"),
     ]
     rows.extend((f"uv cache/{name}", f"{count} entries") for name, count in cache_counts.items())
+    rows.extend(
+        (
+            f"top cpu pid {p['pid']}",
+            f"{p['cpu_s'] / 60:.0f} cpu-min over {p['age_s'] / 60:.0f} min — {p['args'][:80]}",
+        )
+        for p in procs[:5]
+    )
 
     create_markdown_artifact(
         key="host-diagnostics",
@@ -255,6 +342,24 @@ def diagnostics(scan_cache_size: bool = False, cache_scan_timeout: int = 120):
         ),
         description="host resource sample from the diagnostics canary",
     )
+
+    if burners:
+        described = [
+            f"pid {p['pid']} ({p['args'][:60]}): {p['cpu_s'] / 3600:.1f} cpu-h "
+            f"over {p['age_s'] / 3600:.1f} h"
+            for p in burners
+        ]
+        for line in described:
+            logger.warning("sustained cpu burn: %s", line)
+        emit_event(
+            event="diagnostics.sustained-burn",
+            resource={
+                "prefect.resource.id": f"diagnostics.host.{platform.node()}",
+                "prefect.resource.name": platform.node(),
+            },
+            payload={"burners": burners},
+        )
+        return Completed(name="Degraded", message="; ".join(described))
 
     return {
         "hostname": platform.node(),
