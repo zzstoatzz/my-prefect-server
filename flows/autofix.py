@@ -76,12 +76,14 @@ change that resolves the cause. add or extend a regression test when the fix
 is testable. run the test suite for what you touched (`uv run pytest <paths>`)
 before finishing.
 
-house rules: no inline comments unless something is genuinely non-obvious;
-lowercase prose; match the surrounding style.
+read CLAUDE.md at the repo root first and follow its conventions. compose the
+pull request title and NOTE per the open-pr skill's prose rules; the flow —
+not you — publishes the pull (patch-based, no gh), so only the skill's
+composition guidance applies, not its git/gh mechanics.
 
 your last lines must be exactly:
-TITLE: <imperative, <70 chars, scoped like `strata: lengthen header retry`>
-NOTE: <one or two sentences: what you changed and why, for the PR body>
+TITLE: <the PR title>
+NOTE: <the PR body>
 
 if the diagnosis is wrong, the fix is already on main, or you cannot fix it
 safely, change nothing and end with `NO-CHANGE: <reason>` instead.
@@ -95,6 +97,27 @@ safely, change nothing and end with `NO-CHANGE: <reason>` instead.
 
 PR_REPO = "my-prefect-server"
 PR_OWNER = "zzstoatzz.io"
+
+# canonical skill sources, cloned at runtime and passed to pi via --skill —
+# the same files the operator's local tooling installs, never a paraphrase
+SKILL_SOURCES: dict[str, tuple[str, str]] = {
+    "open-pr": ("https://github.com/prefecthq/internal-skills.git", "skills/open-pr"),
+}
+
+
+def fetch_skills(workdir: str) -> list[str]:
+    paths = []
+    for name, (url, subpath) in SKILL_SOURCES.items():
+        dest = os.path.join(workdir, f"skill-{name}")
+        subprocess.run(
+            ["git", "clone", "--depth", "1", url, dest],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=minimal_env(),
+        )
+        paths.append(os.path.join(dest, subpath))
+    return paths
 
 
 async def gather(flow_run_id: UUID) -> dict[str, Any]:
@@ -199,7 +222,8 @@ def propose_fix(
 
     prompt = FIX_PROMPT.format(diagnosis=diagnosis, brief=brief)
     screen_prompt(prompt, "full", anthropic_key)
-    with TemporaryDirectory(prefix="autofix-fix-") as cwd:
+    with TemporaryDirectory(prefix="autofix-fix-") as workdir:
+        cwd = os.path.join(workdir, "repo")
         env = minimal_env(ANTHROPIC_API_KEY=anthropic_key)
         subprocess.run(
             ["git", "clone", "--depth", "1", REPO_URL, cwd],
@@ -208,6 +232,7 @@ def propose_fix(
             text=True,
             env=minimal_env(),
         )
+        skills = fetch_skills(workdir)
         base = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             cwd=cwd,
@@ -222,6 +247,7 @@ def propose_fix(
             thinking="medium",
             tool_mode="full",
             env=env,
+            skills=skills,
         ).strip()
         if reason := trailer(output, "NO-CHANGE"):
             return {"reason": reason}

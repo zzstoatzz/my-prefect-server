@@ -106,8 +106,14 @@ def run_pi(
     tool_mode: ToolMode = "read-only",
     env: dict[str, str] | None = None,
     timeout_seconds: int = 1500,
+    skills: list[str] | None = None,
 ) -> str:
-    """run `pi -p <prompt>` in cwd and return its final output."""
+    """run `pi -p <prompt>` in cwd and return its final output.
+
+    `skills` are paths to skill files or directories (`pi --skill`) — the way
+    to give pi the same conventions the operator's own tooling uses, from the
+    same source, rather than paraphrasing them into prompts.
+    """
     if shutil.which("pi") is None:
         raise RuntimeError(
             "pi is not installed on this worker — "
@@ -117,13 +123,15 @@ def run_pi(
     cmd = ["pi", "--print", "--no-session", "--provider", provider]
     if model:
         cmd += ["--model", model]
+    for skill in skills or []:
+        cmd += ["--skill", skill]
     cmd += ["--thinking", thinking, *TOOL_ARGS[tool_mode]]
     cmd.append(prompt)
 
     print(f"running: {' '.join(cmd[:-1])} <prompt: {len(prompt)} chars> in {cwd}")
     # pi -p also accepts prompt content piped on stdin and waits for EOF, so an
     # inherited open stdin (e.g. under the systemd worker) hangs it
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: PLW1510 — returncode is checked below
         cmd,
         capture_output=True,
         text=True,
