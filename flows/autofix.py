@@ -1,10 +1,17 @@
-"""a failed flow run triggers pi, read-only, to diagnose it.
+"""a failed flow run triggers pi to diagnose it, and optionally propose a fix.
 
-first rung of the autofix ladder (docs/autofix-design.md). the automation
-hands this flow the failed run's id; the flow — not pi — pulls the run's
-state, logs, and task tracebacks with the orchestrator credential, renders a
-brief, and runs pi in a fresh clone with read-only tools. pi's diagnosis is
-emitted as `autofix.diagnosed` so an automation can forward it to discord.
+rungs one and two of the autofix ladder (docs/autofix-design.md). the
+automation hands this flow the failed run's id; the flow — not pi — pulls the
+run's state, logs, and task tracebacks with the orchestrator credential,
+renders a brief, and runs pi in a fresh clone with read-only tools. pi's
+diagnosis is emitted as `autofix.diagnosed` so an automation can forward it
+to discord.
+
+with `propose=True`, a second pi round gets full tools in a fresh clone of
+main and attempts the fix; the flow builds the patch and publishes it as a
+tangled pull authored by gardener, the maintenance identity dep-bump already
+uses — pi holds no credential either round. the automation passes
+propose=false until the operator has reviewed a few manual proposals.
 
 this flow must never reach Failed: the trigger that starts it fires on any
 failed run, so a failing autofix would trigger itself. every error path ends
@@ -60,6 +67,34 @@ logs show.
 === failed run ===
 {brief}
 """
+
+FIX_PROMPT = """\
+a prefect flow run failed; a read-only diagnosis of it follows. the working
+directory is a fresh clone of the repo at current main. implement the fix the
+diagnosis proposes (or a better one the code supports), with the smallest
+change that resolves the cause. add or extend a regression test when the fix
+is testable. run the test suite for what you touched (`uv run pytest <paths>`)
+before finishing.
+
+house rules: no inline comments unless something is genuinely non-obvious;
+lowercase prose; match the surrounding style.
+
+your last lines must be exactly:
+TITLE: <imperative, <70 chars, scoped like `strata: lengthen header retry`>
+NOTE: <one or two sentences: what you changed and why, for the PR body>
+
+if the diagnosis is wrong, the fix is already on main, or you cannot fix it
+safely, change nothing and end with `NO-CHANGE: <reason>` instead.
+
+=== diagnosis ===
+{diagnosis}
+
+=== failed run ===
+{brief}
+"""
+
+PR_REPO = "my-prefect-server"
+PR_OWNER = "zzstoatzz.io"
 
 
 async def gather(flow_run_id: UUID) -> dict[str, Any]:
@@ -122,6 +157,13 @@ def checkout_as_of(cwd: str, when) -> str:
     return sha
 
 
+def trailer(output: str, key: str) -> str:
+    for line in reversed(output.strip().splitlines()):
+        if line.startswith(f"{key}:"):
+            return line[len(key) + 1 :].strip()
+    return ""
+
+
 def split_summary(diagnosis: str) -> tuple[str, str]:
     first, _, rest = diagnosis.partition("\n")
     if first.upper().startswith("SUMMARY:"):
@@ -149,8 +191,65 @@ def render(ctx: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-@flow(name="autofix", log_prints=True, timeout_seconds=1500)
-def autofix(flow_run_id: UUID, dry_run: bool = False) -> Completed:
+def propose_fix(
+    diagnosis: str, brief: str, anthropic_key: str, dep_name: str
+) -> dict[str, str]:
+    """second pi round: full tools in a clone of main; the flow publishes the patch."""
+    from mps.tangled import build_patch, create_pull
+
+    prompt = FIX_PROMPT.format(diagnosis=diagnosis, brief=brief)
+    screen_prompt(prompt, "full", anthropic_key)
+    with TemporaryDirectory(prefix="autofix-fix-") as cwd:
+        env = minimal_env(ANTHROPIC_API_KEY=anthropic_key)
+        subprocess.run(
+            ["git", "clone", "--depth", "1", REPO_URL, cwd],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=minimal_env(),
+        )
+        base = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        output = run_pi(
+            prompt,
+            cwd=cwd,
+            provider="anthropic",
+            thinking="medium",
+            tool_mode="full",
+            env=env,
+        ).strip()
+        if reason := trailer(output, "NO-CHANGE"):
+            return {"reason": reason}
+        title = trailer(output, "TITLE") or f"autofix: {dep_name}"
+        note = trailer(output, "NOTE")
+        patch = build_patch(cwd, base, title, "gardener", email="gardener@zat.dev")
+    if not patch:
+        return {"reason": "pi made no changes"}
+
+    body = "\n\n".join(
+        part
+        for part in (
+            note,
+            f"proposed by autofix for a failed `{dep_name}` run. full diagnosis in the autofix run logs.",
+            diagnosis,
+        )
+        if part
+    )
+    handle = Secret.load("gardener-handle").get()
+    password = Secret.load("gardener-password").get()
+    pull = create_pull(PR_OWNER, PR_REPO, title, patch, body, handle, password)
+    return {"title": title, **pull}
+
+
+@flow(name="autofix", log_prints=True, timeout_seconds=2400)
+def autofix(
+    flow_run_id: UUID, dry_run: bool = False, propose: bool = False
+) -> Completed:
     try:
         ctx = asyncio.run(gather(flow_run_id))
         dep_name = ctx["deployment"].name if ctx["deployment"] else None
@@ -194,7 +293,30 @@ def autofix(flow_run_id: UUID, dry_run: bool = False) -> Completed:
                 "autofix_url": ui_url("flow-runs", this_run) if this_run else "",
             },
         )
-        return Completed(name="Diagnosed", message=summary)
+        if not propose:
+            return Completed(name="Diagnosed", message=summary)
+
+        result = propose_fix(diagnosis, brief, anthropic_key, dep_name)
+        if "url" not in result:
+            print(f"no proposal: {result.get('reason')}")
+            return Completed(name="Diagnosed", message=summary)
+        emit_event(
+            event="autofix.proposed",
+            resource={
+                "prefect.resource.id": f"autofix.{flow_run_id}",
+                "prefect.resource.name": f"{dep_name} / {ctx['run'].name}",
+            },
+            payload={
+                "deployment": dep_name,
+                "summary": summary,
+                "title": result["title"],
+                "pr_url": result["url"],
+                "autofix_url": ui_url("flow-runs", this_run) if this_run else "",
+            },
+        )
+        return Completed(
+            name="Proposed", message=f"{result['title']} — {result['url']}"
+        )
     except Exception:  # noqa: BLE001 — a failing autofix would trigger itself
         err = traceback.format_exc()
         print(err)
@@ -205,5 +327,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("flow_run_id", type=UUID)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--propose", action="store_true")
     args = parser.parse_args()
-    autofix(args.flow_run_id, dry_run=args.dry_run)
+    autofix(args.flow_run_id, dry_run=args.dry_run, propose=args.propose)

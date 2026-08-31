@@ -149,3 +149,21 @@ automations:
         block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
         subject: "autofix: {{ resource.name }}"
         body: "{{ payload.summary }}\nfailed run: {{ payload.failed_run_url }}\nfull diagnosis: {{ payload.autofix_url }}"
+
+  - name: autofix proposed -> discord
+    description: >-
+      autofix opened a gardener-authored pull for a failed run. One line plus
+      the pulls page; review happens on tangled, not in chat.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - autofix.proposed
+      threshold: 1
+      within: 60
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "autofix PR: {{ resource.name }}"
+        body: "{{ payload.title }}\n{{ payload.pr_url }}\nfull diagnosis: {{ payload.autofix_url }}"

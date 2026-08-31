@@ -117,3 +117,50 @@ def test_checkout_as_of_picks_commit_before_run(tmp_path, monkeypatch):
     got = autofix.checkout_as_of(str(dst), datetime(2026, 1, 2, tzinfo=UTC))
     assert got == shas[0]
     assert (dst / "f").read_text() == "0"
+
+
+def test_trailer_parses_last_lines():
+    out = "did stuff\nTITLE: strata: lengthen retry\nNOTE: bumped delays"
+    assert autofix.trailer(out, "TITLE") == "strata: lengthen retry"
+    assert autofix.trailer(out, "NOTE") == "bumped delays"
+    assert autofix.trailer(out, "NO-CHANGE") == ""
+
+
+def test_propose_off_by_default(monkeypatch):
+    async def fake(_):
+        return ctx("strata")
+
+    monkeypatch.setattr(autofix, "gather", fake)
+    monkeypatch.setattr(autofix, "checkout_as_of", lambda cwd, when: "abc")
+    monkeypatch.setattr(autofix, "run_pi", lambda *a, **k: "SUMMARY: x\nbody")
+    monkeypatch.setattr(autofix, "screen_prompt", lambda *a, **k: None)
+    monkeypatch.setattr(
+        autofix.Secret,
+        "load",
+        staticmethod(lambda n: type("S", (), {"get": lambda self: "k"})()),
+    )
+    monkeypatch.setattr(
+        autofix, "propose_fix", lambda *a, **k: (_ for _ in ()).throw(AssertionError)
+    )
+    with prefect_test_harness():
+        state = autofix.autofix(uuid4(), return_state=True)
+    assert state.name == "Diagnosed"
+
+
+def test_no_change_yields_no_pr(monkeypatch):
+    monkeypatch.setattr(autofix, "screen_prompt", lambda *a, **k: None)
+    monkeypatch.setattr(
+        autofix,
+        "run_pi",
+        lambda *a, **k: "looked around\nNO-CHANGE: already fixed on main",
+    )
+
+    def no_clone(cmd, **kw):
+        class R:
+            stdout = "sha\n"
+
+        return R()
+
+    monkeypatch.setattr(autofix.subprocess, "run", no_clone)
+    result = autofix.propose_fix("diag", "brief", "key", "strata")
+    assert result == {"reason": "already fixed on main"}
