@@ -770,6 +770,36 @@ deployments:
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
           ANTHROPIC_API_KEY: prefect-block://anthropic-api-key
 
+  - name: watch-tangled-pulls
+    entrypoint: flows/watch_tangled_pulls.py:watch_tangled_pulls
+    # drains operator comments on gardener pulls off stream.waow.tech (cursor
+    # replay makes a cron of short runs equivalent to a daemon) and starts
+    # autofix-revise runs. no secrets: the stream is public and the operator
+    # DID filter is server-side.
+    work_pool: *home
+    schedules:
+      - cron: "*/2 * * * *"
+        active: true
+
+  - name: autofix-revise
+    entrypoint: flows/autofix_revise.py:autofix_revise
+    # started by watch-tangled-pulls per operator comment. pi (full tools, no
+    # credentials) revises the pull in a scratch clone; the flow appends the
+    # round and replies as gardener.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
+          prefect flow-run execute
+        env:
+          PREFECT_PLUGINS_ENABLED: "true"
+          PREFECT_PLUGINS_ALLOW: mps-secrets
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          ANTHROPIC_API_KEY: prefect-block://anthropic-api-key
+
   - name: pi-pr
     entrypoint: flows/pi_pr.py:pi_pr
     # one-off: pi (luna) proposes a change in a throwaway clone, the flow turns

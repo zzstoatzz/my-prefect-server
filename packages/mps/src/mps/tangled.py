@@ -299,3 +299,151 @@ def create_pull(
         # the appview assigns sequential pull numbers we can't know here
         "url": f"https://tangled.org/{owner}/{repo}/pulls",
     }
+
+
+# --- pull conversation: rounds and comments ----------------------------------
+#
+# ported from tangled-mcp like create_pull above. two lexicon facts matter:
+# comments rendered on the pull page are sh.tangled.feed.comment (subject
+# strong-ref + markdown body object); sh.tangled.repo.pull.comment is legacy
+# and read-only for us. rounds live inside the pull record itself and are
+# appended, never rewritten.
+
+FEED_COMMENT_NSID = "sh.tangled.feed.comment"
+LEGACY_COMMENT_NSID = "sh.tangled.repo.pull.comment"
+MARKDOWN_NSID = "sh.tangled.markup.markdown"
+
+
+def get_record(uri: str) -> dict[str, Any]:
+    """fetch any record by at-uri from its owner's PDS: {uri, cid, value}."""
+    did, collection, rkey = uri.removeprefix("at://").split("/", 2)
+    resp = httpx.get(
+        f"{resolve_pds(did)}/xrpc/com.atproto.repo.getRecord",
+        params={"repo": did, "collection": collection, "rkey": rkey},
+        timeout=20,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def login(handle: str, password: str) -> tuple[str, str, dict[str, str]]:
+    """createSession on the handle's own PDS: (pds, did, auth headers)."""
+    did = httpx.get(
+        "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle",
+        params={"handle": handle},
+        timeout=20,
+    ).json()["did"]
+    pds = resolve_pds(did)
+    resp = httpx.post(
+        f"{pds}/xrpc/com.atproto.server.createSession",
+        json={"identifier": handle, "password": password},
+        timeout=20,
+    )
+    resp.raise_for_status()
+    return pds, did, {"Authorization": f"Bearer {resp.json()['accessJwt']}"}
+
+
+def append_round(pull_uri: str, patch: str, note: str, handle: str, password: str) -> int:
+    """add a new round to an existing pull you authored; returns the round count."""
+    did, collection, rkey = pull_uri.removeprefix("at://").split("/", 2)
+    if collection != PULL_NSID:
+        raise ValueError(f"not a pull uri: {pull_uri}")
+    pds, session_did, auth = login(handle, password)
+    if session_did != did:
+        raise ValueError("rounds can only be added to your own pulls")
+
+    current = get_record(pull_uri)["value"]
+    blob_resp = httpx.post(
+        f"{pds}/xrpc/com.atproto.repo.uploadBlob",
+        content=_gzip.compress(patch.encode()),
+        headers={**auth, "Content-Type": "application/gzip"},
+        timeout=60,
+    )
+    blob_resp.raise_for_status()
+    rounds = [*current.get("rounds", []), {"patchBlob": blob_resp.json()["blob"], "createdAt": _now()}]
+    record = {**current, "rounds": rounds}
+    if note:
+        record["body"] = f"{current.get('body', '')}\n\n---\nround {len(rounds)}: {note}".strip()
+    put = httpx.post(
+        f"{pds}/xrpc/com.atproto.repo.putRecord",
+        json={"repo": did, "collection": PULL_NSID, "rkey": rkey, "record": record},
+        headers=auth,
+        timeout=30,
+    )
+    put.raise_for_status()
+    return len(rounds)
+
+
+def comment_on_pull(pull_uri: str, body: str, handle: str, password: str) -> str:
+    """comment on a pull as `handle`; the record lands in their repo. returns its uri."""
+    target = get_record(pull_uri)
+    rounds = target["value"].get("rounds", [])
+    pds, did, auth = login(handle, password)
+    record = {
+        "$type": FEED_COMMENT_NSID,
+        "subject": {"uri": pull_uri, "cid": target.get("cid")},
+        "body": {"$type": MARKDOWN_NSID, "text": body, "original": body},
+        "pullRoundIdx": max(len(rounds) - 1, 0),
+        "createdAt": _now(),
+    }
+    put = httpx.post(
+        f"{pds}/xrpc/com.atproto.repo.putRecord",
+        json={"repo": did, "collection": FEED_COMMENT_NSID, "rkey": _tid(), "record": record},
+        headers=auth,
+        timeout=30,
+    )
+    put.raise_for_status()
+    return put.json()["uri"]
+
+
+def comment_subject(value: dict[str, Any]) -> str:
+    """the pull/issue at-uri a comment points at, for either comment lexicon."""
+    subject = value.get("subject")
+    if isinstance(subject, dict):
+        return subject.get("uri", "")
+    if isinstance(subject, str):
+        return subject
+    return value.get("pull", "") or value.get("issue", "")
+
+
+def comment_text(value: dict[str, Any]) -> str:
+    """the comment body text, for either comment lexicon."""
+    body = value.get("body")
+    if isinstance(body, dict):
+        return body.get("text", "")
+    return body or ""
+
+
+def list_pull_comments(commenter_did: str, pull_uri: str) -> list[dict[str, str]]:
+    """all of `commenter_did`'s comments on one pull, oldest first.
+
+    reads the commenter's PDS directly — the authority — so this is the
+    reconcile path that catches anything the stream missed.
+    """
+    pds = resolve_pds(commenter_did)
+    out: list[dict[str, str]] = []
+    for collection in (FEED_COMMENT_NSID, LEGACY_COMMENT_NSID):
+        cursor = None
+        while True:
+            params: dict[str, Any] = {"repo": commenter_did, "collection": collection, "limit": 100}
+            if cursor:
+                params["cursor"] = cursor
+            resp = httpx.get(f"{pds}/xrpc/com.atproto.repo.listRecords", params=params, timeout=20)
+            if resp.status_code == 400:
+                break
+            resp.raise_for_status()
+            data = resp.json()
+            for rec in data.get("records", []):
+                value = rec.get("value", {})
+                if comment_subject(value) == pull_uri:
+                    out.append(
+                        {
+                            "uri": rec["uri"],
+                            "text": comment_text(value),
+                            "created_at": value.get("createdAt", ""),
+                        }
+                    )
+            cursor = data.get("cursor")
+            if not cursor:
+                break
+    return sorted(out, key=lambda c: c["created_at"])

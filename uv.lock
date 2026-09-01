@@ -1739,6 +1739,7 @@ dependencies = [
     { name = "prefect" },
     { name = "prefect-dbt" },
     { name = "semble-api" },
+    { name = "websockets" },
     { name = "zstandard" },
 ]
 
@@ -1775,6 +1776,7 @@ requires-dist = [
     { name = "scipy", marker = "extra == 'atlas'", specifier = ">=1.11" },
     { name = "semble-api", specifier = ">=0.0.2" },
     { name = "umap-learn", marker = "extra == 'atlas'", specifier = ">=0.5" },
+    { name = "websockets", specifier = ">=15.0.1" },
     { name = "zstandard", specifier = ">=0.25.0" },
 ]
 provides-extras = ["atlas"]

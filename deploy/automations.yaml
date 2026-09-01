@@ -186,3 +186,21 @@ automations:
         block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
         subject: "sustained cpu burn on {{ resource.name }}"
         body: "{{ payload.burners }}"
+
+  - name: autofix revised -> discord
+    description: >-
+      gardener answered a review comment — reply text plus whether a new
+      round landed. the conversation itself lives on the pull.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - autofix.revised
+      threshold: 1
+      within: 60
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "autofix revise: {{ resource.name }}"
+        body: "{{ payload.reply }}"

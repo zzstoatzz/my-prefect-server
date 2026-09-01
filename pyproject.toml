@@ -25,6 +25,7 @@ dependencies = [
     "logfire>=4.36.0",
     "semble-api>=0.0.2",
     "zstandard>=0.25.0",
+    "websockets>=15.0.1",
 ]
 
 [project.optional-dependencies]
