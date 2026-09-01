@@ -102,8 +102,10 @@ PR_OWNER = "zzstoatzz.io"
 # the same files the operator's local tooling uses, never a paraphrase.
 # sources must be publicly clonable: fetch_skills runs with a from-scratch
 # env, and a private source "working" here would mean it leaked in through
-# ambient worker credentials. empty until zzstoatzz.io/skills exists.
-SKILL_SOURCES: dict[str, tuple[str, str]] = {}
+# ambient worker credentials.
+SKILL_SOURCES: dict[str, tuple[str, str]] = {
+    "pr-body": ("https://tangled.sh/zzstoatzz.io/skills.git", "pr-body"),
+}
 
 
 def fetch_skills(workdir: str) -> list[str]:
