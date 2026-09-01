@@ -60,6 +60,34 @@ def test_every_request_carries_the_flow_user_agent():
     assert posted.get_method() == "POST"
 
 
+def test_collections_skips_when_segment_is_mid_rewrite():
+    from flows.strata import Archive, SegmentListing
+
+    seg = SegmentListing(idx=732, name="seg_00000002dc.jss", size_bytes=1, checksum="aa" * 8, event_count=1, block_count=1, min_seq=1, max_seq=2, min_witnessed_at=1, max_witnessed_at=2)
+    header = build_header(checksum=0xDEADBEEFDEADBEEF)
+
+    archive = Archive.__new__(Archive)
+    archive._headers = {}
+    archive._get = lambda path, byte_range=None: (206, header)
+    archive._list_page = lambda cursor: [seg]
+
+    assert archive.collections(seg) is None
+
+
+def test_collections_matches_fresh_listing_by_name_not_index():
+    from flows.strata import Archive, SegmentListing
+
+    seg = SegmentListing(idx=732, name="seg_00000002dc.jss", size_bytes=1, checksum="aa" * 8, event_count=1, block_count=1, min_seq=1, max_seq=2, min_witnessed_at=1, max_witnessed_at=2)
+    neighbor = SegmentListing(idx=733, name="seg_00000002dd.jss", size_bytes=1, checksum="bb" * 8, event_count=1, block_count=1, min_seq=1, max_seq=2, min_witnessed_at=1, max_witnessed_at=2)
+
+    archive = Archive.__new__(Archive)
+    archive._headers = {}
+    archive._get = lambda path, byte_range=None: (206, build_header(checksum=0xDEADBEEFDEADBEEF))
+    archive._list_page = lambda cursor: [neighbor]
+
+    assert archive.collections(seg) is None
+
+
 def test_stale_or_new_picks_missing_and_rewritten_segments():
     from flows.strata import SegmentListing, stale_or_new
 

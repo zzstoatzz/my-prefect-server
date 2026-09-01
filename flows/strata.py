@@ -160,9 +160,10 @@ class Archive:
                 return seg, parse_collection_index(raw)
             time.sleep(delay)
             fresh = self._list_page(f"&cursor={seg.idx - 1}")
-            if not fresh or fresh[0].idx != seg.idx:
-                raise RuntimeError(f"{seg.name}: vanished from listSegments")
-            seg = fresh[0]
+            found = next((f for f in fresh if f.name == seg.name), None)
+            if found is None:
+                return None
+            seg = found
         return None
 
 
