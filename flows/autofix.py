@@ -76,10 +76,10 @@ change that resolves the cause. add or extend a regression test when the fix
 is testable. run the test suite for what you touched (`uv run pytest <paths>`)
 before finishing.
 
-read CLAUDE.md at the repo root first and follow its conventions. compose the
-pull request title and NOTE per the open-pr skill's prose rules; the flow —
-not you — publishes the pull (patch-based, no gh), so only the skill's
-composition guidance applies, not its git/gh mechanics.
+read CLAUDE.md at the repo root first and follow its conventions. when a
+pr-authoring skill is loaded, compose TITLE and NOTE by its prose rules; the
+flow — not you — publishes the pull (patch-based, no gh), so only
+composition guidance applies, not git/gh mechanics.
 
 your last lines must be exactly:
 TITLE: <the PR title>
@@ -99,10 +99,11 @@ PR_REPO = "my-prefect-server"
 PR_OWNER = "zzstoatzz.io"
 
 # canonical skill sources, cloned at runtime and passed to pi via --skill —
-# the same files the operator's local tooling installs, never a paraphrase
-SKILL_SOURCES: dict[str, tuple[str, str]] = {
-    "open-pr": ("https://github.com/prefecthq/internal-skills.git", "skills/open-pr"),
-}
+# the same files the operator's local tooling uses, never a paraphrase.
+# sources must be publicly clonable: fetch_skills runs with a from-scratch
+# env, and a private source "working" here would mean it leaked in through
+# ambient worker credentials. empty until zzstoatzz.io/skills exists.
+SKILL_SOURCES: dict[str, tuple[str, str]] = {}
 
 
 def fetch_skills(workdir: str) -> list[str]:
