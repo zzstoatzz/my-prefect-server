@@ -16,11 +16,9 @@ fly secret).
 """
 
 import httpx
-
+from mps.observability import configure_logfire
 from prefect import flow
 from prefect.blocks.system import Secret
-
-from mps.observability import configure_logfire
 
 PHI_BASE = "https://zzstoatzz-phi.fly.dev"
 
