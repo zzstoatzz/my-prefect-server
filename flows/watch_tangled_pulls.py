@@ -5,22 +5,24 @@ reviews a gardener-authored pull on tangled and leaves a comment; this flow
 sees the comment record on the stream.waow.tech firehose and starts an
 autofix-revise run for it.
 
-the consumer is deliberately not a long-lived process: each run connects to
-/subscribe with the saved time_us cursor, drains until the tail goes idle,
-and saves the new cursor. stream.waow.tech replays from the cursor on
-connect, so a cron of short-lived runs sees every event a daemon would,
-without a daemon to babysit. dedupe is by comment rkey (a Variable), so a
-re-read window is harmless — and autofix-revise re-lists the pull's comments
-from the PDS anyway, which is the reconcile path if the stream drops.
+two paths, the same shape phi's review loop settled on: the PDS is the
+authority and the stream is the fast path. every run does one listRecords
+against the operator's PDS (reconcile — catches anything, regardless of
+cursor state) and also drains /subscribe from the saved time_us cursor for
+low latency. dedupe is by comment uri (a Variable), so overlap between the
+two paths and across runs is harmless.
 
-wantedDids scopes the subscription to the operator: only their comments can
-trigger a revision, so gardener replying to itself is structurally impossible.
+wantedDids scopes the subscription to the operator, and reconcile reads only
+the operator's repo: only their comments can trigger a revision, so gardener
+replying to itself is structurally impossible.
 """
 
 import asyncio
 import json
+import time
 from typing import Any
 
+import httpx
 from mps.tangled import (
     DID as OPERATOR_DID,
 )
@@ -29,6 +31,7 @@ from mps.tangled import (
     LEGACY_COMMENT_NSID,
     comment_subject,
     comment_text,
+    resolve_pds,
 )
 from prefect import flow
 from prefect.deployments import run_deployment
@@ -44,6 +47,10 @@ HANDLED_VAR = "autofix_handled_comments"
 HANDLED_KEEP = 300
 IDLE_SECONDS = 8
 MAX_WALL_SECONDS = 120
+RECONCILE_LIMIT = 25
+# saved cursors resume exactly; a fresh cursor overlaps the previous window
+# by this much rather than trusting idle detection during sparse replay
+CURSOR_OVERLAP_US = 30_000_000
 
 
 def relevant_comment(event: dict[str, Any]) -> dict[str, str] | None:
@@ -83,6 +90,7 @@ async def drain(cursor: int | None) -> tuple[list[dict[str, str]], int | None]:
         params += f"&cursor={cursor}"
 
     comments: list[dict[str, str]] = []
+    connect_us = time.time_ns() // 1000
     last_time_us: int | None = None
     deadline = asyncio.get_event_loop().time() + MAX_WALL_SECONDS
 
@@ -97,7 +105,38 @@ async def drain(cursor: int | None) -> tuple[list[dict[str, str]], int | None]:
                 last_time_us = time_us
             if match := relevant_comment(event):
                 comments.append(match)
-    return comments, last_time_us
+    # matching events are sparse, so idle says nothing about replay progress;
+    # the cursor still advances to connect time (minus overlap) because the
+    # reconcile path, not the stream, is what guarantees delivery
+    return comments, max(last_time_us or 0, connect_us - CURSOR_OVERLAP_US)
+
+
+def reconcile() -> list[dict[str, str]]:
+    """the operator's newest comments straight from their PDS (the authority)."""
+    resp = httpx.get(
+        f"{resolve_pds(OPERATOR_DID)}/xrpc/com.atproto.repo.listRecords",
+        params={
+            "repo": OPERATOR_DID,
+            "collection": FEED_COMMENT_NSID,
+            "limit": RECONCILE_LIMIT,
+        },
+        timeout=20,
+    )
+    resp.raise_for_status()
+    out = []
+    for rec in resp.json().get("records", []):
+        value = rec.get("value", {})
+        subject = comment_subject(value)
+        if subject.startswith(PULL_PREFIX):
+            out.append(
+                {
+                    "uri": rec["uri"],
+                    "pull": subject,
+                    "text": comment_text(value),
+                    "created_at": value.get("createdAt", ""),
+                }
+            )
+    return out
 
 
 @flow(name="watch-tangled-pulls", log_prints=True, timeout_seconds=300)
@@ -105,9 +144,16 @@ async def watch_tangled_pulls() -> int:
     cursor = await Variable.aget(CURSOR_VAR, default=None)
     handled: list[str] = await Variable.aget(HANDLED_VAR, default=[])
 
-    comments, last_time_us = await drain(int(cursor) if cursor else None)
-    new = [c for c in comments if c["uri"] not in handled]
-    print(f"stream window: {len(comments)} comment(s), {len(new)} new")
+    try:
+        streamed, new_cursor = await drain(int(cursor) if cursor else None)
+    except Exception as exc:  # noqa: BLE001 — the stream is the fast path, not the authority
+        print(f"stream drain failed ({exc!r}); reconcile still runs")
+        streamed, new_cursor = [], None
+    comments = {c["uri"]: c for c in [*streamed, *reconcile()]}
+    new = [c for c in comments.values() if c["uri"] not in handled]
+    print(
+        f"{len(streamed)} streamed + reconcile -> {len(comments)} comment(s), {len(new)} new"
+    )
 
     for comment in new:
         emit_event(
@@ -131,8 +177,8 @@ async def watch_tangled_pulls() -> int:
             [*handled, *(c["uri"] for c in new)][-HANDLED_KEEP:],
             overwrite=True,
         )
-    if last_time_us:
-        await Variable.aset(CURSOR_VAR, str(last_time_us), overwrite=True)
+    if new_cursor:
+        await Variable.aset(CURSOR_VAR, str(new_cursor), overwrite=True)
     return len(new)
 
 

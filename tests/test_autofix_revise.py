@@ -54,6 +54,7 @@ async def test_watch_dedupes_handled_comments(monkeypatch):
         return R()
 
     monkeypatch.setattr(watch_tangled_pulls, "drain", fake_drain)
+    monkeypatch.setattr(watch_tangled_pulls, "reconcile", list)
     monkeypatch.setattr(watch_tangled_pulls, "run_deployment", fake_run_deployment)
     with prefect_test_harness():
         assert await watch_tangled_pulls.watch_tangled_pulls() == 1
@@ -88,3 +89,27 @@ def test_revise_skips_without_operator_comments(monkeypatch):
     with prefect_test_harness():
         state = autofix_revise.autofix_revise(PULL, return_state=True)
     assert state.name == "Skipped"
+
+
+async def test_watch_survives_stream_failure(monkeypatch):
+    async def broken(cursor):
+        raise OSError("stream down")
+
+    comment = watch_tangled_pulls.relevant_comment(feed_event(rkey="3k9"))
+    monkeypatch.setattr(watch_tangled_pulls, "drain", broken)
+    monkeypatch.setattr(watch_tangled_pulls, "reconcile", lambda: [comment])
+
+    started = []
+
+    async def fake_run_deployment(name, parameters, timeout):
+        started.append(parameters)
+
+        class R:
+            id = "run"
+
+        return R()
+
+    monkeypatch.setattr(watch_tangled_pulls, "run_deployment", fake_run_deployment)
+    with prefect_test_harness():
+        assert await watch_tangled_pulls.watch_tangled_pulls() == 1
+    assert started[0]["pull"] == PULL
