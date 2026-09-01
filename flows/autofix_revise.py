@@ -35,15 +35,14 @@ from prefect.blocks.system import Secret
 from prefect.events import emit_event
 from prefect.states import Completed
 
-from flows.autofix import (  # noqa: F401 — SKILL_SOURCES re-exported for ops greps
-    SKILL_SOURCES,
+from flows.autofix import (
+    GARDENER_DID,
+    PULL_PREFIX,
+    REPO_URL,
     fetch_skills,
-    trailer,
+    trailers,
 )
 
-REPO_URL = "https://github.com/zzstoatzz/my-prefect-server.git"
-GARDENER_DID = "did:plc:7vx7exykq2zfxjxxejovrymi"
-PULL_PREFIX = f"at://{GARDENER_DID}/sh.tangled.repo.pull/"
 MAX_ROUNDS = 6
 
 PROMPT = """\
@@ -174,8 +173,9 @@ def autofix_revise(pull: str, comment_uri: str = "") -> Completed:
             skills=fetch_skills(workdir),
         ).strip()
 
-        reply = trailer(output, "REPLY") or "revised — see the new round."
-        note = trailer(output, "NOTE")
+        parsed = trailers(output, ("REPLY", "NOTE"))
+        reply = parsed.get("REPLY") or "revised — see the new round."
+        note = parsed.get("NOTE", "")
         new_patch = build_patch(
             cwd, base, note or "revision", "gardener", email="gardener@zat.dev"
         )

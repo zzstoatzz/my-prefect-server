@@ -42,6 +42,9 @@ from prefect.events import emit_event
 from prefect.states import Completed
 
 REPO_URL = "https://github.com/zzstoatzz/my-prefect-server.git"
+# gardener.pds.zat.dev — the maintenance identity that authors autofix pulls
+GARDENER_DID = "did:plc:7vx7exykq2zfxjxxejovrymi"
+PULL_PREFIX = f"at://{GARDENER_DID}/sh.tangled.repo.pull/"
 LOG_LINES = 150
 SUMMARY_LIMIT = 240
 
@@ -183,11 +186,26 @@ def checkout_as_of(cwd: str, when) -> str:
     return sha
 
 
-def trailer(output: str, key: str) -> str:
-    for line in reversed(output.strip().splitlines()):
-        if line.startswith(f"{key}:"):
-            return line[len(key) + 1 :].strip()
-    return ""
+def trailers(output: str, keys: tuple[str, ...]) -> dict[str, str]:
+    """parse KEY: blocks from the end of pi's output.
+
+    a value runs from its KEY: line until the next known key (or the end),
+    so a multi-line NOTE — the pr-body skill produces those — survives.
+    """
+    values: dict[str, list[str]] = {}
+    current: str | None = None
+    for line in output.strip().splitlines():
+        head = line.split(":", 1)[0]
+        if head in keys and line.startswith(f"{head}:"):
+            current = head
+            values[current] = [line[len(head) + 1 :].strip()]
+        elif current is not None:
+            values[current].append(line)
+    return {k: "\n".join(v).strip() for k, v in values.items()}
+
+
+def trailer(output: str, key: str, *, siblings: tuple[str, ...] = ()) -> str:
+    return trailers(output, (key, *siblings)).get(key, "")
 
 
 def split_summary(diagnosis: str) -> tuple[str, str]:
@@ -252,10 +270,11 @@ def propose_fix(
             env=env,
             skills=skills,
         ).strip()
-        if reason := trailer(output, "NO-CHANGE"):
+        parsed = trailers(output, ("TITLE", "NOTE", "NO-CHANGE"))
+        if reason := parsed.get("NO-CHANGE"):
             return {"reason": reason}
-        title = trailer(output, "TITLE") or f"autofix: {dep_name}"
-        note = trailer(output, "NOTE")
+        title = (parsed.get("TITLE") or f"autofix: {dep_name}").splitlines()[0]
+        note = parsed.get("NOTE", "")
         patch = build_patch(cwd, base, title, "gardener", email="gardener@zat.dev")
     if not patch:
         return {"reason": "pi made no changes"}

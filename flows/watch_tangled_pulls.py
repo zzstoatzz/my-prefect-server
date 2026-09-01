@@ -35,10 +35,9 @@ from prefect.deployments import run_deployment
 from prefect.events import emit_event
 from prefect.variables import Variable
 
+from flows.autofix import PULL_PREFIX
+
 STREAM_URL = "wss://stream.waow.tech/subscribe"
-# gardener.pds.zat.dev — the maintenance identity that authors autofix pulls
-GARDENER_DID = "did:plc:7vx7exykq2zfxjxxejovrymi"
-PULL_PREFIX = f"at://{GARDENER_DID}/sh.tangled.repo.pull/"
 
 CURSOR_VAR = "autofix_pull_comment_cursor"
 HANDLED_VAR = "autofix_handled_comments"

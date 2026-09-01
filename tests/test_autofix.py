@@ -121,9 +121,16 @@ def test_checkout_as_of_picks_commit_before_run(tmp_path, monkeypatch):
 
 def test_trailer_parses_last_lines():
     out = "did stuff\nTITLE: strata: lengthen retry\nNOTE: bumped delays"
-    assert autofix.trailer(out, "TITLE") == "strata: lengthen retry"
+    assert autofix.trailer(out, "TITLE", siblings=("NOTE",)) == "strata: lengthen retry"
     assert autofix.trailer(out, "NOTE") == "bumped delays"
     assert autofix.trailer(out, "NO-CHANGE") == ""
+
+
+def test_trailers_keep_multiline_note():
+    out = "TITLE: strata: skip stuck segments\nNOTE: the punchline.\n\nmore detail\n- a bullet"
+    parsed = autofix.trailers(out, ("TITLE", "NOTE"))
+    assert parsed["TITLE"] == "strata: skip stuck segments"
+    assert parsed["NOTE"] == "the punchline.\n\nmore detail\n- a bullet"
 
 
 def test_propose_off_by_default(monkeypatch):
