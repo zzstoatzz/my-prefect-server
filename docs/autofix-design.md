@@ -1,9 +1,33 @@
 # autofix: failed flow run → pi → PR (design spike, 2026-08-29)
 
-status: **rung 1 is live (2026-08-29).** `flows/autofix.py` + the
-`flow-run failure -> autofix` and `autofix diagnosed -> discord` automations
-in `deploy/automations.yaml`. pi is read-only: it diagnoses, it changes
-nothing. everything from §2 (the ask channel) onward is still design.
+status (2026-09-01): **all three rungs are live.** rung 1 diagnoses every
+failure read-only (`flows/autofix.py`). rung 2 opens a gardener-authored
+pull, gated by the `propose_for` canary allowlist on the failure automation
+(strata-hourly, mcp-atlas). rung 3 turns the operator's pull comments into
+new rounds (`flows/watch_tangled_pulls.py`, `flows/autofix_revise.py`).
+
+## approval and merge
+
+the rule: **phi needs the operator's approval to change the operator's
+systems.** it is enforced as a mechanism, not a norm — phi's account never
+holds merge rights, so review can be handed to her incrementally while the
+merge credential stays behind the operator.
+
+- **stage 1 (live 2026-09-01):** gardener authors, phi reviews, the operator
+  merges. `autofix proposed -> phi review` wakes phi with the pull; she reads
+  the whole change (`tangled_get_pull_patch`) and posts one comment whose
+  first line is `VERDICT: approve | request-changes | escalate`. three
+  identities, no self-review.
+- **stage 2:** the verdict becomes an event; request-changes feeds the revise
+  loop so gardener addresses phi's comments before the operator looks. the
+  operator's ping becomes "phi approved — merge?". still the only merger.
+- **stage 3:** scoped auto-merge for named low-risk classes only (dep bumps
+  with green CI, doc/test-only diffs), phi-approved + CI-green, performed by a
+  flow holding the merge credential behind a protected-path list
+  (`deploy/`, `prefect.yaml`, automations, secret consumers, `mps/`) that
+  stays human-merge forever. opt-in per class; the list can shrink to zero.
+
+the ask channel (§2) and the wait (§3) remain design.
 
 ## the loop we want
 
