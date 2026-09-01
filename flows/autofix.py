@@ -296,13 +296,20 @@ def propose_fix(
 
 @flow(name="autofix", log_prints=True, timeout_seconds=2400)
 def autofix(
-    flow_run_id: UUID, dry_run: bool = False, propose: bool = False
+    flow_run_id: UUID,
+    dry_run: bool = False,
+    propose: bool = False,
+    propose_for: list[str] | None = None,
 ) -> Completed:
+    """diagnose a failed run; open a pull for it when `propose` is on, or when
+    the failed deployment is named in `propose_for` (the canary allowlist the
+    automation carries while proposing is still earning trust)."""
     try:
         ctx = asyncio.run(gather(flow_run_id))
         dep_name = ctx["deployment"].name if ctx["deployment"] else None
         if dep_name == "autofix":
             return Completed(name="Skipped", message="not diagnosing my own failures")
+        propose = propose or dep_name in (propose_for or [])
 
         brief = render(ctx)
         print(brief)
@@ -358,6 +365,7 @@ def autofix(
                 "deployment": dep_name,
                 "summary": summary,
                 "title": result["title"],
+                "pull": result["uri"],
                 "pr_url": result["url"],
                 "autofix_url": ui_url("flow-runs", this_run) if this_run else "",
             },

@@ -607,6 +607,22 @@ deployments:
       - cron: "0 20 * * 0"
         active: true
 
+  - name: phi-pull-review
+    entrypoint: flows/phi_trigger.py:phi_trigger
+    # `autofix proposed -> phi review` (deploy/automations.yaml) starts this
+    # with the gardener pull as material. phi reads the whole change and
+    # comments a VERDICT line on the pull; she never merges — the operator
+    # does. no schedule: pulls wake it.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
+          prefect flow-run execute
+    parameters:
+      slot: pull-review
+
   - name: phi-editorial
     entrypoint: flows/phi_trigger.py:phi_trigger
     # daily coral editorial-context refresh — phi researches coral's

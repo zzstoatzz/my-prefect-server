@@ -111,8 +111,9 @@ automations:
   - name: flow-run failure -> autofix
     description: >-
       Same trigger as the discord alert, but it starts the autofix deployment
-      with the failed run's id. Read-only for now: pi diagnoses, nothing is
-      changed. threshold/within collapses a burst of failures into one run.
+      with the failed run's id. pi diagnoses every failure read-only; for the
+      deployments in propose_for (the canaries) it also opens a gardener pull
+      with a fix. threshold/within collapses a burst of failures into one run.
       autofix itself never reaches Failed, so it cannot re-trigger this.
     enabled: true
     trigger:
@@ -130,6 +131,29 @@ automations:
         deployment: autofix
         parameters:
           flow_run_id: "{{ flow_run.id }}"
+          propose_for:
+            - strata-hourly
+            - mcp-atlas
+
+  - name: autofix proposed -> phi review
+    description: >-
+      Every gardener pull gets phi's review before the operator looks. She
+      reads the whole change and comments a VERDICT line on the pull; the
+      operator still merges. Stage one of handing review off to her.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - autofix.proposed
+      threshold: 1
+      within: 60
+    actions:
+      - type: run-deployment
+        source: selected
+        deployment: phi-pull-review
+        parameters:
+          material: "{{ payload.pull }}\ntitle: {{ payload.title }}\nopened by gardener (autofix) for a failed {{ payload.deployment }} run\n{{ payload.pr_url }}"
 
   - name: autofix diagnosed -> discord
     description: >-

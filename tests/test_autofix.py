@@ -171,3 +171,47 @@ def test_no_change_yields_no_pr(monkeypatch):
     monkeypatch.setattr(autofix.subprocess, "run", no_clone)
     result = autofix.propose_fix("diag", "brief", "key", "strata")
     assert result == {"reason": "already fixed on main"}
+
+
+def test_propose_for_allowlist_turns_proposing_on(monkeypatch):
+    proposed = []
+
+    async def fake(_):
+        return ctx("strata-hourly")
+
+    monkeypatch.setattr(autofix, "gather", fake)
+    monkeypatch.setattr(autofix, "checkout_as_of", lambda cwd, when: "abc")
+    monkeypatch.setattr(autofix, "run_pi", lambda *a, **k: "SUMMARY: x\nbody")
+    monkeypatch.setattr(autofix, "screen_prompt", lambda *a, **k: None)
+    monkeypatch.setattr(
+        autofix.Secret,
+        "load",
+        staticmethod(lambda n: type("S", (), {"get": lambda self: "k"})()),
+    )
+
+    def fake_propose(diagnosis, brief, key, dep_name):
+        proposed.append(dep_name)
+        return {
+            "title": "t",
+            "uri": "at://did:plc:g/sh.tangled.repo.pull/1",
+            "url": "https://tangled.org/x/pulls",
+        }
+
+    monkeypatch.setattr(autofix, "propose_fix", fake_propose)
+    with prefect_test_harness():
+        other = autofix.autofix(
+            uuid4(), propose_for=["strata-hourly"], return_state=True
+        )
+    assert other.name == "Proposed"
+    assert proposed == ["strata-hourly"]
+
+    async def fake_other(_):
+        return ctx("ingest")
+
+    monkeypatch.setattr(autofix, "gather", fake_other)
+    with prefect_test_harness():
+        state = autofix.autofix(
+            uuid4(), propose_for=["strata-hourly"], return_state=True
+        )
+    assert state.name == "Diagnosed"
+    assert proposed == ["strata-hourly"]
