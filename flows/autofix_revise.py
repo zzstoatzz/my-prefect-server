@@ -143,8 +143,9 @@ def autofix_revise(pull: str, comment_uri: str = "") -> Completed:
             text=True,
             env=minimal_env(),
         )
-        patch = latest_round_patch(pull)
-        applied = apply_patch(cwd, patch) if patch else False
+        # a round's patch must apply cleanly to the target branch on its own,
+        # so the base is main BEFORE the previous round is applied — the new
+        # round then carries the whole series, not just the delta
         base = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             cwd=cwd,
@@ -152,6 +153,8 @@ def autofix_revise(pull: str, comment_uri: str = "") -> Completed:
             capture_output=True,
             text=True,
         ).stdout.strip()
+        patch = latest_round_patch(pull)
+        applied = apply_patch(cwd, patch) if patch else False
 
         prompt = PROMPT.format(
             applied_note=""

@@ -113,3 +113,55 @@ async def test_watch_survives_stream_failure(monkeypatch):
     with prefect_test_harness():
         assert await watch_tangled_pulls.watch_tangled_pulls() == 1
     assert started[0]["pull"] == PULL
+
+
+def test_new_round_patch_is_self_contained(tmp_path):
+    import subprocess
+
+    env = {
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+        "PATH": "/usr/bin:/bin:/opt/homebrew/bin",
+    }
+
+    def git(*args, cwd):
+        return subprocess.run(
+            ["git", *args], cwd=cwd, env=env, check=True, capture_output=True, text=True
+        ).stdout
+
+    repo = tmp_path / "r"
+    repo.mkdir()
+    git("init", "-q", "-b", "main", ".", cwd=repo)
+    (repo / "a").write_text("base\n")
+    git("add", "a", cwd=repo)
+    git("commit", "-q", "-m", "base", cwd=repo)
+    base = git("rev-parse", "HEAD", cwd=repo).strip()
+
+    (repo / "a").write_text("round one\n")
+    git("add", "a", cwd=repo)
+    git("commit", "-q", "-m", "round one", cwd=repo)
+    round1 = git("format-patch", f"{base}..HEAD", "--stdout", cwd=repo)
+    git("reset", "-q", "--hard", base, cwd=repo)
+
+    from mps.tangled import build_patch
+
+    assert autofix_revise.apply_patch(str(repo), round1)
+    (repo / "a").write_text("round one\nrevised\n")
+    new_round = build_patch(str(repo), base, "revision", "gardener")
+
+    # the new round applies to a clean checkout of main on its own
+    clean = tmp_path / "clean"
+    git("clone", "-q", str(repo), str(clean), cwd=tmp_path)
+    git("checkout", "-q", base, cwd=clean)
+    subprocess.run(
+        ["git", "am"],
+        cwd=clean,
+        env=env,
+        input=new_round,
+        text=True,
+        check=True,
+        capture_output=True,
+    )
+    assert (clean / "a").read_text() == "round one\nrevised\n"
