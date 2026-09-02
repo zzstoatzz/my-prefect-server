@@ -19,6 +19,7 @@ from mps.bufo_traffic import (
 
 def test_normalize_route_matches_zig_vocabulary():
     assert normalize_route("/api/search") == "/api/search"
+    assert normalize_route("/api/similar") == "/api/similar"
     assert normalize_route("/e/bufo-lgtm.png") == "/e/{name}"
     assert normalize_route("/e/{name}") == "/e/{name}"  # zig spans arrive normalized
     assert normalize_route("/static/index.html") == "/static/{file}"

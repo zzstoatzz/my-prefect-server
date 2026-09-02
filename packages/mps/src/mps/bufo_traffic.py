@@ -32,6 +32,7 @@ KNOWN_ROUTES = (
     "/",
     "/api/health",
     "/api/search",
+    "/api/similar",
     "/api/bufo-of-the-month",
     "/api/image",
     "/bufo-of-the-month",
