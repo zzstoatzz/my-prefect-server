@@ -1,10 +1,12 @@
-"""one-off: pi proposes a change, it lands as a tangled PR, you get a DM.
+"""pi proposes a change to one of the operator's repos; it lands as a gardener pull.
 
 the security shape is the point. pi runs in a throwaway clone with an
 environment built from scratch and holds no write credential of any kind.
 the flow — code an injected prompt cannot rewrite — is what turns its work
-into a patch, publishes the pull record, and messages you. worst case, a
-confused or hijacked pi produces a bad diff that sits in a PR you review.
+into a patch and publishes the pull record as gardener, the maintenance
+identity every automated pull uses. worst case, a confused or hijacked pi
+produces a bad diff that sits in a PR the operator reviews. the pull emits
+`autofix.proposed`, so phi reviews it like any other gardener pull.
 
 tangled pulls are patch-based: the changeset is gzipped, uploaded as a blob
 on the *author's* PDS, and referenced from a sh.tangled.repo.pull record. no
@@ -16,12 +18,12 @@ import subprocess
 import tempfile
 from typing import Any, Literal
 
-from prefect import flow
-from prefect.blocks.system import Secret
-from pydantic import BaseModel, Field
-
 from mps.pi import minimal_env, run_pi, screen_prompt
 from mps.tangled import build_patch, create_pull
+from prefect import flow, runtime
+from prefect.blocks.system import Secret
+from prefect.events import emit_event
+from pydantic import BaseModel, Field
 
 Repo = Literal["my-prefect-server", "find-bufo", "bot", "tangled-mcp"]
 
@@ -33,10 +35,10 @@ APPVIEW = "https://tangled.org"
 class Agent(BaseModel):
     """which brain pi gets. luna is the configured openai-codex subscription."""
 
-    provider: str = Field(default="openai-codex", json_schema_extra=dict(position=0))
-    model: str = Field(default="gpt-5.6-luna", json_schema_extra=dict(position=1))
+    provider: str = Field(default="openai-codex", json_schema_extra={"position": 0})
+    model: str = Field(default="gpt-5.6-luna", json_schema_extra={"position": 1})
     thinking: Literal["off", "minimal", "low", "medium", "high", "xhigh"] = Field(
-        default="medium", json_schema_extra=dict(position=2)
+        default="medium", json_schema_extra={"position": 2}
     )
 
 
@@ -46,15 +48,17 @@ def pi_pr(
     title: str,
     body: str,
     repo: Repo = "my-prefect-server",
-    agent: Agent = Agent(),
+    agent: Agent | None = None,
     dry_run: bool = False,
+    requested_by: str = "",
 ) -> dict[str, Any]:
-    """have pi attempt `task` in `repo` and open a tangled PR.
+    """have pi attempt `task` in `repo` and open a tangled PR as gardener.
 
-    `title` and `body` are the caller's own words and are published verbatim
-    as the pull request. this flow never composes prose for a record it signs
-    with someone else's identity — the PR is authored by whoever asked for it.
+    `title` and `body` are the caller's own words and are published verbatim;
+    `requested_by` names who asked, and is appended to the body so the pull
+    says whose intent it carries even though gardener signs the record.
     """
+    agent = agent or Agent()
     anthropic_key = Secret.load("anthropic-api-key").get()
     screen_prompt(task, "full", anthropic_key)
 
@@ -71,7 +75,11 @@ def pi_pr(
         env=env,
     )
     base = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=cwd, capture_output=True, text=True, check=True
+        ["git", "rev-parse", "HEAD"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.strip()
 
     output = run_pi(
@@ -86,7 +94,7 @@ def pi_pr(
         env=env,
     )
 
-    patch = build_patch(cwd, base, title, "pi")
+    patch = build_patch(cwd, base, title, "gardener", email="gardener@zat.dev")
     if not patch:
         print("pi made no changes — nothing to propose")
         return {"changed": False, "output": output}
@@ -95,13 +103,28 @@ def pi_pr(
     if dry_run:
         return {"changed": True, "dry_run": True, "patch_bytes": len(patch)}
 
-    handle = Secret.load("atproto-handle").get()
-    password = Secret.load("atproto-password").get()
+    if requested_by:
+        body = f"{body}\n\nrequested by {requested_by}; implemented by pi, published by gardener."
+    handle = Secret.load("gardener-handle").get()
+    password = Secret.load("gardener-password").get()
     pull = create_pull(OWNER, repo, title, patch, body, handle, password)
     print(f"pull created: {pull['uri']}")
-    # no notification from here on purpose: anything said from phi's account
-    # belongs in her posting layer (consent checks, the policy judge, the
-    # operator override), and a flow messaging as her would bypass all three.
+    this_run = runtime.flow_run.id
+    emit_event(
+        event="autofix.proposed",
+        resource={
+            "prefect.resource.id": f"autofix.{this_run or pull['uri'].rsplit('/', 1)[-1]}",
+            "prefect.resource.name": f"pi-pr / {repo}",
+        },
+        payload={
+            "deployment": f"pi-pr ({repo})",
+            "summary": task[:240],
+            "title": title,
+            "pull": pull["uri"],
+            "pr_url": pull["url"],
+            "autofix_url": "",
+        },
+    )
     return {"changed": True, **pull}
 
 

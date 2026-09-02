@@ -818,10 +818,11 @@ deployments:
 
   - name: pi-pr
     entrypoint: flows/pi_pr.py:pi_pr
-    # one-off: pi (luna) proposes a change in a throwaway clone, the flow turns
-    # it into a tangled pull record and DMs the link. pi holds no credential —
-    # the flow publishes, so a hijacked prompt can only produce a bad diff.
-    # requires pi installed + openai-codex creds on the worker.
+    # pi (luna) proposes a change in a throwaway clone; the flow turns it into
+    # a gardener-authored tangled pull and emits autofix.proposed, so phi
+    # reviews it. pi holds no credential — the flow publishes, so a hijacked
+    # prompt can only produce a bad diff. requires pi + openai-codex creds on
+    # the worker.
     work_pool: *home
 
   - name: dep-bump
