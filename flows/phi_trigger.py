@@ -20,7 +20,7 @@ from mps.observability import configure_logfire
 from prefect import flow
 from prefect.blocks.system import Secret
 
-PHI_BASE = "https://zzstoatzz-phi.fly.dev"
+PHI_BASE = "https://phi.zzstoatzz.io"
 
 
 @flow(name="phi-trigger", log_prints=True, timeout_seconds=120, retries=2)
