@@ -63,6 +63,10 @@ extraEnv:
 auth:
   enabled: true
   existingSecret: prefect-auth
+  # second credential that may only read (GET, the POST query endpoints,
+  # events-out/logs-out sockets). phi's prefect MCP holds this one, not the
+  # admin string. prefect-server 3e369f7+.
+  readOnlyExistingSecret: prefect-auth-ro
 
 webserver:
   enabled: true
