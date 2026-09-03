@@ -470,3 +470,23 @@ automations *args:
     : "${AUTH_STRING:?set AUTH_STRING}"
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
         ./scripts/apply_automations.py {{ args }}
+
+# heavypad, the home-pool worker box: what is installed, whether it matches
+# what the deployments expect, and whether pi can still reach Luna. ten
+# seconds over tailscale ssh; run it before blaming a flow. no values from the
+# env file are printed, only key names.
+heavypad-status:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    want="$(git rev-parse HEAD)"
+    mirror="$(git ls-remote https://github.com/zzstoatzz/my-prefect-server.git refs/heads/main | cut -f1)"
+    echo "local main:   ${want}"
+    echo "github main:  ${mirror:-missing}  $([ "$mirror" = "$want" ] && echo '(current)' || echo '(BEHIND — push github)')"
+    ssh -o ConnectTimeout=10 -o BatchMode=yes stoat@heavypad 'export PATH=/home/stoat/.local/bin:/usr/local/bin:/usr/bin:/bin
+      echo "worker:       $(systemctl is-active prefect-home-worker) / health $(curl -s -m 5 http://127.0.0.1:8080/health | tr -d "\n")"
+      echo "uv:           $(uv --version | cut -d" " -f2)   python: $(uv python list --only-installed 2>/dev/null | awk "{print \$1}" | sed "s/cpython-//; s/-linux.*//" | sort -u | tr "\n" " ")"
+      echo "node:         $(node --version)   pi: $(pi --version 2>&1 | head -1)   (pi needs node >= 22.19)"
+      echo "codex login:  $(pi auth check --provider openai-codex --no-refresh 2>&1 | head -1); expires $(python3 -c "import json,datetime;e=json.load(open(\"/home/stoat/.pi/agent/auth.json\"))[\"openai-codex\"][\"expires\"];print(datetime.datetime.fromtimestamp(e/1000,datetime.timezone.utc).strftime(\"%Y-%m-%d %H:%MZ\"))" 2>/dev/null || echo "none")"
+      echo "uv cache:     $(ls /home/stoat/.cache/uv/archive-v0 2>/dev/null | wc -l) archive envs; prune with: uv cache prune"
+      echo "env file keys: $(cut -d= -f1 /home/stoat/.config/prod-worker/env | sort | tr "\n" " ")"
+      echo "disk:         $(df -h / | awk "NR==2{print \$5\" used of \"\$2}")"'

@@ -56,3 +56,26 @@ sudo systemctl restart prefect-home-worker
 - Retargeting a deployment onto `home-pool`: on the current (3.7.2) server, changing a
   deployment's work pool via `prefect deploy` leaves the old `work_queue_id` — delete and
   recreate the deployment so it binds to `home-pool`'s queue.
+
+## toolchain on the box (2026-09-03)
+
+Everything the worker's flows shell out to lives under `/home/stoat/.local`,
+installed by hand. Nothing upgrades itself, so `just heavypad-status` is the
+check and this table is what it should agree with.
+
+| tool | how it is installed | required by | upgrade |
+|---|---|---|---|
+| `uv` 0.9.x | `~/.local/bin/uv` (standalone installer) | every flow run (`uv run --with …`) | `uv self update` |
+| python 3.14.2, 3.13.11 | uv-managed (`uv python install`) | 3.14 default; 3.13.11 for the atlas/transform pins in `prefect.yaml` | `uv python install <ver>`; remove strays with `uv python uninstall` |
+| node | tarball under `~/.local/node-v<ver>-linux-x64`, symlinked from `~/.local/bin` (`node`, `npm`, `npx`, `corepack`) | pi | download the new tarball, re-point the four symlinks, delete the old dir. pi 0.84 needs ≥ 22.19 |
+| pi | `npm install -g --prefix /home/stoat/.local @earendil-works/pi-coding-agent@<ver>` | `pi-pr`, `autofix`, `pi-agent` | same command with the laptop's version (`pi --version` there) |
+| pi's Codex login | `/home/stoat/.pi/agent/auth.json`, minted on the box by pi's device-code flow, never copied from a laptop | `pi-pr` (provider `openai-codex`, Luna) | `pi` → `/login` → OpenAI → device code, from any ssh session; pi ≥ 0.84 refreshes it |
+| zig | `~/.local/opt/zig-<ver>` | building `prefect-worker-guard` (`install.sh`) | replace the dir and symlink |
+| llama.cpp, zed, rclone, hydroxide, allegedly | `~/.local` / `~/.cargo` | not the worker | out of scope here |
+
+`MPS_PIN` is set by CI, so a flow run installs exactly the deployed commit
+from the GitHub mirror; push `github` as well as `origin` or the worker keeps
+running the old code. uv's `archive-v0` cache (one env per pinned commit)
+grows without bound; `uv cache prune` on the box is the maintenance step. A
+cron (`hub-data-sync.sh`, every 3 min) and a user service (`hydroxide`) also
+run as `stoat` and are not part of this deployment.
