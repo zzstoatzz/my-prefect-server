@@ -179,24 +179,32 @@ def resolve_pds(did: str) -> str:
 
 
 def _resolve_repo_record(owner_did: str, name: str) -> tuple[str, dict[str, Any]]:
-    """find a repo's sh.tangled.repo record, handling both rkey conventions.
+    """find a repo's sh.tangled.repo record on the owner's PDS.
 
-    new-style records are keyed by repo name; legacy ones use a TID rkey and
-    carry the name in the value, so the name lookup 502s and we page instead.
+    the PDS is the authority; the appview is a cache of it that lags and,
+    on 2026-09-03, answered listRepos with a 500 after pi had finished a
+    patch. records are keyed by repo name (new) or by a TID with the name
+    in the value (legacy), so both are matched while paging.
     """
-    try:
-        uri = f"at://{owner_did}/sh.tangled.repo/{name}"
-        return uri, _bobbin("sh.tangled.repo.getRepo", repo=uri)["value"]
-    except RuntimeError:
-        pass
-
+    pds = resolve_pds(owner_did)
     cursor = None
     while True:
-        params = {"subject": owner_did, "limit": 100}
+        params: dict[str, Any] = {
+            "repo": owner_did,
+            "collection": "sh.tangled.repo",
+            "limit": 100,
+        }
         if cursor:
             params["cursor"] = cursor
-        page = _bobbin("sh.tangled.repo.listRepos", **params)
-        items = page.get("items") or []
+        resp = httpx.get(
+            f"{pds}/xrpc/com.atproto.repo.listRecords", params=params, timeout=20
+        )
+        if not resp.is_success:
+            raise RuntimeError(
+                f"listRecords on {pds} failed ({resp.status_code}) {resp.text[:200]}"
+            )
+        page = resp.json()
+        items = page.get("records") or []
         for item in items:
             value = item.get("value") or {}
             if value.get("name") == name or item["uri"].rsplit("/", 1)[-1] == name:

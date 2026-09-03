@@ -56,3 +56,48 @@ def test_default_branch_uses_the_appview_answer(monkeypatch):
 
     monkeypatch.setattr(tangled, "_bobbin", lambda nsid, **p: {"name": "trunk"})
     assert tangled._default_branch("at://did:plc:x/sh.tangled.repo/3abc") == "trunk"
+
+
+def test_repo_record_is_read_from_the_owners_pds(monkeypatch):
+    """the appview answered listRepos with a 500 on 2026-09-03; the PDS is
+    the authority and was fine."""
+    from mps import tangled
+
+    pages = {
+        None: {
+            "records": [
+                {
+                    "uri": "at://did:plc:o/sh.tangled.repo/3tid",
+                    "value": {"name": "other"},
+                }
+            ],
+            "cursor": "c1",
+        },
+        "c1": {
+            "records": [
+                {"uri": "at://did:plc:o/sh.tangled.repo/3bot", "value": {"name": "bot"}}
+            ]
+        },
+    }
+
+    class Resp:
+        def __init__(self, cursor):
+            self.is_success = True
+            self._page = pages[cursor]
+
+        def json(self):
+            return self._page
+
+    monkeypatch.setattr(tangled, "resolve_pds", lambda did: "https://pds.example")
+    monkeypatch.setattr(
+        tangled.httpx,
+        "get",
+        lambda url, params=None, timeout=None: Resp(params.get("cursor")),
+    )
+    monkeypatch.setattr(
+        tangled,
+        "_bobbin",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("appview used")),
+    )
+    uri, value = tangled._resolve_repo_record("did:plc:o", "bot")
+    assert uri.endswith("/3bot") and value["name"] == "bot"
