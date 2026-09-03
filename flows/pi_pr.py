@@ -2,6 +2,10 @@
 
 the security shape is the point. pi runs in a throwaway clone with an
 environment built from scratch and holds no write credential of any kind.
+the one credential it can read is the worker's own Codex login in
+`~/.pi/agent/auth.json`, a session minted on the box by device-code login
+(never copied from a laptop); a hijacked prompt can spend that subscription
+and nothing else.
 the flow — code an injected prompt cannot rewrite — is what turns its work
 into a patch and publishes the pull record as gardener, the maintenance
 identity every automated pull uses. worst case, a confused or hijacked pi
