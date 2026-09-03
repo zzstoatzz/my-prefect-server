@@ -18,9 +18,15 @@ merge credential stays behind the operator.
   the whole change (`tangled_get_pull_patch`) and posts one comment whose
   first line is `VERDICT: approve | request-changes | escalate`. three
   identities, no self-review.
-- **stage 2:** the verdict becomes an event; request-changes feeds the revise
-  loop so gardener addresses phi's comments before the operator looks. the
-  operator's ping becomes "phi approved — merge?". still the only merger.
+- **stage 2 (live 2026-09-03):** `autofix proposed -> merge-approved` starts
+  `flows/merge_approved.py` alongside phi's review. it waits for her verdict,
+  applies the round to a knot clone, runs the repo's tests on the worker, and
+  suspends the run behind `merge.awaiting-approval -> discord`: title, files
+  touched (protected paths flagged), and the run link. the operator's Resume
+  is the merge; the flow pushes with `tangled-merge-ssh-key` (a deploy key
+  only this flow reads) and writes the merged status record. still the only
+  merger, now one button. request-changes feeding the revise loop is still
+  to do.
 - **stage 3:** scoped auto-merge for named low-risk classes only (dep bumps
   with green CI, doc/test-only diffs), phi-approved + CI-green, performed by a
   flow holding the merge credential behind a protected-path list

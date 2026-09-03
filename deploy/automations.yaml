@@ -228,3 +228,77 @@ automations:
         block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
         subject: "autofix revise: {{ resource.name }}"
         body: "{{ payload.reply }}"
+
+  - name: autofix proposed -> merge-approved
+    description: >-
+      Every gardener pull also starts the merge flow, which waits for phi's
+      verdict, tests the round, and then suspends until the operator resumes
+      it. Nothing merges without that resume.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - autofix.proposed
+      threshold: 1
+      within: 60
+    actions:
+      - type: run-deployment
+        source: selected
+        deployment: merge-approved
+        parameters:
+          pull: "{{ payload.pull }}"
+
+  - name: merge awaiting approval -> discord
+    description: >-
+      phi approved and the tests are green; the run is suspended. The body
+      carries the paths touched (protected ones flagged) and the run link
+      whose Resume button performs the merge.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - merge.awaiting-approval
+      threshold: 1
+      within: 60
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "merge? {{ resource.name }}"
+        body: "{{ payload.summary }}\n{{ payload.pull }}"
+
+  - name: merge tests failed -> discord
+    description: >-
+      phi approved but the round fails the repo's tests on the worker. The
+      pull stays open for the revise loop; nothing merges.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - merge.tests-failed
+      threshold: 1
+      within: 60
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "tests failed: {{ resource.name }}"
+        body: "{{ payload.title }}\n{{ payload.pull }}\n{{ payload.tail }}"
+
+  - name: merge merged -> discord
+    description: >-
+      The operator resumed and the round landed on main.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - merge.merged
+      threshold: 1
+      within: 60
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "merged: {{ resource.name }}"
+        body: "{{ payload.title }} -> {{ payload.sha }}\n{{ payload.pull }}"

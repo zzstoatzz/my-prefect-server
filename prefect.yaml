@@ -852,6 +852,16 @@ deployments:
     # the worker.
     work_pool: *home
 
+  - name: merge-approved
+    entrypoint: flows/merge_approved.py:merge_approved
+    # stage 2 of the approval ladder (docs/autofix-design.md). started by
+    # `autofix proposed -> merge-approved` with the gardener pull; waits for
+    # phi's VERDICT, applies the round to a knot clone, runs the repo's tests,
+    # then emits merge.awaiting-approval (-> discord) and suspends. the
+    # operator's Resume in the ui is the merge. holds the only merge
+    # credential (tangled-merge-ssh-key); pi never runs in this flow.
+    work_pool: *home
+
   - name: dep-bump
     entrypoint: flows/dep_bump.py:dep_bump
     # the local dependabot: re-pin a released dependency across its zat.dev
