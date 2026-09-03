@@ -273,7 +273,12 @@ def merge_approved(pull: str, verdict_wait_seconds: int = 1800) -> Completed:
 
     with tempfile.TemporaryDirectory(prefix="merge-key-") as key_dir:
         env = _ssh_env(key_dir, Secret.load("tangled-merge-ssh-key").get())
-        head = knot_head(repo, env)
+        try:
+            head = knot_head(repo, env)
+        except RuntimeError as exc:
+            return Completed(
+                name="Blocked", message=f"merge key cannot read the knot: {exc}"[:500]
+            )
 
         with tempfile.TemporaryDirectory(prefix="merge-") as cwd:
             base = clone_and_apply(repo, details["patch"], cwd, env)
