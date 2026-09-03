@@ -200,12 +200,13 @@ def run_tests(repo: str, cwd: str) -> tuple[bool, str]:
     proc = subprocess.run(
         argv,
         cwd=cwd,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
         env=minimal_env(**extra),
         check=False,
     )
-    tail = (proc.stdout + proc.stderr)[-4000:]
+    tail = proc.stdout[-4000:]
     print(tail)
     return proc.returncode == 0, tail
 
