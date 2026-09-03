@@ -137,6 +137,7 @@ def fetch_items(
 
 import gzip as _gzip
 import os as _os
+import re as _re
 import subprocess as _subprocess
 import time as _time
 from datetime import datetime as _dt
@@ -504,7 +505,9 @@ def list_pull_comments(commenter_did: str, pull_uri: str) -> list[dict[str, str]
 
 PULL_STATUS_NSID = "sh.tangled.repo.pull.status"
 MERGED_STATUS = "sh.tangled.repo.pull.status.merged"
-VERDICT_RE = re.compile(r"VERDICT:\s*(approve|request-changes|escalate)", re.I)
+VERDICT_RE = _re.compile(
+    r"VERDICT:\s*(approve|request-changes|escalate)", _re.IGNORECASE
+)
 
 
 def pull_patch(pull_uri: str) -> dict[str, Any]:
@@ -641,4 +644,9 @@ def mark_pull_merged(pull_uri: str, handle: str, password: str) -> str:
 
 def touched_paths(patch: str) -> list[str]:
     """files a format-patch touches, from its diff headers."""
-    return sorted({m.group(1) for m in re.finditer(r"^diff --git a/(\S+) b/", patch, re.M)})
+    return sorted(
+        {
+            m.group(1)
+            for m in _re.finditer(r"^diff --git a/(\S+) b/", patch, _re.MULTILINE)
+        }
+    )
