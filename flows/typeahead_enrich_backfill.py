@@ -54,7 +54,7 @@ import math
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Callable, Any
 
 import httpx
 from prefect import flow, get_run_logger
@@ -72,12 +72,37 @@ def _turso() -> tuple[str, dict[str, str]]:
     return f"{url}/v2/pipeline", {"Authorization": f"Bearer {token}"}
 
 
-def _tq(client: httpx.Client, stmts: list[dict[str, Any]]) -> list[Any]:
-    """run statements through one hrana pipeline request; raise on any error."""
+# Turso is single-writer and shares its writer with the live ingester: a
+# pipeline request occasionally waits past its read timeout while another
+# writer holds the lock. Two of ten runs (2026-08-29, -30) died on exactly one
+# such ReadTimeout inside flush_writes and threw away the rest of a 3.5 h
+# budget, while getProfiles next to it already retried. Every statement here
+# is idempotent (keyset SELECT, UPDATE ... WHERE did = ?), so a retry is safe.
+TURSO_ATTEMPTS = 4
+TURSO_BACKOFF_S = (5.0, 15.0, 45.0)
+
+
+def _tq(client: httpx.Client, stmts: list[dict[str, Any]], *, sleep: Callable[[float], None] = time.sleep) -> list[Any]:
+    """run statements through one hrana pipeline request; raise on any error.
+
+    transient transport failures (timeouts, dropped connections, 5xx) are
+    retried with backoff; a statement-level turso error is not — that is a
+    bug, not weather."""
     url, headers = _turso()
     reqs = [{"type": "execute", "stmt": s} for s in stmts] + [{"type": "close"}]
-    r = client.post(url, headers=headers, json={"requests": reqs}, timeout=60)
-    r.raise_for_status()
+    for attempt in range(TURSO_ATTEMPTS):
+        try:
+            r = client.post(url, headers=headers, json={"requests": reqs}, timeout=60)
+            if r.status_code >= 500:
+                raise httpx.HTTPStatusError(f"turso {r.status_code}", request=r.request, response=r)
+            r.raise_for_status()
+            break
+        except httpx.HTTPError as e:
+            if attempt == TURSO_ATTEMPTS - 1:
+                raise
+            delay = TURSO_BACKOFF_S[min(attempt, len(TURSO_BACKOFF_S) - 1)]
+            print(f"turso request failed ({e!r}), attempt {attempt + 1}/{TURSO_ATTEMPTS}; retrying in {delay:.0f}s")
+            sleep(delay)
     out = []
     for res in r.json()["results"]:
         if res.get("type") == "error":
