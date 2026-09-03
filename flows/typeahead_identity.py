@@ -20,7 +20,7 @@ hour, the retrying Turso client, and nothing in front of it.
 from __future__ import annotations
 
 import time
-from typing import Any, Callable
+from typing import Any
 
 import httpx
 from prefect import flow, get_run_logger
@@ -65,8 +65,8 @@ def typeahead_identity_hourly(
     budget_seconds: float = 2400.0,
     dids_per_second: float = 50.0,
     dry_run: bool = False,
-    sleep: Callable[[float], None] = time.sleep,
 ) -> dict[str, Any]:
+    sleep = time.sleep
     logger = get_run_logger()
     http = httpx.Client(timeout=30)
     deadline = time.monotonic() + budget_seconds
