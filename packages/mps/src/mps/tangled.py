@@ -206,7 +206,9 @@ def _resolve_repo_record(owner_did: str, name: str) -> tuple[str, dict[str, Any]
             raise ValueError(f"repo '{name}' not found for owner {owner_did}")
 
 
-def build_patch(cwd: str, base: str, title: str, author: str, email: str | None = None) -> str:
+def build_patch(
+    cwd: str, base: str, title: str, author: str, email: str | None = None
+) -> str:
     """commit whatever changed in the working tree and render it as a git format-patch."""
     _subprocess.run(["git", "add", "-A"], cwd=cwd, check=True)
     status = _subprocess.run(
@@ -215,9 +217,16 @@ def build_patch(cwd: str, base: str, title: str, author: str, email: str | None 
     if not status:
         return ""
     _subprocess.run(
-        ["git", "-c", f"user.name={author}",
-         "-c", f"user.email={email or f'{author}@users.noreply'}",
-         "commit", "-m", title],
+        [
+            "git",
+            "-c",
+            f"user.name={author}",
+            "-c",
+            f"user.email={email or f'{author}@users.noreply'}",
+            "commit",
+            "-m",
+            title,
+        ],
         cwd=cwd,
         check=True,
         capture_output=True,
@@ -229,6 +238,23 @@ def build_patch(cwd: str, base: str, title: str, author: str, email: str | None 
         text=True,
         check=True,
     ).stdout
+
+
+def _default_branch(record_uri: str) -> str:
+    """the repo's default branch, "main" when the appview cannot say.
+
+    the appview proxies this to the knot, and for some repos the knot
+    answers 404 even though the repo clones and pulls fine (bot,
+    2026-09-03). a pull is opened against a branch name, so a missing
+    answer is not a reason to lose the patch."""
+    try:
+        return (
+            _bobbin("sh.tangled.repo.getDefaultBranch", repo=record_uri).get("name")
+            or "main"
+        )
+    except RuntimeError as e:
+        print(f"getDefaultBranch unavailable, assuming main: {e}")
+        return "main"
 
 
 def create_pull(
@@ -244,9 +270,7 @@ def create_pull(
     repo_did = value.get("repoDid")
     if not repo_did:
         raise ValueError(f"repo '{owner}/{repo}' has no repoDid; cannot open pulls")
-    branch = _bobbin("sh.tangled.repo.getDefaultBranch", repo=record_uri).get(
-        "name"
-    ) or "main"
+    branch = _default_branch(record_uri)
 
     author_did = httpx.get(
         "https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle",
@@ -343,7 +367,9 @@ def login(handle: str, password: str) -> tuple[str, str, dict[str, str]]:
     return pds, did, {"Authorization": f"Bearer {resp.json()['accessJwt']}"}
 
 
-def append_round(pull_uri: str, patch: str, note: str, handle: str, password: str) -> int:
+def append_round(
+    pull_uri: str, patch: str, note: str, handle: str, password: str
+) -> int:
     """add a new round to an existing pull you authored; returns the round count."""
     did, collection, rkey = pull_uri.removeprefix("at://").split("/", 2)
     if collection != PULL_NSID:
@@ -360,10 +386,15 @@ def append_round(pull_uri: str, patch: str, note: str, handle: str, password: st
         timeout=60,
     )
     blob_resp.raise_for_status()
-    rounds = [*current.get("rounds", []), {"patchBlob": blob_resp.json()["blob"], "createdAt": _now()}]
+    rounds = [
+        *current.get("rounds", []),
+        {"patchBlob": blob_resp.json()["blob"], "createdAt": _now()},
+    ]
     record = {**current, "rounds": rounds}
     if note:
-        record["body"] = f"{current.get('body', '')}\n\n---\nround {len(rounds)}: {note}".strip()
+        record["body"] = (
+            f"{current.get('body', '')}\n\n---\nround {len(rounds)}: {note}".strip()
+        )
     put = httpx.post(
         f"{pds}/xrpc/com.atproto.repo.putRecord",
         json={"repo": did, "collection": PULL_NSID, "rkey": rkey, "record": record},
@@ -388,7 +419,12 @@ def comment_on_pull(pull_uri: str, body: str, handle: str, password: str) -> str
     }
     put = httpx.post(
         f"{pds}/xrpc/com.atproto.repo.putRecord",
-        json={"repo": did, "collection": FEED_COMMENT_NSID, "rkey": _tid(), "record": record},
+        json={
+            "repo": did,
+            "collection": FEED_COMMENT_NSID,
+            "rkey": _tid(),
+            "record": record,
+        },
         headers=auth,
         timeout=30,
     )
@@ -425,10 +461,16 @@ def list_pull_comments(commenter_did: str, pull_uri: str) -> list[dict[str, str]
     for collection in (FEED_COMMENT_NSID, LEGACY_COMMENT_NSID):
         cursor = None
         while True:
-            params: dict[str, Any] = {"repo": commenter_did, "collection": collection, "limit": 100}
+            params: dict[str, Any] = {
+                "repo": commenter_did,
+                "collection": collection,
+                "limit": 100,
+            }
             if cursor:
                 params["cursor"] = cursor
-            resp = httpx.get(f"{pds}/xrpc/com.atproto.repo.listRecords", params=params, timeout=20)
+            resp = httpx.get(
+                f"{pds}/xrpc/com.atproto.repo.listRecords", params=params, timeout=20
+            )
             if resp.status_code == 400:
                 break
             resp.raise_for_status()

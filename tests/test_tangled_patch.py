@@ -16,7 +16,11 @@ def _git_repo(tmp_path) -> tuple[str, str]:
         check=True,
     )
     base = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=cwd, capture_output=True, text=True, check=True
+        ["git", "rev-parse", "HEAD"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.strip()
     return cwd, base
 
@@ -33,3 +37,22 @@ def test_build_patch_renders_the_change(tmp_path) -> None:
 def test_build_patch_empty_when_nothing_changed(tmp_path) -> None:
     cwd, base = _git_repo(tmp_path)
     assert build_patch(cwd, base, "deps: lib v2", "dep-bump") == ""
+
+
+def test_default_branch_falls_back_to_main_when_the_knot_says_404(monkeypatch):
+    """the appview's knot proxy returned RepoNotFound for the bot repo on
+    2026-09-03 and a finished 16KB gardener patch was thrown away."""
+    from mps import tangled
+
+    def boom(nsid, **params):
+        raise RuntimeError(f"{nsid} failed (404) repository not found on this knot")
+
+    monkeypatch.setattr(tangled, "_bobbin", boom)
+    assert tangled._default_branch("at://did:plc:x/sh.tangled.repo/3abc") == "main"
+
+
+def test_default_branch_uses_the_appview_answer(monkeypatch):
+    from mps import tangled
+
+    monkeypatch.setattr(tangled, "_bobbin", lambda nsid, **p: {"name": "trunk"})
+    assert tangled._default_branch("at://did:plc:x/sh.tangled.repo/3abc") == "trunk"
