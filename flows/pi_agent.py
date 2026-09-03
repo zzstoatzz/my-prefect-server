@@ -89,28 +89,28 @@ def pi_agent(
         pause_flow_run(timeout=600)
 
     env = minimal_env()
-    cwd = tempfile.mkdtemp(prefix="pi-agent-")
-    if workspace.repo:
-        url = REPO_URLS[workspace.repo]
-        print(f"cloning {url}@{workspace.ref} into {cwd}")
-        subprocess.run(
-            ["git", "clone", "--depth", "1", "--branch", workspace.ref, url, cwd],
-            check=True,
-            capture_output=True,
-            text=True,
-            env=env,
-        )
+    with tempfile.TemporaryDirectory(prefix="pi-agent-") as cwd:
+        if workspace.repo:
+            url = REPO_URLS[workspace.repo]
+            print(f"cloning {url}@{workspace.ref} into {cwd}")
+            subprocess.run(
+                ["git", "clone", "--depth", "1", "--branch", workspace.ref, url, cwd],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=env,
+            )
 
-    return run_pi(
-        prompt,
-        cwd=cwd,
-        provider=agent.provider,
-        model=agent.model,
-        thinking=agent.thinking,
-        tool_mode=agent.tool_mode,
-        env=env,
-        timeout_seconds=timeout_seconds,
-    )
+        return run_pi(
+            prompt,
+            cwd=cwd,
+            provider=agent.provider,
+            model=agent.model,
+            thinking=agent.thinking,
+            tool_mode=agent.tool_mode,
+            env=env,
+            timeout_seconds=timeout_seconds,
+        )
 
 
 if __name__ == "__main__":

@@ -66,70 +66,70 @@ def pi_pr(
     anthropic_key = Secret.load("anthropic-api-key").get()
     screen_prompt(task, "full", anthropic_key)
 
-    cwd = tempfile.mkdtemp(prefix="pi-pr-")
-    env = minimal_env()
+    with tempfile.TemporaryDirectory(prefix="pi-pr-") as cwd:
+        env = minimal_env()
 
-    url = CLONE_URL.format(owner=OWNER, repo=repo)
-    print(f"cloning {url} into {cwd}")
-    subprocess.run(
-        ["git", "clone", "--depth", "1", url, cwd],
-        check=True,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
-    base = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+        url = CLONE_URL.format(owner=OWNER, repo=repo)
+        print(f"cloning {url} into {cwd}")
+        subprocess.run(
+            ["git", "clone", "--depth", "1", url, cwd],
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        base = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
 
-    output = run_pi(
-        task,
-        cwd=cwd,
-        provider=agent.provider,
-        model=agent.model,
-        thinking=agent.thinking,
-        # pi must edit files and run tests here; it still holds no credential,
-        # and everything it produces is reviewed as a patch before merge
-        tool_mode="full",
-        env=env,
-    )
+        output = run_pi(
+            task,
+            cwd=cwd,
+            provider=agent.provider,
+            model=agent.model,
+            thinking=agent.thinking,
+            # pi must edit files and run tests here; it still holds no credential,
+            # and everything it produces is reviewed as a patch before merge
+            tool_mode="full",
+            env=env,
+        )
 
-    patch = build_patch(cwd, base, title, "gardener", email="gardener@zat.dev")
-    if not patch:
-        print("pi made no changes — nothing to propose")
-        return {"changed": False, "output": output}
+        patch = build_patch(cwd, base, title, "gardener", email="gardener@zat.dev")
+        if not patch:
+            print("pi made no changes — nothing to propose")
+            return {"changed": False, "output": output}
 
-    print(f"patch: {len(patch)} bytes")
-    if dry_run:
-        return {"changed": True, "dry_run": True, "patch_bytes": len(patch)}
+        print(f"patch: {len(patch)} bytes")
+        if dry_run:
+            return {"changed": True, "dry_run": True, "patch_bytes": len(patch)}
 
-    if requested_by:
-        body = f"{body}\n\nrequested by {requested_by}; implemented by pi, published by gardener."
-    handle = Secret.load("gardener-handle").get()
-    password = Secret.load("gardener-password").get()
-    pull = create_pull(OWNER, repo, title, patch, body, handle, password)
-    print(f"pull created: {pull['uri']}")
-    this_run = runtime.flow_run.id
-    emit_event(
-        event="autofix.proposed",
-        resource={
-            "prefect.resource.id": f"autofix.{this_run or pull['uri'].rsplit('/', 1)[-1]}",
-            "prefect.resource.name": f"pi-pr / {repo}",
-        },
-        payload={
-            "deployment": f"pi-pr ({repo})",
-            "summary": task[:240],
-            "title": title,
-            "pull": pull["uri"],
-            "pr_url": pull["url"],
-            "autofix_url": "",
-        },
-    )
-    return {"changed": True, **pull}
+        if requested_by:
+            body = f"{body}\n\nrequested by {requested_by}; implemented by pi, published by gardener."
+        handle = Secret.load("gardener-handle").get()
+        password = Secret.load("gardener-password").get()
+        pull = create_pull(OWNER, repo, title, patch, body, handle, password)
+        print(f"pull created: {pull['uri']}")
+        this_run = runtime.flow_run.id
+        emit_event(
+            event="autofix.proposed",
+            resource={
+                "prefect.resource.id": f"autofix.{this_run or pull['uri'].rsplit('/', 1)[-1]}",
+                "prefect.resource.name": f"pi-pr / {repo}",
+            },
+            payload={
+                "deployment": f"pi-pr ({repo})",
+                "summary": task[:240],
+                "title": title,
+                "pull": pull["uri"],
+                "pr_url": pull["url"],
+                "autofix_url": "",
+            },
+        )
+        return {"changed": True, **pull}
 
 
 if __name__ == "__main__":
