@@ -497,3 +497,148 @@ def list_pull_comments(commenter_did: str, pull_uri: str) -> list[dict[str, str]
             if not cursor:
                 break
     return sorted(out, key=lambda c: c["created_at"])
+
+
+# --- merging: read a pull's patch, find the reviewer's verdict, mark it merged
+
+
+PULL_STATUS_NSID = "sh.tangled.repo.pull.status"
+MERGED_STATUS = "sh.tangled.repo.pull.status.merged"
+VERDICT_RE = re.compile(r"VERDICT:\s*(approve|request-changes|escalate)", re.I)
+
+
+def pull_patch(pull_uri: str) -> dict[str, Any]:
+    """the pull's title, target, and the latest round's patch text.
+
+    the patch is a gzipped blob on the author's PDS; the appview is not
+    involved, so this works through its outages."""
+    did, collection, _rkey = pull_uri.removeprefix("at://").split("/", 2)
+    if collection != PULL_NSID:
+        raise ValueError(f"not a pull uri: {pull_uri}")
+    value = get_record(pull_uri)["value"]
+    rounds = value.get("rounds") or []
+    if not rounds:
+        raise ValueError(f"pull has no rounds: {pull_uri}")
+    ref = rounds[-1]["patchBlob"]["ref"]
+    cid = ref.get("$link") if isinstance(ref, dict) else ref
+    resp = httpx.get(
+        f"{resolve_pds(did)}/xrpc/com.atproto.sync.getBlob",
+        params={"did": did, "cid": cid},
+        timeout=60,
+    )
+    resp.raise_for_status()
+    raw = resp.content
+    patch = _gzip.decompress(raw).decode() if raw[:2] == b"\x1f\x8b" else raw.decode()
+    return {
+        "title": value.get("title", ""),
+        "body": value.get("body", ""),
+        "target_repo_did": (value.get("target") or {}).get("repo", ""),
+        "branch": (value.get("target") or {}).get("branch") or "main",
+        "rounds": len(rounds),
+        "patch": patch,
+    }
+
+
+def parse_verdict(text: str) -> str | None:
+    m = VERDICT_RE.search(text or "")
+    return m.group(1).lower() if m else None
+
+
+def review_verdict(pull_uri: str, reviewer_did: str) -> dict[str, str] | None:
+    """the reviewer's latest VERDICT comment on this pull, or None.
+
+    comments are sh.tangled.feed.comment records in the reviewer's own repo,
+    read straight from their PDS."""
+    pds = resolve_pds(reviewer_did)
+    cursor = None
+    found: list[dict[str, str]] = []
+    while True:
+        params: dict[str, Any] = {
+            "repo": reviewer_did,
+            "collection": FEED_COMMENT_NSID,
+            "limit": 100,
+        }
+        if cursor:
+            params["cursor"] = cursor
+        resp = httpx.get(
+            f"{pds}/xrpc/com.atproto.repo.listRecords", params=params, timeout=20
+        )
+        resp.raise_for_status()
+        page = resp.json()
+        for item in page.get("records") or []:
+            value = item.get("value") or {}
+            if (value.get("subject") or {}).get("uri") != pull_uri:
+                continue
+            body = value.get("body")
+            text = body.get("text", "") if isinstance(body, dict) else str(body or "")
+            verdict = parse_verdict(text)
+            if verdict:
+                found.append(
+                    {
+                        "verdict": verdict,
+                        "text": text,
+                        "uri": item["uri"],
+                        "created_at": value.get("createdAt", ""),
+                    }
+                )
+        cursor = page.get("cursor")
+        if not cursor or not page.get("records"):
+            break
+    if not found:
+        return None
+    return max(found, key=lambda f: f["created_at"])
+
+
+def repo_name_for_did(owner_did: str, repo_did: str) -> str:
+    """the repo record whose repoDid matches, by name; read from the owner's PDS."""
+    pds = resolve_pds(owner_did)
+    cursor = None
+    while True:
+        params: dict[str, Any] = {
+            "repo": owner_did,
+            "collection": "sh.tangled.repo",
+            "limit": 100,
+        }
+        if cursor:
+            params["cursor"] = cursor
+        resp = httpx.get(
+            f"{pds}/xrpc/com.atproto.repo.listRecords", params=params, timeout=20
+        )
+        resp.raise_for_status()
+        page = resp.json()
+        for item in page.get("records") or []:
+            value = item.get("value") or {}
+            if value.get("repoDid") == repo_did:
+                return value.get("name", "")
+        cursor = page.get("cursor")
+        if not cursor or not page.get("records"):
+            raise ValueError(f"no repo record with repoDid {repo_did} for {owner_did}")
+
+
+def mark_pull_merged(pull_uri: str, handle: str, password: str) -> str:
+    """write the merged status record in the operator's repo; rkey = pull rkey."""
+    rkey = pull_uri.rsplit("/", 1)[-1]
+    pds, did, auth = login(handle, password)
+    put = httpx.post(
+        f"{pds}/xrpc/com.atproto.repo.putRecord",
+        json={
+            "repo": did,
+            "collection": PULL_STATUS_NSID,
+            "rkey": rkey,
+            "record": {
+                "$type": PULL_STATUS_NSID,
+                "pull": pull_uri,
+                "status": MERGED_STATUS,
+                "createdAt": _now(),
+            },
+        },
+        headers=auth,
+        timeout=30,
+    )
+    put.raise_for_status()
+    return put.json()["uri"]
+
+
+def touched_paths(patch: str) -> list[str]:
+    """files a format-patch touches, from its diff headers."""
+    return sorted({m.group(1) for m in re.finditer(r"^diff --git a/(\S+) b/", patch, re.M)})
