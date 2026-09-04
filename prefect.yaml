@@ -19,10 +19,17 @@ name: my-prefect-server
 # Deploying without it is still not what you want (uv may then serve a stale
 # cached commit) — CI always sets it; set it by hand for a manual deploy.
 
+# the flow code and the mps package must come from the same commit: the
+# command below installs mps at MPS_PIN, and this step checks the clone out
+# at the same sha (MPS_PIN reaches the run through the job environment).
+# without the checkout, a flow on main can import a helper the pinned
+# package does not have yet, which is what crashed every run for twenty
+# minutes on 2026-09-04 while CI was failing. an empty pin (a manual
+# `prefect deploy` without MPS_PIN) leaves the clone on main.
 pull:
   - prefect.deployments.steps.run_shell_script:
       script: |
-        bash -c "rm -rf my-prefect-server && (git clone --depth 1 --branch main https://tangled.sh/zzstoatzz.io/my-prefect-server.git my-prefect-server || git clone --depth 1 --branch main https://github.com/zzstoatzz/my-prefect-server.git my-prefect-server)"
+        bash -c 'rm -rf my-prefect-server && (git clone --quiet https://tangled.sh/zzstoatzz.io/my-prefect-server.git my-prefect-server || git clone --quiet https://github.com/zzstoatzz/my-prefect-server.git my-prefect-server) && pin="${MPS_PIN#@}" && if [ -n "$pin" ]; then git -C my-prefect-server checkout --quiet "$pin" && echo "checked out $pin"; else echo "no MPS_PIN; staying on main"; fi'
   - prefect.deployments.steps.set_working_directory:
       directory: my-prefect-server
 
@@ -35,6 +42,8 @@ definitions:
           uv run
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
     # home box (heavypad) process pool. persistent analytics paths replace the
     # k8s PVC so DuckDB / spend-log / local-storage coordinate across flow runs
     # (process flow runs execute in an ephemeral /tmp dir, so these MUST be set).
@@ -46,6 +55,7 @@ definitions:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
