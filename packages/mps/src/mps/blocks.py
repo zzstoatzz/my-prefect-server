@@ -22,7 +22,11 @@ def secret_sync(name: str) -> str:
 
 
 async def secret_mapping(name: str) -> dict[str, Any]:
-    """A secret whose value is a JSON object, stored either as a dict or as JSON text."""
+    """A secret whose value is a JSON object.
+
+    The UI stores a json-kind secret as `{"value": "<json text>", "__prefect_kind": "json"}`;
+    a block saved from code holds the dict itself. Both come back as the dict.
+    """
     return _mapping(name, (await Secret.aload(name)).get())
 
 
@@ -37,10 +41,13 @@ def _text(name: str, value: object) -> str:
 
 
 def _mapping(name: str, value: object) -> dict[str, Any]:
-    if isinstance(value, dict) and set(value) == {"value"}:
-        value = next(iter(value.values()))
+    if isinstance(value, dict) and "value" in value and set(value) <= {"value", "__prefect_kind"}:
+        value = value["value"]
     if isinstance(value, str):
-        value = json.loads(value)
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise TypeError(f"secret {name!r} is not JSON: {exc}") from exc
     if not isinstance(value, dict):
         raise TypeError(f"secret {name!r} holds {type(value).__name__}, expected a JSON object")
     return {str(k): v for k, v in value.items()}
