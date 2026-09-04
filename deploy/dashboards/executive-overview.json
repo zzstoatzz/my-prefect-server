@@ -212,7 +212,7 @@
       },
       "targets": [
         {
-          "expr": "sum(increase(prefect_flow_run_terminal_total{state_type=~\"FAILED|CRASHED\"}[24h])) or vector(0)",
+          "expr": "sum(prefect_flow_runs_ended{state_type=~\"FAILED|CRASHED\", window=\"24h\"}) or vector(0)",
           "refId": "A"
         }
       ]
@@ -262,7 +262,7 @@
       },
       "targets": [
         {
-          "expr": "sum(increase(prefect_flow_run_terminal_total{state_type=\"COMPLETED\"}[24h])) or vector(0)",
+          "expr": "sum(prefect_flow_runs_ended{state_type=\"COMPLETED\", window=\"24h\"}) or vector(0)",
           "refId": "A"
         }
       ]
@@ -428,7 +428,7 @@
     {
       "type": "timeseries",
       "id": 9,
-      "title": "terminal runs per hour",
+      "title": "runs ended in the trailing hour",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -515,7 +515,7 @@
       },
       "targets": [
         {
-          "expr": "sum by (state_type) (increase(prefect_flow_run_terminal_total[1h]))",
+          "expr": "sum by (state_type) (prefect_flow_runs_ended{window=\"1h\"})",
           "refId": "A",
           "legendFormat": "{{ state_type }}"
         }
