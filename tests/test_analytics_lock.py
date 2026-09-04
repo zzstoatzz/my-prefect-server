@@ -3,7 +3,6 @@
 from unittest import mock
 
 import duckdb
-
 from mps.db import write_likes
 from mps.likes import LikeRecord
 from mps.lock import ANALYTICS_WRITER_LIMIT, analytics_write_slot
@@ -13,17 +12,15 @@ def test_no_api_url_skips_coordination(monkeypatch):
     monkeypatch.delenv("PREFECT_API_URL", raising=False)
     with mock.patch("prefect.settings.PREFECT_API_URL") as setting:
         setting.value.return_value = None
-        with mock.patch("prefect.concurrency.sync.concurrency") as cm:
-            with analytics_write_slot():
-                pass
+        with mock.patch("prefect.concurrency.sync.concurrency") as cm, analytics_write_slot():
+            pass
     cm.assert_not_called()
 
 
 def test_api_url_acquires_writer_slot(monkeypatch):
     monkeypatch.setenv("PREFECT_API_URL", "http://example.test/api")
-    with mock.patch("prefect.concurrency.sync.concurrency") as cm:
-        with analytics_write_slot():
-            pass
+    with mock.patch("prefect.concurrency.sync.concurrency") as cm, analytics_write_slot():
+        pass
     cm.assert_called_once_with(
         ANALYTICS_WRITER_LIMIT,
         strict=True,
@@ -36,7 +33,11 @@ def test_db_write_helpers_hold_the_slot(monkeypatch, tmp_path):
     db_path = str(tmp_path / "analytics.duckdb")
     with mock.patch("prefect.concurrency.sync.concurrency") as cm:
         count = write_likes(
-            [LikeRecord(at_uri="at://x/like/1", subject_uri="at://y/post/1", created_at="2026-08-05")],
+            [
+                LikeRecord(
+                    at_uri="at://x/like/1", subject_uri="at://y/post/1", created_at="2026-08-05"
+                )
+            ],
             db_path,
         )
     assert count == 1

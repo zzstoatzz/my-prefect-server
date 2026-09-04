@@ -6,7 +6,12 @@ import zstandard
 from flows.strata import HEADER_LEN, parse_collection_index, parse_header
 
 
-def build_header(*, checksum: int = 0x20F0665E7822A74C, event_count: int = 3503420, collection_index_offset: int = 269970000) -> bytes:
+def build_header(
+    *,
+    checksum: int = 0x20F0665E7822A74C,
+    event_count: int = 3503420,
+    collection_index_offset: int = 269970000,
+) -> bytes:
     raw = bytearray(HEADER_LEN)
     raw[0:4] = b"jss0"
     struct.pack_into("<Q", raw, 4, checksum)
@@ -20,7 +25,9 @@ def build_collection_index(collections: list[tuple[str, int]], block_count: int 
     table = b"".join(struct.pack("<BI", len(n), c) + n.encode() for n, c in collections)
     bitmask_len = (len(collections) + 7) // 8
     body = table + bytes(block_count * bitmask_len)
-    return struct.pack("<IIII", len(collections), block_count, bitmask_len, len(body)) + zstandard.ZstdCompressor().compress(body)
+    return struct.pack(
+        "<IIII", len(collections), block_count, bitmask_len, len(body)
+    ) + zstandard.ZstdCompressor().compress(body)
 
 
 def test_parse_header_reads_offsets_and_counts():
@@ -53,7 +60,12 @@ def test_every_request_carries_the_flow_user_agent():
     from flows.strata import USER_AGENT, request
 
     plain = request("https://strata.zat.dev/api/progress")
-    posted = request("https://strata.zat.dev/ingest", headers={"Authorization": "Bearer x"}, data=b"{}", method="POST")
+    posted = request(
+        "https://strata.zat.dev/ingest",
+        headers={"Authorization": "Bearer x"},
+        data=b"{}",
+        method="POST",
+    )
     assert plain.get_header("User-agent") == USER_AGENT
     assert posted.get_header("User-agent") == USER_AGENT
     assert posted.get_header("Authorization") == "Bearer x"
@@ -63,7 +75,18 @@ def test_every_request_carries_the_flow_user_agent():
 def test_collections_skips_when_segment_is_mid_rewrite():
     from flows.strata import Archive, SegmentListing
 
-    seg = SegmentListing(idx=732, name="seg_00000002dc.jss", size_bytes=1, checksum="aa" * 8, event_count=1, block_count=1, min_seq=1, max_seq=2, min_witnessed_at=1, max_witnessed_at=2)
+    seg = SegmentListing(
+        idx=732,
+        name="seg_00000002dc.jss",
+        size_bytes=1,
+        checksum="aa" * 8,
+        event_count=1,
+        block_count=1,
+        min_seq=1,
+        max_seq=2,
+        min_witnessed_at=1,
+        max_witnessed_at=2,
+    )
     header = build_header(checksum=0xDEADBEEFDEADBEEF)
 
     archive = Archive.__new__(Archive)
@@ -77,8 +100,30 @@ def test_collections_skips_when_segment_is_mid_rewrite():
 def test_collections_matches_fresh_listing_by_name_not_index():
     from flows.strata import Archive, SegmentListing
 
-    seg = SegmentListing(idx=732, name="seg_00000002dc.jss", size_bytes=1, checksum="aa" * 8, event_count=1, block_count=1, min_seq=1, max_seq=2, min_witnessed_at=1, max_witnessed_at=2)
-    neighbor = SegmentListing(idx=733, name="seg_00000002dd.jss", size_bytes=1, checksum="bb" * 8, event_count=1, block_count=1, min_seq=1, max_seq=2, min_witnessed_at=1, max_witnessed_at=2)
+    seg = SegmentListing(
+        idx=732,
+        name="seg_00000002dc.jss",
+        size_bytes=1,
+        checksum="aa" * 8,
+        event_count=1,
+        block_count=1,
+        min_seq=1,
+        max_seq=2,
+        min_witnessed_at=1,
+        max_witnessed_at=2,
+    )
+    neighbor = SegmentListing(
+        idx=733,
+        name="seg_00000002dd.jss",
+        size_bytes=1,
+        checksum="bb" * 8,
+        event_count=1,
+        block_count=1,
+        min_seq=1,
+        max_seq=2,
+        min_witnessed_at=1,
+        max_witnessed_at=2,
+    )
 
     archive = Archive.__new__(Archive)
     archive._headers = {}

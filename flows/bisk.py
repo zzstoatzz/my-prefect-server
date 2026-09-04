@@ -27,7 +27,7 @@ minted for the `bisk` bucket only, NOT shared with other flows):
 import asyncio
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -44,9 +44,7 @@ TOPCHICKEN = "did:plc:bty3nc67lteylmmb7hvgxeu5"
 # her own namesake cap, which is the kind of measurement error the EF revision
 # exists to fix. instrumentation has improved; the eyewall is wider now.
 ENHANCED_GRACE_LIMIT = 10_000
-GRACE_LIMIT = (
-    ENHANCED_GRACE_LIMIT  # legacy alias; kept so the snapshot field reads true
-)
+GRACE_LIMIT = ENHANCED_GRACE_LIMIT  # legacy alias; kept so the snapshot field reads true
 # topchicken's round is one UTC calendar day of posts. trading on round D runs
 # D 06:00 → D+1 06:00 UTC, and the winner is crowned ~13:05 UTC on D+1 (see the
 # chicken market's "how a round works"). the live race shows the round whose
@@ -93,9 +91,7 @@ async def _backlink_dids(client, subject: str, source: str) -> list[str]:
         p = {"subject": subject, "source": source, "limit": 1000}
         if cursor:
             p["cursor"] = cursor
-        body = await _get(
-            client, f"{CONSTELLATION}/blue.microcosm.links.getBacklinks", p
-        )
+        body = await _get(client, f"{CONSTELLATION}/blue.microcosm.links.getBacklinks", p)
         out += [rec["did"] for rec in body.get("records", [])]
         cursor = body.get("cursor")
         if not cursor:
@@ -122,9 +118,7 @@ async def _profiles(client, dids: list[str]) -> dict[str, dict]:
     async def one(chunk: list[str]):
         async with sem:
             try:
-                body = await _get(
-                    client, f"{BSKY}/app.bsky.actor.getProfiles", {"actors": chunk}
-                )
+                body = await _get(client, f"{BSKY}/app.bsky.actor.getProfiles", {"actors": chunk})
                 for pr in body["profiles"]:
                     out[pr["did"]] = pr
             except httpx.HTTPError:
@@ -188,8 +182,10 @@ def window_bisks(pool: dict[str, dict]) -> list[dict]:
     than a rolling 24h lookback) is what makes the live race reset each round
     instead of letting the just-crowned post linger as leader for another ~24h.
     """
-    window_start, window_end = round_bounds(datetime.now(timezone.utc))
-    print(f"round {window_start:%Y-%m-%d}: posts from that UTC day (locks {window_end:%m-%d} 06:00 UTC)")
+    window_start, window_end = round_bounds(datetime.now(UTC))
+    print(
+        f"round {window_start:%Y-%m-%d}: posts from that UTC day (locks {window_end:%m-%d} 06:00 UTC)"
+    )
 
     async def run() -> list[dict]:
         bisks: list[dict] = []
@@ -259,9 +255,7 @@ def all_time_coop() -> list[dict]:
                 f"{SLINGSHOT}/blue.microcosm.identity.resolveMiniDoc",
                 {"identifier": TOPCHICKEN},
             )
-            recs = await _list_records(
-                client, mini["pds"], TOPCHICKEN, "app.bsky.feed.post"
-            )
+            recs = await _list_records(client, mini["pds"], TOPCHICKEN, "app.bsky.feed.post")
             winners = []
             for r in recs:
                 v = r["value"]
@@ -311,9 +305,7 @@ def all_time_coop() -> list[dict]:
 
             dropped = len(winners) - len(kept)
             kept.sort(key=lambda w: w["crownedAt"], reverse=True)
-            print(
-                f"coop: {len(kept)} viewable crownings ({dropped} dropped: gone/deactivated)"
-            )
+            print(f"coop: {len(kept)} viewable crownings ({dropped} dropped: gone/deactivated)")
             return kept
 
     return asyncio.run(run())
@@ -359,7 +351,7 @@ def publish(snapshot: dict) -> str:
 def bisk_snapshot() -> None:
     pool = build_pool()
     snapshot = {
-        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "generatedAt": datetime.now(UTC).isoformat(),
         "graceLimit": GRACE_LIMIT,
         # pool carries identities (not just dids) so the client can offer a
         # cmd-k search across the whole run, not only the windowed posters.

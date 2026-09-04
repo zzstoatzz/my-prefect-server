@@ -21,13 +21,12 @@ import os
 from typing import Any
 
 import httpx
+from mps.github import gh_headers
 from prefect import flow, get_run_logger, task
 from prefect.blocks.system import Secret
 from prefect.events import emit_event
 from prefect.variables import Variable
 from pydantic import BaseModel, Field
-
-from mps.github import gh_headers
 
 MODEL = "claude-haiku-4-5"
 
@@ -133,7 +132,7 @@ def _auth() -> httpx.BasicAuth | None:
 def recent_github_events(hours: int) -> list[dict[str, Any]]:
     """The `github.*` window, one entry per thread (latest wins)."""
     logger = get_run_logger()
-    since = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=hours)
+    since = datetime.datetime.now(datetime.UTC) - datetime.timedelta(hours=hours)
 
     with httpx.Client(auth=_auth(), timeout=30.0) as client:
         resp = client.post(
@@ -221,11 +220,10 @@ def enrich(threads: list[dict[str, Any]], token: str) -> list[dict[str, Any]]:
 
 @task
 def compose(threads: list[dict[str, Any]], api_key: str) -> Brief:
+    from mps.spend import record_pydantic_ai_result
     from pydantic_ai import Agent
     from pydantic_ai.models.anthropic import AnthropicModel
     from pydantic_ai.providers.anthropic import AnthropicProvider
-
-    from mps.spend import record_pydantic_ai_result
 
     lines = [
         f"- [{t.get('kind')} #{t.get('number')}] {t.get('title')!r} "
@@ -316,9 +314,7 @@ def fastmcp_brief(window_hours: int = 6, ignore_briefed: bool = False) -> dict[s
 
     briefed: dict[str, str] = {} if ignore_briefed else (Variable.get(BRIEFED, default={}) or {})
     fresh = [
-        t
-        for t in threads
-        if briefed.get(str(t.get("thread_id"))) != (t.get("updated_at") or "")
+        t for t in threads if briefed.get(str(t.get("thread_id"))) != (t.get("updated_at") or "")
     ]
     if not fresh:
         logger.info("all %d threads already briefed", len(threads))

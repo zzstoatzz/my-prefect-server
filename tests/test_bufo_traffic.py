@@ -85,7 +85,13 @@ def test_parse_rows_reads_row_oriented_payload():
     payload = {
         "schema": {"fields": []},
         "data": [
-            {"hour": "2026-08-28T16:00:00Z", "path": "/api/search", "status": 200, "requests": 4, "client": "plyr.fm"},
+            {
+                "hour": "2026-08-28T16:00:00Z",
+                "path": "/api/search",
+                "status": 200,
+                "requests": 4,
+                "client": "plyr.fm",
+            },
             {"hour": "2026-08-28T17:00:00Z", "path": None, "status": None, "requests": 1},
         ],
     }

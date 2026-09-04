@@ -11,12 +11,7 @@ import re
 from typing import Any, Literal
 
 from atproto import AsyncClient
-from pydantic import BaseModel, Field
-
-from prefect import flow, task
-from prefect.blocks.system import Secret
-from prefect.cache_policies import NONE
-
+from mps.observability import configure_logfire
 from pdsx._internal.auth import login
 from pdsx._internal.operations import (
     create_record,
@@ -24,8 +19,10 @@ from pdsx._internal.operations import (
     list_records,
     update_record,
 )
-
-from mps.observability import configure_logfire
+from prefect import flow, task
+from prefect.blocks.system import Secret
+from prefect.cache_policies import NONE
+from pydantic import BaseModel, Field
 
 Action = Literal["list", "delete", "create", "update"]
 
@@ -35,45 +32,45 @@ class PdsRecordsConfig(BaseModel):
 
     action: Action = Field(
         description="list: enumerate records. delete: remove matching records. create: write new records. update: patch an existing record.",
-        json_schema_extra=dict(position=0),
+        json_schema_extra={"position": 0},
     )
     collection: str = Field(
         description="NSID of the collection, e.g. network.cosmik.connection",
-        json_schema_extra=dict(position=1),
+        json_schema_extra={"position": 1},
     )
     repo: str | None = Field(
         default=None,
         description="target repo DID or handle (default: authenticated user)",
-        json_schema_extra=dict(position=2),
+        json_schema_extra={"position": 2},
     )
 
     # create / update
     records: list[dict[str, Any]] = Field(
         default_factory=list,
         description="[create] record bodies to create. ignored for other actions.",
-        json_schema_extra=dict(position=3),
+        json_schema_extra={"position": 3},
     )
     uri: str | None = Field(
         default=None,
         description="[update] AT-URI of the record to update",
-        json_schema_extra=dict(position=4),
+        json_schema_extra={"position": 4},
     )
     updates: dict[str, Any] | None = Field(
         default=None,
         description="[update] fields to merge into the existing record",
-        json_schema_extra=dict(position=5),
+        json_schema_extra={"position": 5},
     )
 
     # delete
     rkey_filter: str | None = Field(
         default=None,
         description="[delete] regex filter on rkey — only matching records are deleted. omit to match all.",
-        json_schema_extra=dict(position=6),
+        json_schema_extra={"position": 6},
     )
     dry_run: bool = Field(
         default=True,
         description="[delete] preview what would be deleted without actually deleting",
-        json_schema_extra=dict(position=7),
+        json_schema_extra={"position": 7},
     )
 
 
@@ -84,9 +81,7 @@ async def _paginate_all(
     all_records: list[dict[str, Any]] = []
     cursor = None
     while True:
-        resp = await list_records(
-            client, collection, limit=100, repo=repo, cursor=cursor
-        )
+        resp = await list_records(client, collection, limit=100, repo=repo, cursor=cursor)
         for r in resp.records:
             all_records.append({"uri": r.uri, "cid": r.cid, "value": r.value})
         cursor = resp.cursor
@@ -96,9 +91,7 @@ async def _paginate_all(
 
 
 @task(cache_policy=NONE)
-async def list_pds_records(
-    client: AsyncClient, config: PdsRecordsConfig
-) -> list[dict[str, Any]]:
+async def list_pds_records(client: AsyncClient, config: PdsRecordsConfig) -> list[dict[str, Any]]:
     """List all records in a collection, print count + sample."""
     records = await _paginate_all(client, config.collection, config.repo)
     print(f"found {len(records)} records in {config.collection}")
@@ -136,9 +129,7 @@ async def delete_pds_records(client: AsyncClient, config: PdsRecordsConfig) -> i
 
 
 @task(cache_policy=NONE)
-async def create_pds_records(
-    client: AsyncClient, config: PdsRecordsConfig
-) -> list[dict[str, str]]:
+async def create_pds_records(client: AsyncClient, config: PdsRecordsConfig) -> list[dict[str, str]]:
     """Create one or more records, return URIs + CIDs."""
     if not config.records:
         raise ValueError("config.records is required for create action")
@@ -153,9 +144,7 @@ async def create_pds_records(
 
 
 @task(cache_policy=NONE)
-async def update_pds_record(
-    client: AsyncClient, config: PdsRecordsConfig
-) -> dict[str, str]:
+async def update_pds_record(client: AsyncClient, config: PdsRecordsConfig) -> dict[str, str]:
     """Update a record at the given URI."""
     if not config.uri:
         raise ValueError("config.uri is required for update action")
@@ -198,7 +187,5 @@ if __name__ == "__main__":
     import asyncio
 
     asyncio.run(
-        pds_records(
-            PdsRecordsConfig(action="list", collection="network.cosmik.connection")
-        )
+        pds_records(PdsRecordsConfig(action="list", collection="network.cosmik.connection"))
     )

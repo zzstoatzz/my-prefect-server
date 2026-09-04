@@ -5,9 +5,9 @@ from pathlib import Path
 
 import duckdb
 from genai_prices.types import Usage
+from mps.spend import RAW_LLM_SPEND_SCHEMA, record_usage
 
 from flows.transform import import_spend_log
-from mps.spend import RAW_LLM_SPEND_SCHEMA, record_usage
 
 
 def test_record_usage_appends_jsonl(tmp_path: Path) -> None:

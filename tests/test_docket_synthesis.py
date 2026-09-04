@@ -74,10 +74,7 @@ def _atlas(points: list[dict], fine_labels: dict[int, str] | None = None) -> dic
         "generated_at": "2026-05-14T05:48:00Z",
         "points": points,
         "clusters_coarse": [],
-        "clusters_fine": [
-            {"id": cid, "label": label}
-            for cid, label in labels.items()
-        ],
+        "clusters_fine": [{"id": cid, "label": label} for cid, label in labels.items()],
     }
 
 
@@ -96,7 +93,15 @@ def test_only_raw_points_included():
         ]
         + [_point(pid="p-1", kind="observation", promotion_status="promoted", cluster_fine=1)]
         + [_point(pid="s-1", kind="observation", promotion_status="summarized", cluster_fine=1)]
-        + [_point(pid="c-1", kind="note", promotion_status="connected", cluster_fine=1, layer="public-knowledge")]
+        + [
+            _point(
+                pid="c-1",
+                kind="note",
+                promotion_status="connected",
+                cluster_fine=1,
+                layer="public-knowledge",
+            )
+        ]
     )
     clusters = _extract_pressure_pool_impl(_atlas(points))
     assert len(clusters) == 1
@@ -198,9 +203,23 @@ def test_cluster_label_pulled_from_atlas():
 
 def test_tags_merged_and_ordered_by_frequency():
     points = [
-        _point(pid="a", kind="observation", promotion_status="raw", cluster_fine=1, tags=["memory", "atproto"]),
-        _point(pid="b", kind="observation", promotion_status="raw", cluster_fine=1, tags=["memory"]),
-        _point(pid="c", kind="observation", promotion_status="raw", cluster_fine=1, tags=["memory", "ai"]),
+        _point(
+            pid="a",
+            kind="observation",
+            promotion_status="raw",
+            cluster_fine=1,
+            tags=["memory", "atproto"],
+        ),
+        _point(
+            pid="b", kind="observation", promotion_status="raw", cluster_fine=1, tags=["memory"]
+        ),
+        _point(
+            pid="c",
+            kind="observation",
+            promotion_status="raw",
+            cluster_fine=1,
+            tags=["memory", "ai"],
+        ),
     ]
     clusters = _extract_pressure_pool_impl(_atlas(points))
     tags = clusters[0]["tags"]
@@ -349,9 +368,7 @@ def test_synthesis_result_reject_whitespace_reason_rejected():
 
 def test_synthesis_result_valid_emit():
     """Happy path: emit=True + candidate is accepted."""
-    result = DocketSynthesisResult(
-        should_emit=True, candidate=_valid_candidate()
-    )
+    result = DocketSynthesisResult(should_emit=True, candidate=_valid_candidate())
     assert result.should_emit is True
     assert result.candidate is not None
     assert result.reject_reason == ""
@@ -423,9 +440,7 @@ def test_cache_key_changes_when_cluster_content_changes():
     policy = ByClusterContentHash()
     ctx_a = _make_ctx()
     ctx_b = _make_ctx()
-    ctx_b.evidence.append(
-        EvidenceRef(atlas_point_id="p-3", kind="observation", snippet="c")
-    )
+    ctx_b.evidence.append(EvidenceRef(atlas_point_id="p-3", kind="observation", snippet="c"))
     key_a = policy.compute_key(None, {"ctx": ctx_a}, {})  # type: ignore[arg-type]
     key_b = policy.compute_key(None, {"ctx": ctx_b}, {})  # type: ignore[arg-type]
     assert key_a != key_b

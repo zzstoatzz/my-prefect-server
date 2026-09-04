@@ -10,10 +10,9 @@ from functools import partial
 from unittest.mock import patch
 
 import httpx
-
-from flows.ingest import gh_client
-from flows.ingest import fetch_issue_or_pr
 from mps.github import IssueRef
+
+from flows.ingest import fetch_issue_or_pr, gh_client
 
 ISSUE_JSON = {
     "title": "hello",

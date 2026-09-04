@@ -59,9 +59,7 @@ def test_connection_type_vocabulary_comes_from_semble_sdk():
 
 def test_pds_delete_refuses_foreign_repo():
     session = {"did": "did:plc:phi", "accessJwt": "jwt"}
-    result = curate._pds_delete_record(
-        session, "at://did:plc:someoneelse/network.cosmik.card/x"
-    )
+    result = curate._pds_delete_record(session, "at://did:plc:someoneelse/network.cosmik.card/x")
     assert "refusing" in result
 
 

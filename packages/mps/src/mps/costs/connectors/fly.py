@@ -104,11 +104,7 @@ def _machine_monthly_cents(guest: dict, region: str = "iad") -> int:
 
 def _volume_monthly_cents(volumes: list[dict]) -> int:
     return round(
-        sum(
-            v.get("size_gb", 0)
-            for v in volumes
-            if v.get("state") != "pending_destroy"
-        )
+        sum(v.get("size_gb", 0) for v in volumes if v.get("state") != "pending_destroy")
         * _VOLUME_GB_MO
         * 100
     )
@@ -148,9 +144,7 @@ def _snapshot_monthly_cents_by_app(
     return _allocate_cents(total_cents, stored_by_app)
 
 
-async def _apps_with_resources(
-    token: str, org: str
-) -> dict[str, dict[str, list[dict]]]:
+async def _apps_with_resources(token: str, org: str) -> dict[str, dict[str, list[dict]]]:
     headers = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient(base_url=API, headers=headers, timeout=30) as client:
         resp = await client.get("/apps", params={"org_slug": org})
@@ -242,9 +236,7 @@ class FlyConnector:
             ]
             volume_gb = sum(v.get("size_gb", 0) for v in billable_volumes)
             if billable_volumes:
-                unattached = sum(
-                    not v.get("attached_machine_id") for v in billable_volumes
-                )
+                unattached = sum(not v.get("attached_machine_id") for v in billable_volumes)
                 usage = f"{len(billable_volumes)} volume(s): {volume_gb:g} GB"
                 if unattached:
                     usage += f"; {unattached} unattached"

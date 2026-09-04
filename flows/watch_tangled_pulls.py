@@ -25,8 +25,6 @@ from typing import Any
 import httpx
 from mps.tangled import (
     DID as OPERATOR_DID,
-)
-from mps.tangled import (
     FEED_COMMENT_NSID,
     LEGACY_COMMENT_NSID,
     comment_subject,
@@ -146,14 +144,12 @@ async def watch_tangled_pulls() -> int:
 
     try:
         streamed, new_cursor = await drain(int(cursor) if cursor else None)
-    except Exception as exc:  # noqa: BLE001 — the stream is the fast path, not the authority
+    except Exception as exc:
         print(f"stream drain failed ({exc!r}); reconcile still runs")
         streamed, new_cursor = [], None
     comments = {c["uri"]: c for c in [*streamed, *reconcile()]}
     new = [c for c in comments.values() if c["uri"] not in handled]
-    print(
-        f"{len(streamed)} streamed + reconcile -> {len(comments)} comment(s), {len(new)} new"
-    )
+    print(f"{len(streamed)} streamed + reconcile -> {len(comments)} comment(s), {len(new)} new")
 
     for comment in new:
         emit_event(

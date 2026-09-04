@@ -53,8 +53,9 @@ import json
 import math
 import os
 import time
-from datetime import datetime, timezone
-from typing import Callable, Any
+from collections.abc import Callable
+from datetime import datetime
+from typing import Any
 
 import httpx
 from prefect import flow, get_run_logger
@@ -82,7 +83,12 @@ TURSO_ATTEMPTS = 4
 TURSO_BACKOFF_S = (5.0, 15.0, 45.0)
 
 
-def _tq(client: httpx.Client, stmts: list[dict[str, Any]], *, sleep: Callable[[float], None] = time.sleep) -> list[Any]:
+def _tq(
+    client: httpx.Client,
+    stmts: list[dict[str, Any]],
+    *,
+    sleep: Callable[[float], None] = time.sleep,
+) -> list[Any]:
     """run statements through one hrana pipeline request; raise on any error.
 
     transient transport failures (timeouts, dropped connections, 5xx) are
@@ -101,7 +107,9 @@ def _tq(client: httpx.Client, stmts: list[dict[str, Any]], *, sleep: Callable[[f
             if attempt == TURSO_ATTEMPTS - 1:
                 raise
             delay = TURSO_BACKOFF_S[min(attempt, len(TURSO_BACKOFF_S) - 1)]
-            print(f"turso request failed ({e!r}), attempt {attempt + 1}/{TURSO_ATTEMPTS}; retrying in {delay:.0f}s")
+            print(
+                f"turso request failed ({e!r}), attempt {attempt + 1}/{TURSO_ATTEMPTS}; retrying in {delay:.0f}s"
+            )
             sleep(delay)
     out = []
     for res in r.json()["results"]:
@@ -149,8 +157,10 @@ def compute_authority_score(
 
 def _mod_hidden(labels: list[dict[str, Any]] | None) -> bool:
     return any(
-        not l.get("neg") and l.get("src") == BSKY_MOD_DID and l.get("val") in MOD_HIDE_VALS
-        for l in (labels or [])
+        not label.get("neg")
+        and label.get("src") == BSKY_MOD_DID
+        and label.get("val") in MOD_HIDE_VALS
+        for label in (labels or [])
     )
 
 
@@ -218,13 +228,18 @@ def typeahead_enrich_backfill(
             budget_spent = True
             break
         page_size = SELECT_PAGE if limit is None else min(SELECT_PAGE, limit - processed)
-        page = _tq(http, [{
-            "sql": "SELECT rowid, did, updated_at FROM actors "
-                   "WHERE profile_checked_at = 0 AND handle != '' "
-                   "AND updated_at >= ?1 AND (updated_at > ?1 OR rowid > ?2) "
-                   "ORDER BY updated_at, rowid LIMIT ?3",
-            "args": [_arg(cur_updated), _arg(cur_rowid), _arg(page_size)],
-        }])[0].get("rows", [])
+        page = _tq(
+            http,
+            [
+                {
+                    "sql": "SELECT rowid, did, updated_at FROM actors "
+                    "WHERE profile_checked_at = 0 AND handle != '' "
+                    "AND updated_at >= ?1 AND (updated_at > ?1 OR rowid > ?2) "
+                    "ORDER BY updated_at, rowid LIMIT ?3",
+                    "args": [_arg(cur_updated), _arg(cur_rowid), _arg(page_size)],
+                }
+            ],
+        )[0].get("rows", [])
         if not page:
             logger.info("queue drained at updated_at=%s rowid=%s", cur_updated, cur_rowid)
             break
@@ -254,15 +269,17 @@ def typeahead_enrich_backfill(
                     logger.warning("getProfiles failed (%s), attempt %d", e, attempt + 1)
                     time.sleep(5 * (attempt + 1))
 
-            for rowid, did in batch:
+            for _rowid, did in batch:
                 processed += 1
                 p = profiles.get(did)
                 if not p:
                     not_found += 1
-                    pending_writes.append({
-                        "sql": "UPDATE actors SET profile_checked_at = unixepoch() WHERE did = ?1",
-                        "args": [_arg(did)],
-                    })
+                    pending_writes.append(
+                        {
+                            "sql": "UPDATE actors SET profile_checked_at = unixepoch() WHERE did = ?1",
+                            "args": [_arg(did)],
+                        }
+                    )
                     continue
                 found += 1
                 followers = int(p.get("followersCount") or 0)
@@ -276,38 +293,52 @@ def typeahead_enrich_backfill(
                 )
                 score = (
                     compute_authority_score(followers, follows, posts, created, now_ms)
-                    if has_aggregates else 0.0
+                    if has_aggregates
+                    else 0.0
                 )
                 labels = p.get("labels") or []
-                pending_writes.append({
-                    "sql": (
-                        "UPDATE actors SET "
-                        "handle = COALESCE(NULLIF(?2, ''), handle), "
-                        "display_name = COALESCE(NULLIF(?3, ''), display_name), "
-                        "avatar_url = COALESCE(NULLIF(?4, ''), avatar_url), "
-                        "labels = ?5, "
-                        "created_at = COALESCE(NULLIF(?6, ''), created_at), "
-                        "followers_count = COALESCE(NULLIF(?7, 0), followers_count), "
-                        "follows_count = COALESCE(NULLIF(?8, 0), follows_count), "
-                        "posts_count = COALESCE(NULLIF(?9, 0), posts_count), "
-                        "quality_score = COALESCE(NULLIF(?10, 0), quality_score), "
-                        "profile_checked_at = unixepoch(), updated_at = unixepoch() "
-                        "WHERE did = ?1"
-                    ),
-                    "args": [
-                        _arg(did), _arg(p.get("handle") or ""), _arg(p.get("displayName") or ""),
-                        _arg(_avatar_cid(p.get("avatar") or "")), _arg(json.dumps(labels)),
-                        _arg(created), _arg(followers), _arg(follows), _arg(posts), _arg(score),
-                    ],
-                })
+                pending_writes.append(
+                    {
+                        "sql": (
+                            "UPDATE actors SET "
+                            "handle = COALESCE(NULLIF(?2, ''), handle), "
+                            "display_name = COALESCE(NULLIF(?3, ''), display_name), "
+                            "avatar_url = COALESCE(NULLIF(?4, ''), avatar_url), "
+                            "labels = ?5, "
+                            "created_at = COALESCE(NULLIF(?6, ''), created_at), "
+                            "followers_count = COALESCE(NULLIF(?7, 0), followers_count), "
+                            "follows_count = COALESCE(NULLIF(?8, 0), follows_count), "
+                            "posts_count = COALESCE(NULLIF(?9, 0), posts_count), "
+                            "quality_score = COALESCE(NULLIF(?10, 0), quality_score), "
+                            "profile_checked_at = unixepoch(), updated_at = unixepoch() "
+                            "WHERE did = ?1"
+                        ),
+                        "args": [
+                            _arg(did),
+                            _arg(p.get("handle") or ""),
+                            _arg(p.get("displayName") or ""),
+                            _arg(_avatar_cid(p.get("avatar") or "")),
+                            _arg(json.dumps(labels)),
+                            _arg(created),
+                            _arg(followers),
+                            _arg(follows),
+                            _arg(posts),
+                            _arg(score),
+                        ],
+                    }
+                )
                 if _mod_hidden(labels):
                     hidden_set += 1
-                    pending_writes.append({
-                        "sql": "UPDATE actors SET hidden = 1 WHERE did = ?1",
-                        "args": [_arg(did)],
-                    })
+                    pending_writes.append(
+                        {
+                            "sql": "UPDATE actors SET hidden = 1 WHERE did = ?1",
+                            "args": [_arg(did)],
+                        }
+                    )
                 if len(samples) < 10:
-                    samples.append(f"{p.get('handle') or did}: score={score} f={followers} p={posts}")
+                    samples.append(
+                        f"{p.get('handle') or did}: score={score} f={followers} p={posts}"
+                    )
 
             if dry_run:
                 pending_writes.clear()
@@ -320,7 +351,12 @@ def typeahead_enrich_backfill(
 
         logger.info(
             "progress: processed=%d found=%d not_found=%d hidden=%d cursor=(%d,%d)",
-            processed, found, not_found, hidden_set, cur_updated, cur_rowid,
+            processed,
+            found,
+            not_found,
+            hidden_set,
+            cur_updated,
+            cur_rowid,
         )
 
     if not dry_run:

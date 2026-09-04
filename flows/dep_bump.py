@@ -20,11 +20,10 @@ import subprocess
 import tempfile
 from typing import Any, Literal
 
-from prefect import flow
-from prefect.blocks.system import Secret
-
 from mps.pi import minimal_env
 from mps.tangled import build_patch, create_pull
+from prefect import flow
+from prefect.blocks.system import Secret
 
 Repo = Literal["jetstream", "zlay", "stream", "zds"]
 
@@ -35,7 +34,7 @@ URL_TEMPLATE = "https://tangled.org/{owner}/{dep}/archive/{version}.tar.gz"
 
 
 def _run(argv: list[str], cwd: str, env: dict[str, str]) -> tuple[bool, str]:
-    result = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, env=env)
+    result = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, env=env, check=False)
     return result.returncode == 0, (result.stdout + result.stderr)[-4000:]
 
 
@@ -107,9 +106,14 @@ def dep_bump(
         if push_to_main:
             # build_patch already committed the pin on the default branch
             pushed, push_out = _run(
-                ["git",
-                 "-c", "core.sshCommand=ssh -o StrictHostKeyChecking=accept-new",
-                 "push", PUSH_URL.format(owner=OWNER, repo=repo), "HEAD"],
+                [
+                    "git",
+                    "-c",
+                    "core.sshCommand=ssh -o StrictHostKeyChecking=accept-new",
+                    "push",
+                    PUSH_URL.format(owner=OWNER, repo=repo),
+                    "HEAD",
+                ],
                 cwd,
                 env,
             )

@@ -106,11 +106,7 @@ class HetznerConnector:
         self._tokens = tokens
 
     async def collect(self, period: Period) -> list[LineItem]:
-        tokens = (
-            [("explicit", t) for t in self._tokens]
-            if self._tokens
-            else _project_tokens()
-        )
+        tokens = [("explicit", t) for t in self._tokens] if self._tokens else _project_tokens()
         if not tokens:
             raise RuntimeError("no hetzner tokens provided (hetzner-tokens block or HCLOUD_TOKEN)")
 

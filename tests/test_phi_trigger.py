@@ -44,16 +44,12 @@ async def test_clock_slot_sends_no_body(monkeypatch):
     calls = _capture(monkeypatch)
     with prefect_test_harness():
         await phi_trigger.phi_trigger("curation")
-    assert calls == [
-        {"url": f"{phi_trigger.PHI_BASE}/api/control/trigger/curation", "json": None}
-    ]
+    assert calls == [{"url": f"{phi_trigger.PHI_BASE}/api/control/trigger/curation", "json": None}]
 
 
 async def test_material_rides_as_the_json_body(monkeypatch):
     calls = _capture(monkeypatch)
     with prefect_test_harness():
-        await phi_trigger.phi_trigger(
-            "pull-review", material="at://x/sh.tangled.repo.pull/1"
-        )
+        await phi_trigger.phi_trigger("pull-review", material="at://x/sh.tangled.repo.pull/1")
     assert calls[0]["url"].endswith("/trigger/pull-review")
     assert calls[0]["json"] == {"material": "at://x/sh.tangled.repo.pull/1"}

@@ -21,16 +21,14 @@ resolver splits paths on ".", so a label keyed "github.repo" is unreachable as
 {{ event.resource.github.repo }}.
 """
 
-import datetime
 from typing import Any
 
 import httpx
+from mps.github import gh_headers
 from prefect import flow, get_run_logger, task
 from prefect.blocks.system import Secret
 from prefect.events import emit_event
 from prefect.variables import Variable
-
-from mps.github import gh_headers
 
 GITHUB_API = "https://api.github.com"
 REPO = "PrefectHQ/fastmcp"
@@ -48,7 +46,9 @@ WATERMARK = "fastmcp_notifications_last_modified"
 
 
 @task(retries=2, retry_delay_seconds=10)
-def fetch_notifications(token: str, last_modified: str | None) -> tuple[list[dict], str | None, int]:
+def fetch_notifications(
+    token: str, last_modified: str | None
+) -> tuple[list[dict], str | None, int]:
     """Threads that moved since `last_modified`, plus the new watermark.
 
     Returns ([], watermark, poll_interval) on a 304 — the common case, and the
@@ -99,9 +99,7 @@ def _thread_to_event(thread: dict) -> dict[str, Any] | None:
     # thread is surfaced before that ever runs. `Release` is deliberately absent
     # from the path map: its subject url ends in a release id, which parses as a
     # number and would otherwise build a link to an issue that does not exist.
-    path = {"PullRequest": "pull", "Issue": "issues", "Discussion": "discussions"}.get(
-        subject_type
-    )
+    path = {"PullRequest": "pull", "Issue": "issues", "Discussion": "discussions"}.get(subject_type)
     if number is None or path is None:
         return None
     html_url = f"https://github.com/{REPO}/{path}/{number}"

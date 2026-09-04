@@ -8,20 +8,24 @@ Unlike the old morning.py Phase 4, this is an agentic loop — phi can
 inspect, recall, and iterate rather than single-shot plan + execute.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, cast
 
 import httpx
 import turbopuffer
+from mps.atproto import create_bsky_session
+from mps.observability import configure_logfire
+from mps.phi import clean_handle
+from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 from openai import OpenAI
-from pydantic import BaseModel, Field
-from pydantic_ai import Agent, RunContext
-from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
-from pydantic_ai.providers.anthropic import AnthropicProvider
 from prefect import flow, task
 from prefect.blocks.system import Secret
 from prefect.cache_policies import NONE
 from prefect.variables import Variable
+from pydantic import BaseModel, Field
+from pydantic_ai import Agent, RunContext
+from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
+from pydantic_ai.providers.anthropic import AnthropicProvider
 from semble import AsyncSemble
 from semble.records import (
     CARD_TYPE_NOTE,
@@ -30,11 +34,6 @@ from semble.records import (
     RECORD_TYPE_COLLECTION,
     RECORD_TYPE_COLLECTION_LINK,
 )
-
-from mps.atproto import create_bsky_session
-from mps.observability import configure_logfire
-from mps.phi import clean_handle
-from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 
 PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
 PDS_BASE = "https://bsky.social"
@@ -114,12 +113,8 @@ class CurationDeps(BaseModel, arbitrary_types_allowed=True):
 
 
 class CurationResult(BaseModel):
-    summary: str = Field(
-        description="brief summary of what you did (or why you did nothing)"
-    )
-    actions_taken: int = Field(
-        default=0, description="number of create/delete/modify actions"
-    )
+    summary: str = Field(description="brief summary of what you did (or why you did nothing)")
+    actions_taken: int = Field(default=0, description="number of create/delete/modify actions")
 
 
 # ---------------------------------------------------------------------------
@@ -189,9 +184,7 @@ def _format_semble_state(
         else:
             card_lines.append(f"  [{ctype}] {uri}")
     sections.append(
-        f"## cards ({len(cards)})\n" + "\n".join(card_lines)
-        if card_lines
-        else "## cards (0)\nnone"
+        f"## cards ({len(cards)})\n" + "\n".join(card_lines) if card_lines else "## cards (0)\nnone"
     )
 
     # connections
@@ -390,9 +383,7 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
     )
 
     @agent.tool
-    async def list_semble_records(
-        ctx: RunContext[CurationDeps], record_type: str
-    ) -> str:
+    async def list_semble_records(ctx: RunContext[CurationDeps], record_type: str) -> str:
         """List all records of a given type. record_type: 'card', 'connection', 'collection', or 'collectionLink'."""
         collection_map = {
             "card": RECORD_TYPE_CARD,
@@ -430,9 +421,7 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
                 )
                 lines.append(f"  uri: {uri}")
             elif record_type == "collection":
-                lines.append(
-                    f"{val.get('name', '')} — {val.get('description', '')[:100]}"
-                )
+                lines.append(f"{val.get('name', '')} — {val.get('description', '')[:100]}")
                 lines.append(f"  uri: {uri}")
             elif record_type == "collectionLink":
                 coll_uri = val.get("collection", {}).get("uri", "")
@@ -478,13 +467,9 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
                 card_uri = value.get("card", {}).get("uri", "")
                 collection_uri = value.get("collection", {}).get("uri", "")
                 card_id = await _card_id_for_uri(ctx.deps.semble, card_uri)
-                collection_id = await _collection_id_for_uri(
-                    ctx.deps.semble, collection_uri
-                )
+                collection_id = await _collection_id_for_uri(ctx.deps.semble, collection_uri)
                 if not card_id or not collection_id:
-                    return _fallback(
-                        f"could not resolve linked card/collection ids for {uri}"
-                    )
+                    return _fallback(f"could not resolve linked card/collection ids for {uri}")
                 await ctx.deps.semble.cards.update_url_associations(
                     card_id,
                     remove_from_collections=[collection_id],
@@ -536,17 +521,13 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
             return f"failed to update collection: {e}"
 
     @agent.tool
-    async def recall(
-        ctx: RunContext[CurationDeps], query: str, namespace: str = ""
-    ) -> str:
+    async def recall(ctx: RunContext[CurationDeps], query: str, namespace: str = "") -> str:
         """Search your private memory (TurboPuffer). Leave namespace empty for broad search,
         or pass a handle like 'zzstoatzz.io' to search a specific user's namespace."""
         tpuf = ctx.deps.tpuf_client
         openai = ctx.deps.openai_client
 
-        embedding_response = openai.embeddings.create(
-            model="text-embedding-3-small", input=query
-        )
+        embedding_response = openai.embeddings.create(model="text-embedding-3-small", input=query)
         record_openai_embedding_response(
             task_name="curate.recall",
             model="text-embedding-3-small",
@@ -653,9 +634,7 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
                 tags = list(getattr(row, "tags", []) or [])
                 tag_str = f" [{', '.join(tags)}]" if tags else ""
                 created = getattr(row, "created_at", "?")
-                lines.append(
-                    f"id={row.id}{tag_str}\n  {row.content}\n  created: {created}"
-                )
+                lines.append(f"id={row.id}{tag_str}\n  {row.content}\n  created: {created}")
             return f"{len(resp.rows)} observations for @{handle}:\n" + "\n".join(lines)
         except Exception as e:
             return f"failed to list observations for @{handle}: {e}"
@@ -700,7 +679,7 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
         )
         embedding = embedding_response.data[0].embedding
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         try:
             ns.write(
                 upsert_rows=[

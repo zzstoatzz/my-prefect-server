@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from pydantic import ValidationError
 from prefect.logging import disable_run_logger
+from pydantic import ValidationError
 
 from flows.fastmcp_brief import Brief, BriefItem, render
 
@@ -204,9 +204,7 @@ class TestBriefedStateFitsPrefectsVariableLimit:
 
     @staticmethod
     def _state(n: int) -> dict[str, str]:
-        return {
-            str(4_000_000 + i): f"2026-08-{(i % 28) + 1:02d}T12:00:00Z" for i in range(n)
-        }
+        return {str(4_000_000 + i): f"2026-08-{(i % 28) + 1:02d}T12:00:00Z" for i in range(n)}
 
     def test_state_prefect_would_reject_is_made_storable(self):
         from prefect.client.schemas.actions import VariableUpdate

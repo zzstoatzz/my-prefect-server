@@ -1,5 +1,13 @@
 """Tangled.org PDS fetch helpers and models."""
 
+import gzip as _gzip
+import os as _os
+import re as _re
+import subprocess as _subprocess
+import time as _time
+from datetime import UTC, datetime as _dt
+from typing import Any
+
 import httpx
 from pydantic import BaseModel
 
@@ -135,15 +143,6 @@ def fetch_items(
 # layer) rather than depended on: that package pins a prerelease fastmcp, and an
 # MCP server framework has no business in a flow run to use forty lines of it.
 
-import gzip as _gzip
-import os as _os
-import re as _re
-import subprocess as _subprocess
-import time as _time
-from datetime import datetime as _dt
-from datetime import timezone as _tz
-from typing import Any
-
 BOBBIN_URL = "https://api.tangled.org"
 PULL_NSID = "sh.tangled.repo.pull"
 _B32 = "234567abcdefghijklmnopqrstuvwxyz"
@@ -156,7 +155,7 @@ def _tid() -> str:
 
 
 def _now() -> str:
-    return _dt.now(_tz.utc).isoformat().replace("+00:00", "Z")
+    return _dt.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _bobbin(nsid: str, **params: Any) -> dict[str, Any]:
@@ -197,9 +196,7 @@ def _resolve_repo_record(owner_did: str, name: str) -> tuple[str, dict[str, Any]
         }
         if cursor:
             params["cursor"] = cursor
-        resp = httpx.get(
-            f"{pds}/xrpc/com.atproto.repo.listRecords", params=params, timeout=20
-        )
+        resp = httpx.get(f"{pds}/xrpc/com.atproto.repo.listRecords", params=params, timeout=20)
         if not resp.is_success:
             raise RuntimeError(
                 f"listRecords on {pds} failed ({resp.status_code}) {resp.text[:200]}"
@@ -215,13 +212,11 @@ def _resolve_repo_record(owner_did: str, name: str) -> tuple[str, dict[str, Any]
             raise ValueError(f"repo '{name}' not found for owner {owner_did}")
 
 
-def build_patch(
-    cwd: str, base: str, title: str, author: str, email: str | None = None
-) -> str:
+def build_patch(cwd: str, base: str, title: str, author: str, email: str | None = None) -> str:
     """commit whatever changed in the working tree and render it as a git format-patch."""
     _subprocess.run(["git", "add", "-A"], cwd=cwd, check=True)
     status = _subprocess.run(
-        ["git", "status", "--porcelain"], cwd=cwd, capture_output=True, text=True
+        ["git", "status", "--porcelain"], cwd=cwd, capture_output=True, text=True, check=True
     ).stdout.strip()
     if not status:
         return ""
@@ -257,10 +252,7 @@ def _default_branch(record_uri: str) -> str:
     2026-09-03). a pull is opened against a branch name, so a missing
     answer is not a reason to lose the patch."""
     try:
-        return (
-            _bobbin("sh.tangled.repo.getDefaultBranch", repo=record_uri).get("name")
-            or "main"
-        )
+        return _bobbin("sh.tangled.repo.getDefaultBranch", repo=record_uri).get("name") or "main"
     except RuntimeError as e:
         print(f"getDefaultBranch unavailable, assuming main: {e}")
         return "main"
@@ -376,9 +368,7 @@ def login(handle: str, password: str) -> tuple[str, str, dict[str, str]]:
     return pds, did, {"Authorization": f"Bearer {resp.json()['accessJwt']}"}
 
 
-def append_round(
-    pull_uri: str, patch: str, note: str, handle: str, password: str
-) -> int:
+def append_round(pull_uri: str, patch: str, note: str, handle: str, password: str) -> int:
     """add a new round to an existing pull you authored; returns the round count."""
     did, collection, rkey = pull_uri.removeprefix("at://").split("/", 2)
     if collection != PULL_NSID:
@@ -401,9 +391,7 @@ def append_round(
     ]
     record = {**current, "rounds": rounds}
     if note:
-        record["body"] = (
-            f"{current.get('body', '')}\n\n---\nround {len(rounds)}: {note}".strip()
-        )
+        record["body"] = f"{current.get('body', '')}\n\n---\nround {len(rounds)}: {note}".strip()
     put = httpx.post(
         f"{pds}/xrpc/com.atproto.repo.putRecord",
         json={"repo": did, "collection": PULL_NSID, "rkey": rkey, "record": record},
@@ -477,9 +465,7 @@ def list_pull_comments(commenter_did: str, pull_uri: str) -> list[dict[str, str]
             }
             if cursor:
                 params["cursor"] = cursor
-            resp = httpx.get(
-                f"{pds}/xrpc/com.atproto.repo.listRecords", params=params, timeout=20
-            )
+            resp = httpx.get(f"{pds}/xrpc/com.atproto.repo.listRecords", params=params, timeout=20)
             if resp.status_code == 400:
                 break
             resp.raise_for_status()
@@ -505,9 +491,7 @@ def list_pull_comments(commenter_did: str, pull_uri: str) -> list[dict[str, str]
 
 PULL_STATUS_NSID = "sh.tangled.repo.pull.status"
 MERGED_STATUS = "sh.tangled.repo.pull.status.merged"
-VERDICT_RE = _re.compile(
-    r"VERDICT:\s*(approve|request-changes|escalate)", _re.IGNORECASE
-)
+VERDICT_RE = _re.compile(r"VERDICT:\s*(approve|request-changes|escalate)", _re.IGNORECASE)
 
 
 def pull_patch(pull_uri: str) -> dict[str, Any]:
@@ -563,9 +547,7 @@ def review_verdict(pull_uri: str, reviewer_did: str) -> dict[str, str] | None:
         }
         if cursor:
             params["cursor"] = cursor
-        resp = httpx.get(
-            f"{pds}/xrpc/com.atproto.repo.listRecords", params=params, timeout=20
-        )
+        resp = httpx.get(f"{pds}/xrpc/com.atproto.repo.listRecords", params=params, timeout=20)
         resp.raise_for_status()
         page = resp.json()
         for item in page.get("records") or []:
@@ -604,9 +586,7 @@ def repo_name_for_did(owner_did: str, repo_did: str) -> str:
         }
         if cursor:
             params["cursor"] = cursor
-        resp = httpx.get(
-            f"{pds}/xrpc/com.atproto.repo.listRecords", params=params, timeout=20
-        )
+        resp = httpx.get(f"{pds}/xrpc/com.atproto.repo.listRecords", params=params, timeout=20)
         resp.raise_for_status()
         page = resp.json()
         for item in page.get("records") or []:
@@ -645,8 +625,5 @@ def mark_pull_merged(pull_uri: str, handle: str, password: str) -> str:
 def touched_paths(patch: str) -> list[str]:
     """files a format-patch touches, from its diff headers."""
     return sorted(
-        {
-            m.group(1)
-            for m in _re.finditer(r"^diff --git a/(\S+) b/", patch, _re.MULTILINE)
-        }
+        {m.group(1) for m in _re.finditer(r"^diff --git a/(\S+) b/", patch, _re.MULTILINE)}
     )

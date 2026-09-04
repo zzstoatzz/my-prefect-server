@@ -48,9 +48,7 @@ REPO_URL_FALLBACK = "https://github.com/zzstoatzz/typeahead.git"
 # under the runtime user's home, so this flow reinstantiates on any host that
 # has the deployment's env + the install.sh prereqs. Nothing here assumes a
 # particular box.
-INDEXER_HOME = Path(
-    os.environ.get("INDEXER_HOME") or (Path.home() / ".typeahead-index")
-)
+INDEXER_HOME = Path(os.environ.get("INDEXER_HOME") or (Path.home() / ".typeahead-index"))
 REPO_DIR = INDEXER_HOME / "repo"
 
 
@@ -78,7 +76,7 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
         code = proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         proc.kill()
-        raise RuntimeError(f"{cmd[0]} exceeded {timeout}s timeout")
+        raise RuntimeError(f"{cmd[0]} exceeded {timeout}s timeout") from None
     if code != 0:
         raise RuntimeError(f"{' '.join(cmd[:3])} ... exited {code}")
 
@@ -99,6 +97,7 @@ def clone_repo() -> Path:
             ["git", "clone", "--depth", "1", url, str(REPO_DIR)],
             capture_output=True,
             text=True,
+            check=False,
         )
         if r.returncode == 0:
             logger.info(f"cloned {url}")
@@ -120,9 +119,7 @@ def build_binary(repo_dir: Path) -> Path:
     try:
         _stream(["zig", "build", "-Doptimize=ReleaseSafe"], services, env, timeout=900)
     except RuntimeError:
-        get_run_logger().warning(
-            "primary dep fetch failed; retrying via github mirrors"
-        )
+        get_run_logger().warning("primary dep fetch failed; retrying via github mirrors")
         shutil.copy(services / "build.zig.zon.gh", services / "build.zig.zon")
         _stream(["zig", "build", "-Doptimize=ReleaseSafe"], services, env, timeout=900)
     if not binary.is_file():

@@ -102,6 +102,7 @@ GROUP BY 1, 2, 3, 4
 ORDER BY 1
 """
 
+
 @dataclass
 class HourRow:
     """one (hour, path, status) row from the query. `path` is raw for rust

@@ -10,6 +10,7 @@ import logging
 
 import httpx
 import pytest
+from mps.likes import fetch_likes
 
 from flows.ingest import (
     LIKES_PAGES,
@@ -24,7 +25,6 @@ from flows.ingest import (
     fetch_phi_memory,
     resolve_liked_posts,
 )
-from mps.likes import fetch_likes
 
 NETWORK_TASKS = [
     fetch_notifications,
@@ -87,9 +87,7 @@ def test_tolerate_records_each_dead_source():
     degraded: list[str] = []
     _tolerate(_FailedFuture(httpx.ReadTimeout("x")), "likes", [], degraded, LOGGER)
     _tolerate(_OkFuture([]), "tangled", [], degraded, LOGGER)
-    _tolerate(
-        _FailedFuture(httpx.ConnectError("y")), "phi", ([], []), degraded, LOGGER
-    )
+    _tolerate(_FailedFuture(httpx.ConnectError("y")), "phi", ([], []), degraded, LOGGER)
     assert degraded == ["likes", "phi"]
 
 

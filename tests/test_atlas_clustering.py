@@ -54,7 +54,7 @@ def test_every_fine_cluster_belongs_to_exactly_one_coarse_group(coords) -> None:
     vote. Deriving coarse from fine makes the hierarchy real."""
     fine, coarse = assign_clusters(coords)
     for fid in {int(f) for f in fine if f != -1}:
-        parents = {int(c) for c, f in zip(coarse, fine) if f == fid}
+        parents = {int(c) for c, f in zip(coarse, fine, strict=True) if f == fid}
         assert len(parents) == 1, f"fine cluster {fid} spans coarse groups {parents}"
 
 

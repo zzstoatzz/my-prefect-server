@@ -63,7 +63,7 @@ def test_layer_assignment_from_kind():
     ]
     points = [_point(f"x-{kind}", kind) for kind, _ in cases]
     compute_lifecycle_metadata.fn(points, [])
-    for (kind, expected_layer), p in zip(cases, points):
+    for (kind, expected_layer), p in zip(cases, points, strict=True):
         assert p.layer == expected_layer, f"{kind} → {p.layer} (expected {expected_layer})"
 
 
@@ -97,7 +97,6 @@ def test_public_layers_default_to_promoted():
     compute_lifecycle_metadata.fn(points, [])
     for p in points:
         assert p.promotion_status == "promoted", f"{p.kind} → {p.promotion_status}"
-
 
 
 def test_private_working_promoted_when_clustered_with_public():
@@ -198,9 +197,7 @@ def test_cluster_summary_parent_coarse_mode():
     for p in points:
         p.x = 0.0
         p.y = 0.0
-    clusters = _cluster_summaries(
-        points, "cluster_fine", {1: ""}, parent_attr="cluster_coarse"
-    )
+    clusters = _cluster_summaries(points, "cluster_fine", {1: ""}, parent_attr="cluster_coarse")
     assert clusters[0].parent_coarse == 10
 
 

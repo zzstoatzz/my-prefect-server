@@ -108,7 +108,9 @@ def pi_pr(
             return {"changed": True, "dry_run": True, "patch_bytes": len(patch)}
 
         if requested_by:
-            body = f"{body}\n\nrequested by {requested_by}; implemented by pi, published by gardener."
+            body = (
+                f"{body}\n\nrequested by {requested_by}; implemented by pi, published by gardener."
+            )
         handle = Secret.load("gardener-handle").get()
         password = Secret.load("gardener-password").get()
         pull = create_pull(OWNER, repo, title, patch, body, handle, password)

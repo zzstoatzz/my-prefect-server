@@ -1,16 +1,15 @@
 """Run the dbt project over analytics.duckdb and export the hub-only tables."""
 
+import fcntl
 import json
+import logging
 import os
 import subprocess
-import fcntl
-import logging
 from pathlib import Path
-
-from prefect import flow, get_run_logger, task
 
 from mps.lock import analytics_write_slot
 from mps.spend import RAW_LLM_SPEND_SCHEMA
+from prefect import flow, get_run_logger, task
 
 ANALYTICS_DIR = Path(__file__).parent.parent / "analytics"
 
@@ -51,9 +50,7 @@ def export_hub_db(src: Path, dst: Path) -> int:
     try:
         con.execute(f"ATTACH '{src}' AS analytics (READ_ONLY)")
         for tbl in HUB_TABLES:
-            con.execute(
-                f"CREATE OR REPLACE TABLE {tbl} AS SELECT * FROM analytics.main.{tbl}"
-            )
+            con.execute(f"CREATE OR REPLACE TABLE {tbl} AS SELECT * FROM analytics.main.{tbl}")
         con.execute("DETACH analytics")
     finally:
         con.close()
@@ -141,6 +138,7 @@ def transform():
     # lazy imports: dbt-common -> mashumaro has Python 3.14 compat issues at
     # module load time; importing inside the function defers until flow runs
     from datetime import timedelta
+
     from prefect_dbt.core._orchestrator import (
         CacheConfig,
         ExecutionMode,
@@ -151,12 +149,8 @@ def transform():
 
     logger = get_run_logger()
 
-    src = Path(
-        os.environ.get("ANALYTICS_DB_PATH", "/prefect-analytics/analytics.duckdb")
-    )
-    spend_log = Path(
-        os.environ.get("LLM_SPEND_LOG_PATH", str(src.with_name("llm-spend.jsonl")))
-    )
+    src = Path(os.environ.get("ANALYTICS_DB_PATH", "/prefect-analytics/analytics.duckdb"))
+    spend_log = Path(os.environ.get("LLM_SPEND_LOG_PATH", str(src.with_name("llm-spend.jsonl"))))
     # compile manifest.json so PrefectDbtOrchestrator can parse the project
     logger.info("compiling dbt project...")
     # pin the nested dbt venv to stable 3.13 — without --python, uv picks the
@@ -178,6 +172,7 @@ def transform():
         ],
         capture_output=True,
         text=True,
+        check=False,
     )
     if result.returncode != 0:
         raise RuntimeError(

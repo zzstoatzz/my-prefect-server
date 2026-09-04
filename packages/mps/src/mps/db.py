@@ -7,7 +7,7 @@ from contextlib import contextmanager
 import duckdb
 
 from mps.email import EmailClassification, EmailItem
-from mps.likes import LikeRecord, LikedPost
+from mps.likes import LikedPost, LikeRecord
 from mps.lock import analytics_write_slot
 from mps.phi import PhiInteraction, PhiObservation
 
@@ -36,7 +36,8 @@ def write_likes(items: list[LikeRecord], db_path: str) -> int:
         """)
         rows = [
             (
-                item.at_uri, item.subject_uri,
+                item.at_uri,
+                item.subject_uri,
                 item.created_at,
                 datetime.datetime.now(datetime.UTC),
             )
@@ -68,9 +69,14 @@ def write_liked_posts(items: list[LikedPost], db_path: str) -> int:
         """)
         rows = [
             (
-                item.subject_uri, item.author_handle, item.author_did,
-                item.text, item.created_at, item.liked_at,
-                item.embed_type, item.embed_text,
+                item.subject_uri,
+                item.author_handle,
+                item.author_did,
+                item.text,
+                item.created_at,
+                item.liked_at,
+                item.embed_type,
+                item.embed_text,
                 datetime.datetime.now(datetime.UTC),
             )
             for item in items
@@ -98,10 +104,19 @@ def write_github_issues(items: list, db_path: str) -> int:
         """)
         rows = [
             (
-                item.repo, item.number, item.type,
-                item.title, item.state, item.body, item.url,
-                item.labels, item.created_at, item.updated_at,
-                item.user, item.comments, item.reactions_total,
+                item.repo,
+                item.number,
+                item.type,
+                item.title,
+                item.state,
+                item.body,
+                item.url,
+                item.labels,
+                item.created_at,
+                item.updated_at,
+                item.user,
+                item.comments,
+                item.reactions_total,
                 datetime.datetime.now(datetime.UTC),
             )
             for item in items
@@ -128,10 +143,16 @@ def write_tangled_items(items: list, db_path: str) -> int:
         """)
         rows = [
             (
-                item.repo, item.kind, item.title,
-                item.body, item.url, item.at_uri,
-                item.author_did, item.author_handle,
-                item.created_at, item.parent_uri,
+                item.repo,
+                item.kind,
+                item.title,
+                item.body,
+                item.url,
+                item.at_uri,
+                item.author_did,
+                item.author_handle,
+                item.created_at,
+                item.parent_uri,
                 datetime.datetime.now(datetime.UTC),
             )
             for item in items
@@ -158,8 +179,10 @@ def write_phi_observations(items: list[PhiObservation], db_path: str) -> int:
         """)
         rows = [
             (
-                item.handle, item.observation_id,
-                item.content, item.tags,
+                item.handle,
+                item.observation_id,
+                item.content,
+                item.tags,
                 item.created_at,
                 datetime.datetime.now(datetime.UTC),
             )
@@ -186,8 +209,10 @@ def write_phi_interactions(items: list[PhiInteraction], db_path: str) -> int:
         """)
         rows = [
             (
-                item.handle, item.interaction_id,
-                item.content, item.created_at,
+                item.handle,
+                item.interaction_id,
+                item.content,
+                item.created_at,
                 datetime.datetime.now(datetime.UTC),
             )
             for item in items
@@ -214,8 +239,14 @@ def write_emails(items: list[EmailItem], db_path: str) -> int:
         """)
         rows = [
             (
-                item.message_id, item.subject, item.sender_name, item.sender_address,
-                item.snippet, item.received_at, item.unread, item.mailbox,
+                item.message_id,
+                item.subject,
+                item.sender_name,
+                item.sender_address,
+                item.snippet,
+                item.received_at,
+                item.unread,
+                item.mailbox,
                 datetime.datetime.now(datetime.UTC),
             )
             for item in items
@@ -270,8 +301,7 @@ def write_email_classifications(items: list[EmailClassification], db_path: str) 
             )
         """)
         rows = [
-            (item.message_id, item.category, datetime.datetime.now(datetime.UTC))
-            for item in items
+            (item.message_id, item.category, datetime.datetime.now(datetime.UTC)) for item in items
         ]
         if rows:
             con.executemany(

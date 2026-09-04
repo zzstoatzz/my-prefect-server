@@ -39,12 +39,12 @@ Expected env (set by the deployment):
   - PLC_APPLY         (=1 to write; anything else is a dry run)
 """
 
+import contextlib
 import os
 import shutil
 import signal
 import subprocess
 import threading
-from datetime import UTC, datetime
 from pathlib import Path
 
 from prefect import flow, get_run_logger, task
@@ -76,7 +76,7 @@ def _heartbeat(stop: threading.Event, label: str, every: int = 300) -> None:
             mb = sum(f.stat().st_size for f in files) / 1e6
             partial = sum(f.stat().st_size for f in BUNDLE_DIR.glob("*.part")) / 1e6
             logger.info(
-                f"[{label}] alive — {len(files)} bundles, {mb/1000:.1f} GB"
+                f"[{label}] alive — {len(files)} bundles, {mb / 1000:.1f} GB"
                 + (f" (+{partial:.0f} MB in flight)" if partial else "")
             )
         except Exception as e:  # never let the heartbeat kill the stage
@@ -102,16 +102,20 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int, label: str = "")
     # bundle dir. It also made the flow die uncleanly, which the worker reports
     # as Crashed rather than Cancelled, so every cancel paged Discord.
     proc = subprocess.Popen(
-        cmd, cwd=str(cwd), env=env,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
+        cmd,
+        cwd=str(cwd),
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
         start_new_session=True,
     )
 
     def _kill_tree(sig=signal.SIGTERM):
-        try:
+        with contextlib.suppress(ProcessLookupError, PermissionError):
             os.killpg(os.getpgid(proc.pid), sig)
-        except (ProcessLookupError, PermissionError):
-            pass
+
     try:
         assert proc.stdout is not None
         for line in proc.stdout:
@@ -119,7 +123,7 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int, label: str = "")
         code = proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         _kill_tree(signal.SIGKILL)
-        raise RuntimeError(f"{cmd[0]} exceeded {timeout}s timeout")
+        raise RuntimeError(f"{cmd[0]} exceeded {timeout}s timeout") from None
     except BaseException:
         # covers cancellation (SIGTERM -> KeyboardInterrupt/SystemExit) as well
         # as ordinary errors: the child must never outlive the run.
@@ -155,7 +159,9 @@ def clone_repo() -> Path:
     for url in (REPO_URL, REPO_URL_FALLBACK):
         r = subprocess.run(
             ["git", "clone", "--depth", "1", url, str(REPO_DIR)],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
+            check=False,
         )
         if r.returncode == 0:
             logger.info(f"cloned {url}")
@@ -180,7 +186,10 @@ def fetch_published_bundles(repo_dir: Path) -> None:
     script = repo_dir / "scripts" / "plc-identity-sync.py"
     _stream(
         ["uv", "run", str(script), "--dest", str(BUNDLE_DIR), "--fetch", "--bundles-only"],
-        repo_dir, {**os.environ}, timeout=4 * 3600, label="fetch bundles",
+        repo_dir,
+        {**os.environ},
+        timeout=4 * 3600,
+        label="fetch bundles",
     )
 
 
@@ -212,9 +221,20 @@ def scrape_tail(repo_dir: Path) -> str:
     )
     logger.info(f"tail scrape starting — {len(weeks)} weeks on disk")
     _stream(
-        ["uv", "run", str(script), "--dest", str(BUNDLE_DIR), "--scrape-tail",
-         "--verify-bundles", "--bundles-only"],
-        repo_dir, {**os.environ}, timeout=4 * 3600, label="tail scrape",
+        [
+            "uv",
+            "run",
+            str(script),
+            "--dest",
+            str(BUNDLE_DIR),
+            "--scrape-tail",
+            "--verify-bundles",
+            "--bundles-only",
+        ],
+        repo_dir,
+        {**os.environ},
+        timeout=4 * 3600,
+        label="tail scrape",
     )
     return "python"
 

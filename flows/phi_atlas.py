@@ -24,6 +24,7 @@ blocks at deploy time):
 
 import asyncio
 import collections
+import contextlib
 import gc
 import gzip
 import hashlib
@@ -36,6 +37,10 @@ from typing import Any
 import httpx
 import numpy as np
 import turbopuffer
+from mps.atproto import create_bsky_session
+from mps.observability import configure_logfire
+from mps.phi import clean_handle, restore_handle
+from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 from openai import OpenAI
 from prefect import flow, get_run_logger, task
 from prefect.blocks.system import Secret
@@ -45,11 +50,6 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
-
-from mps.atproto import create_bsky_session
-from mps.observability import configure_logfire
-from mps.phi import clean_handle, restore_handle
-from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 
 # ---------------------------------------------------------------------------
 # constants
@@ -338,9 +338,7 @@ def fetch_tpuf_points(tpuf_key: str) -> list[AtlasPoint]:
             logger.warning(f"episodic query failed: {e}")
 
     n_with_vec = sum(1 for p in points if p._vector is not None)
-    logger.info(
-        f"fetched {len(points)} points from turbopuffer ({n_with_vec} with vectors reused)"
-    )
+    logger.info(f"fetched {len(points)} points from turbopuffer ({n_with_vec} with vectors reused)")
     return points
 
 
@@ -360,9 +358,7 @@ def fetch_pds_points() -> list[AtlasPoint]:
         (
             "network.cosmik.card",
             lambda v: (
-                "note"
-                if v.get("type") == "NOTE"
-                else ("url" if v.get("type") == "URL" else None)
+                "note" if v.get("type") == "NOTE" else ("url" if v.get("type") == "URL" else None)
             ),
         ),
     ]
@@ -388,9 +384,7 @@ def fetch_pds_points() -> list[AtlasPoint]:
                 id=pid,
                 kind=kind,
                 label=label,
-                created_at=value.get("createdAt", "")
-                or value.get("publishedAt", "")
-                or "",
+                created_at=value.get("createdAt", "") or value.get("publishedAt", "") or "",
                 refs={"at_uri": uri, "cid": r.get("cid", ""), "collection": collection},
             )
             point._content = embed_text
@@ -490,7 +484,7 @@ def embed_points(points: list[AtlasPoint], openai_key: str) -> list[AtlasPoint]:
             response=resp,
             item_count=len(inputs),
         )
-        for (idx, content), data in zip(batch, resp.data):
+        for (idx, content), data in zip(batch, resp.data, strict=True):
             vec = list(data.embedding)
             points[idx]._vector = vec
             _store_embedding(content, vec)
@@ -606,10 +600,8 @@ def assign_clusters(coords: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         return fine, np.zeros(len(coords), dtype=int)
 
     groups = AgglomerativeClustering(n_clusters=k, linkage="ward").fit(centroids).labels_
-    fine_to_coarse = {fid: int(g) for fid, g in zip(fine_ids, groups)}
-    group_centroids = np.array(
-        [centroids[groups == g].mean(axis=0) for g in range(k)]
-    )
+    fine_to_coarse = {fid: int(g) for fid, g in zip(fine_ids, groups, strict=True)}
+    group_centroids = np.array([centroids[groups == g].mean(axis=0) for g in range(k)])
 
     coarse = np.empty(len(coords), dtype=int)
     for i, lbl in enumerate(fine):
@@ -631,16 +623,14 @@ def cluster_points(points: list[AtlasPoint]) -> list[AtlasPoint]:
     coords = np.array([[p.x, p.y] for p in placed], dtype=np.float32)
     fine, coarse = assign_clusters(coords)
 
-    for p, c, f in zip(placed, coarse, fine):
+    for p, c, f in zip(placed, coarse, fine, strict=True):
         p.cluster_coarse = int(c)
         p.cluster_fine = int(f)
 
     n_coarse = len(set(coarse.tolist()))
     n_fine = len(set(fine.tolist())) - (1 if -1 in fine else 0)
     largest = max(collections.Counter(coarse.tolist()).values()) / len(coarse)
-    logger.info(
-        f"clusters: {n_coarse} coarse (largest {largest:.1%} of points), {n_fine} fine"
-    )
+    logger.info(f"clusters: {n_coarse} coarse (largest {largest:.1%} of points), {n_fine} fine")
     return points
 
 
@@ -682,9 +672,7 @@ async def label_clusters(
     Returns (coarse_labels, fine_labels) keyed by cluster id.
     """
     logger = get_run_logger()
-    model = AnthropicModel(
-        "claude-haiku-4-5", provider=AnthropicProvider(api_key=anthropic_key)
-    )
+    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=anthropic_key))
     agent: Agent[None, str] = Agent(
         model,
         system_prompt="you label semantic clusters with short, concrete themes.",
@@ -700,9 +688,7 @@ async def label_clusters(
     fine_buckets: dict[int, list[str]] = {}
     for p in points:
         if p.cluster_coarse >= 0:
-            coarse_buckets.setdefault(p.cluster_coarse, []).append(
-                p._content or p.label
-            )
+            coarse_buckets.setdefault(p.cluster_coarse, []).append(p._content or p.label)
         if p.cluster_fine >= 0:
             fine_buckets.setdefault(p.cluster_fine, []).append(p._content or p.label)
 
@@ -713,9 +699,7 @@ async def label_clusters(
         cid: await _label_cluster(snips, agent) for cid, snips in fine_buckets.items()
     }
 
-    logger.info(
-        f"labeled {len(coarse_labels)} coarse + {len(fine_labels)} fine clusters"
-    )
+    logger.info(f"labeled {len(coarse_labels)} coarse + {len(fine_labels)} fine clusters")
     return coarse_labels, fine_labels
 
 
@@ -767,8 +751,7 @@ def compute_lifecycle_metadata(
     cluster_has_summary: dict[int, bool] = {}
     for cid, members in by_fine.items():
         cluster_has_public[cid] = any(
-            KIND_TO_LAYER.get(m.kind) in ("public-knowledge", "public-output")
-            for m in members
+            KIND_TO_LAYER.get(m.kind) in ("public-knowledge", "public-output") for m in members
         )
         cluster_has_summary[cid] = any(m.kind == "summary" for m in members)
 
@@ -978,25 +961,18 @@ def upload_atlas_to_pds(
 @task
 def archive_atlas_json(atlas_json: str, generated_at: str, point_count: int) -> str:
     """Archive the atlas JSON without loading DuckDB in this memory-hot pod."""
-    archive_dir = (
-        Path(os.environ.get("PREFECT_LOCAL_STORAGE_PATH", "/tmp")) / "phi-atlas-runs"
-    )
+    archive_dir = Path(os.environ.get("PREFECT_LOCAL_STORAGE_PATH", "/tmp")) / "phi-atlas-runs"
     archive_dir.mkdir(parents=True, exist_ok=True)
     safe_generated_at = (
-        generated_at.replace(":", "")
-        .replace("+", "")
-        .replace(".", "-")
-        .replace("T", "_")
+        generated_at.replace(":", "").replace("+", "").replace(".", "-").replace("T", "_")
     )
     path = archive_dir / f"{safe_generated_at}_{point_count}.json.gz"
     tmp_path = path.with_suffix(path.suffix + ".tmp")
     with gzip.open(tmp_path, "wt", encoding="utf-8") as handle:
         handle.write(atlas_json)
     os.replace(tmp_path, path)
-    try:
+    with contextlib.suppress(MissingContextError):
         get_run_logger().info(f"archived atlas JSON to {path}")
-    except MissingContextError:
-        pass
     return str(path)
 
 

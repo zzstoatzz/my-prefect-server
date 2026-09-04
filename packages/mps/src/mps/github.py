@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 class IssueRef(BaseModel):
     """Parsed from a GitHub notification — what we need to fetch."""
+
     repo: str
     number: int
     subject_type: Literal["Issue", "PullRequest"]
@@ -14,6 +15,7 @@ class IssueRef(BaseModel):
 
 class IssueOrPR(BaseModel):
     """Fetched issue or PR data — persisted as JSON result."""
+
     repo: str
     number: int
     type: str

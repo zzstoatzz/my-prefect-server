@@ -35,10 +35,17 @@ def test_cadence_renders_cron_trigger_and_manual():
 
 
 def test_purpose_prefers_description_then_flow_docstring_then_module(tmp_path: Path):
-    write_flow(tmp_path, "one", '"""module line."""\ndef one():\n    """flow line\n    wraps here.\n\n    details.\n    """\n')
+    write_flow(
+        tmp_path,
+        "one",
+        '"""module line."""\ndef one():\n    """flow line\n    wraps here.\n\n    details.\n    """\n',
+    )
     write_flow(tmp_path, "two", '"""module line."""\ndef two():\n    pass\n')
     write_flow(tmp_path, "three", "def three():\n    pass\n")
-    assert inv.purpose({"entrypoint": "flows/one.py:one", "description": "declared."}, tmp_path) == "declared"
+    assert (
+        inv.purpose({"entrypoint": "flows/one.py:one", "description": "declared."}, tmp_path)
+        == "declared"
+    )
     assert inv.purpose({"entrypoint": "flows/one.py:one"}, tmp_path) == "flow line wraps here"
     assert inv.purpose({"entrypoint": "flows/two.py:two"}, tmp_path) == "module line"
     with pytest.raises(inv.InventoryError):

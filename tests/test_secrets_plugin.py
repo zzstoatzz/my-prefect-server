@@ -1,7 +1,6 @@
 import importlib.metadata
 
 import pytest
-
 from mps import secrets_plugin
 
 

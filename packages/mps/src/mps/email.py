@@ -5,6 +5,7 @@ runs on the same box and bridges Proton's API to IMAP on localhost:1143.
 Login uses the hydroxide-generated bridge password, not the Proton password.
 """
 
+import contextlib
 import datetime
 import email
 import email.header
@@ -100,9 +101,7 @@ def fetch_inbox(
     mailbox: str = "INBOX",
 ) -> list[EmailItem]:
     """Fetch recent messages from the bridge without marking them read."""
-    since = (datetime.date.today() - datetime.timedelta(days=since_days)).strftime(
-        "%d-%b-%Y"
-    )
+    since = (datetime.date.today() - datetime.timedelta(days=since_days)).strftime("%d-%b-%Y")
 
     conn = imaplib.IMAP4(host, port)
     try:
@@ -129,12 +128,8 @@ def fetch_inbox(
 
             msg = email.message_from_bytes(raw)
 
-            message_id = (
-                _decode_header(msg.get("Message-ID")) or f"uid-{mailbox}-{uid.decode()}"
-            )
-            sender_name, sender_address = email.utils.parseaddr(
-                _decode_header(msg.get("From"))
-            )
+            message_id = _decode_header(msg.get("Message-ID")) or f"uid-{mailbox}-{uid.decode()}"
+            sender_name, sender_address = email.utils.parseaddr(_decode_header(msg.get("From")))
 
             received_at = ""
             date_header = msg.get("Date")
@@ -158,7 +153,5 @@ def fetch_inbox(
             )
         return items
     finally:
-        try:
+        with contextlib.suppress(Exception):
             conn.logout()
-        except Exception:
-            pass

@@ -59,25 +59,19 @@ def test_dry_run_renders_without_pi(monkeypatch):
         return ctx("strata")
 
     monkeypatch.setattr(autofix, "gather", fake)
-    monkeypatch.setattr(
-        autofix, "run_pi", lambda *a, **k: (_ for _ in ()).throw(AssertionError)
-    )
+    monkeypatch.setattr(autofix, "run_pi", lambda *a, **k: (_ for _ in ()).throw(AssertionError))
     with prefect_test_harness():
         state = autofix.autofix(uuid4(), dry_run=True, return_state=True)
     assert state.name == "DryRun"
 
 
 def test_split_summary():
-    s, rest = autofix.split_summary(
-        "SUMMARY: retries too short; skip the segment\nbody\nmore"
-    )
+    s, rest = autofix.split_summary("SUMMARY: retries too short; skip the segment\nbody\nmore")
     assert s == "retries too short; skip the segment"
     assert rest == "body\nmore"
     s, rest = autofix.split_summary("no header\nbody")
     assert s == "no header" and rest == "no header\nbody"
-    assert (
-        len(autofix.split_summary("SUMMARY: " + "x" * 999)[0]) == autofix.SUMMARY_LIMIT
-    )
+    assert len(autofix.split_summary("SUMMARY: " + "x" * 999)[0]) == autofix.SUMMARY_LIMIT
 
 
 def test_checkout_as_of_picks_commit_before_run(tmp_path, monkeypatch):
@@ -199,9 +193,7 @@ def test_propose_for_allowlist_turns_proposing_on(monkeypatch):
 
     monkeypatch.setattr(autofix, "propose_fix", fake_propose)
     with prefect_test_harness():
-        other = autofix.autofix(
-            uuid4(), propose_for=["strata-hourly"], return_state=True
-        )
+        other = autofix.autofix(uuid4(), propose_for=["strata-hourly"], return_state=True)
     assert other.name == "Proposed"
     assert proposed == ["strata-hourly"]
 
@@ -210,8 +202,6 @@ def test_propose_for_allowlist_turns_proposing_on(monkeypatch):
 
     monkeypatch.setattr(autofix, "gather", fake_other)
     with prefect_test_harness():
-        state = autofix.autofix(
-            uuid4(), propose_for=["strata-hourly"], return_state=True
-        )
+        state = autofix.autofix(uuid4(), propose_for=["strata-hourly"], return_state=True)
     assert state.name == "Diagnosed"
     assert proposed == ["strata-hourly"]

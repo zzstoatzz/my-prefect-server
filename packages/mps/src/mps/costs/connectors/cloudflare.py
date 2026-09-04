@@ -231,7 +231,9 @@ class CloudflareConnector:
             # if we can't read it, OMIT r2 (never invent a $0 line) and warn —
             # but still report the real fixed costs below.
             try:
-                items.extend(_r2_line_items(await _r2_stored_bytes_by_bucket(client, account, period)))
+                items.extend(
+                    _r2_line_items(await _r2_stored_bytes_by_bucket(client, account, period))
+                )
             except Exception as exc:
                 print(
                     f"  cloudflare: R2 storage UNMEASURED ({exc}); "

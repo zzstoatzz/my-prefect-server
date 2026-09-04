@@ -116,8 +116,7 @@ def run_pi(
     """
     if shutil.which("pi") is None:
         raise RuntimeError(
-            "pi is not installed on this worker — "
-            "npm install -g @earendil-works/pi-coding-agent"
+            "pi is not installed on this worker — npm install -g @earendil-works/pi-coding-agent"
         )
 
     cmd = ["pi", "--print", "--no-session", "--provider", provider]

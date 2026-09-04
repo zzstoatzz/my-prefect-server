@@ -21,8 +21,6 @@ import httpx
 from mps.pi import minimal_env, run_pi, screen_prompt
 from mps.tangled import (
     DID as OPERATOR_DID,
-)
-from mps.tangled import (
     append_round,
     build_patch,
     comment_on_pull,
@@ -124,9 +122,7 @@ def autofix_revise(pull: str, comment_uri: str = "") -> Completed:
     record = get_record(pull)["value"]
     rounds = record.get("rounds", [])
     if len(rounds) >= MAX_ROUNDS:
-        return Completed(
-            name="Capped", message=f"{len(rounds)} rounds — take it from here by hand"
-        )
+        return Completed(name="Capped", message=f"{len(rounds)} rounds — take it from here by hand")
 
     thread = list_pull_comments(OPERATOR_DID, pull)
     if not thread:
@@ -179,9 +175,7 @@ def autofix_revise(pull: str, comment_uri: str = "") -> Completed:
         parsed = trailers(output, ("REPLY", "NOTE"))
         reply = parsed.get("REPLY") or "revised — see the new round."
         note = parsed.get("NOTE", "")
-        new_patch = build_patch(
-            cwd, base, note or "revision", "gardener", email="gardener@zat.dev"
-        )
+        new_patch = build_patch(cwd, base, note or "revision", "gardener", email="gardener@zat.dev")
 
     handle = Secret.load("gardener-handle").get()
     password = Secret.load("gardener-password").get()

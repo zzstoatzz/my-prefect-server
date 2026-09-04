@@ -42,9 +42,7 @@ def test_pi_pr_publishes_as_gardener_and_emits_proposed(monkeypatch):
     monkeypatch.setattr(pi_pr, "emit_event", lambda **kw: events.append(kw))
 
     with prefect_test_harness():
-        out = pi_pr.pi_pr(
-            "rename x", "title", "body", repo="tangled-mcp", requested_by="phi"
-        )
+        out = pi_pr.pi_pr("rename x", "title", "body", repo="tangled-mcp", requested_by="phi")
 
     assert out["changed"] is True
     assert published["handle"] == "<gardener-handle>"

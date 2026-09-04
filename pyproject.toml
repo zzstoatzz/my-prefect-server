@@ -68,6 +68,7 @@ dev = [
     # async tests (e.g. tests/test_bisk_retries.py) need a runner; with
     # asyncio_mode = "auto" below, no test needs an @pytest.mark.asyncio.
     "pytest-asyncio>=0.24",
+    "ruff>=0.16.6",
 ]
 
 [tool.pytest.ini_options]
@@ -83,3 +84,14 @@ python-version = "3.14"
 
 [tool.ty.terminal]
 error-on-warning = true
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["analytics", "web", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF", "PLW1510"]
+ignore = ["E501", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true

@@ -17,13 +17,12 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from mps.db import unclassified_emails, write_email_classifications
+from mps.email import EmailClassification, IndexedClassifications
 from prefect import flow, get_run_logger, task, unmapped
 from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
-
-from mps.db import unclassified_emails, write_email_classifications
-from mps.email import EmailClassification, IndexedClassifications
 
 # bump to invalidate cached classifications. "v3" matches the keys minted when
 # this task lived in ingest, so the move doesn't re-classify the whole inbox.
@@ -35,6 +34,7 @@ def _db_path() -> str:
         "ANALYTICS_DB_PATH",
         os.environ.get("PREFECT_LOCAL_STORAGE_PATH", "/tmp") + "/analytics.duckdb",
     )
+
 
 EMAIL_CLASSIFIER_PROMPT = """\
 you categorize inbox emails for a solo developer's dashboard.
@@ -86,19 +86,16 @@ def classify_email_batch(
     batch: list[tuple[str, str, str, str]], api_key: str
 ) -> list[EmailClassification]:
     """LLM-classify one batch of emails. Cached by the batch's message_ids."""
+    from mps.spend import record_pydantic_ai_result
     from pydantic_ai import Agent
     from pydantic_ai.models.anthropic import AnthropicModel
     from pydantic_ai.providers.anthropic import AnthropicProvider
-
-    from mps.spend import record_pydantic_ai_result
 
     lines = [
         f"{i}. sender={sender!r} subject={subject!r} snippet={snippet[:200]!r}"
         for i, (_, sender, subject, snippet) in enumerate(batch)
     ]
-    model = AnthropicModel(
-        "claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key)
-    )
+    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
     agent = Agent(
         model,
         output_type=IndexedClassifications,
@@ -137,8 +134,7 @@ def classify_emails():
 
     api_key = Secret.load("anthropic-api-key").get()
     batches = [
-        pending[i : i + CLASSIFY_BATCH_SIZE]
-        for i in range(0, len(pending), CLASSIFY_BATCH_SIZE)
+        pending[i : i + CLASSIFY_BATCH_SIZE] for i in range(0, len(pending), CLASSIFY_BATCH_SIZE)
     ]
     futures = classify_email_batch.map(batches, unmapped(api_key))
     classified = [c for batch in futures.result() for c in batch]

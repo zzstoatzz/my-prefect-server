@@ -23,10 +23,16 @@ class FlakyClient:
         self.calls += 1
         if self.calls <= self.failures:
             raise self.exc
-        return httpx.Response(200, json={"results": [
-            {"type": "ok", "response": {"type": "execute", "result": {"rows": []}}},
-            {"type": "ok", "response": {"type": "close"}},
-        ]}, request=httpx.Request("POST", url))
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {"type": "ok", "response": {"type": "execute", "result": {"rows": []}}},
+                    {"type": "ok", "response": {"type": "close"}},
+                ]
+            },
+            request=httpx.Request("POST", url),
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -57,9 +63,15 @@ def test_statement_error_is_not_retried():
 
         def post(self, url, headers, json, timeout):
             self.calls += 1
-            return httpx.Response(200, json={"results": [
-                {"type": "error", "error": {"message": "no such column: nope"}},
-            ]}, request=httpx.Request("POST", url))
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {"type": "error", "error": {"message": "no such column: nope"}},
+                    ]
+                },
+                request=httpx.Request("POST", url),
+            )
 
     client = ErrClient()
     with pytest.raises(RuntimeError, match="turso"):

@@ -25,17 +25,14 @@ import os
 
 import httpx
 from atproto import AsyncClient
-from pydantic import BaseModel, Field
-
+from mps.bufo_traffic import COLLECTION, QUERY, DayTraffic, parse_rows, rollup
+from mps.observability import configure_logfire
+from pdsx._internal.auth import login
 from prefect import flow, task
 from prefect.artifacts import create_table_artifact
 from prefect.blocks.system import Secret
 from prefect.cache_policies import NONE
-
-from pdsx._internal.auth import login
-
-from mps.bufo_traffic import COLLECTION, QUERY, DayTraffic, parse_rows, rollup
-from mps.observability import configure_logfire
+from pydantic import BaseModel, Field
 
 LOGFIRE_QUERY_URL = "https://logfire-us.pydantic.dev/v2/query"
 QUERY_ROW_LIMIT = 10_000
@@ -46,7 +43,7 @@ class TrafficConfig(BaseModel):
     dry_run: bool = Field(
         default=True,
         description="print the day records instead of writing them to PDS",
-        json_schema_extra=dict(position=0),
+        json_schema_extra={"position": 0},
     )
     days_back: int = Field(
         default=2,
@@ -114,7 +111,9 @@ async def bufo_traffic(config: TrafficConfig | None = None):
     config = config or TrafficConfig()
 
     now = dt.datetime.now(dt.UTC)
-    since = (now - dt.timedelta(days=config.days_back)).replace(hour=0, minute=0, second=0, microsecond=0)
+    since = (now - dt.timedelta(days=config.days_back)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
     print(f"rolling find-bufo.com traffic {since.date()} .. {now.date()}")
 
     days = sorted((await query_logfire(since, now)).values(), key=lambda d: d.day)

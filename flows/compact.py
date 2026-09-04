@@ -12,25 +12,24 @@ import hashlib
 import os
 import shutil
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import duckdb
 import httpx
 import turbopuffer
+from mps.phi import clean_handle
+from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 from openai import OpenAI
-from pydantic import BaseModel, Field
-from pydantic_ai import Agent
-from pydantic_ai.models.anthropic import AnthropicModel
-from pydantic_ai.providers.anthropic import AnthropicProvider
 from prefect import flow, get_run_logger, task
 from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 from prefect.tasks import exponential_backoff
-
-from mps.phi import clean_handle
-from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
+from pydantic import BaseModel, Field
+from pydantic_ai import Agent
+from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.providers.anthropic import AnthropicProvider
 
 SYSTEM_PROMPT = """\
 you synthesize relationship summaries for a bluesky bot named phi.
@@ -99,7 +98,7 @@ def load_user_profiles(snap_path: str) -> list[dict[str, Any]]:
         "top_tags",
         "recency_score",
     ]
-    return [dict(zip(columns, row)) for row in rows]
+    return [dict(zip(columns, row, strict=True)) for row in rows]
 
 
 @task
@@ -190,9 +189,7 @@ async def synthesize_summary(
     bsky_profile: dict[str, str] | None = None,
 ) -> str:
     """LLM synthesis of a relationship summary. Cached by observations hash."""
-    model = AnthropicModel(
-        "claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key)
-    )
+    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
     # compact iterates over top authors; the SYSTEM_PROMPT is constant across
     # the per-user loop, so caching it once and reusing on every call is the
     # biggest single lever for this flow.
@@ -287,7 +284,7 @@ def write_summary_to_turbopuffer(
                 "kind": "summary",
                 "content": summary,
                 "tags": [],
-                "created_at": datetime.now(timezone.utc).isoformat(),
+                "created_at": datetime.now(UTC).isoformat(),
             }
         ],
         distance_metric="cosine_distance",
@@ -390,7 +387,7 @@ def load_recent_liked_posts(snap_path: str) -> dict[str, list[dict[str, str]]]:
     ]
     by_author: dict[str, list[dict[str, str]]] = defaultdict(list)
     for row in rows:
-        post = dict(zip(columns, row))
+        post = dict(zip(columns, row, strict=True))
         by_author[post["author_handle"]].append(post)
     return dict(by_author)
 
@@ -476,9 +473,7 @@ async def extract_likes_observations(
     api_key: str,
 ) -> list[dict[str, Any]]:
     """LLM extraction of observations from liked posts. Cached by posts hash."""
-    model = AnthropicModel(
-        "claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key)
-    )
+    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
     agent = Agent(
         model,
         system_prompt=LIKES_SYSTEM_PROMPT,
@@ -512,9 +507,7 @@ async def extract_likes_observations(
 
 def _observation_id(handle: str, content: str) -> str:
     """Deterministic ID for a likes-derived observation."""
-    return hashlib.sha256(f"user-{handle}-observation-{content}".encode()).hexdigest()[
-        :16
-    ]
+    return hashlib.sha256(f"user-{handle}-observation-{content}".encode()).hexdigest()[:16]
 
 
 USER_NAMESPACE_SCHEMA = {
@@ -579,19 +572,14 @@ def write_likes_observations_to_turbopuffer(
                 if resp.rows:
                     old_content = obs["supersedes_content"].lower()
                     for row in resp.rows:
-                        if (
-                            old_content in row.content.lower()
-                            or row.content.lower() in old_content
-                        ):
-                            ns.write(
-                                deletes=[row.id], distance_metric="cosine_distance"
-                            )
+                        if old_content in row.content.lower() or row.content.lower() in old_content:
+                            ns.write(deletes=[row.id], distance_metric="cosine_distance")
                             break
             except Exception:
                 pass  # proceed with upsert even if delete fails
 
         obs_id = _observation_id(handle, content)
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         ns.write(
             upsert_rows=[
                 {
@@ -617,9 +605,7 @@ def write_likes_observations_to_turbopuffer(
             updated += 1
 
     skipped = sum(1 for o in observations if o.get("action", "").upper() == "NOOP")
-    logger.info(
-        f"likes observations: {added} added, {updated} updated, {skipped} skipped"
-    )
+    logger.info(f"likes observations: {added} added, {updated} updated, {skipped} skipped")
 
 
 @flow(name="phi-memory-synthesis", log_prints=True, timeout_seconds=1800)
@@ -701,9 +687,7 @@ async def compact():
             # which observation, but always-true: each extracted claim was
             # justified by something in this batch. dedup, preserve order.
             batch_uris = list(
-                dict.fromkeys(
-                    p.get("subject_uri", "") for p in posts if p.get("subject_uri")
-                )
+                dict.fromkeys(p.get("subject_uri", "") for p in posts if p.get("subject_uri"))
             )
             for obs in obs_dicts:
                 if not obs.get("source_uris") and batch_uris:
@@ -711,9 +695,7 @@ async def compact():
 
             all_observations.extend(obs_dicts)
 
-        actionable = [
-            o for o in all_observations if o.get("action", "").upper() != "NOOP"
-        ]
+        actionable = [o for o in all_observations if o.get("action", "").upper() != "NOOP"]
         if actionable:
             write_likes_observations_to_turbopuffer(tpuf_key, openai_key, actionable)
         logger.info(

@@ -139,7 +139,14 @@ def render(deps: list[Deployment]) -> str:
         members = [d for d in deps if d.group == g]
         if not members:
             continue
-        lines += [f"## {g}", "", blurb, "", "| deployment | cadence | purpose | entrypoint |", "|---|---|---|---|"]
+        lines += [
+            f"## {g}",
+            "",
+            blurb,
+            "",
+            "| deployment | cadence | purpose | entrypoint |",
+            "|---|---|---|---|",
+        ]
         for d in members:
             path, fn = d.entrypoint.split(":")
             lines.append(f"| `{d.name}` | {d.cadence} | {d.purpose} | [`{fn}`]({path}) |")

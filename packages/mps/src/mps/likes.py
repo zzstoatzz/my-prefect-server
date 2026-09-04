@@ -57,9 +57,7 @@ def summarize_embed(embed: dict) -> tuple[str, str]:
     return "", ""
 
 
-def fetch_likes(
-    client: httpx.Client, max_pages: int | None = None
-) -> list[LikeRecord]:
+def fetch_likes(client: httpx.Client, max_pages: int | None = None) -> list[LikeRecord]:
     """Fetch like records from nate's PDS. Cursor-based pagination.
 
     listRecords returns newest-first, so `max_pages` bounds an incremental

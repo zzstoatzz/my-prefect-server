@@ -69,26 +69,46 @@ def _apply_env() -> None:
         os.environ["PATH"] = f"{GATE_PATH}:{current}" if current else GATE_PATH
     os.environ.setdefault("DOCKER_HOST", DOCKER_HOST)
 
+
 # every suite admit knows about; `only` is expressed as a skip-list of the rest
 # so the receipt still records each one explicitly (skipped is not omitted).
 ALL_SUITES = [
-    "lifecycle-oracle", "powerloss-oracle", "unit-debug", "unit-releasesafe",
-    "differential-oracle", "listener-contract", "shutdown-contract",
-    "logging-contract", "environment-contract", "dashboard-test",
-    "process-metrics-contract", "http-metrics-contract", "archive-contract",
-    "plan-config-contract", "cursor-lookback-contract",
-    "compaction-config-contract", "retry-config-contract",
-    "subscribe-config-contract", "subscribe-read-batch-contract",
-    "status-contract", "seam-handoff-contract",
+    "lifecycle-oracle",
+    "powerloss-oracle",
+    "unit-debug",
+    "unit-releasesafe",
+    "differential-oracle",
+    "listener-contract",
+    "shutdown-contract",
+    "logging-contract",
+    "environment-contract",
+    "dashboard-test",
+    "process-metrics-contract",
+    "http-metrics-contract",
+    "archive-contract",
+    "plan-config-contract",
+    "cursor-lookback-contract",
+    "compaction-config-contract",
+    "retry-config-contract",
+    "subscribe-config-contract",
+    "subscribe-read-batch-contract",
+    "status-contract",
+    "seam-handoff-contract",
 ]
 
 
 def _run(cmd: str, cwd: Path | None = None, env: dict | None = None, timeout: int = 3600):
     """Run a shell command, streaming nothing but returning everything."""
     return subprocess.run(
-        cmd, shell=True, cwd=cwd, text=True, timeout=timeout,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        cmd,
+        shell=True,
+        cwd=cwd,
+        text=True,
+        timeout=timeout,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         env={**os.environ, **(env or {})},
+        check=False,
     )
 
 
@@ -108,8 +128,12 @@ def checkout(sha: str | None) -> str:
             raise RuntimeError(f"clone failed:\n{r.stdout}")
 
     target = sha or "origin/main"
-    for cmd in ("git fetch --tags --prune origin", f"git checkout --force {shlex.quote(target)}",
-                "git reset --hard", "git clean -fdx -e receipts -e .zig-cache"):
+    for cmd in (
+        "git fetch --tags --prune origin",
+        f"git checkout --force {shlex.quote(target)}",
+        "git reset --hard",
+        "git clean -fdx -e receipts -e .zig-cache",
+    ):
         r = _run(cmd, cwd=WORKTREE)
         if r.returncode != 0:
             raise RuntimeError(f"`{cmd}` failed:\n{r.stdout}")
@@ -147,7 +171,9 @@ def ensure_upstream() -> str:
     # differential-oracle failed with "module lookup disabled by GOPROXY=off".
     # Download the whole module graph here, where the proxy is still allowed.
     r = _run(
-        "go mod download all", cwd=UPSTREAM, timeout=1800,
+        "go mod download all",
+        cwd=UPSTREAM,
+        timeout=1800,
         env={"GOPROXY": os.environ.get("STREAM_GATE_GOPROXY", "https://proxy.golang.org,direct")},
     )
     if r.returncode != 0:
@@ -175,9 +201,10 @@ def ensure_uv_cache() -> None:
     """
     log = get_run_logger()
     r = _run(
-        'uv run --no-project --with zstandard --with websockets '
+        "uv run --no-project --with zstandard --with websockets "
         'python -c "import zstandard, websockets"',
-        cwd=WORKTREE, timeout=900,
+        cwd=WORKTREE,
+        timeout=900,
     )
     if r.returncode != 0:
         raise RuntimeError(f"warming the uv cache failed:\n{r.stdout}")
@@ -202,38 +229,58 @@ def ensure_simulator() -> bool:
     # report a healthy simulator as down (then try to bind :7777 twice)
     probe = _run(f"curl -s --max-time 3 http://127.0.0.1:{SIMULATOR_PORT}/ >/dev/null", timeout=30)
     if probe.returncode == 0:
-        stale = _run(
-            "PID=$(ss -tlnp 2>/dev/null | grep :%d | grep -oE 'pid=[0-9]+' | cut -d= -f2 | head -1); "
-            "[ -n \"$PID\" ] && [ $(($(date +%%s) - $(stat -c %%Y /proc/$PID))) -gt 43200 ]" % SIMULATOR_PORT,
-            timeout=30,
-        ).returncode == 0
+        stale = (
+            _run(
+                f"PID=$(ss -tlnp 2>/dev/null | grep :{SIMULATOR_PORT} | grep -oE 'pid=[0-9]+' | cut -d= -f2 | head -1); "
+                '[ -n "$PID" ] && [ $(($(date +%s) - $(stat -c %Y /proc/$PID))) -gt 43200 ]',
+                timeout=30,
+            ).returncode
+            == 0
+        )
         did = _run(
             f"curl -s --max-time 3 'http://127.0.0.1:{SIMULATOR_PORT}/xrpc/com.atproto.sync.listRepos?limit=1'"
             " | grep -oE 'did:[a-z0-9:]+' | head -1",
             timeout=30,
         )
-        wedged = bool(did.stdout.strip()) and _run(
-            f"curl -s --max-time 5 -o /dev/null 'http://127.0.0.1:{SIMULATOR_PORT}/xrpc/com.atproto.sync.getRepo?did={did.stdout.strip()}'",
-            timeout=30,
-        ).returncode != 0
+        wedged = (
+            bool(did.stdout.strip())
+            and _run(
+                f"curl -s --max-time 5 -o /dev/null 'http://127.0.0.1:{SIMULATOR_PORT}/xrpc/com.atproto.sync.getRepo?did={did.stdout.strip()}'",
+                timeout=30,
+            ).returncode
+            != 0
+        )
         if not stale and not wedged:
             log.info("simulator already serving :%d", SIMULATOR_PORT)
             return False
-        log.info("recycling simulator (stale=%s wedged=%s): a %s world outgrows the oracle's serving window", stale, wedged, ">12h" if stale else "wedged")
+        log.info(
+            "recycling simulator (stale=%s wedged=%s): a %s world outgrows the oracle's serving window",
+            stale,
+            wedged,
+            ">12h" if stale else "wedged",
+        )
         _run(
-            "PID=$(ss -tlnp 2>/dev/null | grep :%d | grep -oE 'pid=[0-9]+' | cut -d= -f2 | head -1); [ -n \"$PID\" ] && kill $PID; sleep 2" % SIMULATOR_PORT,
+            f"PID=$(ss -tlnp 2>/dev/null | grep :{SIMULATOR_PORT} | grep -oE 'pid=[0-9]+' | cut -d= -f2 | head -1); [ -n \"$PID\" ] && kill $PID; sleep 2",
             timeout=30,
         )
     log.info("starting the pinned simulator on :%d", SIMULATOR_PORT)
     subprocess.Popen(
         "nohup go run ./cmd/simulator serve --reset --accounts=100 --commits-per-sec=20"
         " >/tmp/stream-gate-sim.log 2>&1 &",
-        shell=True, cwd=UPSTREAM, start_new_session=True, env=dict(os.environ),
+        shell=True,
+        cwd=UPSTREAM,
+        start_new_session=True,
+        env=dict(os.environ),
     )
     # a cold start also downloads and builds the simulator's go modules, which
     # took longer than a 3-minute window on this box's first run
     for attempt in range(300):
-        if _run(f"curl -s --max-time 2 http://127.0.0.1:{SIMULATOR_PORT}/ >/dev/null", timeout=15).returncode == 0:
+        if (
+            _run(
+                f"curl -s --max-time 2 http://127.0.0.1:{SIMULATOR_PORT}/ >/dev/null", timeout=15
+            ).returncode
+            == 0
+        ):
             log.info("simulator up after %ds", attempt * 2)
             return True
         time.sleep(2)
@@ -279,7 +326,9 @@ def stream_admission(
     """
     log = get_run_logger()
     _apply_env()
-    log.info("PATH: %s | DOCKER_HOST: %s", os.environ["PATH"].split(":")[:3], os.environ["DOCKER_HOST"])
+    log.info(
+        "PATH: %s | DOCKER_HOST: %s", os.environ["PATH"].split(":")[:3], os.environ["DOCKER_HOST"]
+    )
 
     resolved = checkout(sha)
     ensure_upstream()
@@ -302,7 +351,10 @@ def stream_admission(
         env["STREAM_ADMIT_NO_BUILD"] = "1"
     log.info(
         "running the gate on %s (%d suites, %d skipped, build_image=%s)",
-        resolved, len(ALL_SUITES) - len(skips), len(skips), build_image,
+        resolved,
+        len(ALL_SUITES) - len(skips),
+        len(skips),
+        build_image,
     )
     started = time.monotonic()
     result = _run("./scripts/admit run", cwd=WORKTREE, env=env, timeout=timeout_s)

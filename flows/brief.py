@@ -4,23 +4,22 @@ import hashlib
 import os
 import shutil
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import duckdb
-from pydantic_ai import Agent
-from pydantic_ai.durable_exec.prefect import PrefectAgent, TaskConfig
-from pydantic_ai.models.anthropic import AnthropicModel
-from pydantic_ai.providers.anthropic import AnthropicProvider
-from prefect import flow, task, get_run_logger
+from mps.briefing import Briefing
+from mps.spend import record_pydantic_ai_result
+from prefect import flow, get_run_logger, task
 from prefect.artifacts import create_markdown_artifact
 from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
-
-from mps.briefing import Briefing
-from mps.spend import record_pydantic_ai_result
+from pydantic_ai import Agent
+from pydantic_ai.durable_exec.prefect import PrefectAgent, TaskConfig
+from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.providers.anthropic import AnthropicProvider
 
 
 @dataclass
@@ -56,9 +55,7 @@ lead with the most useful observation, not the most alarming one.
 
 def make_agent(api_key: str) -> PrefectAgent[Briefing]:
     """Build agent after API key is available (provider validates key at init)."""
-    model = AnthropicModel(
-        "claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key)
-    )
+    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
     agent = Agent(
         model,
         output_type=Briefing,
@@ -94,7 +91,7 @@ def load_items(db_path: str) -> str:
 
     lines = []
     for r in rows:
-        source, repo, ident, kind, title, url, author, labels, score, updated = r
+        source, repo, ident, kind, title, _url, author, labels, score, updated = r
         item_id = f"{source}:{repo}#{ident}"
         label_str = ", ".join(labels) if labels else ""
         lines.append(
@@ -119,9 +116,7 @@ async def generate_briefing(items_text: str, api_key: str) -> Briefing:
         task_name="generate_briefing",
         model="claude-haiku-4-5",
         result=result,
-        metadata={
-            "item_count": 0 if not items_text.strip() else items_text.count(chr(10)) + 1
-        },
+        metadata={"item_count": 0 if not items_text.strip() else items_text.count(chr(10)) + 1},
     )
     return result.output
 
@@ -169,7 +164,7 @@ async def brief():
     logger.info(f"loaded {item_count} items for curation")
 
     briefing = await generate_briefing(items_text, api_key)
-    briefing.generated_at = datetime.now(timezone.utc).isoformat()
+    briefing.generated_at = datetime.now(UTC).isoformat()
 
     write_briefing(briefing, briefing_path)
     publish_briefing_artifact(briefing)

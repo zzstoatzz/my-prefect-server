@@ -92,11 +92,7 @@ Verdict = Literal["approve", "request-changes", "escalate"]
 
 def protected_touches(repo: str, paths: list[str]) -> list[str]:
     rules = PROTECTED_PATHS.get(repo, ())
-    return [
-        p
-        for p in paths
-        if any(p == r or (r.endswith("/") and p.startswith(r)) for r in rules)
-    ]
+    return [p for p in paths if any(p == r or (r.endswith("/") and p.startswith(r)) for r in rules)]
 
 
 def awaiting_summary(
@@ -277,9 +273,7 @@ def merge_approved(pull: str, verdict_wait_seconds: int = 1800) -> Completed:
         try:
             head = knot_head(repo, env)
         except RuntimeError as exc:
-            return Completed(
-                name="Blocked", message=f"merge key cannot read the knot: {exc}"[:500]
-            )
+            return Completed(name="Blocked", message=f"merge key cannot read the knot: {exc}"[:500])
 
         with tempfile.TemporaryDirectory(prefix="merge-") as cwd:
             base = clone_and_apply(repo, details["patch"], cwd, env)

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from flows.bisk import round_bounds
 
 
 def _utc(s: str) -> datetime:
-    return datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+    return datetime.fromisoformat(s).replace(tzinfo=UTC)
 
 
 def test_round_is_todays_calendar_day_after_lock() -> None:

@@ -32,7 +32,7 @@ async def _resolve(refs: dict[str, str]) -> dict[str, str]:
         return value if isinstance(value, str) else json.dumps(value)
 
     values = await asyncio.gather(*(one(n) for n in refs.values()))
-    return dict(zip(refs.keys(), values))
+    return dict(zip(refs.keys(), values, strict=True))
 
 
 @register_hook

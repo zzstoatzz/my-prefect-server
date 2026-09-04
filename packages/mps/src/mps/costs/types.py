@@ -20,7 +20,7 @@ class Period(BaseModel):
     end: dt.datetime
 
     @classmethod
-    def trailing_month(cls, now: dt.datetime | None = None) -> "Period":
+    def trailing_month(cls, now: dt.datetime | None = None) -> Period:
         end = now or dt.datetime.now(dt.UTC)
         start = end - dt.timedelta(days=30)
         return cls(start=start, end=end)
@@ -83,8 +83,7 @@ class Snapshot(BaseModel):
             "byProvider": [r.model_dump() for r in self._rollup("provider")],
             "byProject": [r.model_dump() for r in self._rollup("project")],
             "lineItems": [
-                {k: v for k, v in i.model_dump().items() if v is not None}
-                for i in self.line_items
+                {k: v for k, v in i.model_dump().items() if v is not None} for i in self.line_items
             ],
         }
 

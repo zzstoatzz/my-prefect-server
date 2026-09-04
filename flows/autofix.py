@@ -129,11 +129,7 @@ def fetch_skills(workdir: str) -> list[str]:
 async def gather(flow_run_id: UUID) -> dict[str, Any]:
     async with get_client() as client:
         run = await client.read_flow_run(flow_run_id)
-        deployment = (
-            await client.read_deployment(run.deployment_id)
-            if run.deployment_id
-            else None
-        )
+        deployment = await client.read_deployment(run.deployment_id) if run.deployment_id else None
         logs = await client.read_logs(
             log_filter=LogFilter(flow_run_id=LogFilterFlowRunId(any_=[flow_run_id])),
             limit=LOG_LINES,
@@ -235,9 +231,7 @@ def render(ctx: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def propose_fix(
-    diagnosis: str, brief: str, anthropic_key: str, dep_name: str
-) -> dict[str, str]:
+def propose_fix(diagnosis: str, brief: str, anthropic_key: str, dep_name: str) -> dict[str, str]:
     """second pi round: full tools in a clone of main; the flow publishes the patch."""
     from mps.tangled import build_patch, create_pull
 
@@ -370,10 +364,8 @@ def autofix(
                 "autofix_url": ui_url("flow-runs", this_run) if this_run else "",
             },
         )
-        return Completed(
-            name="Proposed", message=f"{result['title']} — {result['url']}"
-        )
-    except Exception:  # noqa: BLE001 — a failing autofix would trigger itself
+        return Completed(name="Proposed", message=f"{result['title']} — {result['url']}")
+    except Exception:
         err = traceback.format_exc()
         print(err)
         return Completed(name="Degraded", message=err[-500:])

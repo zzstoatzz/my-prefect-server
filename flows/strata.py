@@ -65,9 +65,13 @@ class SegmentHeader:
     collection_index_offset: int
 
 
-def request(url: str, headers: dict[str, str] | None = None, data: bytes | None = None, method: str = "GET") -> urllib.request.Request:
+def request(
+    url: str, headers: dict[str, str] | None = None, data: bytes | None = None, method: str = "GET"
+) -> urllib.request.Request:
     """Every outbound request carries our user-agent: Cloudflare's zone rules 403 the default Python-urllib one."""
-    return urllib.request.Request(url, data=data, headers={"User-Agent": USER_AGENT, **(headers or {})}, method=method)
+    return urllib.request.Request(
+        url, data=data, headers={"User-Agent": USER_AGENT, **(headers or {})}, method=method
+    )
 
 
 def parse_header(raw: bytes) -> SegmentHeader:
@@ -79,14 +83,20 @@ def parse_header(raw: bytes) -> SegmentHeader:
         raise ValueError(f"unsupported jss version {version}")
     min_seq, max_seq = struct.unpack_from("<QQ", raw, 26)
     collection_index_offset = struct.unpack_from("<Q", raw, 82)[0]
-    return SegmentHeader(checksum, block_count, event_count, min_seq, max_seq, collection_index_offset)
+    return SegmentHeader(
+        checksum, block_count, event_count, min_seq, max_seq, collection_index_offset
+    )
 
 
 def parse_collection_index(raw: bytes) -> list[tuple[str, int]]:
-    collection_count, _block_count, _bitmask_len, uncompressed_size = struct.unpack_from("<IIII", raw, 0)
+    collection_count, _block_count, _bitmask_len, uncompressed_size = struct.unpack_from(
+        "<IIII", raw, 0
+    )
     body = zstandard.ZstdDecompressor().decompressobj().decompress(raw[16:])
     if len(body) != uncompressed_size:
-        raise ValueError(f"collection index decoded to {len(body)} bytes, header says {uncompressed_size}")
+        raise ValueError(
+            f"collection index decoded to {len(body)} bytes, header says {uncompressed_size}"
+        )
     out: list[tuple[str, int]] = []
     pos = 0
     for _ in range(collection_count):
@@ -106,7 +116,9 @@ class Archive:
         headers = dict(self._headers)
         if byte_range:
             headers["Range"] = f"bytes={byte_range}"
-        with urllib.request.urlopen(request(f"{ARCHIVE_URL}{path}", headers), timeout=TIMEOUT_S) as resp:
+        with urllib.request.urlopen(
+            request(f"{ARCHIVE_URL}{path}", headers), timeout=TIMEOUT_S
+        ) as resp:
             return resp.status, resp.read()
 
     def list_all(self) -> list[SegmentListing]:
@@ -139,7 +151,9 @@ class Archive:
             for s in page["segments"]
         ]
 
-    def collections(self, seg: SegmentListing) -> tuple[SegmentListing, list[tuple[str, int]]] | None:
+    def collections(
+        self, seg: SegmentListing
+    ) -> tuple[SegmentListing, list[tuple[str, int]]] | None:
         """The segment's per-collection counts, with the listing they belong to. Compaction can rewrite a
         segment between listing and reading, and a rewrite of a live-era segment can take minutes; the
         header's checksum is the identity of the bytes, so when it differs from the listing's, re-list and
@@ -156,7 +170,9 @@ class Archive:
             if f"{header.checksum:016x}" == seg.checksum:
                 status, raw = self._get(path, f"{header.collection_index_offset}-")
                 if status != 206:
-                    raise RuntimeError(f"{seg.name}: collection index request returned {status}, not 206")
+                    raise RuntimeError(
+                        f"{seg.name}: collection index request returned {status}, not 206"
+                    )
                 return seg, parse_collection_index(raw)
             time.sleep(delay)
             fresh = self._list_page(f"&cursor={seg.idx - 1}")
@@ -190,7 +206,9 @@ class Strata:
 
     def checksums(self) -> dict[int, str]:
         """What the worker already holds: segment index -> checksum it was summarised at."""
-        with urllib.request.urlopen(request(f"{self._url}/api/checksums"), timeout=TIMEOUT_S) as resp:
+        with urllib.request.urlopen(
+            request(f"{self._url}/api/checksums"), timeout=TIMEOUT_S
+        ) as resp:
             return {int(s["idx"]): s["checksum"] for s in json.load(resp)["segments"]}
 
     def ingest(self, records: list[dict], archive_segments: int) -> None:
@@ -212,12 +230,14 @@ def stale_or_new(listing: list[SegmentListing], known: dict[int, str]) -> list[S
 
 
 @task(retries=2, retry_delay_seconds=15, log_prints=True)
-def ingest_batch(archive: Archive, strata: Strata, segs: list[SegmentListing], archive_segments: int) -> tuple[int, int]:
+def ingest_batch(
+    archive: Archive, strata: Strata, segs: list[SegmentListing], archive_segments: int
+) -> tuple[int, int]:
     """Returns (ingested, skipped); skipped segments were mid-rewrite and are left for the next run."""
     with ThreadPoolExecutor(max_workers=WORKERS) as pool:
         read = list(pool.map(archive.collections, segs))
     records = [segment_record(s, c) for r in read if r is not None for s, c in [r]]
-    skipped = [s.name for s, r in zip(segs, read) if r is None]
+    skipped = [s.name for s, r in zip(segs, read, strict=True) if r is None]
     if skipped:
         print(f"skipped {len(skipped)} segment(s) still being rewritten: {', '.join(skipped)}")
     if records:
@@ -234,7 +254,12 @@ def ingest_segment_collections(max_segments: int = 2000) -> int:
     listing = archive.list_all()
     known = strata_api.checksums()
     todo = stale_or_new(listing, known)
-    log.info("archive lists %d sealed segments; worker holds %d; %d to read", len(listing), len(known), len(todo))
+    log.info(
+        "archive lists %d sealed segments; worker holds %d; %d to read",
+        len(listing),
+        len(known),
+        len(todo),
+    )
 
     done = skipped = 0
     for i in range(0, min(len(todo), max_segments), BATCH):
@@ -242,7 +267,13 @@ def ingest_segment_collections(max_segments: int = 2000) -> int:
         ingested, missed = ingest_batch(archive, strata_api, chunk, len(listing))
         done += ingested
         skipped += missed
-        log.info("ingested %d/%d (through idx %d), %d skipped", done, min(len(todo), max_segments), chunk[-1].idx, skipped)
+        log.info(
+            "ingested %d/%d (through idx %d), %d skipped",
+            done,
+            min(len(todo), max_segments),
+            chunk[-1].idx,
+            skipped,
+        )
 
     create_markdown_artifact(
         key="strata",

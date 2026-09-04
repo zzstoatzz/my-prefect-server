@@ -119,6 +119,7 @@ def build_atlas(repo_dir: Path) -> Path:
         ],
         capture_output=True,
         text=True,
+        check=False,
         # headroom: this one budget absorbs the heavy uv dep install
         # (numpy/scipy/llvmlite/numba), the turbopuffer export, and the
         # UMAP/HDBSCAN compute. 300s was too tight when turbopuffer is slow.
@@ -151,6 +152,7 @@ def build_facts(repo_dir: Path) -> Path:
         capture_output=True,
         text=True,
         timeout=600,
+        check=False,
     )
     if result.returncode != 0:
         raise RuntimeError(f"build-facts failed:\n{result.stderr}")
@@ -225,6 +227,7 @@ def deploy_to_pages(site_dir: Path) -> str:
         capture_output=True,
         text=True,
         timeout=180,
+        check=False,
     )
     for line in result.stdout.strip().splitlines():
         logger.info(line)

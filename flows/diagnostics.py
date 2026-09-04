@@ -115,11 +115,11 @@ def _cgroup_memory() -> dict[str, Any]:
 
     stat = _read(str(cg / "memory.stat"))
     if stat:
-        fields = dict(
-            (parts[0], int(parts[1]))
+        fields = {
+            parts[0]: int(parts[1])
             for line in stat.splitlines()
             if len(parts := line.split()) == 2 and parts[1].lstrip("-").isdigit()
-        )
+        }
         for key in ("anon", "file", "slab", "slab_reclaimable"):
             if key in fields:
                 out[key] = fields[key]
@@ -140,6 +140,7 @@ def _flow_runs_in_flight() -> int | None:
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -160,6 +161,7 @@ def _process_samples() -> list[dict[str, Any]]:
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
         return []
@@ -241,6 +243,7 @@ def _cache_size_bytes(timeout_seconds: int) -> int | None:
             capture_output=True,
             text=True,
             timeout=timeout_seconds,
+            check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None
@@ -256,7 +259,7 @@ def _gib(value: int | None) -> str:
 @flow(name="diagnostics", log_prints=True, timeout_seconds=300)
 def diagnostics(scan_cache_size: bool = False, cache_scan_timeout: int = 120):
     logger = get_run_logger()
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
 
     print(f"time:     {now.isoformat()}")
     print(f"hostname: {platform.node()}")
@@ -295,7 +298,7 @@ def diagnostics(scan_cache_size: bool = False, cache_scan_timeout: int = 120):
                 cache_scan_timeout,
             )
 
-    if (oom_kills := cgroup.get("events_oom_kill", 0)):
+    if oom_kills := cgroup.get("events_oom_kill", 0):
         logger.warning("cgroup has %s oom kill(s) — real memory pressure", oom_kills)
 
     rows = [

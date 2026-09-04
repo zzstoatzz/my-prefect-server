@@ -17,8 +17,8 @@ ALL_CONNECTORS: list[Connector] = [
 
 __all__ = [
     "ALL_CONNECTORS",
-    "FlyConnector",
     "CloudflareConnector",
+    "FlyConnector",
     "HetznerConnector",
     "NeonConnector",
 ]

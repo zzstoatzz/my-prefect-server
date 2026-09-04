@@ -18,4 +18,3 @@ def create_bsky_session(handle: str, password: str) -> dict[str, Any]:
     )
     resp.raise_for_status()
     return resp.json()
-

@@ -19,15 +19,6 @@ import datetime as dt
 import json
 
 from atproto import AsyncClient
-from pydantic import BaseModel, Field
-
-from prefect import flow, task
-from prefect.artifacts import create_table_artifact
-from prefect.blocks.system import Secret
-from prefect.cache_policies import NONE
-
-from pdsx._internal.auth import login
-
 from mps.costs import Period, Snapshot
 from mps.costs.connectors import (
     CloudflareConnector,
@@ -37,6 +28,12 @@ from mps.costs.connectors import (
 )
 from mps.costs.types import Connector, LineItem
 from mps.observability import configure_logfire
+from pdsx._internal.auth import login
+from prefect import flow, task
+from prefect.artifacts import create_table_artifact
+from prefect.blocks.system import Secret
+from prefect.cache_policies import NONE
+from pydantic import BaseModel, Field
 
 COLLECTION = "io.zzstoatzz.cost.snapshot"
 HETZNER_TOKENS_BLOCK = "hetzner-tokens"
@@ -51,9 +48,7 @@ async def build_connectors() -> list[Connector]:
     try:
         hetzner_tokens = list((await Secret.load(HETZNER_TOKENS_BLOCK)).get().values())
     except Exception as exc:
-        print(
-            f"  hetzner: no {HETZNER_TOKENS_BLOCK} block ({exc}); will fall back to env"
-        )
+        print(f"  hetzner: no {HETZNER_TOKENS_BLOCK} block ({exc}); will fall back to env")
 
     return [
         FlyConnector(),
@@ -67,7 +62,7 @@ class CostsConfig(BaseModel):
     dry_run: bool = Field(
         default=True,
         description="print the snapshot JSON instead of writing it to PDS",
-        json_schema_extra=dict(position=0),
+        json_schema_extra={"position": 0},
     )
 
 
@@ -139,16 +134,12 @@ async def costs(config: CostsConfig | None = None):
             line_items.extend(await collect_connector(connector, period))
         except Exception as exc:
             failed_providers.append(connector.name)
-            print(
-                f"  {connector.name}: UNMEASURED after retries "
-                f"({type(exc).__name__}: {exc})"
-            )
+            print(f"  {connector.name}: UNMEASURED after retries ({type(exc).__name__}: {exc})")
 
     if failed_providers:
         failed = ", ".join(failed_providers)
         raise RuntimeError(
-            "refusing to publish an incomplete cost snapshot; "
-            f"failed providers: {failed}"
+            f"refusing to publish an incomplete cost snapshot; failed providers: {failed}"
         )
 
     snapshot = Snapshot(

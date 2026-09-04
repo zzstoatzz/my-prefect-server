@@ -57,7 +57,7 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
         code = proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         proc.kill()
-        raise RuntimeError(f"{cmd[0]} exceeded {timeout}s timeout")
+        raise RuntimeError(f"{cmd[0]} exceeded {timeout}s timeout") from None
     if code != 0:
         raise RuntimeError(f"{' '.join(cmd[:3])} ... exited {code}")
 
@@ -80,6 +80,7 @@ def clone_repo() -> Path:
             ["git", "clone", "--depth", "1", url, str(REPO_DIR)],
             capture_output=True,
             text=True,
+            check=False,
         )
         if r.returncode == 0:
             logger.info(f"cloned {url}")
@@ -98,7 +99,7 @@ def build_binary(repo_dir: Path) -> tuple[Path, str]:
     if not binary.is_file():
         raise RuntimeError(f"build reported success but binary missing at {binary}")
     sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=str(repo_dir), capture_output=True, text=True
+        ["git", "rev-parse", "HEAD"], cwd=str(repo_dir), capture_output=True, text=True, check=True
     ).stdout.strip()
     return binary, sha
 
@@ -111,7 +112,9 @@ def run_builder(binary: Path, version: str) -> None:
     logger.info(f"BUILDER_MODE=1 channel={channel} version={version}")
     rclone = shutil.which("rclone")
     if not rclone:
-        raise RuntimeError("rclone not found on PATH — run typeahead deploy/home-indexer/install.sh")
+        raise RuntimeError(
+            "rclone not found on PATH — run typeahead deploy/home-indexer/install.sh"
+        )
     env = {
         **os.environ,
         "BUILDER_MODE": "1",

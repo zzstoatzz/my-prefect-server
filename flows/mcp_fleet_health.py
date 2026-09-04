@@ -81,10 +81,7 @@ async def mcp_fleet_health(
 
     clients = {name: Client(url, timeout=15) for name, url in fleet.items()}
     connects = await asyncio.gather(
-        *(
-            connect_server(name, client, connect_timeout_s)
-            for name, client in clients.items()
-        ),
+        *(connect_server(name, client, connect_timeout_s) for name, client in clients.items()),
         return_exceptions=True,
     )
 
@@ -92,9 +89,7 @@ async def mcp_fleet_health(
     up: dict[str, Client] = {}
     for (name, client), outcome in zip(clients.items(), connects, strict=True):
         if isinstance(outcome, BaseException):
-            results.append(
-                ServerHealth(name, False, f"{type(outcome).__name__}: {outcome}")
-            )
+            results.append(ServerHealth(name, False, f"{type(outcome).__name__}: {outcome}"))
         else:
             up[name] = client
             results.append(ServerHealth(name, True, f"connect {outcome * 1000:.0f}ms"))

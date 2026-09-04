@@ -106,12 +106,16 @@ def _int(value: Any) -> int:
     return int(value or 0)
 
 
-def _money(value: Decimal | int | float | None) -> float:
+def _money(value: Decimal | float | None) -> float:
     return float(value or 0)
 
 
 def _usage_from_pydantic_result(result: Any) -> Usage:
-    raw_usage = result.usage() if callable(getattr(result, "usage", None)) else getattr(result, "usage", None)
+    raw_usage = (
+        result.usage()
+        if callable(getattr(result, "usage", None))
+        else getattr(result, "usage", None)
+    )
     if raw_usage is None:
         return Usage()
     return Usage(
@@ -125,7 +129,11 @@ def _usage_from_pydantic_result(result: Any) -> Usage:
 
 
 def _request_count(result: Any) -> int:
-    raw_usage = result.usage() if callable(getattr(result, "usage", None)) else getattr(result, "usage", None)
+    raw_usage = (
+        result.usage()
+        if callable(getattr(result, "usage", None))
+        else getattr(result, "usage", None)
+    )
     return _int(getattr(raw_usage, "requests", 1)) or 1
 
 
@@ -148,7 +156,9 @@ def _row_id(
         "usage": asdict(usage) if is_dataclass(usage) else str(usage),
         "metadata": metadata or {},
     }
-    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[:32]
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[
+        :32
+    ]
 
 
 def _append_jsonl(path: str, event: dict[str, Any]) -> None:
@@ -247,7 +257,9 @@ def record_openai_embedding_response(
     log_path: str | None = None,
 ) -> None:
     response_usage = getattr(response, "usage", None)
-    input_tokens = _int(getattr(response_usage, "prompt_tokens", 0) or getattr(response_usage, "total_tokens", 0))
+    input_tokens = _int(
+        getattr(response_usage, "prompt_tokens", 0) or getattr(response_usage, "total_tokens", 0)
+    )
     merged_metadata = dict(metadata or {})
     if item_count is not None:
         merged_metadata["item_count"] = item_count

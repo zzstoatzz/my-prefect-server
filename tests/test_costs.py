@@ -8,7 +8,6 @@ import asyncio
 import datetime as dt
 
 import pytest
-
 from mps.costs.projects import UNATTRIBUTED, project_for
 from mps.costs.types import LineItem, Period, Snapshot
 
@@ -46,7 +45,9 @@ def test_snapshot_rollups_and_estimated_flag():
         [
             LineItem(provider="fly", project="plyr.fm", service="a", amount=200, estimated=True),
             LineItem(provider="fly", project="relays", service="b", amount=300, estimated=False),
-            LineItem(provider="hetzner", project="relays", service="c", amount=500, estimated=False),
+            LineItem(
+                provider="hetzner", project="relays", service="c", amount=500, estimated=False
+            ),
         ]
     )
     rec = snap.to_record()
@@ -87,9 +88,7 @@ def test_collect_connector_propagates_failure_instead_of_reporting_zero():
     assert collect_connector.retries == 3
     assert collect_connector.retry_delay_seconds == [2.0, 10.0, 30.0]
     with pytest.raises(RuntimeError, match="provider unavailable"):
-        asyncio.run(
-            collect_connector.fn(BrokenConnector(), Period.trailing_month())
-        )
+        asyncio.run(collect_connector.fn(BrokenConnector(), Period.trailing_month()))
 
 
 def test_costs_refuses_to_publish_when_any_provider_fails(monkeypatch):
@@ -126,9 +125,7 @@ def test_costs_refuses_to_publish_when_any_provider_fails(monkeypatch):
     monkeypatch.setattr(costs_flow, "write_snapshot", fake_write_snapshot)
 
     with pytest.raises(RuntimeError, match="failed providers: fly"):
-        asyncio.run(
-            costs_flow.costs.fn(costs_flow.CostsConfig(dry_run=False))
-        )
+        asyncio.run(costs_flow.costs.fn(costs_flow.CostsConfig(dry_run=False)))
     assert wrote is False
 
 
@@ -240,7 +237,11 @@ def test_hetzner_merges_project_tokens_and_dedupes(monkeypatch):
             {"id": 1, "name": "relay-node", "server_type": {"name": "cx22", "prices": []}},
         ],
         "tok-b": [
-            {"id": 1, "name": "relay-node", "server_type": {"name": "cx22", "prices": []}},  # dup id
+            {
+                "id": 1,
+                "name": "relay-node",
+                "server_type": {"name": "cx22", "prices": []},
+            },  # dup id
             {"id": 2, "name": "pds-zzstoatzz-io", "server_type": {"name": "cx22", "prices": []}},
         ],
     }

@@ -8,12 +8,14 @@ from flows.typeahead_identity import resolve_batch, statements_for, typeahead_id
 
 
 def test_handle_invalid_and_missing_handles_do_not_resolve():
-    out = resolve_batch([
-        {"did": "did:plc:a", "handle": "a.bsky.social"},
-        {"did": "did:plc:b", "handle": "handle.invalid"},
-        {"did": "did:plc:c"},
-        {"handle": "orphan.example"},
-    ])
+    out = resolve_batch(
+        [
+            {"did": "did:plc:a", "handle": "a.bsky.social"},
+            {"did": "did:plc:b", "handle": "handle.invalid"},
+            {"did": "did:plc:c"},
+            {"handle": "orphan.example"},
+        ]
+    )
     assert out == [("did:plc:a", "a.bsky.social")]
 
 

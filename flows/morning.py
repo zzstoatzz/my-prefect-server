@@ -10,27 +10,26 @@ Curation is handled by a separate flow (curate.py) triggered on completion.
 
 import hashlib
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import turbopuffer
-from openai import OpenAI
-from pydantic import BaseModel, Field
-from pydantic_ai import Agent
-from pydantic_ai.models.anthropic import AnthropicModel
-from pydantic_ai.providers.anthropic import AnthropicProvider
-from prefect import flow, task
-from prefect.blocks.system import Secret
-from prefect.cache_policies import CachePolicy
-from prefect.context import TaskRunContext
-from prefect.variables import Variable
-
 from mps.phi import (
     TagCluster,
     TagMerge,
     TagRelationship,
 )
 from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
+from openai import OpenAI
+from prefect import flow, task
+from prefect.blocks.system import Secret
+from prefect.cache_policies import CachePolicy
+from prefect.context import TaskRunContext
+from prefect.variables import Variable
+from pydantic import BaseModel, Field
+from pydantic_ai import Agent
+from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.providers.anthropic import AnthropicProvider
 
 TAG_REL_NAMESPACE = "phi-tag-relationships"
 TAG_REL_SCHEMA = {
@@ -48,7 +47,7 @@ TAG_REL_SCHEMA = {
 
 
 def cosine_similarity(a: list[float], b: list[float]) -> float:
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
     norm_a = sum(x * x for x in a) ** 0.5
     norm_b = sum(x * x for x in b) ** 0.5
     if norm_a == 0 or norm_b == 0:
@@ -154,13 +153,8 @@ def collect_all_tags(tpuf_key: str) -> dict[str, Any]:
 
     # serialize for prefect (sets -> lists, tuple keys -> string keys)
     return {
-        "tag_info": {
-            tag: {**info, "users": list(info["users"])}
-            for tag, info in tag_info.items()
-        },
-        "cooccurrences": {
-            f"{t1}|{t2}": count for (t1, t2), count in cooccurrences.items()
-        },
+        "tag_info": {tag: {**info, "users": list(info["users"])} for tag, info in tag_info.items()},
+        "cooccurrences": {f"{t1}|{t2}": count for (t1, t2), count in cooccurrences.items()},
         "user_tag_sets": {h: list(tags) for h, tags in user_tag_sets.items()},
     }
 
@@ -207,8 +201,7 @@ async def identify_tag_merges(
         episodic = info.get("episodic_count", 0)
         sample = (info.get("samples") or [""])[0][:120]
         tag_lines.append(
-            f"  {tag}  (obs={count}, episodic={episodic}, users={len(users)})"
-            f"\n    sample: {sample}"
+            f"  {tag}  (obs={count}, episodic={episodic}, users={len(users)})\n    sample: {sample}"
         )
 
     inventory = "\n".join(tag_lines)
@@ -318,9 +311,7 @@ def apply_tag_merges(
                     "vector": vec,
                     "content": row.content,
                     "tags": deduped,
-                    "created_at": getattr(
-                        row, "created_at", datetime.now(timezone.utc).isoformat()
-                    ),
+                    "created_at": getattr(row, "created_at", datetime.now(UTC).isoformat()),
                 }
                 if is_user_ns:
                     row_data["kind"] = "observation"
@@ -431,9 +422,7 @@ async def discover_tag_relationships(
         # daily run; 5m TTL can't bridge 24h, so caching is net-negative.
     )
 
-    result = await agent.run(
-        f"full tag inventory ({len(tags)} tags after merges):\n{inventory}"
-    )
+    result = await agent.run(f"full tag inventory ({len(tags)} tags after merges):\n{inventory}")
     record_pydantic_ai_result(
         task_name="identify_tag_clusters",
         model=model_name,
@@ -484,9 +473,7 @@ def store_tag_relationships(
     ns = client.namespace(TAG_REL_NAMESPACE)
 
     texts = [f"{r['tag_a']} — {r['tag_b']}: {r['evidence']}" for r in relationships]
-    embeddings = openai_client.embeddings.create(
-        model="text-embedding-3-small", input=texts
-    )
+    embeddings = openai_client.embeddings.create(model="text-embedding-3-small", input=texts)
     record_openai_embedding_response(
         task_name="store_tag_relationships",
         model="text-embedding-3-small",

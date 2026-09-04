@@ -74,9 +74,7 @@ def test_repo_record_is_read_from_the_owners_pds(monkeypatch):
             "cursor": "c1",
         },
         "c1": {
-            "records": [
-                {"uri": "at://did:plc:o/sh.tangled.repo/3bot", "value": {"name": "bot"}}
-            ]
+            "records": [{"uri": "at://did:plc:o/sh.tangled.repo/3bot", "value": {"name": "bot"}}]
         },
     }
 

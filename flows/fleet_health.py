@@ -28,7 +28,6 @@ automations to page on.
 Everything is stdlib; deps here are installed from git on every flow run.
 """
 
-
 import time
 import urllib.request
 from dataclasses import dataclass
@@ -166,7 +165,9 @@ def check_stream_deep() -> CheckResult:
 
     wm_lag = _metric(metrics, "jetstream_compaction_watermark_lag_seconds")
     if wm_lag is not None and wm_lag > COMPACTION_MAX_LAG_S:
-        problems.append(f"compaction watermark lag {wm_lag / 3600:.1f}h (> {COMPACTION_MAX_LAG_S / 3600:.0f}h)")
+        problems.append(
+            f"compaction watermark lag {wm_lag / 3600:.1f}h (> {COMPACTION_MAX_LAG_S / 3600:.0f}h)"
+        )
 
     fields = _status_fields(text_b)
     detail = (

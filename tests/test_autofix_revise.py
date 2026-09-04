@@ -82,9 +82,7 @@ def test_revise_caps_rounds(monkeypatch):
 
 
 def test_revise_skips_without_operator_comments(monkeypatch):
-    monkeypatch.setattr(
-        autofix_revise, "get_record", lambda uri: {"value": {"rounds": []}}
-    )
+    monkeypatch.setattr(autofix_revise, "get_record", lambda uri: {"value": {"rounds": []}})
     monkeypatch.setattr(autofix_revise, "list_pull_comments", lambda did, pull: [])
     with prefect_test_harness():
         state = autofix_revise.autofix_revise(PULL, return_state=True)

@@ -10,12 +10,11 @@ import subprocess
 import tempfile
 from typing import Literal
 
+from mps.pi import TOOL_ARGS, minimal_env, run_pi, screen_prompt
 from prefect import flow
 from prefect.blocks.system import Secret
 from prefect.flow_runs import pause_flow_run
 from pydantic import BaseModel, Field
-
-from mps.pi import TOOL_ARGS, minimal_env, run_pi, screen_prompt
 
 Repo = Literal["my-prefect-server", "find-bufo", "plyr.fm", "bot"]
 
@@ -35,12 +34,12 @@ class Workspace(BaseModel):
     repo: Repo | None = Field(
         default=None,
         description="repo pi operates in (fresh shallow clone); empty = scratch dir",
-        json_schema_extra=dict(position=0),
+        json_schema_extra={"position": 0},
     )
     ref: str = Field(
         default="main",
         description="branch or tag to check out",
-        json_schema_extra=dict(position=1),
+        json_schema_extra={"position": 1},
     )
 
 
@@ -50,14 +49,14 @@ class Agent(BaseModel):
     provider: Literal["anthropic"] = Field(
         default="anthropic",
         description="only anthropic is authed on the worker (via secret block)",
-        json_schema_extra=dict(position=0),
+        json_schema_extra={"position": 0},
     )
     model: str | None = Field(
         default=None,
         description="model id (e.g. claude-haiku-4-5-20251001); empty = provider default",
-        json_schema_extra=dict(position=1),
+        json_schema_extra={"position": 1},
     )
-    thinking: THINKING = Field(default="medium", json_schema_extra=dict(position=2))
+    thinking: THINKING = Field(default="medium", json_schema_extra={"position": 2})
     tool_mode: Literal["full", "read-only", "none"] = Field(
         default="read-only",
         description=(
@@ -65,15 +64,15 @@ class Agent(BaseModel):
             "commands as the worker user); read-only = read,grep,find,ls; "
             "none = pure text"
         ),
-        json_schema_extra=dict(position=3),
+        json_schema_extra={"position": 3},
     )
 
 
 @flow(name="pi-agent", log_prints=True, timeout_seconds=1800)
 def pi_agent(
     prompt: str,
-    workspace: Workspace = Workspace(),
-    agent: Agent = Agent(),
+    workspace: Workspace = Workspace(),  # noqa: B008
+    agent: Agent = Agent(),  # noqa: B008
     timeout_seconds: int = 1500,
 ) -> str:
     """run `pi -p <prompt>` in the workspace and return its final output.

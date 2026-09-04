@@ -53,7 +53,10 @@ def statements_for(batch_dids: list[str], resolved: list[tuple[str, str]]) -> li
         for did, handle in resolved
     ]
     stmts += [
-        {"sql": "UPDATE actors SET identity_checked_at = unixepoch() WHERE did = ?1 AND handle = ''", "args": [_arg(did)]}
+        {
+            "sql": "UPDATE actors SET identity_checked_at = unixepoch() WHERE did = ?1 AND handle = ''",
+            "args": [_arg(did)],
+        }
         for did in batch_dids
     ]
     return stmts
@@ -108,6 +111,12 @@ def typeahead_identity_hourly(
         if elapsed < call_interval:
             sleep(call_interval - elapsed)
 
-    summary = {"dry_run": dry_run, "selected": len(dids), "checked": checked, "resolved": resolved_n, "budget_spent": budget_spent}
+    summary = {
+        "dry_run": dry_run,
+        "selected": len(dids),
+        "checked": checked,
+        "resolved": resolved_n,
+        "budget_spent": budget_spent,
+    }
     logger.info("done: %s", summary)
     return summary

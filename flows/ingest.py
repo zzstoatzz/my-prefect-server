@@ -18,14 +18,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
-from prefect import flow, get_run_logger, task, unmapped
-from prefect.artifacts import create_table_artifact
-from prefect.blocks.system import Secret
-from prefect.cache_policies import CachePolicy
-from prefect.context import TaskRunContext
-from prefect.futures import PrefectFuture
-from prefect.states import Completed
-
 from mps.db import (
     write_emails,
     write_github_issues,
@@ -40,10 +32,17 @@ from mps.email import (
     fetch_inbox,
 )
 from mps.github import IssueOrPR, IssueRef, gh_headers
+from mps.likes import LikedPost, LikeRecord, fetch_likes, summarize_embed
 from mps.lock import analytics_write_slot
 from mps.phi import PhiInteraction, PhiObservation, restore_handle
-from mps.likes import LikeRecord, LikedPost, fetch_likes, summarize_embed
 from mps.tangled import PDS_BASE, TangledItem, fetch_items, fetch_repo_at_uris
+from prefect import flow, get_run_logger, task, unmapped
+from prefect.artifacts import create_table_artifact
+from prefect.blocks.system import Secret
+from prefect.cache_policies import CachePolicy
+from prefect.context import TaskRunContext
+from prefect.futures import PrefectFuture
+from prefect.states import Completed
 
 GITHUB_API = "https://api.github.com"
 
@@ -67,9 +66,8 @@ LIKES_PAGES = 3
 def gh_client(token: str, transport: httpx.BaseTransport | None = None) -> httpx.Client:
     # follow_redirects matters: renamed/transferred repos 301 to their
     # numeric /repositories/<id>/ url and httpx won't follow by default
-    return httpx.Client(
-        headers=gh_headers(token), follow_redirects=True, transport=transport
-    )
+    return httpx.Client(headers=gh_headers(token), follow_redirects=True, transport=transport)
+
 
 TANGLED_COLLECTIONS = [
     "sh.tangled.repo.issue",
@@ -250,10 +248,7 @@ def stored_open_refs() -> list[IssueRef]:
     finally:
         con.close()
 
-    refs = [
-        IssueRef(repo=repo, number=number, subject_type=type_)
-        for repo, number, type_ in rows
-    ]
+    refs = [IssueRef(repo=repo, number=number, subject_type=type_) for repo, number, type_ in rows]
     logger.info(f"re-verifying {len(refs)} stored-open issues/PRs")
     return refs
 
@@ -302,9 +297,7 @@ def fetch_emails() -> list[EmailItem]:
     try:
         items = fetch_inbox(host, port, creds["username"], creds["password"])
     except (ConnectionRefusedError, OSError) as e:
-        logger.warning(
-            f"proton bridge unreachable at {host}:{port} — skipping email ({e})"
-        )
+        logger.warning(f"proton bridge unreachable at {host}:{port} — skipping email ({e})")
         return []
 
     logger.info(f"fetched {len(items)} emails from bridge")
@@ -387,9 +380,7 @@ def fetch_phi_memory(
             if "not found" not in str(e).lower():
                 logger.warning(f"failed to fetch interactions for {ns_id}: {e}")
 
-    logger.info(
-        f"fetched {len(observations)} observations, {len(interactions)} interactions"
-    )
+    logger.info(f"fetched {len(observations)} observations, {len(interactions)} interactions")
     return observations, interactions
 
 
@@ -595,9 +586,7 @@ def ingest(only_unread: bool = True):
     tangled_items = _tolerate(tangled_future, "tangled", [], degraded, logger)
     logger.info(f"fetched {len(tangled_items)} tangled items")
 
-    phi_observations, phi_interactions = _tolerate(
-        phi_future, "phi", ([], []), degraded, logger
-    )
+    phi_observations, phi_interactions = _tolerate(phi_future, "phi", ([], []), degraded, logger)
 
     likes = _tolerate(likes_future, "likes", [], degraded, logger)
     logger.info(f"fetched {len(likes)} likes")
@@ -607,9 +596,7 @@ def ingest(only_unread: bool = True):
     # sequential writes — same process, no DuckDB lock contention
     if gh_items:
         total = persist_github(gh_items)
-        logger.info(
-            f"upserted {len(gh_items)} github rows; {total} total in raw_github_issues"
-        )
+        logger.info(f"upserted {len(gh_items)} github rows; {total} total in raw_github_issues")
 
     if tangled_items:
         total = persist_tangled(tangled_items)

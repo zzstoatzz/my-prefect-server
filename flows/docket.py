@@ -37,6 +37,10 @@ from typing import Any
 
 import duckdb
 import httpx
+from mps.atproto import create_bsky_session
+from mps.lock import analytics_write_slot
+from mps.observability import configure_logfire
+from mps.spend import record_pydantic_ai_result
 from prefect import flow, get_run_logger, task
 from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
@@ -45,11 +49,6 @@ from pydantic import BaseModel, Field, model_validator
 from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
-
-from mps.atproto import create_bsky_session
-from mps.lock import analytics_write_slot
-from mps.observability import configure_logfire
-from mps.spend import record_pydantic_ai_result
 
 # ---------------------------------------------------------------------------
 # constants
@@ -322,9 +321,7 @@ def _public_anchors_in_coarse(
     return [ref for _, ref in scored[:max_anchors]]
 
 
-def _evidence_from_cluster(
-    points: list[dict[str, Any]], max_n: int
-) -> list[EvidenceRef]:
+def _evidence_from_cluster(points: list[dict[str, Any]], max_n: int) -> list[EvidenceRef]:
     """Top-N evidence refs from a cluster, ordered by recency."""
     sorted_pts = sorted(points, key=lambda p: p.get("created_at") or "", reverse=True)
     return [
@@ -365,9 +362,7 @@ def _extract_pressure_pool_impl(atlas: dict[str, Any]) -> list[dict[str, Any]]:
             if cc is None or cc < 0:
                 continue
             coarse_counts[cc] = coarse_counts.get(cc, 0) + 1
-        coarse = (
-            max(coarse_counts.items(), key=lambda kv: kv[1])[0] if coarse_counts else -1
-        )
+        coarse = max(coarse_counts.items(), key=lambda kv: kv[1])[0] if coarse_counts else -1
 
         # union of tags, deduped, ordered by frequency
         tag_counts: dict[str, int] = {}
@@ -544,9 +539,7 @@ def _candidate_id(ctx: ClusterContext) -> str:
 
 
 @task(cache_policy=ByClusterContentHash())
-async def synthesize_cluster(
-    ctx: ClusterContext, anthropic_key: str
-) -> DocketCandidate | None:
+async def synthesize_cluster(ctx: ClusterContext, anthropic_key: str) -> DocketCandidate | None:
     """One LLM call → either a DocketCandidate or a structured rejection.
 
     Returns None when the synth rejected the cluster (logged with reason)
@@ -554,9 +547,7 @@ async def synthesize_cluster(
     None and continue.
     """
     logger = get_run_logger()
-    model = AnthropicModel(
-        SYNTHESIS_MODEL, provider=AnthropicProvider(api_key=anthropic_key)
-    )
+    model = AnthropicModel(SYNTHESIS_MODEL, provider=AnthropicProvider(api_key=anthropic_key))
     agent: Agent[None, DocketSynthesisResult] = Agent(
         model,
         system_prompt=SYNTHESIS_SYSTEM_PROMPT,
