@@ -42,7 +42,7 @@ def _text(name: str, value: object) -> str:
 
 def _mapping(name: str, value: object) -> dict[str, Any]:
     if isinstance(value, dict) and "value" in value and set(value) <= {"value", "__prefect_kind"}:
-        value = value["value"]
+        value = next(inner for key, inner in value.items() if key == "value")
     if isinstance(value, str):
         try:
             value = json.loads(value)
