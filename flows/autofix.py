@@ -1,6 +1,6 @@
 """a failed flow run triggers pi to diagnose it, and optionally propose a fix.
 
-rungs one and two of the autofix ladder (docs/autofix-design.md). the
+rungs one and two of the autofix ladder (docs/autofix.md). the
 automation hands this flow the failed run's id; the flow — not pi — pulls the
 run's state, logs, and task tracebacks with the orchestrator credential,
 renders a brief, and runs pi in a fresh clone with read-only tools. pi's

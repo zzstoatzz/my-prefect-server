@@ -1,3 +1,5 @@
+> archived. this described a plan or a past state and shipped or was superseded; it is kept for the why and does not describe the present.
+
 # Zig Prefect Server Migration Notes
 
 These notes are for adopting the zig `prefect-server` implementation from
@@ -218,7 +220,7 @@ work pool template with `prefect work-pool update --base-job-template`.
 
 ## Docket/Background Services
 
-The original Python HA notes in `notes/journey.md` call out that Python Prefect
+The original Python HA notes in `docs/archive/journey.md` call out that Python Prefect
 needs `PREFECT_SERVER_DOCKET_URL` wired to Redis for proper HA background
 coordination. That was a Python Helm chart footgun.
 

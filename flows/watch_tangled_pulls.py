@@ -1,6 +1,6 @@
 """turn the operator's comments on gardener's pulls into autofix-revise runs.
 
-rung three of the autofix ladder (docs/autofix-design.md). the operator
+rung three of the autofix ladder (docs/autofix.md). the operator
 reviews a gardener-authored pull on tangled and leaves a comment; this flow
 sees the comment record on the stream.waow.tech firehose and starts an
 autofix-revise run for it.

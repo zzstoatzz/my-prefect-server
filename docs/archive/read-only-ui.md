@@ -1,3 +1,5 @@
+> archived. this described a plan or a past state and shipped or was superseded; it is kept for the why and does not describe the present.
+
 # read-only public UI: thinking it through
 
 > Historical design note. This is not the current production auth shape.

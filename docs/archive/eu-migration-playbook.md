@@ -1,3 +1,5 @@
+> archived. this described a plan or a past state and shipped or was superseded; it is kept for the why and does not describe the present.
+
 # EU migration playbook
 
 > **Historical (completed 2026-06-16).** This migration is done — the node runs in

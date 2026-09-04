@@ -1,3 +1,5 @@
+> archived. this described a plan or a past state and shipped or was superseded; it is kept for the why and does not describe the present.
+
 # phi-atlas — unified embedding + nightly UMAP for phi's mind
 
 > Current status: implemented as the `phi-atlas/phi-atlas` deployment in

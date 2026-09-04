@@ -1,6 +1,6 @@
 """revise a gardener-authored pull in response to an operator comment.
 
-rung three of the autofix ladder (docs/autofix-design.md), the other half of
+rung three of the autofix ladder (docs/autofix.md), the other half of
 watch-tangled-pulls: given a pull and the comment that triggered the run,
 rebuild the pull's proposed state in a scratch clone, let pi address the
 feedback with full tools, and publish the result — a new round on the same

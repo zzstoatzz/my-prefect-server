@@ -1,4 +1,4 @@
-# autofix: failed flow run → pi → PR (design spike, 2026-08-29)
+# autofix: failed flow run → pi → PR
 
 status (2026-09-01): **all three rungs are live.** rung 1 diagnoses every
 failure read-only (`flows/autofix.py`). rung 2 opens a gardener-authored

@@ -55,7 +55,7 @@ Cloud-vs-ours confusion: `docs/agent-tooling.md`.
 ## costs
 
 `COSTS.md` figures are mostly wrong today — prefix-match the service name, and
-prefer declared ownership over inferred. background: `docs/costs.md`.
+prefer declared ownership over inferred. background: the "known-wrong state" section of `COSTS.md`.
 
 ## running flows ad hoc
 
@@ -77,6 +77,6 @@ prefer declared ownership over inferred. background: `docs/costs.md`.
 
 ## docs
 
-- reference material lives in `docs/` — list it before guessing. post-mortems
-  go in `docs/incidents/`; historical/planning docs go in `docs/`, never the
+- reference material lives in `docs/`; the README's docs table is the index. post-mortems
+  go in `docs/incidents/`; shipped design notes and build logs go in `docs/archive/`, never the
   repo root or this file

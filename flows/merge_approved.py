@@ -1,6 +1,6 @@
 """a phi-approved gardener pull lands when the operator resumes this run.
 
-stage 2 of the approval ladder in docs/autofix-design.md: gardener authors,
+stage 2 of the approval ladder in docs/autofix.md: gardener authors,
 phi reviews, and the operator's part shrinks to one press of Resume. this
 flow holds the only merge credential (`tangled-merge-ssh-key`, a deploy key
 the operator registers on tangled) and nothing that runs pi ever sees it.

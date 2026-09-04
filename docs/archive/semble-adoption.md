@@ -1,3 +1,5 @@
+> archived. this described a plan or a past state and shipped or was superseded; it is kept for the why and does not describe the present.
+
 # adopting semble-api in the flows
 
 > **Historical planning note (2026-06-11), now shipped.** the semble-api adoption, the
