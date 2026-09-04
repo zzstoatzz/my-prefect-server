@@ -1,168 +1,81 @@
-personal data pipeline and intelligence layer. digests github, [tangled.org](https://tangled.org), and bluesky activity, scores items, generates LLM-curated briefings, and maintains phi's long-term memory. self-hosted across two machines joined by Tailscale: a hetzner VM (k3s) runs the prefect control plane and serves the public edge, while **all flow execution runs on a home Linux box** that polls outbound — the home box does the compute, the VM serves the bytes.
+# my-prefect-server
 
-[hub](https://hub.waow.tech) · [grafana](https://prefect-metrics.waow.tech/d/executive-overview/executive-overview?orgId=1&from=now-6h&to=now&timezone=browser)
+a personal data pipeline and the prefect deployment that runs it. flows digest
+github, [tangled.org](https://tangled.org), and bluesky activity into a scored
+briefing, keep [phi](https://bsky.app/profile/phi.zzstoatzz.io)'s long-term
+memory, publish snapshots for other products, and let pi propose and land
+fixes as a coding agent. the control plane is
+[prefect-server](https://tangled.org/zzstoatzz.io/prefect-server), a zig port
+of [prefect](https://github.com/prefecthq/prefect); the flows are ordinary
+prefect 3 python.
 
-```
-                        where it runs
-  ─────────────────────────────────────────────
-   home box ("heavypad")                       hetzner VM (k3s, EU)
-   i9 · 24c · 64GB · 1TB SSD + 2TB NVMe        the public edge + control plane
-   ──────────────────────────────────         ────────────────────────────────
-   • home-pool worker runs ALL flow            • prefect server (control plane)
-     execution — outbound poll, no ingress     • hub.waow.tech + grafana (public, TLS)
-   • owns the analytics DuckDB +               • serves bytes, not compute
-     llm-spend.jsonl (the source of truth)
-
-   home box ──► rsync hub.duckdb + llm-spend.jsonl every 3m, over tailscale ──► VM
-   so the edge serves fresh data WITHOUT shipping heavy pages from home (a page
-   from home behind the EU edge meant a US→EU→US round trip; the data is ~4MB).
-
-   principle: home = compute & state factory; VM = public edge & bandwidth.
-   relays, the PDS, and user-facing products stay cloud.
-```
+**live:** [hub.waow.tech](https://hub.waow.tech) ·
+[grafana](https://prefect-metrics.waow.tech/d/executive-overview/executive-overview?orgId=1&from=now-6h&to=now&timezone=browser)
 
 ```
-                        data sources
-  ─────────────────────────────────────────────
-  github API        ──┐
-  tangled PDS       ──┤
-  bluesky likes     ──┼──► ingest (hourly) ──► DuckDB
-  phi memory (tpuf) ──┘
-                                                  │
-                                                  ▼
-                                          classify-emails [on ingest ✓]
-                                                  │
-                                                  ▼
-                                          transform (dbt)
-                                          [on classify-emails ✓]
-                                                  │
-                        ┌─────────────────────────┼──────────┐
-                        ▼                         ▼          ▼
-                      brief                    phi-memory-synthesis    hub UI
-                  [on transform ✓]         [on transform ✓]
-                        │                         │
-                        ▼                         ▼
-                  briefing.json              TurboPuffer
-                                             (phi-users-*)
-
-                        phi identity flows
-  ─────────────────────────────────────────────
-  phi-tag-maintenance (daily 8am CT) ──► TurboPuffer
-          │
-          ▼
-  curate  ─────────────────► Semble API
-  phi-atlas (daily 8am CT) ─► PDS atlas blob
-          │
-          ▼
-  docket  ─────────────────► PDS docket blob
-
-  phi-trigger deployments — kick named passes on the phi bot via its
-  control API (the bot defines WHAT runs; prefect owns the WHEN):
-  phi-curation (weekly Mon) · phi-editorial (daily 15 UTC) ·
-  phi-character-retro (monthly) · phi-chicken-precheck (daily 04 UTC) ·
-  phi-chicken-scout (daily 18 UTC)
-
-                        publication flows
-  ─────────────────────────────────────────────
-  leaflet-atlas       (every 6h)      ──► Cloudflare Pages
-  pub-search-snapshot (every 2h)      ──► R2  (FTS snapshot built from Turso)
-  typeahead-index     (every 3d)      ──► R2  (prefix-index snapshot, built at home)
-  typeahead-plc-identity (weekly Mon) ──► PLC identity reconcile (heavy: ~28GB bundles)
-  typeahead-enrich-backfill (ad hoc)  ──► paced profile backfill
-  bisk-snapshot       (every 10m)     ──► R2  (bisk.social standings snapshot)
-  pds-records         (ad hoc)        ──► PDS record maintenance
-
-                        cost tracking + health
-  ─────────────────────────────────────────────
-  costs         (daily 08:00 UTC) ──► PDS cost snapshot ──► hub.waow.tech
-  diagnostics   (schedule inactive) ──► liveness canary, run ad hoc
-  watch-fastmcp (every 5m) ──► events onto the hub bus ──► fastmcp-brief (4h floor + event triggers)
+  heavypad (home, tailscale)               hetzner VM (k3s, EU)
+  ────────────────────────────             ─────────────────────────────
+  home-pool process worker      ── poll ─► prefect-server (zig) + postgres
+  runs every flow               ◄─ runs ── + redis
+  owns analytics.duckdb,
+  llm-spend.jsonl               ── rsync ► hub.waow.tech + grafana (public)
 ```
 
-see [docs/hub.md](docs/hub.md) for the full pipeline breakdown.
+## design
 
-<details>
-<summary>deployment</summary>
+- **home computes, the edge serves** — every flow runs on the home box, which
+  polls outbound and needs no ingress. the VM holds the control plane and
+  serves bytes. the hub reads a copy of the analytics synced every few
+  minutes, so a public page never waits on a trip home.
+- **prefect.yaml is the source of truth** — schedules, triggers, tags,
+  parameters, and job variables live in one file. a push to `main` registers
+  all of it, pinned to that commit, and [deployments.md](docs/deployments.md)
+  is generated from the same file so the inventory cannot drift.
+- **flow code is pulled, never baked** — runs install the package from the
+  pushed commit at start; there is no worker image to rebuild when a flow
+  changes.
+- **degraded is a state name, not a boolean** — a run whose upstream was dead
+  but that did its job returns `Completed(name="Degraded")`. it stays visible
+  and filterable and does not page. retries sit on every task that touches
+  the network; nothing catches a transient error where the engine could have
+  retried it. [prefect-patterns.md](docs/prefect-patterns.md) has the mechanism.
+- **one writer for the analytics** — `analytics.duckdb` opens read-write only
+  under a global concurrency limit of one; readers snapshot the file.
+- **secrets are blocks** — runtime credentials are Prefect Secret blocks named
+  in `prefect.yaml` and resolved when a run starts. flow code never touches
+  the Secret API and `.env` holds only operator tooling.
+- **the agent needs the operator to land a change** — pi diagnoses failures
+  and opens pulls as gardener, phi reviews, and the merge credential stays
+  behind a human Resume. [autofix.md](docs/autofix.md) is the ladder.
 
-### prerequisites
+## develop
 
-- [terraform](https://developer.hashicorp.com/terraform/install)
-- [just](https://just.systems)
-- [uv](https://docs.astral.sh/uv) (Python 3.13+; the worker image is Python 3.14, while dbt runs under a per-deployment Python 3.13 override)
-- a hetzner cloud API token
-- a domain with DNS you control
-
-### setup
-
-```bash
-cp .env.example .env
-# fill in: HCLOUD_TOKEN, POSTGRES_PASSWORD, AUTH_STRING, DOMAIN, LETSENCRYPT_EMAIL
-uv sync                # install workspace (mps + root)
+```sh
+uv sync                                   # workspace: flows + packages/mps
+uv run pytest                             # the suite
+just inventory                            # regenerate docs/deployments.md after editing prefect.yaml
+just prefect flow-run ls                  # any prefect CLI command against the live server
+just prefect deployment run 'diagnostics/diagnostics' --watch   # a run on the real worker
+just push                                 # github first (installs come from there), then tangled (CI deploys)
 ```
 
-### deploy
+## docs
 
-```bash
-just init              # terraform init
-just infra             # create the VM
-just kubeconfig        # wait for k3s, fetch kubeconfig
-just deploy            # cert-manager, prefect server (zig chart), postgres+redis, monitoring, dashboards
-just storage           # create analytics hostPath + results PVC, apply kubernetes-pool base job template
-```
+| | |
+|---|---|
+| [operations.md](docs/operations.md) | standing up the VM and the home worker; the recipes that run the system |
+| [deployments.md](docs/deployments.md) | every deployment with its cadence and purpose, generated from `prefect.yaml` |
+| [hub.md](docs/hub.md) | the ingest → classify → transform → brief pipeline and the hub it feeds |
+| [autofix.md](docs/autofix.md) | the gardener: failed run → pi diagnosis → pull → phi review → operator merge |
+| [prefect-patterns.md](docs/prefect-patterns.md) | the mechanism behind the conventions in `CLAUDE.md`, with citations |
+| [agent-tooling.md](docs/agent-tooling.md) | the two MCP servers in `plugins/mps/` and what each can do |
+| [prompt-caching.md](docs/prompt-caching.md) | why thousands of LLM calls cost a few dollars |
+| [cost-declaration.md](docs/cost-declaration.md) | a sketch of declaring infrastructure costs on atproto |
+| [incidents/](docs/incidents/) | post-mortems |
+| [archive/](docs/archive/) | shipped design notes and build logs, kept for the why; none describes the present |
 
-### home worker (where flows actually run)
+[COSTS.md](COSTS.md) is the running record of what this deployment spends.
 
-The steps above stand up the control plane + public edge on the VM. Flow
-**execution** runs on the home box via a systemd `home-pool` worker that polls
-the server outbound over Tailscale (no ingress, no port-forward) — see
-[deploy/home-worker/](deploy/home-worker/). All deployments target `home-pool`;
-`kubernetes-pool` survives only as a defined fallback (its base job template is
-applied by `just storage`) — no k8s worker runs in normal operation. The hub
-reads analytics synced from the home box every few minutes — see
-[deploy/hub-data-sync/](deploy/hub-data-sync/).
+## license
 
-Zig server adoption/migration details live in
-[notes/zig-prefect-server-migration.md](notes/zig-prefect-server-migration.md).
-
-after `deploy`, point your DNS:
-- `$DOMAIN` → server IP (`just server-ip`)
-- `$GRAFANA_DOMAIN` → same IP (default: `prefect-metrics.waow.tech`)
-- `hub.waow.tech` → same IP
-
-### verify
-
-```bash
-just health               # curl the /api/health endpoint
-just status               # node + pod resource usage
-just prefect work-pool ls
-```
-
-### operations
-
-```bash
-just logs                 # tail prefect-server logs (default)
-just logs worker          # tail worker logs
-just prefect flow-run ls  # run any prefect CLI command remotely
-just dashboards           # reload grafana dashboards from deploy/dashboards/
-just ssh                  # ssh into the server
-```
-
-flow deployments are registered automatically on every push to main via `.tangled/workflows/deploy.yml`.
-
-### hub (sveltekit frontend)
-
-```bash
-just publish-web-remote    # build hub on the Hetzner node + deploy hub.waow.tech
-```
-
-`just web` still exists as the legacy local Docker build/push path, but normal
-operations use `publish-web-remote` so linux/amd64 images are built on the
-node and imported into k3s directly.
-
-### analytics (dbt + duckdb)
-
-```bash
-just init-analytics   # first-time: dbt deps, seed, compile
-```
-
-</details>
+[MIT](LICENSE)
