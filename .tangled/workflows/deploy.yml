@@ -9,6 +9,11 @@ dependencies:
     - uv
     - python314
     - bun
+    # ruff and ty ship as standalone binaries on PyPI, built against the
+    # manylinux loader path, which the nixery image does not have. the nix
+    # packages run; the wheels fail to spawn.
+    - ruff
+    - ty
     # git: the deploy pins the package install to the commit being deployed,
     # which means reading HEAD out of the workspace checkout
     - git
@@ -21,9 +26,9 @@ steps:
   - name: check
     command: |
       set -euo pipefail
-      uv run ruff check .
-      uv run ruff format --check .
-      uv run ty check
+      ruff check .
+      ruff format --check .
+      ty check
       uv run pytest -q
       cd web
       bun install --frozen-lockfile
