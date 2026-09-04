@@ -28,6 +28,7 @@ name: my-prefect-server
 # `prefect deploy` without MPS_PIN) leaves the clone on main.
 pull:
   - prefect.deployments.steps.run_shell_script:
+      stream_output: true
       script: |
         bash -c 'rm -rf my-prefect-server && (git clone --quiet https://tangled.sh/zzstoatzz.io/my-prefect-server.git my-prefect-server || git clone --quiet https://github.com/zzstoatzz/my-prefect-server.git my-prefect-server) && pin="${MPS_PIN#@}" && if [ -n "$pin" ]; then git -C my-prefect-server checkout --quiet "$pin" && echo "checked out $pin"; else echo "no MPS_PIN; staying on main"; fi'
   - prefect.deployments.steps.set_working_directory:
