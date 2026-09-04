@@ -8,6 +8,7 @@ dependencies:
   nixpkgs:
     - uv
     - python314
+    - bun
     # git: the deploy pins the package install to the commit being deployed,
     # which means reading HEAD out of the workspace checkout
     - git
@@ -17,6 +18,23 @@ environment:
   UV_PYTHON_PREFERENCE: "only-system"
 
 steps:
+  - name: check
+    command: |
+      set -euo pipefail
+      uv run ruff check .
+      uv run ruff format --check .
+      uv run ty check
+      uv run pytest -q
+      cd web
+      bun install --frozen-lockfile
+      bun run check
+      bun run lint
+
+  - name: inventory is current
+    command: |
+      set -euo pipefail
+      uv run scripts/deployments_inventory.py --check
+
   # MPS_PIN pins every deployment's `uv run --with ...` to this exact commit
   # (see the header comment in prefect.yaml). Without it the install falls back
   # to unpinned main and uv may serve a stale cached commit, so fail loudly
@@ -25,11 +43,6 @@ steps:
   # The pinned sha must exist on GitHub, since that is where the package
   # installs from, while this workflow triggers on the tangled push. Push
   # github first.
-  - name: inventory is current
-    command: |
-      set -euo pipefail
-      uv run scripts/deployments_inventory.py --check
-
   - name: register flows
     command: |
       set -euo pipefail

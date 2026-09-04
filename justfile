@@ -461,6 +461,15 @@ deploy-web:
 # build, push, and deploy hub
 web: push-web deploy-web
 
+# everything CI runs before it deploys: lint, format, types, tests, the hub's svelte-check and oxlint
+check:
+    uv run ruff check .
+    uv run ruff format --check .
+    uv run ty check
+    uv run pytest -q
+    cd web && bun install --frozen-lockfile && bun run check && bun run lint
+    ./scripts/deployments_inventory.py --check
+
 # regenerate docs/deployments.md from prefect.yaml; `--check` is what CI runs
 inventory *args:
     ./scripts/deployments_inventory.py {{ args }}

@@ -63,6 +63,7 @@ job variables. every push to `main` registers all of them through
 if it is stale.
 
 ```sh
+just check                                       # what CI runs before it deploys
 just inventory                                   # regenerate docs/deployments.md
 just prefect deploy --all                        # register by hand (CI does this on push)
 just prefect deployment run 'diagnostics/diagnostics' --watch   # exercise the real worker

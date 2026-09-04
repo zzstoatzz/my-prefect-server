@@ -52,7 +52,7 @@ prefect 3 python.
 
 ```sh
 uv sync                                   # workspace: flows + packages/mps
-uv run pytest                             # the suite
+just check                                # ruff, ty, pytest, the hub's svelte-check and oxlint; what CI runs before deploying
 just inventory                            # regenerate docs/deployments.md after editing prefect.yaml
 just prefect flow-run ls                  # any prefect CLI command against the live server
 just prefect deployment run 'diagnostics/diagnostics' --watch   # a run on the real worker
