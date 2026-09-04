@@ -78,13 +78,13 @@ def _extract_text(msg: email.message.Message) -> str:
                 "Content-Disposition", ""
             ).startswith("attachment"):
                 payload = part.get_payload(decode=True)
-                if payload:
+                if isinstance(payload, bytes):
                     charset = part.get_content_charset() or "utf-8"
                     body = payload.decode(charset, errors="replace")
                     break
     else:
         payload = msg.get_payload(decode=True)
-        if payload:
+        if isinstance(payload, bytes):
             charset = msg.get_content_charset() or "utf-8"
             body = payload.decode(charset, errors="replace")
 

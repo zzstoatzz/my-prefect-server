@@ -24,9 +24,9 @@ resolver splits paths on ".", so a label keyed "github.repo" is unreachable as
 from typing import Any
 
 import httpx
+from mps.blocks import secret_sync
 from mps.github import gh_headers
 from prefect import flow, get_run_logger, task
-from prefect.blocks.system import Secret
 from prefect.events import emit_event
 from prefect.variables import Variable
 
@@ -154,9 +154,10 @@ def emit_thread_events(threads: list[dict]) -> int:
 @flow(name="watch-fastmcp", log_prints=True, timeout_seconds=300)
 def watch_fastmcp(reset_watermark: bool = False) -> dict[str, Any]:
     logger = get_run_logger()
-    token = Secret.load("github-token").get()
+    token = secret_sync("github-token")
 
-    last_modified = None if reset_watermark else Variable.get(WATERMARK, default=None)
+    stored = None if reset_watermark else Variable.get(WATERMARK)
+    last_modified = stored if isinstance(stored, str) else None
     threads, watermark, poll_interval = fetch_notifications(token, last_modified)
 
     if not threads:

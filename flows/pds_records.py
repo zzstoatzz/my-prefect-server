@@ -11,6 +11,8 @@ import re
 from typing import Any, Literal
 
 from atproto import AsyncClient
+from mps.atproto import session_did
+from mps.blocks import secret
 from mps.observability import configure_logfire
 from pdsx._internal.auth import login
 from pdsx._internal.operations import (
@@ -20,7 +22,6 @@ from pdsx._internal.operations import (
     update_record,
 )
 from prefect import flow, task
-from prefect.blocks.system import Secret
 from prefect.cache_policies import NONE
 from pydantic import BaseModel, Field
 
@@ -165,12 +166,12 @@ async def pds_records(config: PdsRecordsConfig):
     """
     configure_logfire("prefect-flow-pds-records")
 
-    handle = (await Secret.load("atproto-handle")).get()
-    password = (await Secret.load("atproto-password")).get()
+    handle = await secret("atproto-handle")
+    password = await secret("atproto-password")
 
     client = AsyncClient()
     await login(client, handle, password, silent=True, required=True)
-    print(f"authenticated as {client.me.did}")
+    print(f"authenticated as {session_did(client)}")
 
     match config.action:
         case "list":

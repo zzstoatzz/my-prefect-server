@@ -25,12 +25,13 @@ import os
 
 import httpx
 from atproto import AsyncClient
+from mps.atproto import session_did
+from mps.blocks import secret_mapping
 from mps.bufo_traffic import COLLECTION, QUERY, DayTraffic, parse_rows, rollup
 from mps.observability import configure_logfire
 from pdsx._internal.auth import login
 from prefect import flow, task
 from prefect.artifacts import create_table_artifact
-from prefect.blocks.system import Secret
 from prefect.cache_policies import NONE
 from pydantic import BaseModel, Field
 
@@ -77,10 +78,7 @@ async def query_logfire(since: dt.datetime, until: dt.datetime) -> dict[dt.date,
 
 
 async def _operator_creds() -> tuple[str, str, str]:
-    raw = (await Secret.load(OPERATOR_CREDS_BLOCK)).get()
-    if isinstance(raw, dict) and "handle" not in raw and "value" in raw:
-        raw = raw["value"]
-    creds = json.loads(raw) if isinstance(raw, str) else raw
+    creds = await secret_mapping(OPERATOR_CREDS_BLOCK)
     return creds["handle"], creds["password"], creds["pds"]
 
 
@@ -93,7 +91,7 @@ async def write_days(days: list[DayTraffic], generated_at: dt.datetime) -> list[
     for day in days:
         resp = await client.com.atproto.repo.put_record(
             {
-                "repo": client.me.did,
+                "repo": session_did(client),
                 "collection": COLLECTION,
                 "rkey": day.rkey,
                 "record": day.to_record(generated_at),

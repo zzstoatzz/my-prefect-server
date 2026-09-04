@@ -38,17 +38,17 @@ import httpx
 import numpy as np
 import turbopuffer
 from mps.atproto import create_bsky_session
+from mps.blocks import secret
 from mps.observability import configure_logfire
 from mps.phi import clean_handle, restore_handle
 from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 from openai import OpenAI
 from prefect import flow, get_run_logger, task
-from prefect.blocks.system import Secret
 from prefect.cache_policies import NONE
 from prefect.exceptions import MissingContextError
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
-from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.providers.anthropic import AnthropicProvider
 
 # ---------------------------------------------------------------------------
@@ -278,7 +278,7 @@ def fetch_tpuf_points(tpuf_key: str) -> list[AtlasPoint]:
                 resp = ns.query(
                     rank_by=("vector", "ANN", [0.5] * EMBEDDING_DIM),
                     top_k=500,
-                    filters={"kind": ["Eq", tpuf_kind]},
+                    filters=("kind", "Eq", tpuf_kind),
                     include_attributes=attrs_with_vector,
                 )
             except Exception as e:
@@ -673,7 +673,7 @@ async def label_clusters(
     """
     logger = get_run_logger()
     model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=anthropic_key))
-    agent: Agent[None, str] = Agent(
+    agent = Agent[None, str](
         model,
         system_prompt="you label semantic clusters with short, concrete themes.",
         name="phi-atlas-labeler",
@@ -681,7 +681,7 @@ async def label_clusters(
         # minutes; identical one-line system prompt. Caching is marginal
         # in absolute dollars (tiny prompt) but free to enable. 5m TTL
         # covers the burst.
-        model_settings={"anthropic_cache_instructions": "5m"},
+        model_settings=AnthropicModelSettings(anthropic_cache_instructions="5m"),
     )
 
     coarse_buckets: dict[int, list[str]] = {}
@@ -991,11 +991,11 @@ async def phi_atlas(dry_run: bool = False) -> dict[str, int]:
     configure_logfire("prefect-flow-phi-atlas")
     logger = get_run_logger()
 
-    tpuf_key = (await Secret.load("turbopuffer-api-key")).get()
-    openai_key = (await Secret.load("openai-api-key")).get()
-    anthropic_key = (await Secret.load("anthropic-api-key")).get()
-    phi_handle = (await Secret.load("atproto-handle")).get()
-    phi_password = (await Secret.load("atproto-password")).get()
+    tpuf_key = await secret("turbopuffer-api-key")
+    openai_key = await secret("openai-api-key")
+    anthropic_key = await secret("anthropic-api-key")
+    phi_handle = await secret("atproto-handle")
+    phi_password = await secret("atproto-password")
 
     # phase A — gather raw points + the cosmik connection graph
     tpuf_points = fetch_tpuf_points.fn(tpuf_key)

@@ -29,6 +29,7 @@ import json
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import NotRequired, TypedDict
 
 import httpx
 from prefect import flow, task
@@ -109,6 +110,16 @@ async def _list_records(client, pds: str, repo: str, collection: str) -> list[di
         cursor = body.get("cursor")
         if not cursor:
             return out
+
+
+class Winner(TypedDict):
+    uri: str
+    did: str
+    likes: int
+    crownedAt: str
+    handle: NotRequired[str]
+    avatar: NotRequired[str | None]
+    postedAt: NotRequired[str]
 
 
 async def _profiles(client, dids: list[str]) -> dict[str, dict]:
@@ -243,8 +254,8 @@ def window_bisks(pool: dict[str, dict]) -> list[dict]:
     retry_delay_seconds=exponential_backoff(backoff_factor=5),
     retry_jitter_factor=1,
 )
-def all_time_coop() -> list[dict]:
-    async def run() -> list[dict]:
+def all_time_coop() -> list[Winner]:
+    async def run() -> list[Winner]:
         async with httpx.AsyncClient(
             timeout=30.0,
             follow_redirects=True,
@@ -256,7 +267,7 @@ def all_time_coop() -> list[dict]:
                 {"identifier": TOPCHICKEN},
             )
             recs = await _list_records(client, mini["pds"], TOPCHICKEN, "app.bsky.feed.post")
-            winners = []
+            winners: list[Winner] = []
             for r in recs:
                 v = r["value"]
                 text = v.get("text", "")
@@ -291,7 +302,7 @@ def all_time_coop() -> list[dict]:
                 for p in body.get("posts", []):
                     live_posts[p["uri"]] = p
 
-            kept = []
+            kept: list[Winner] = []
             for w in winners:
                 post = live_posts.get(w["uri"])
                 if post is None:

@@ -6,18 +6,11 @@ from flows import pi_pr
 def test_pi_pr_publishes_as_gardener_and_emits_proposed(monkeypatch):
     loaded, published, events = [], {}, []
 
-    class FakeSecret:
-        def __init__(self, name):
-            self.name = name
-
-        def get(self):
-            return f"<{self.name}>"
-
-    def load(name):
+    def secret_sync(name):
         loaded.append(name)
-        return FakeSecret(name)
+        return f"<{name}>"
 
-    monkeypatch.setattr(pi_pr.Secret, "load", staticmethod(load))
+    monkeypatch.setattr(pi_pr, "secret_sync", secret_sync)
     monkeypatch.setattr(pi_pr, "screen_prompt", lambda *a, **k: None)
 
     class Proc:

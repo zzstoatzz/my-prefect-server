@@ -21,9 +21,9 @@ import os
 from typing import Any
 
 import httpx
+from mps.blocks import secret_sync
 from mps.github import gh_headers
 from prefect import flow, get_run_logger, task
-from prefect.blocks.system import Secret
 from prefect.events import emit_event
 from prefect.variables import Variable
 from pydantic import BaseModel, Field
@@ -222,7 +222,7 @@ def enrich(threads: list[dict[str, Any]], token: str) -> list[dict[str, Any]]:
 def compose(threads: list[dict[str, Any]], api_key: str) -> Brief:
     from mps.spend import record_pydantic_ai_result
     from pydantic_ai import Agent
-    from pydantic_ai.models.anthropic import AnthropicModel
+    from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
     from pydantic_ai.providers.anthropic import AnthropicProvider
 
     lines = [
@@ -233,13 +233,13 @@ def compose(threads: list[dict[str, Any]], api_key: str) -> Brief:
         for t in threads
     ]
 
-    agent = Agent(
+    agent = Agent[None, Brief](
         AnthropicModel(MODEL, provider=AnthropicProvider(api_key=api_key)),
         output_type=Brief,
         system_prompt=BRIEF_PROMPT,
         name="fastmcp-brief",
         retries=2,
-        model_settings={"anthropic_cache_instructions": "5m"},
+        model_settings=AnthropicModelSettings(anthropic_cache_instructions="5m"),
     )
     result = agent.run_sync("recent fastmcp threads:\n\n" + "\n".join(lines))
     record_pydantic_ai_result(
@@ -312,7 +312,10 @@ def fastmcp_brief(window_hours: int = 6, ignore_briefed: bool = False) -> dict[s
         logger.info("no github activity in the window — nothing to brief")
         return {"items": 0, "threads": 0}
 
-    briefed: dict[str, str] = {} if ignore_briefed else (Variable.get(BRIEFED, default={}) or {})
+    stored = None if ignore_briefed else Variable.get(BRIEFED)
+    briefed: dict[str, str] = (
+        {str(k): str(v) for k, v in stored.items()} if isinstance(stored, dict) else {}
+    )
     fresh = [
         t for t in threads if briefed.get(str(t.get("thread_id"))) != (t.get("updated_at") or "")
     ]
@@ -322,12 +325,12 @@ def fastmcp_brief(window_hours: int = 6, ignore_briefed: bool = False) -> dict[s
     logger.info("%d of %d threads are new since the last brief", len(fresh), len(threads))
     threads = fresh
 
-    threads = enrich(threads, Secret.load("github-token").get())
+    threads = enrich(threads, secret_sync("github-token"))
     if not threads:
         logger.info("everything in the window is already closed or merged")
         return {"items": 0, "threads": 0}
 
-    brief = compose(threads, Secret.load("anthropic-api-key").get())
+    brief = compose(threads, secret_sync("anthropic-api-key"))
     body = render(brief, window_hours, threads)
 
     # mark everything we looked at, including what the model discarded —

@@ -38,16 +38,16 @@ from typing import Any
 import duckdb
 import httpx
 from mps.atproto import create_bsky_session
+from mps.blocks import secret
 from mps.lock import analytics_write_slot
 from mps.observability import configure_logfire
 from mps.spend import record_pydantic_ai_result
 from prefect import flow, get_run_logger, task
-from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 from pydantic import BaseModel, Field, model_validator
 from pydantic_ai import Agent
-from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.providers.anthropic import AnthropicProvider
 
 # ---------------------------------------------------------------------------
@@ -548,7 +548,7 @@ async def synthesize_cluster(ctx: ClusterContext, anthropic_key: str) -> DocketC
     """
     logger = get_run_logger()
     model = AnthropicModel(SYNTHESIS_MODEL, provider=AnthropicProvider(api_key=anthropic_key))
-    agent: Agent[None, DocketSynthesisResult] = Agent(
+    agent = Agent[None, DocketSynthesisResult](
         model,
         system_prompt=SYNTHESIS_SYSTEM_PROMPT,
         output_type=DocketSynthesisResult,
@@ -559,7 +559,7 @@ async def synthesize_cluster(ctx: ClusterContext, anthropic_key: str) -> DocketC
         # cache write on the first call → cache reads on the rest. 5m TTL
         # is the right shape here because the burst is bounded; cross-run
         # reuse doesn't apply (next docket fires after next atlas, hours later).
-        model_settings={"anthropic_cache_instructions": "5m"},
+        model_settings=AnthropicModelSettings(anthropic_cache_instructions="5m"),
     )
 
     prompt = _format_cluster_for_prompt(ctx)
@@ -737,9 +737,9 @@ async def docket(dry_run: bool = False) -> dict[str, int]:
     configure_logfire("prefect-flow-docket")
     logger = get_run_logger()
 
-    anthropic_key = (await Secret.load("anthropic-api-key")).get()
-    phi_handle = (await Secret.load("atproto-handle")).get()
-    phi_password = (await Secret.load("atproto-password")).get()
+    anthropic_key = await secret("anthropic-api-key")
+    phi_handle = await secret("atproto-handle")
+    phi_password = await secret("atproto-password")
 
     atlas = fetch_atlas()
     clusters = extract_pressure_pool(atlas)

@@ -20,10 +20,10 @@ import subprocess
 import tempfile
 from typing import Any, Literal
 
+from mps.blocks import secret_sync
 from mps.pi import minimal_env
 from mps.tangled import build_patch, create_pull
 from prefect import flow
-from prefect.blocks.system import Secret
 
 Repo = Literal["jetstream", "zlay", "stream", "zds"]
 
@@ -60,8 +60,8 @@ def dep_bump(
     handle = password = None
     if not dry_run and not push_to_main:
         # PRs are authored by gardener, the maintenance identity, not the operator
-        handle = Secret.load("gardener-handle").get()
-        password = Secret.load("gardener-password").get()
+        handle = secret_sync("gardener-handle")
+        password = secret_sync("gardener-password")
 
     results: dict[str, Any] = {}
     for repo in repos:
@@ -126,6 +126,8 @@ def dep_bump(
             continue
 
         body = f"automated pin bump: `{dep}` -> `{version}`. tests passed at `{base[:9]}`."
+        if handle is None or password is None:
+            raise RuntimeError("gardener credentials are required to open a pull")
         pull = create_pull(OWNER, repo, title, patch, body, handle, password)
         print(f"{repo}: pull created: {pull['uri']}")
         results[repo] = {"tested": True, "pull_uri": pull["uri"], "error": None}

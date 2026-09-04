@@ -67,7 +67,7 @@ def screen_prompt(prompt: str, tool_mode: str, api_key: str) -> None:
 
     from mps.spend import record_pydantic_ai_result
 
-    judge = Agent(
+    judge = Agent[None, Verdict](
         AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key)),
         output_type=Verdict,
         system_prompt=JUDGE_SYSTEM,

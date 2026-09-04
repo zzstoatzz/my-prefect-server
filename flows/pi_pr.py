@@ -22,11 +22,12 @@ import subprocess
 import tempfile
 from typing import Any, Literal
 
+from mps.blocks import secret_sync
 from mps.pi import minimal_env, run_pi, screen_prompt
 from mps.tangled import build_patch, create_pull
-from prefect import flow, runtime
-from prefect.blocks.system import Secret
+from prefect import flow
 from prefect.events import emit_event
+from prefect.runtime import flow_run as run_context
 from pydantic import BaseModel, Field
 
 Repo = Literal["my-prefect-server", "find-bufo", "bot", "tangled-mcp"]
@@ -63,7 +64,7 @@ def pi_pr(
     says whose intent it carries even though gardener signs the record.
     """
     agent = agent or Agent()
-    anthropic_key = Secret.load("anthropic-api-key").get()
+    anthropic_key = secret_sync("anthropic-api-key")
     screen_prompt(task, "full", anthropic_key)
 
     with tempfile.TemporaryDirectory(prefix="pi-pr-") as cwd:
@@ -111,11 +112,11 @@ def pi_pr(
             body = (
                 f"{body}\n\nrequested by {requested_by}; implemented by pi, published by gardener."
             )
-        handle = Secret.load("gardener-handle").get()
-        password = Secret.load("gardener-password").get()
+        handle = secret_sync("gardener-handle")
+        password = secret_sync("gardener-password")
         pull = create_pull(OWNER, repo, title, patch, body, handle, password)
         print(f"pull created: {pull['uri']}")
-        this_run = runtime.flow_run.id
+        this_run = run_context.id
         emit_event(
             event="autofix.proposed",
             resource={

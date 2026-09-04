@@ -14,12 +14,12 @@ from typing import Any, cast
 import httpx
 import turbopuffer
 from mps.atproto import create_bsky_session
+from mps.blocks import secret
 from mps.observability import configure_logfire
 from mps.phi import clean_handle
 from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 from openai import OpenAI
 from prefect import flow, task
-from prefect.blocks.system import Secret
 from prefect.cache_policies import NONE
 from prefect.variables import Variable
 from pydantic import BaseModel, Field
@@ -359,7 +359,7 @@ async def _connection_id_for_uri(semble: AsyncSemble, uri: str) -> str | None:
 
 def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationResult]:
     model = AnthropicModel(model_name, provider=AnthropicProvider(api_key=api_key))
-    agent = Agent(
+    agent = Agent[CurationDeps, CurationResult](
         model,
         system_prompt=PERSONALITY_EXCERPT,
         output_type=CurationResult,
@@ -624,7 +624,7 @@ def _build_agent(model_name: str, api_key: str) -> Agent[CurationDeps, CurationR
             resp = ns.query(
                 rank_by=("created_at", "desc"),
                 top_k=50,
-                filters={"kind": ["Eq", "observation"]},
+                filters=("kind", "Eq", "observation"),
                 include_attributes=["content", "tags", "created_at"],
             )
             if not resp.rows:
@@ -791,13 +791,14 @@ async def curate():
     """
     configure_logfire("prefect-flow-curate")
 
-    anthropic_key = (await Secret.load("anthropic-api-key")).get()
-    tpuf_key = (await Secret.load("turbopuffer-api-key")).get()
-    openai_key = (await Secret.load("openai-api-key")).get()
-    semble_key = (await Secret.load("semble-api-key")).get()
-    bsky_handle = (await Secret.load("atproto-handle")).get()
-    bsky_password = (await Secret.load("atproto-password")).get()
-    model_name = await Variable.get("curate-model", default="claude-haiku-4-5")
+    anthropic_key = await secret("anthropic-api-key")
+    tpuf_key = await secret("turbopuffer-api-key")
+    openai_key = await secret("openai-api-key")
+    semble_key = await secret("semble-api-key")
+    bsky_handle = await secret("atproto-handle")
+    bsky_password = await secret("atproto-password")
+    stored_model = await Variable.aget("curate-model")
+    model_name = stored_model if isinstance(stored_model, str) else "claude-haiku-4-5"
     print(f"using model: {model_name}")
 
     # authenticate

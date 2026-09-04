@@ -126,7 +126,7 @@ class HetznerConnector:
                 continue
             for server in servers:
                 sid = server.get("id")
-                if sid in seen:
+                if sid is None or sid in seen:
                     continue
                 seen.add(sid)
                 name = server.get("name", "unknown")
@@ -148,7 +148,7 @@ class HetznerConnector:
             server_names = {s.get("id"): s.get("name", "") for s in servers}
             for volume in volumes:
                 vid = volume.get("id")
-                if vid in seen_volumes:
+                if vid is None or vid in seen_volumes:
                     continue
                 seen_volumes.add(vid)
                 vname = volume.get("name", "unknown")

@@ -55,7 +55,7 @@ async def test_watch_dedupes_handled_comments(monkeypatch):
 
     monkeypatch.setattr(watch_tangled_pulls, "drain", fake_drain)
     monkeypatch.setattr(watch_tangled_pulls, "reconcile", list)
-    monkeypatch.setattr(watch_tangled_pulls, "run_deployment", fake_run_deployment)
+    monkeypatch.setattr(watch_tangled_pulls, "arun_deployment", fake_run_deployment)
     with prefect_test_harness():
         assert await watch_tangled_pulls.watch_tangled_pulls() == 1
         assert await watch_tangled_pulls.watch_tangled_pulls() == 0
@@ -107,7 +107,7 @@ async def test_watch_survives_stream_failure(monkeypatch):
 
         return R()
 
-    monkeypatch.setattr(watch_tangled_pulls, "run_deployment", fake_run_deployment)
+    monkeypatch.setattr(watch_tangled_pulls, "arun_deployment", fake_run_deployment)
     with prefect_test_harness():
         assert await watch_tangled_pulls.watch_tangled_pulls() == 1
     assert started[0]["pull"] == PULL

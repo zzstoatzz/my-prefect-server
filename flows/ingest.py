@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from mps.blocks import secret_mapping_sync, secret_sync
 from mps.db import (
     write_emails,
     write_github_issues,
@@ -34,11 +35,10 @@ from mps.email import (
 from mps.github import IssueOrPR, IssueRef, gh_headers
 from mps.likes import LikedPost, LikeRecord, fetch_likes, summarize_embed
 from mps.lock import analytics_write_slot
-from mps.phi import PhiInteraction, PhiObservation, restore_handle
+from mps.phi import PhiInteraction, PhiObservation, restore_handle, row_strings, row_text
 from mps.tangled import PDS_BASE, TangledItem, fetch_items, fetch_repo_at_uris
 from prefect import flow, get_run_logger, task, unmapped
 from prefect.artifacts import create_table_artifact
-from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 from prefect.futures import PrefectFuture
@@ -102,7 +102,7 @@ class ByRepoAndNumber(CachePolicy):
 
 @task
 def load_token() -> str:
-    return Secret.load("github-token").get()
+    return secret_sync("github-token")
 
 
 @task(**NETWORK_RETRIES)
@@ -286,7 +286,7 @@ def fetch_emails() -> list[EmailItem]:
     logger = get_run_logger()
 
     try:
-        creds = Secret.load("proton-bridge-creds").get()
+        creds = secret_mapping_sync("proton-bridge-creds")
     except ValueError:
         logger.warning("proton-bridge-creds Secret block not found — skipping email")
         return []
@@ -340,7 +340,7 @@ def fetch_phi_memory(
             resp = ns.query(
                 rank_by=("vector", "ANN", [0.5] * 1536),
                 top_k=200,
-                filters={"kind": ["Eq", "observation"]},
+                filters=("kind", "Eq", "observation"),
                 include_attributes=["content", "tags", "created_at"],
             )
             if resp.rows:
@@ -349,9 +349,9 @@ def fetch_phi_memory(
                         PhiObservation(
                             handle=handle,
                             observation_id=str(row.id),
-                            content=row.content,
-                            tags=getattr(row, "tags", []) or [],
-                            created_at=getattr(row, "created_at", ""),
+                            content=row_text(row, "content"),
+                            tags=row_strings(row, "tags"),
+                            created_at=row_text(row, "created_at"),
                         )
                     )
         except Exception as e:
@@ -363,7 +363,7 @@ def fetch_phi_memory(
             resp = ns.query(
                 rank_by=("vector", "ANN", [0.5] * 1536),
                 top_k=200,
-                filters={"kind": ["Eq", "interaction"]},
+                filters=("kind", "Eq", "interaction"),
                 include_attributes=["content", "created_at"],
             )
             if resp.rows:
@@ -372,8 +372,8 @@ def fetch_phi_memory(
                         PhiInteraction(
                             handle=handle,
                             interaction_id=str(row.id),
-                            content=row.content,
-                            created_at=getattr(row, "created_at", ""),
+                            content=row_text(row, "content"),
+                            created_at=row_text(row, "created_at"),
                         )
                     )
         except Exception as e:
@@ -522,7 +522,7 @@ def _tolerate[T](
     source: str,
     default: T,
     degraded: list[str],
-    logger: logging.Logger,
+    logger: logging.Logger | logging.LoggerAdapter[logging.Logger],
 ) -> T:
     """Resolve a fetch that stayed down through all its retries.
 
@@ -553,7 +553,7 @@ def ingest(only_unread: bool = True):
     likes_future = fetch_nate_likes.submit()
     email_future = fetch_emails.submit()
 
-    tpuf_key = Secret.load("turbopuffer-api-key").get()
+    tpuf_key = secret_sync("turbopuffer-api-key")
     phi_future = fetch_phi_memory.submit(tpuf_key)
 
     # github fetches need the token

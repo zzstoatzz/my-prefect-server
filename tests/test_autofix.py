@@ -135,11 +135,7 @@ def test_propose_off_by_default(monkeypatch):
     monkeypatch.setattr(autofix, "checkout_as_of", lambda cwd, when: "abc")
     monkeypatch.setattr(autofix, "run_pi", lambda *a, **k: "SUMMARY: x\nbody")
     monkeypatch.setattr(autofix, "screen_prompt", lambda *a, **k: None)
-    monkeypatch.setattr(
-        autofix.Secret,
-        "load",
-        staticmethod(lambda n: type("S", (), {"get": lambda self: "k"})()),
-    )
+    monkeypatch.setattr(autofix, "secret_sync", lambda name: "k")
     monkeypatch.setattr(
         autofix, "propose_fix", lambda *a, **k: (_ for _ in ()).throw(AssertionError)
     )
@@ -177,11 +173,7 @@ def test_propose_for_allowlist_turns_proposing_on(monkeypatch):
     monkeypatch.setattr(autofix, "checkout_as_of", lambda cwd, when: "abc")
     monkeypatch.setattr(autofix, "run_pi", lambda *a, **k: "SUMMARY: x\nbody")
     monkeypatch.setattr(autofix, "screen_prompt", lambda *a, **k: None)
-    monkeypatch.setattr(
-        autofix.Secret,
-        "load",
-        staticmethod(lambda n: type("S", (), {"get": lambda self: "k"})()),
-    )
+    monkeypatch.setattr(autofix, "secret_sync", lambda name: "k")
 
     def fake_propose(diagnosis, brief, key, dep_name):
         proposed.append(dep_name)

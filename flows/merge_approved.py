@@ -32,6 +32,7 @@ import tempfile
 import time
 from typing import Literal
 
+from mps.blocks import secret_mapping_sync, secret_sync
 from mps.pi import minimal_env
 from mps.tangled import (
     mark_pull_merged,
@@ -40,12 +41,12 @@ from mps.tangled import (
     review_verdict,
     touched_paths,
 )
-from prefect import flow, runtime, task
-from prefect.blocks.system import Secret
+from prefect import flow, task
 from prefect.client.orchestration import get_client
 from prefect.events import emit_event
 from prefect.flow_runs import suspend_flow_run
-from prefect.states import Completed
+from prefect.runtime import flow_run as run_context
+from prefect.states import Completed, State
 
 from flows.autofix import PULL_PREFIX
 from flows.costs import OPERATOR_CREDS_BLOCK
@@ -213,7 +214,7 @@ def push_merge(repo: str, cwd: str, env: dict[str, str]) -> str:
     _git(cwd, "push", KNOT.format(repo=repo), "HEAD:refs/heads/main", env=env)
     mirror = MIRRORS.get(repo)
     if mirror:
-        token = Secret.load("github-token").get()
+        token = secret_sync("github-token")
         helper = '!f() { echo username=x-access-token; echo "password=$GIT_MIRROR_TOKEN"; }; f'
         _git(
             cwd,
@@ -229,18 +230,13 @@ def push_merge(repo: str, cwd: str, env: dict[str, str]) -> str:
 
 @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
 def record_merged(pull: str) -> str:
-    import json
-
-    raw = Secret.load(OPERATOR_CREDS_BLOCK).get()
-    if isinstance(raw, dict) and "handle" not in raw and "value" in raw:
-        raw = raw["value"]
-    creds = json.loads(raw) if isinstance(raw, str) else raw
+    creds = secret_mapping_sync(OPERATOR_CREDS_BLOCK)
     return mark_pull_merged(pull, creds["handle"], creds["password"])
 
 
 def _already_asked() -> bool:
     """true on the pass after Resume: the pause key is on the run's policy."""
-    run_id = runtime.flow_run.id
+    run_id = run_context.id
     if not run_id:
         return False
     with get_client(sync_client=True) as client:
@@ -249,7 +245,7 @@ def _already_asked() -> bool:
 
 
 @flow(name="merge-approved", log_prints=True, timeout_seconds=3600)
-def merge_approved(pull: str, verdict_wait_seconds: int = 1800) -> Completed:
+def merge_approved(pull: str, verdict_wait_seconds: int = 1800) -> State:
     if not pull.startswith(PULL_PREFIX):
         return Completed(name="Skipped", message=f"not a gardener pull: {pull}")
 
@@ -266,10 +262,10 @@ def merge_approved(pull: str, verdict_wait_seconds: int = 1800) -> Completed:
     print(f"{repo}: {details['title']!r}, {len(paths)} files, protected={protected}")
 
     resumed = _already_asked()
-    run_id = str(runtime.flow_run.id)
+    run_id = str(run_context.id)
 
     with tempfile.TemporaryDirectory(prefix="merge-key-") as key_dir:
-        env = _ssh_env(key_dir, Secret.load("tangled-merge-ssh-key").get())
+        env = _ssh_env(key_dir, secret_sync("tangled-merge-ssh-key"))
         try:
             head = knot_head(repo, env)
         except RuntimeError as exc:

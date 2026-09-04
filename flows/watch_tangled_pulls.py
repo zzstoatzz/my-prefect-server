@@ -32,7 +32,7 @@ from mps.tangled import (
     resolve_pds,
 )
 from prefect import flow
-from prefect.deployments import run_deployment
+from prefect.deployments.flow_runs import arun_deployment
 from prefect.events import emit_event
 from prefect.variables import Variable
 
@@ -139,11 +139,14 @@ def reconcile() -> list[dict[str, str]]:
 
 @flow(name="watch-tangled-pulls", log_prints=True, timeout_seconds=300)
 async def watch_tangled_pulls() -> int:
-    cursor = await Variable.aget(CURSOR_VAR, default=None)
-    handled: list[str] = await Variable.aget(HANDLED_VAR, default=[])
+    stored_cursor = await Variable.aget(CURSOR_VAR)
+    stored_handled = await Variable.aget(HANDLED_VAR)
+    handled = [str(u) for u in stored_handled] if isinstance(stored_handled, list) else []
 
     try:
-        streamed, new_cursor = await drain(int(cursor) if cursor else None)
+        streamed, new_cursor = await drain(
+            int(stored_cursor) if isinstance(stored_cursor, int | str) and stored_cursor else None
+        )
     except Exception as exc:
         print(f"stream drain failed ({exc!r}); reconcile still runs")
         streamed, new_cursor = [], None
@@ -160,7 +163,7 @@ async def watch_tangled_pulls() -> int:
             },
             payload=comment,
         )
-        run = await run_deployment(
+        run = await arun_deployment(
             "autofix-revise/autofix-revise",
             parameters={"pull": comment["pull"], "comment_uri": comment["uri"]},
             timeout=0,

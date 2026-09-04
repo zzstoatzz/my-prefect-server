@@ -16,9 +16,9 @@ fly secret).
 """
 
 import httpx
+from mps.blocks import secret
 from mps.observability import configure_logfire
 from prefect import flow
-from prefect.blocks.system import Secret
 
 PHI_BASE = "https://phi.zzstoatzz.io"
 
@@ -28,7 +28,7 @@ async def phi_trigger(slot: str, material: str = ""):
     """Trigger phi's named pass `slot` via the bot's control API."""
     configure_logfire("prefect-flow-phi-trigger")
 
-    token = (await Secret.load("phi-control-token")).get()
+    token = await secret("phi-control-token")
     async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.post(
             f"{PHI_BASE}/api/control/trigger/{slot}",

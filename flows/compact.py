@@ -18,18 +18,19 @@ from typing import Any
 import duckdb
 import httpx
 import turbopuffer
-from mps.phi import clean_handle
+from mps.blocks import secret
+from mps.phi import clean_handle, row as make_row, row_text
 from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 from openai import OpenAI
 from prefect import flow, get_run_logger, task
-from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 from prefect.tasks import exponential_backoff
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
-from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.providers.anthropic import AnthropicProvider
+from turbopuffer.types import AttributeSchemaConfigParam
 
 SYSTEM_PROMPT = """\
 you synthesize relationship summaries for a bluesky bot named phi.
@@ -193,11 +194,11 @@ async def synthesize_summary(
     # compact iterates over top authors; the SYSTEM_PROMPT is constant across
     # the per-user loop, so caching it once and reusing on every call is the
     # biggest single lever for this flow.
-    agent = Agent(
+    agent = Agent[None, str](
         model,
         system_prompt=SYSTEM_PROMPT,
         name="phi-compactor",
-        model_settings={"anthropic_cache_instructions": "5m"},
+        model_settings=AnthropicModelSettings(anthropic_cache_instructions="5m"),
     )
 
     profile_section = f"handle: @{handle}\n"
@@ -276,17 +277,16 @@ def write_summary_to_turbopuffer(
     ns_name = f"phi-users-{clean_handle(handle)}"
     ns = client.namespace(ns_name)
 
+    summary_row = make_row(
+        _summary_id(handle),
+        embedding,
+        kind="summary",
+        content=summary,
+        tags=[],
+        created_at=datetime.now(UTC).isoformat(),
+    )
     ns.write(
-        upsert_rows=[
-            {
-                "id": _summary_id(handle),
-                "vector": embedding,
-                "kind": "summary",
-                "content": summary,
-                "tags": [],
-                "created_at": datetime.now(UTC).isoformat(),
-            }
-        ],
+        upsert_rows=[summary_row],
         distance_metric="cosine_distance",
         schema={
             "kind": {"type": "string", "filterable": True},
@@ -403,7 +403,7 @@ def query_existing_knowledge(tpuf_key: str, handle: str) -> str:
         resp = ns.query(
             rank_by=("created_at", "desc"),
             top_k=10,
-            filters={"kind": ["Eq", "observation"]},
+            filters=("kind", "Eq", "observation"),
             include_attributes=["content", "tags", "created_at"],
         )
         if not resp.rows:
@@ -474,12 +474,12 @@ async def extract_likes_observations(
 ) -> list[dict[str, Any]]:
     """LLM extraction of observations from liked posts. Cached by posts hash."""
     model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
-    agent = Agent(
+    agent = Agent[None, LikesExtractionResult](
         model,
         system_prompt=LIKES_SYSTEM_PROMPT,
         output_type=LikesExtractionResult,
         name="likes-observer",
-        model_settings={"anthropic_cache_instructions": "5m"},
+        model_settings=AnthropicModelSettings(anthropic_cache_instructions="5m"),
     )
 
     profile_section = f"handle: @{handle}\n"
@@ -510,7 +510,7 @@ def _observation_id(handle: str, content: str) -> str:
     return hashlib.sha256(f"user-{handle}-observation-{content}".encode()).hexdigest()[:16]
 
 
-USER_NAMESPACE_SCHEMA = {
+USER_NAMESPACE_SCHEMA: dict[str, str | AttributeSchemaConfigParam] = {
     "kind": {"type": "string", "filterable": True},
     "status": {"type": "string", "filterable": True},  # active | superseded
     "content": {"type": "string", "full_text_search": True},
@@ -566,13 +566,16 @@ def write_likes_observations_to_turbopuffer(
                 resp = ns.query(
                     rank_by=("vector", "ANN", embedding),
                     top_k=3,
-                    filters={"kind": ["Eq", "observation"]},
+                    filters=("kind", "Eq", "observation"),
                     include_attributes=["content"],
                 )
                 if resp.rows:
                     old_content = obs["supersedes_content"].lower()
                     for row in resp.rows:
-                        if old_content in row.content.lower() or row.content.lower() in old_content:
+                        if (
+                            old_content in row_text(row, "content").lower()
+                            or row_text(row, "content").lower() in old_content
+                        ):
                             ns.write(deletes=[row.id], distance_metric="cosine_distance")
                             break
             except Exception:
@@ -580,21 +583,20 @@ def write_likes_observations_to_turbopuffer(
 
         obs_id = _observation_id(handle, content)
         now = datetime.now(UTC).isoformat()
+        observation_row = make_row(
+            obs_id,
+            embedding,
+            kind="observation",
+            status="active",
+            content=content,
+            tags=tags,
+            supersedes="",
+            source_uris=list(obs.get("source_uris") or []),
+            created_at=now,
+            updated_at=now,
+        )
         ns.write(
-            upsert_rows=[
-                {
-                    "id": obs_id,
-                    "vector": embedding,
-                    "kind": "observation",
-                    "status": "active",
-                    "content": content,
-                    "tags": tags,
-                    "supersedes": "",
-                    "source_uris": list(obs.get("source_uris") or []),
-                    "created_at": now,
-                    "updated_at": now,
-                }
-            ],
+            upsert_rows=[observation_row],
             distance_metric="cosine_distance",
             schema=USER_NAMESPACE_SCHEMA,
         )
@@ -616,9 +618,9 @@ async def compact():
         "ANALYTICS_DB_PATH",
         os.environ.get("PREFECT_LOCAL_STORAGE_PATH", "/tmp") + "/analytics.duckdb",
     )
-    tpuf_key = (await Secret.load("turbopuffer-api-key")).get()
-    openai_key = (await Secret.load("openai-api-key")).get()
-    anthropic_key = (await Secret.load("anthropic-api-key")).get()
+    tpuf_key = await secret("turbopuffer-api-key")
+    openai_key = await secret("openai-api-key")
+    anthropic_key = await secret("anthropic-api-key")
 
     snap_path = snapshot_db(db_path)
 

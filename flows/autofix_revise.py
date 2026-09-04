@@ -18,6 +18,7 @@ import subprocess
 from tempfile import TemporaryDirectory
 
 import httpx
+from mps.blocks import secret_sync
 from mps.pi import minimal_env, run_pi, screen_prompt
 from mps.tangled import (
     DID as OPERATOR_DID,
@@ -29,9 +30,8 @@ from mps.tangled import (
     resolve_pds,
 )
 from prefect import flow
-from prefect.blocks.system import Secret
 from prefect.events import emit_event
-from prefect.states import Completed
+from prefect.states import Completed, State
 
 from flows.autofix import (
     GARDENER_DID,
@@ -115,7 +115,7 @@ def apply_patch(cwd: str, patch: str) -> bool:
 
 
 @flow(name="autofix-revise", log_prints=True, timeout_seconds=2400)
-def autofix_revise(pull: str, comment_uri: str = "") -> Completed:
+def autofix_revise(pull: str, comment_uri: str = "") -> State:
     if not pull.startswith(PULL_PREFIX):
         return Completed(name="Skipped", message=f"not a gardener pull: {pull}")
 
@@ -129,7 +129,7 @@ def autofix_revise(pull: str, comment_uri: str = "") -> Completed:
         return Completed(name="Skipped", message="no operator comments on this pull")
     latest = next((c for c in thread if c["uri"] == comment_uri), thread[-1])
 
-    anthropic_key = Secret.load("anthropic-api-key").get()
+    anthropic_key = secret_sync("anthropic-api-key")
     with TemporaryDirectory(prefix="autofix-revise-") as workdir:
         cwd = f"{workdir}/repo"
         subprocess.run(
@@ -177,8 +177,8 @@ def autofix_revise(pull: str, comment_uri: str = "") -> Completed:
         note = parsed.get("NOTE", "")
         new_patch = build_patch(cwd, base, note or "revision", "gardener", email="gardener@zat.dev")
 
-    handle = Secret.load("gardener-handle").get()
-    password = Secret.load("gardener-password").get()
+    handle = secret_sync("gardener-handle")
+    password = secret_sync("gardener-password")
     round_n = None
     if new_patch:
         round_n = append_round(pull, new_patch, note, handle, password)

@@ -14,15 +14,17 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import turbopuffer
+from mps.blocks import secret
 from mps.phi import (
     TagCluster,
     TagMerge,
     TagRelationship,
+    row as make_row,
+    row_text,
 )
 from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 from openai import OpenAI
 from prefect import flow, task
-from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 from prefect.variables import Variable
@@ -30,9 +32,10 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
+from turbopuffer.types import AttributeSchemaConfigParam, RowParam
 
 TAG_REL_NAMESPACE = "phi-tag-relationships"
-TAG_REL_SCHEMA = {
+TAG_REL_SCHEMA: dict[str, str | AttributeSchemaConfigParam] = {
     "tag_a": {"type": "string", "filterable": True},
     "tag_b": {"type": "string", "filterable": True},
     "relationship_type": {"type": "string", "filterable": True},
@@ -109,7 +112,7 @@ def collect_all_tags(tpuf_key: str) -> dict[str, Any]:
             response = ns.query(
                 rank_by=("vector", "ANN", [0.5] * 1536),
                 top_k=200,
-                filters={"kind": ["Eq", "observation"]},
+                filters=("kind", "Eq", "observation"),
                 include_attributes=["content", "tags"],
             )
             if response.rows:
@@ -121,7 +124,7 @@ def collect_all_tags(tpuf_key: str) -> dict[str, Any]:
                         info["users"].add(handle)
                         user_tag_sets[handle].add(tag)
                         if len(info["samples"]) < 3:
-                            info["samples"].append(row.content[:200])
+                            info["samples"].append(row_text(row, "content")[:200])
                     # co-occurrence within same observation
                     for i, t1 in enumerate(row_tags):
                         for t2 in row_tags[i + 1 :]:
@@ -144,7 +147,7 @@ def collect_all_tags(tpuf_key: str) -> dict[str, Any]:
                     info = tag_info[tag]
                     info["episodic_count"] += 1
                     if len(info["samples"]) < 3:
-                        info["samples"].append(row.content[:200])
+                        info["samples"].append(row_text(row, "content")[:200])
                 for i, t1 in enumerate(row_tags):
                     for t2 in row_tags[i + 1 :]:
                         cooccurrences[(t1, t2)] += 1
@@ -207,7 +210,7 @@ async def identify_tag_merges(
     inventory = "\n".join(tag_lines)
 
     model = AnthropicModel(model_name, provider=AnthropicProvider(api_key=api_key))
-    agent = Agent(
+    agent = Agent[None, MergeProposal](
         model,
         system_prompt=(
             "you are consolidating the tag vocabulary for phi's memory graph.\n\n"
@@ -291,7 +294,7 @@ def apply_tag_merges(
         if not response.rows:
             continue
 
-        rows_to_upsert = []
+        rows_to_upsert: list[RowParam] = []
         for row in response.rows:
             old_tags = list(getattr(row, "tags", []) or [])
             new_tags = [alias_map.get(t, t) for t in old_tags]
@@ -304,23 +307,21 @@ def apply_tag_merges(
 
             if deduped != old_tags:
                 vec = getattr(row, "vector", None)
-                if not vec:
+                if not isinstance(vec, list) or not vec:
                     continue
-                row_data: dict[str, Any] = {
-                    "id": row.id,
-                    "vector": vec,
-                    "content": row.content,
+                attributes: dict[str, object] = {
+                    "content": row_text(row, "content"),
                     "tags": deduped,
-                    "created_at": getattr(row, "created_at", datetime.now(UTC).isoformat()),
+                    "created_at": row_text(row, "created_at") or datetime.now(UTC).isoformat(),
                 }
                 if is_user_ns:
-                    row_data["kind"] = "observation"
+                    attributes["kind"] = "observation"
                 else:
-                    row_data["source"] = getattr(row, "source", "tool")
-                rows_to_upsert.append(row_data)
+                    attributes["source"] = row_text(row, "source") or "tool"
+                rows_to_upsert.append(make_row(row.id, vec, **attributes))
 
         if rows_to_upsert:
-            schema: dict[str, Any] = {
+            schema: dict[str, str | AttributeSchemaConfigParam] = {
                 "content": {"type": "string", "full_text_search": True},
                 "tags": {"type": "[]string", "filterable": True},
                 "created_at": {"type": "string"},
@@ -395,7 +396,7 @@ async def discover_tag_relationships(
     inventory = "\n".join(tag_lines)
 
     model = AnthropicModel(model_name, provider=AnthropicProvider(api_key=api_key))
-    agent = Agent(
+    agent = Agent[None, ClusterProposal](
         model,
         system_prompt=(
             "you are organizing phi's memory tags into thematic clusters.\n"
@@ -436,7 +437,7 @@ async def discover_tag_relationships(
         members = [t for t in cluster.tags if t in set(tags)]
         for i, t1 in enumerate(members):
             for t2 in members[i + 1 :]:
-                pair = tuple(sorted([t1, t2]))
+                pair = (t1, t2) if t1 <= t2 else (t2, t1)
                 if pair in seen_pairs:
                     continue
                 seen_pairs.add(pair)
@@ -481,18 +482,18 @@ def store_tag_relationships(
         item_count=len(texts),
     )
 
-    rows = []
+    rows: list[RowParam] = []
     for i, rel in enumerate(relationships):
         rows.append(
-            {
-                "id": _rel_id(rel["tag_a"], rel["tag_b"]),
-                "vector": embeddings.data[i].embedding,
-                "tag_a": rel["tag_a"],
-                "tag_b": rel["tag_b"],
-                "relationship_type": rel["relationship_type"],
-                "confidence": rel["confidence"],
-                "evidence": rel["evidence"],
-            }
+            make_row(
+                _rel_id(rel["tag_a"], rel["tag_b"]),
+                embeddings.data[i].embedding,
+                tag_a=rel["tag_a"],
+                tag_b=rel["tag_b"],
+                relationship_type=rel["relationship_type"],
+                confidence=rel["confidence"],
+                evidence=rel["evidence"],
+            )
         )
 
     ns.write(
@@ -515,10 +516,11 @@ async def morning():
     Runs daily at 8am CT (13:00 UTC). Phases 1-3 clean up the tag graph.
     Curation is handled by a separate flow triggered on completion.
     """
-    tpuf_key = (await Secret.load("turbopuffer-api-key")).get()
-    openai_key = (await Secret.load("openai-api-key")).get()
-    anthropic_key = (await Secret.load("anthropic-api-key")).get()
-    model_name = await Variable.get("morning-model", default="claude-sonnet-4-6")
+    tpuf_key = await secret("turbopuffer-api-key")
+    openai_key = await secret("openai-api-key")
+    anthropic_key = await secret("anthropic-api-key")
+    stored_model = await Variable.aget("morning-model")
+    model_name = stored_model if isinstance(stored_model, str) else "claude-sonnet-4-6"
     print(f"using model: {model_name}")
 
     # --- phase 1: collect and deduplicate tags ---

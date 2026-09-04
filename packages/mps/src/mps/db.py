@@ -12,6 +12,13 @@ from mps.lock import analytics_write_slot
 from mps.phi import PhiInteraction, PhiObservation
 
 
+def _count(con: duckdb.DuckDBPyConnection, table: str) -> int:
+    row = con.execute(f"SELECT count(*) FROM {table}").fetchone()
+    if row is None:
+        raise RuntimeError(f"count(*) on {table} returned no row")
+    return int(row[0])
+
+
 @contextmanager
 def _write_conn(db_path: str) -> Iterator[duckdb.DuckDBPyConnection]:
     """RW connection that holds the single analytics writer slot for its lifetime."""
@@ -48,7 +55,7 @@ def write_likes(items: list[LikeRecord], db_path: str) -> int:
                 "INSERT OR REPLACE INTO raw_likes VALUES (?, ?, ?, ?)",
                 rows,
             )
-        return con.execute("SELECT count(*) FROM raw_likes").fetchone()[0]
+        return _count(con, "raw_likes")
 
 
 def write_liked_posts(items: list[LikedPost], db_path: str) -> int:
@@ -86,7 +93,7 @@ def write_liked_posts(items: list[LikedPost], db_path: str) -> int:
                 "INSERT OR REPLACE INTO raw_liked_posts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 rows,
             )
-        return con.execute("SELECT count(*) FROM raw_liked_posts").fetchone()[0]
+        return _count(con, "raw_liked_posts")
 
 
 def write_github_issues(items: list, db_path: str) -> int:
@@ -125,7 +132,7 @@ def write_github_issues(items: list, db_path: str) -> int:
             "INSERT OR REPLACE INTO raw_github_issues VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             rows,
         )
-        return con.execute("SELECT count(*) FROM raw_github_issues").fetchone()[0]
+        return _count(con, "raw_github_issues")
 
 
 def write_tangled_items(items: list, db_path: str) -> int:
@@ -162,7 +169,7 @@ def write_tangled_items(items: list, db_path: str) -> int:
                 "INSERT OR REPLACE INTO raw_tangled_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 rows,
             )
-        return con.execute("SELECT count(*) FROM raw_tangled_items").fetchone()[0]
+        return _count(con, "raw_tangled_items")
 
 
 def write_phi_observations(items: list[PhiObservation], db_path: str) -> int:
@@ -193,7 +200,7 @@ def write_phi_observations(items: list[PhiObservation], db_path: str) -> int:
                 "INSERT OR REPLACE INTO raw_phi_observations VALUES (?, ?, ?, ?, ?, ?)",
                 rows,
             )
-        return con.execute("SELECT count(*) FROM raw_phi_observations").fetchone()[0]
+        return _count(con, "raw_phi_observations")
 
 
 def write_phi_interactions(items: list[PhiInteraction], db_path: str) -> int:
@@ -222,7 +229,7 @@ def write_phi_interactions(items: list[PhiInteraction], db_path: str) -> int:
                 "INSERT OR REPLACE INTO raw_phi_interactions VALUES (?, ?, ?, ?, ?)",
                 rows,
             )
-        return con.execute("SELECT count(*) FROM raw_phi_interactions").fetchone()[0]
+        return _count(con, "raw_phi_interactions")
 
 
 def write_emails(items: list[EmailItem], db_path: str) -> int:
@@ -259,7 +266,7 @@ def write_emails(items: list[EmailItem], db_path: str) -> int:
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 rows,
             )
-        return con.execute("SELECT count(*) FROM raw_emails").fetchone()[0]
+        return _count(con, "raw_emails")
 
 
 def unclassified_emails(db_path: str, limit: int = 100) -> list[tuple[str, str, str, str]]:
@@ -308,4 +315,4 @@ def write_email_classifications(items: list[EmailClassification], db_path: str) 
                 "INSERT OR REPLACE INTO raw_email_classifications VALUES (?, ?, ?)",
                 rows,
             )
-        return con.execute("SELECT count(*) FROM raw_email_classifications").fetchone()[0]
+        return _count(con, "raw_email_classifications")

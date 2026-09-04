@@ -19,6 +19,8 @@ import datetime as dt
 import json
 
 from atproto import AsyncClient
+from mps.atproto import session_did
+from mps.blocks import secret_mapping
 from mps.costs import Period, Snapshot
 from mps.costs.connectors import (
     CloudflareConnector,
@@ -31,7 +33,6 @@ from mps.observability import configure_logfire
 from pdsx._internal.auth import login
 from prefect import flow, task
 from prefect.artifacts import create_table_artifact
-from prefect.blocks.system import Secret
 from prefect.cache_policies import NONE
 from pydantic import BaseModel, Field
 
@@ -46,7 +47,7 @@ async def build_connectors() -> list[Connector]:
     env (injected from Secret blocks via prefect.yaml)."""
     hetzner_tokens: list[str] | None = None
     try:
-        hetzner_tokens = list((await Secret.load(HETZNER_TOKENS_BLOCK)).get().values())
+        hetzner_tokens = [str(v) for v in (await secret_mapping(HETZNER_TOKENS_BLOCK)).values()]
     except Exception as exc:
         print(f"  hetzner: no {HETZNER_TOKENS_BLOCK} block ({exc}); will fall back to env")
 
@@ -88,10 +89,7 @@ async def _operator_creds() -> tuple[str, str, str]:
     the operator-atproto-creds Secret block — a JSON dict {handle, password, pds}.
     This is the main identity on the self-hosted pds.zzstoatzz.io, distinct from
     the phi agent creds used elsewhere."""
-    raw = (await Secret.load(OPERATOR_CREDS_BLOCK)).get()
-    if isinstance(raw, dict) and "handle" not in raw and "value" in raw:
-        raw = raw["value"]  # unwrap prefect json-kind wrapper
-    creds = json.loads(raw) if isinstance(raw, str) else raw
+    creds = await secret_mapping(OPERATOR_CREDS_BLOCK)
     return creds["handle"], creds["password"], creds["pds"]
 
 
@@ -108,7 +106,7 @@ async def write_snapshot(snapshot: Snapshot) -> str:
     rkey = snapshot.generated_at.astimezone(dt.UTC).strftime("%Y-%m-%d")
     resp = await client.com.atproto.repo.put_record(
         {
-            "repo": client.me.did,
+            "repo": session_did(client),
             "collection": COLLECTION,
             "rkey": rkey,
             "record": snapshot.to_record(),

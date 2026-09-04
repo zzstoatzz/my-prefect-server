@@ -28,9 +28,9 @@ from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import UUID
 
+from mps.blocks import secret_sync
 from mps.pi import minimal_env, run_pi, screen_prompt
-from prefect import flow, get_client, runtime
-from prefect.blocks.system import Secret
+from prefect import flow, get_client
 from prefect.client.schemas.filters import (
     FlowRunFilter,
     FlowRunFilterId,
@@ -39,7 +39,8 @@ from prefect.client.schemas.filters import (
 )
 from prefect.client.schemas.sorting import LogSort
 from prefect.events import emit_event
-from prefect.states import Completed
+from prefect.runtime import flow_run as run_context
+from prefect.states import Completed, State
 
 REPO_URL = "https://github.com/zzstoatzz/my-prefect-server.git"
 # gardener.pds.zat.dev — the maintenance identity that authors autofix pulls
@@ -282,8 +283,8 @@ def propose_fix(diagnosis: str, brief: str, anthropic_key: str, dep_name: str) -
         )
         if part
     )
-    handle = Secret.load("gardener-handle").get()
-    password = Secret.load("gardener-password").get()
+    handle = secret_sync("gardener-handle")
+    password = secret_sync("gardener-password")
     pull = create_pull(PR_OWNER, PR_REPO, title, patch, body, handle, password)
     return {"title": title, **pull}
 
@@ -294,13 +295,13 @@ def autofix(
     dry_run: bool = False,
     propose: bool = False,
     propose_for: list[str] | None = None,
-) -> Completed:
+) -> State:
     """diagnose a failed run; open a pull for it when `propose` is on, or when
     the failed deployment is named in `propose_for` (the canary allowlist the
     automation carries while proposing is still earning trust)."""
     try:
         ctx = asyncio.run(gather(flow_run_id))
-        dep_name = ctx["deployment"].name if ctx["deployment"] else None
+        dep_name = ctx["deployment"].name if ctx["deployment"] else "ad-hoc"
         if dep_name == "autofix":
             return Completed(name="Skipped", message="not diagnosing my own failures")
         propose = propose or dep_name in (propose_for or [])
@@ -310,7 +311,7 @@ def autofix(
         if dry_run:
             return Completed(name="DryRun", message="brief rendered, pi not run")
 
-        anthropic_key = Secret.load("anthropic-api-key").get()
+        anthropic_key = secret_sync("anthropic-api-key")
         prompt = PROMPT.format(brief=brief)
         screen_prompt(prompt, "read-only", anthropic_key)
 
@@ -327,7 +328,7 @@ def autofix(
             ).strip()
 
         summary, _ = split_summary(diagnosis)
-        this_run = runtime.flow_run.id
+        this_run = run_context.id
         emit_event(
             event="autofix.diagnosed",
             resource={

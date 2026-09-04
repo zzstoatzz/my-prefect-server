@@ -17,10 +17,10 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from mps.blocks import secret_sync
 from mps.db import unclassified_emails, write_email_classifications
 from mps.email import EmailClassification, IndexedClassifications
 from prefect import flow, get_run_logger, task, unmapped
-from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 
@@ -88,7 +88,7 @@ def classify_email_batch(
     """LLM-classify one batch of emails. Cached by the batch's message_ids."""
     from mps.spend import record_pydantic_ai_result
     from pydantic_ai import Agent
-    from pydantic_ai.models.anthropic import AnthropicModel
+    from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
     from pydantic_ai.providers.anthropic import AnthropicProvider
 
     lines = [
@@ -96,13 +96,13 @@ def classify_email_batch(
         for i, (_, sender, subject, snippet) in enumerate(batch)
     ]
     model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
-    agent = Agent(
+    agent = Agent[None, IndexedClassifications](
         model,
         output_type=IndexedClassifications,
         system_prompt=EMAIL_CLASSIFIER_PROMPT,
         name="email-classifier",
         retries=2,
-        model_settings={"anthropic_cache_instructions": "5m"},
+        model_settings=AnthropicModelSettings(anthropic_cache_instructions="5m"),
     )
     result = agent.run_sync("classify these emails:\n\n" + "\n".join(lines))
     record_pydantic_ai_result(
@@ -132,7 +132,7 @@ def classify_emails():
         logger.info("no unclassified emails")
         return
 
-    api_key = Secret.load("anthropic-api-key").get()
+    api_key = secret_sync("anthropic-api-key")
     batches = [
         pending[i : i + CLASSIFY_BATCH_SIZE] for i in range(0, len(pending), CLASSIFY_BATCH_SIZE)
     ]

@@ -1,8 +1,11 @@
 """Data models for phi bot memory (TurboPuffer observations + interactions)."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import cast
 
 from pydantic import BaseModel, Field
+from turbopuffer.types import Row, RowParam
 
 
 def clean_handle(handle: str) -> str:
@@ -32,9 +35,7 @@ class TagCluster(BaseModel):
     name: str = Field(description="short name for the cluster theme")
     description: str = Field(description="what ties these tags together")
     tags: list[str] = Field(description="member tags")
-    cohesion: float = Field(
-        ge=0.0, le=1.0, description="how tightly related are these tags"
-    )
+    cohesion: float = Field(ge=0.0, le=1.0, description="how tightly related are these tags")
 
 
 class TagRelationship(BaseModel):
@@ -53,9 +54,7 @@ class CardPlan(BaseModel):
     card_type: str = Field(description="NOTE or URL")
     content: str = Field(description="text content (NOTE) or URL string (URL)")
     title: str | None = Field(default=None, description="optional title for the card")
-    description: str | None = Field(
-        default=None, description="optional description / context"
-    )
+    description: str | None = Field(default=None, description="optional description / context")
     ref_key: str = Field(
         description="local reference key (e.g. 'card-1') for cross-referencing within the plan"
     )
@@ -79,9 +78,7 @@ class CollectionPlan(BaseModel):
 
     name: str = Field(description="collection name (concise, 2-5 words)")
     description: str | None = Field(default=None)
-    card_refs: list[str] = Field(
-        description="at:// URIs or ref_keys of cards to include"
-    )
+    card_refs: list[str] = Field(description="at:// URIs or ref_keys of cards to include")
     existing_collection_uri: str | None = Field(
         default=None,
         description="if set, add cards to this existing collection instead of creating new",
@@ -94,9 +91,7 @@ class CurationPlan(BaseModel):
     should_curate: bool = Field(
         description="false most days — only true when there is genuinely new knowledge worth promoting"
     )
-    reasoning: str = Field(
-        description="brief explanation of why curation is or isn't warranted"
-    )
+    reasoning: str = Field(description="brief explanation of why curation is or isn't warranted")
     cards: list[CardPlan] = Field(default_factory=list)
     connections: list[ConnectionPlan] = Field(default_factory=list)
     collections: list[CollectionPlan] = Field(default_factory=list)
@@ -117,3 +112,25 @@ class PhiInteraction:
     interaction_id: str
     content: str  # "user: ...\nbot: ..."
     created_at: str = ""
+
+
+def row_text(row: Row, name: str) -> str:
+    """A string attribute of a turbopuffer row, or "" when absent or not a string."""
+    value = getattr(row, name, None)
+    return value if isinstance(value, str) else ""
+
+
+def row_strings(row: Row, name: str) -> list[str]:
+    """A list-of-strings attribute of a turbopuffer row, or [] when absent."""
+    value = getattr(row, name, None)
+    return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
+
+
+def row(id: str | int, vector: Sequence[float], **attributes: object) -> RowParam:
+    """A turbopuffer row to write.
+
+    RowParam admits arbitrary attribute keys through PEP 728 `extra_items`,
+    which ty does not model yet, so a literal with attributes fails to type.
+    The widening happens here, once, instead of at every write site.
+    """
+    return cast(RowParam, {"id": id, "vector": list(vector), **attributes})

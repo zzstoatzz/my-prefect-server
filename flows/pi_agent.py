@@ -10,9 +10,9 @@ import subprocess
 import tempfile
 from typing import Literal
 
+from mps.blocks import secret_sync
 from mps.pi import TOOL_ARGS, minimal_env, run_pi, screen_prompt
 from prefect import flow
-from prefect.blocks.system import Secret
 from prefect.flow_runs import pause_flow_run
 from pydantic import BaseModel, Field
 
@@ -80,7 +80,7 @@ def pi_agent(
     pi resolves credentials from provider env vars (ANTHROPIC_API_KEY is
     injected from a secret block by the deployment).
     """
-    anthropic_key = Secret.load("anthropic-api-key").get()
+    anthropic_key = secret_sync("anthropic-api-key")
     screen_prompt(prompt, agent.tool_mode, anthropic_key)
 
     if agent.tool_mode == "full":

@@ -31,12 +31,10 @@ def _capture(monkeypatch):
     monkeypatch.setattr(phi_trigger.httpx, "AsyncClient", FakeClient)
     monkeypatch.setattr(phi_trigger, "configure_logfire", lambda *a, **k: None)
 
-    class S:
-        @staticmethod
-        async def load(name):
-            return type("B", (), {"get": lambda self: "tok"})()
+    async def secret(name):
+        return "tok"
 
-    monkeypatch.setattr(phi_trigger, "Secret", S)
+    monkeypatch.setattr(phi_trigger, "secret", secret)
     return calls
 
 

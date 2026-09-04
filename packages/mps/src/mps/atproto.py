@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
+if TYPE_CHECKING:
+    from atproto import AsyncClient
+
 PDS_BASE = "https://bsky.social"
+
+
+def session_did(client: AsyncClient) -> str:
+    """The did of the logged-in account; a client that never logged in has none."""
+    if client.me is None:
+        raise RuntimeError("atproto client is not logged in")
+    return client.me.did
 
 
 def create_bsky_session(handle: str, password: str) -> dict[str, Any]:

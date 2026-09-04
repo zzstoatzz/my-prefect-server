@@ -69,6 +69,9 @@ dev = [
     # asyncio_mode = "auto" below, no test needs an @pytest.mark.asyncio.
     "pytest-asyncio>=0.24",
     "ruff>=0.16.6",
+    "boto3>=1.43.88",
+    "fastmcp>=4.0.0b5",
+    "umap-learn>=0.5",
 ]
 
 [tool.pytest.ini_options]

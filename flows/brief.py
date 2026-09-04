@@ -9,16 +9,16 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
+from mps.blocks import secret
 from mps.briefing import Briefing
 from mps.spend import record_pydantic_ai_result
 from prefect import flow, get_run_logger, task
 from prefect.artifacts import create_markdown_artifact
-from prefect.blocks.system import Secret
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 from pydantic_ai import Agent
 from pydantic_ai.durable_exec.prefect import PrefectAgent, TaskConfig
-from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.providers.anthropic import AnthropicProvider
 
 
@@ -53,10 +53,10 @@ lead with the most useful observation, not the most alarming one.
 """
 
 
-def make_agent(api_key: str) -> PrefectAgent[Briefing]:
+def make_agent(api_key: str) -> PrefectAgent[None, Briefing]:
     """Build agent after API key is available (provider validates key at init)."""
     model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
-    agent = Agent(
+    agent = Agent[None, Briefing](
         model,
         output_type=Briefing,
         system_prompt=SYSTEM_PROMPT,
@@ -64,7 +64,7 @@ def make_agent(api_key: str) -> PrefectAgent[Briefing]:
         # cache the constant SYSTEM_PROMPT — input cache reads are 0.1× input
         # price; net win whenever a flow run does ≥2 agent.run() calls or two
         # runs land within the 5m TTL window.
-        model_settings={"anthropic_cache_instructions": "5m"},
+        model_settings=AnthropicModelSettings(anthropic_cache_instructions="5m"),
     )
     return PrefectAgent(
         agent,
@@ -157,7 +157,7 @@ async def brief():
         str(Path(db_path).parent / "briefing.json"),
     )
 
-    api_key = (await Secret.load("anthropic-api-key")).get()
+    api_key = await secret("anthropic-api-key")
 
     items_text = load_items(db_path)
     item_count = 0 if not items_text.strip() else items_text.count(chr(10)) + 1
