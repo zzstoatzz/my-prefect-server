@@ -97,7 +97,7 @@ def apply_patch(cwd: str, patch: str) -> bool:
         input=patch,
         capture_output=True,
         text=True,
-        env=minimal_env(),
+        env=minimal_env(GIT_COMMITTER_NAME="gardener", GIT_COMMITTER_EMAIL="gardener@zat.dev"),
         check=False,
     )
     if proc.returncode == 0:
