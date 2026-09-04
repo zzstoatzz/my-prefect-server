@@ -84,6 +84,7 @@ exclude = ["**/__pycache__", ".venv", ".git"]
 
 [tool.ty.environment]
 python-version = "3.14"
+python = ".venv"
 
 [tool.ty.terminal]
 error-on-warning = true

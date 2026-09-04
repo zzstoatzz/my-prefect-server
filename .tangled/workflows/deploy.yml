@@ -26,6 +26,7 @@ steps:
   - name: check
     command: |
       set -euo pipefail
+      uv sync
       ruff check .
       ruff format --check .
       ty check
