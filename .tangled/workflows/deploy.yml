@@ -14,6 +14,9 @@ dependencies:
     # packages run; the wheels fail to spawn.
     - ruff
     - ty
+    # duckdb, numpy, and friends are wheels linked against libstdc++ and
+    # libgomp, which only gcc's lib output provides in this image
+    - stdenv.cc.cc.lib
     # git: the deploy pins the package install to the commit being deployed,
     # which means reading HEAD out of the workspace checkout
     - git
@@ -26,6 +29,7 @@ steps:
   - name: check
     command: |
       set -euo pipefail
+      for lib in /nix/store/*-gcc-*-lib/lib; do export LD_LIBRARY_PATH="$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; done
       uv sync
       ruff check .
       ruff format --check .
