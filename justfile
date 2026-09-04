@@ -147,11 +147,7 @@ deploy:
             --wait --timeout 5m
 
     echo "==> installing monitoring stack"
-    sed "s|GRAFANA_DOMAIN_PLACEHOLDER|$GRAFANA_DOMAIN|g" deploy/monitoring-values.yaml \
-        | helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-            --namespace monitoring \
-            --values - \
-            --wait --timeout 5m
+    just monitoring
 
     echo "==> applying grafana ingress"
     sed "s|GRAFANA_DOMAIN_PLACEHOLDER|$GRAFANA_DOMAIN|g" deploy/grafana-ingress.yaml \
@@ -386,6 +382,17 @@ dashboards:
             *) kubectl -n monitoring delete configmap "$cm"; echo "  removed $cm" ;;
         esac
     done
+
+# apply deploy/monitoring-values.yaml to the kube-prometheus-stack release
+monitoring:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${GRAFANA_DOMAIN:=prefect-metrics.waow.tech}"
+    sed "s|GRAFANA_DOMAIN_PLACEHOLDER|$GRAFANA_DOMAIN|g" deploy/monitoring-values.yaml \
+        | helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+            --namespace monitoring \
+            --values - \
+            --wait --timeout 5m
 
 # creates the basic-auth pair prometheus needs, derived from AUTH_STRING, and
 # applies the PodMonitor that scrapes both server pods with it.
