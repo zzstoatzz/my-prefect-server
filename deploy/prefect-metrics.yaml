@@ -1,11 +1,15 @@
-# scrape the zig prefect server's /api/metrics into the monitoring stack.
+# scrape the zig prefect server's metrics into the monitoring stack.
 #
-# the endpoint sits behind the same basic auth as the rest of /api, so the
-# ServiceMonitor reads a username/password pair from prefect-metrics-auth,
-# which `just metrics` derives from AUTH_STRING. the monitoring values set
-# serviceMonitorSelectorNilUsesHelmValues=false, so no release label is needed.
+# two processes write flow run states and each counts what it wrote, so
+# both are scraped and prometheus adds them up: the webserver's /api/metrics,
+# behind the same basic auth as the rest of /api (the pair in
+# prefect-metrics-auth, derived from AUTH_STRING by `just metrics`), and the
+# services pod's metrics port, which has no auth and is only reachable inside
+# the cluster. a PodMonitor rather than a ServiceMonitor because the services
+# pod sits behind no Service. the monitoring values set
+# podMonitorSelectorNilUsesHelmValues=false, so no release label is needed.
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: prefect-server
   namespace: prefect
@@ -17,7 +21,7 @@ spec:
       app.kubernetes.io/name: prefect-server
   namespaceSelector:
     matchNames: [prefect]
-  endpoints:
+  podMetricsEndpoints:
     - port: http
       path: /api/metrics
       interval: 30s
@@ -28,3 +32,6 @@ spec:
         password:
           name: prefect-metrics-auth
           key: password
+    - port: metrics
+      path: /metrics
+      interval: 30s

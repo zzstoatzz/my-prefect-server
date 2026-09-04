@@ -388,8 +388,8 @@ dashboards:
     done
 
 # creates the basic-auth pair prometheus needs, derived from AUTH_STRING, and
-# applies the ServiceMonitor that uses it.
-# scrape the prefect server's /api/metrics into prometheus
+# applies the PodMonitor that scrapes both server pods with it.
+# scrape both prefect server processes into prometheus
 metrics:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -399,6 +399,7 @@ metrics:
         --from-literal=username="${AUTH_STRING%%:*}" \
         --from-literal=password="${AUTH_STRING#*:}" \
         --dry-run=client -o yaml | kubectl apply -f -
+    kubectl -n prefect delete servicemonitor prefect-server --ignore-not-found
     kubectl apply -f deploy/prefect-metrics.yaml
 
 # --- analytics ---

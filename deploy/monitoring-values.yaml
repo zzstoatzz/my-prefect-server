@@ -39,6 +39,7 @@ prometheus:
     scrapeInterval: 60s
     retention: 7d
     serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
 
     # heavypad, the home box. It is not in the cluster, so it cannot be found
     # by a ServiceMonitor — it is scraped directly over the tailnet, which the
