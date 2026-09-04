@@ -1,3 +1,5 @@
+"""Schema of the hub briefing that the brief flow writes and the hub renders."""
+
 from enum import StrEnum
 
 from pydantic import BaseModel, Field

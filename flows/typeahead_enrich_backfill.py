@@ -170,7 +170,8 @@ def typeahead_enrich_backfill(
     write_batch: int = 50,
     dry_run: bool = True,
 ) -> dict[str, Any]:
-    """
+    """Enrich actors whose profile has never been checked, paced against the appview.
+
     limit:           optional cap on actors this run (trial: 100; scheduled
                      runs pass None and are bounded by budget_seconds alone)
     budget_seconds:  wall-clock budget; the run stops starting new work once

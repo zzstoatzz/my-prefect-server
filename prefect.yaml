@@ -52,6 +52,7 @@ definitions:
 
 deployments:
   - name: fleet-health
+    tags: [watch]
     entrypoint: flows/fleet_health.py:fleet_health
     # curl-weight HTTP checks only (runs on the home box — no websockets or
     # firehose sampling from a residential connection). deep check for
@@ -71,6 +72,7 @@ deployments:
         active: true
 
   - name: mcp-fleet-health
+    tags: [watch]
     entrypoint: flows/mcp_fleet_health.py:mcp_fleet_health
     # protocol-level health for the public MCP servers in the atlas registry:
     # each must negotiate and serve tool discovery through a ClientGroup, not
@@ -90,6 +92,7 @@ deployments:
         active: true
 
   - name: diagnostics
+    tags: [watch]
     entrypoint: flows/diagnostics.py:diagnostics
     # retargeted to the home box (heavypad) via the process work pool — canary
     # proving the home worker pulls code + executes flows. revert to *k8s anytime.
@@ -109,6 +112,7 @@ deployments:
         active: true
 
   - name: ingest
+    tags: [pipeline]
     entrypoint: flows/ingest.py:ingest
     work_pool: *home
     # if a worker outage stacks a backlog, run one and CANCEL the rest instead of
@@ -126,6 +130,7 @@ deployments:
   # fail ingestion. sits between ingest and transform so the dbt build always
   # joins fresh categories (usually seconds — batches are cached 24h).
   - name: classify-emails
+    tags: [pipeline]
     entrypoint: flows/classify_emails.py:classify_emails
     work_pool: *home
     concurrency_limit: *cancel_new
@@ -138,6 +143,7 @@ deployments:
           prefect.resource.role: "deployment"
 
   - name: transform
+    tags: [pipeline]
     entrypoint: flows/transform.py:transform
     work_pool:
       name: home-pool
@@ -160,6 +166,7 @@ deployments:
           prefect.resource.role: "deployment"
 
   - name: brief
+    tags: [pipeline]
     entrypoint: flows/brief.py:brief
     work_pool: *home
     triggers:
@@ -174,6 +181,7 @@ deployments:
   # "compact"). chained off transform because it reads the dbt mart AND to
   # serialize DuckDB access behind the single-writer pipeline.
   - name: phi-memory-synthesis
+    tags: [pipeline]
     entrypoint: flows/compact.py:compact
     work_pool: *home
     triggers:
@@ -186,6 +194,7 @@ deployments:
 
   # phi's tag merge/relationship maintenance (formerly "morning")
   - name: phi-tag-maintenance
+    tags: [phi]
     entrypoint: flows/morning.py:morning
     work_pool: *home
     concurrency_limit: *cancel_new
@@ -193,6 +202,7 @@ deployments:
       - cron: "0 13 * * *"  # 8am CT daily
 
   - name: curate
+    tags: [phi]
     entrypoint: flows/curate.py:curate
     work_pool: *home
     triggers:
@@ -204,6 +214,7 @@ deployments:
           prefect.resource.role: "deployment"
 
   - name: phi-atlas
+    tags: [phi]
     entrypoint: flows/phi_atlas.py:phi_atlas
     # 2D map of phi's mental landscape. UMAP+HDBSCAN over every PDS record
     # and TurboPuffer row phi owns. ML deps (numpy/scipy/umap-learn/hdbscan)
@@ -224,6 +235,7 @@ deployments:
       - cron: "0 13 * * *"  # 8am CT daily, alongside morning
 
   - name: docket
+    tags: [phi]
     entrypoint: flows/docket.py:docket
     # Daily promotion object — consumes the atlas, emits 5-15 candidate
     # work items. Event-triggered on phi-atlas completion so the docket
@@ -240,6 +252,7 @@ deployments:
   # the pub-search leaflet map (formerly "rebuild-atlas" — renamed so it can't
   # be confused with phi-atlas, which is a different atlas entirely)
   - name: leaflet-atlas
+    tags: [publish]
     entrypoint: flows/atlas.py:rebuild_atlas
     # Canary for the job-variable-driven secret pattern: secrets are
     # injected as env vars (resolved by the mps-secrets plugin at flow-run start),
@@ -278,6 +291,7 @@ deployments:
       - cron: "0 */6 * * *"  # every 6 hours
 
   - name: pds-records
+    tags: [publish]
     entrypoint: flows/pds_records.py:pds_records
     work_pool: *home
     parameters:
@@ -287,6 +301,7 @@ deployments:
         dry_run: true
 
   - name: costs
+    tags: [watch]
     entrypoint: flows/costs.py:costs
     # provider billing tokens injected from Secret blocks (resolved by the
     # mps-secrets plugin at flow-run start); connectors read os.environ. atproto creds load via Secret.load in
@@ -328,6 +343,7 @@ deployments:
       - cron: "0 8 * * *"  # daily at 08:00 UTC
 
   - name: bufo-traffic
+    tags: [watch]
     entrypoint: flows/bufo_traffic.py:bufo_traffic
     # rolls find-bufo.com requests from logfire into com.find-bufo.traffic
     # PDS records (one per day); the bot stats page draws its traffic charts
@@ -354,6 +370,7 @@ deployments:
       - cron: "7 * * * *"  # hourly, off the hour so it never races ingest
 
   - name: typeahead-identity-hourly
+    tags: [publish]
     entrypoint: flows/typeahead_identity.py:typeahead_identity_hourly
     # handles for newly discovered actors (~2,900/hour arrive with handle='').
     # was the first phase of typeahead's hourly Cloudflare cron, where the
@@ -381,6 +398,7 @@ deployments:
           TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
 
   - name: typeahead-enrich-backfill
+    tags: [publish]
     entrypoint: flows/typeahead_enrich_backfill.py:typeahead_enrich_backfill
     # THE OWNER of typeahead's profile backlog (~6M actors at
     # profile_checked_at=0). The worker's hourly Cloudflare cron is sized to
@@ -411,6 +429,7 @@ deployments:
           TURSO_URL: prefect-block://typeahead-turso-url
           TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
   - name: typeahead-index
+    tags: [publish]
     entrypoint: flows/typeahead_index.py:typeahead_index
     # the typeahead snapshot builder (Zig MODE=indexer), lifted off Fly onto the
     # home box. Pure batch: reads Turso → builds prefix index on the NVMe →
@@ -469,6 +488,7 @@ deployments:
         active: true
 
   - name: typeahead-plc-identity
+    tags: [publish]
     entrypoint: flows/typeahead_plc_identity.py:typeahead_plc_identity
     # Bulk DID -> (handle, pds) resolution from the PLC log, via fig's Allegedly
     # weekly bundles. typeahead's per-DID identity resolution could not converge
@@ -513,6 +533,7 @@ deployments:
         active: true
 
   - name: pub-search-snapshot
+    tags: [publish]
     entrypoint: flows/pub_search_snapshot.py:pub_search_snapshot
     # the pub-search replica snapshot builder (BUILDER_MODE=1), lifted off Fly
     # onto the home box — the same move typeahead-index made. Pure batch: reads
@@ -558,6 +579,7 @@ deployments:
         active: true
 
   - name: bisk-snapshot
+    tags: [publish]
     entrypoint: flows/bisk.py:bisk_snapshot
     # the bisk.social standings builder (https://tangled.org/zzstoatzz.io/bisk).
     # pure batch: reconstructs the pool + the trailing-24h like standings off the
@@ -593,6 +615,8 @@ deployments:
         active: true
 
   - name: phi-curation
+    tags: [phi]
+    description: phi's weekly publication-curation pass
     entrypoint: flows/phi_trigger.py:phi_trigger
     # kicks phi's weekly publication-curation pass via her control API —
     # the bot defines the pass, this deployment owns the clock. more phi
@@ -615,6 +639,8 @@ deployments:
         active: true
 
   - name: phi-likes-review
+    tags: [phi]
+    description: phi reads back her own likes for follow-ups and semble cards
     entrypoint: flows/phi_trigger.py:phi_trigger
     # weekly read-back of phi's own likes — the likes accumulate as a
     # public record of what caught her attention; this pass is where the
@@ -635,6 +661,8 @@ deployments:
         active: true
 
   - name: phi-pull-review
+    tags: [phi]
+    description: phi reviews a gardener pull and comments a VERDICT line
     entrypoint: flows/phi_trigger.py:phi_trigger
     # `autofix proposed -> phi review` (deploy/automations.yaml) starts this
     # with the gardener pull as material. phi reads the whole change and
@@ -651,6 +679,8 @@ deployments:
       slot: pull-review
 
   - name: phi-editorial
+    tags: [phi]
+    description: phi refreshes coral's editorial context from trending entities
     entrypoint: flows/phi_trigger.py:phi_trigger
     # daily coral editorial-context refresh — phi researches coral's
     # trending entities and rewrites io.zzstoatzz.phi.editorialContext,
@@ -671,6 +701,8 @@ deployments:
         active: true
 
   - name: phi-character-retro
+    tags: [phi]
+    description: phi rereads her own writing and rewrites her [SELF] record
     entrypoint: flows/phi_trigger.py:phi_trigger
     # roughly monthly: phi rereads her own blog/posts/library and
     # rewrites her [SELF] record — claims with receipts, drift visible
@@ -690,6 +722,8 @@ deployments:
         active: true
 
   - name: phi-chicken-scout
+    tags: [phi]
+    description: mid-round chicken market scout
     entrypoint: flows/phi_trigger.py:phi_trigger
     # mid-round market scout — the cheap-entry window, ~12h into the round
     work_pool:
@@ -706,6 +740,8 @@ deployments:
         active: true
 
   - name: phi-chicken-precheck
+    tags: [phi]
+    description: pre-lock chicken check, final books and last call
     entrypoint: flows/phi_trigger.py:phi_trigger
     # pre-lock check — final books, rivals asleep, last call (was a
     # poller slot in the bot; migrated here 2026-07-16)
@@ -723,6 +759,7 @@ deployments:
         active: true
 
   - name: watch-fastmcp
+    tags: [watch]
     entrypoint: flows/watch_fastmcp.py:watch_fastmcp
     # emits github.<reason> events; notifies nobody. Conditional requests that
     # 304 don't count against GitHub's rate limit and it returns
@@ -733,6 +770,7 @@ deployments:
         active: true
 
   - name: fastmcp-brief
+    tags: [watch]
     entrypoint: flows/fastmcp_brief.py:fastmcp_brief
     # Driven by the `fastmcp activity -> brief` and `fastmcp direct ask ->
     # brief` automations in deploy/automations.yaml, PLUS a floor schedule.
@@ -772,6 +810,7 @@ deployments:
         active: true
 
   - name: pi-agent
+    tags: [gardener]
     entrypoint: flows/pi_agent.py:pi_agent
     # runs pi (the coding agent) non-interactively on the home box. no
     # schedule — triggered ad hoc for now; the end state is alert-driven
@@ -794,6 +833,8 @@ deployments:
           ANTHROPIC_API_KEY: prefect-block://anthropic-api-key
 
   - name: autofix
+    tags: [gardener]
+    description: pi diagnoses a failed run and, when proposing is on for that deployment, opens a gardener pull
     entrypoint: flows/autofix.py:autofix
     # `flow-run failure -> autofix` (deploy/automations.yaml) starts this with
     # the failed run's id. read-only rung: pi diagnoses in a fresh clone and
@@ -814,6 +855,7 @@ deployments:
           ANTHROPIC_API_KEY: prefect-block://anthropic-api-key
 
   - name: watch-tangled-pulls
+    tags: [gardener]
     entrypoint: flows/watch_tangled_pulls.py:watch_tangled_pulls
     # drains operator comments on gardener pulls off stream.waow.tech (cursor
     # replay makes a cron of short runs equivalent to a daemon) and starts
@@ -825,6 +867,7 @@ deployments:
         active: true
 
   - name: autofix-revise
+    tags: [gardener]
     entrypoint: flows/autofix_revise.py:autofix_revise
     # started by watch-tangled-pulls per operator comment. pi (full tools, no
     # credentials) revises the pull in a scratch clone; the flow appends the
@@ -844,6 +887,7 @@ deployments:
           ANTHROPIC_API_KEY: prefect-block://anthropic-api-key
 
   - name: pi-pr
+    tags: [gardener]
     entrypoint: flows/pi_pr.py:pi_pr
     # pi (luna) proposes a change in a throwaway clone; the flow turns it into
     # a gardener-authored tangled pull and emits autofix.proposed, so phi
@@ -853,8 +897,9 @@ deployments:
     work_pool: *home
 
   - name: merge-approved
+    tags: [gardener]
     entrypoint: flows/merge_approved.py:merge_approved
-    # stage 2 of the approval ladder (docs/autofix-design.md). started by
+    # stage 2 of the approval ladder (docs/autofix.md). started by
     # `autofix proposed -> merge-approved` with the gardener pull; waits for
     # phi's VERDICT, applies the round to a knot clone, runs the repo's tests,
     # then emits merge.awaiting-approval (-> discord) and suspends. the
@@ -863,6 +908,7 @@ deployments:
     work_pool: *home
 
   - name: dep-bump
+    tags: [gardener]
     entrypoint: flows/dep_bump.py:dep_bump
     # the local dependabot: re-pin a released dependency across its zat.dev
     # downstreams, run each repo's zig test suite in a throwaway clone, and
@@ -873,6 +919,7 @@ deployments:
     work_pool: *home
 
   - name: stream-admission
+    tags: [gardener]
     entrypoint: flows/stream_admission.py:stream_admission
     # stream's 21-suite gate, on bare metal instead of spindle's microVM. the
     # VM works but costs ~8.5 min of fixed setup and ~2x on execution (the
@@ -891,6 +938,7 @@ deployments:
       collision_strategy: ENQUEUE
 
   - name: strata-hourly
+    tags: [watch]
     entrypoint: flows/strata.py:ingest_segment_collections
     # read the shape of the stream archive from outside: per-segment,
     # per-collection counts decoded from segment footers via Range requests,

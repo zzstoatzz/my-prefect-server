@@ -461,6 +461,10 @@ deploy-web:
 # build, push, and deploy hub
 web: push-web deploy-web
 
+# regenerate docs/deployments.md from prefect.yaml; `--check` is what CI runs
+inventory *args:
+    ./scripts/deployments_inventory.py {{ args }}
+
 # apply standalone automations from deploy/automations.yaml (send-notification
 # and cross-deployment triggers, which prefect.yaml cannot express)
 automations *args:

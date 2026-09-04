@@ -25,6 +25,11 @@ steps:
   # The pinned sha must exist on GitHub, since that is where the package
   # installs from, while this workflow triggers on the tangled push. Push
   # github first.
+  - name: inventory is current
+    command: |
+      set -euo pipefail
+      uv run scripts/deployments_inventory.py --check
+
   - name: register flows
     command: |
       set -euo pipefail

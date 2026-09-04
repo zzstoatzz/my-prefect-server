@@ -1,3 +1,5 @@
+"""Write the hub briefing: an LLM reads the scored action items and produces briefing.json."""
+
 import hashlib
 import os
 import shutil

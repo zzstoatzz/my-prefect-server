@@ -1,3 +1,5 @@
+"""Run the dbt project over analytics.duckdb and export the hub-only tables."""
+
 import json
 import os
 import subprocess
