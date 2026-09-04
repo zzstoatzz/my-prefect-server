@@ -1,0 +1,30 @@
+# scrape the zig prefect server's /api/metrics into the monitoring stack.
+#
+# the endpoint sits behind the same basic auth as the rest of /api, so the
+# ServiceMonitor reads a username/password pair from prefect-metrics-auth,
+# which `just metrics` derives from AUTH_STRING. the monitoring values set
+# serviceMonitorSelectorNilUsesHelmValues=false, so no release label is needed.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: prefect-server
+  namespace: prefect
+  labels:
+    app.kubernetes.io/name: prefect-server
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prefect-server
+  namespaceSelector:
+    matchNames: [prefect]
+  endpoints:
+    - port: http
+      path: /api/metrics
+      interval: 30s
+      basicAuth:
+        username:
+          name: prefect-metrics-auth
+          key: username
+        password:
+          name: prefect-metrics-auth
+          key: password

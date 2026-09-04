@@ -157,16 +157,9 @@ deploy:
     sed "s|GRAFANA_DOMAIN_PLACEHOLDER|$GRAFANA_DOMAIN|g" deploy/grafana-ingress.yaml \
         | kubectl apply -f -
 
-    echo "==> loading prefect dashboards"
-    for dashboard in deploy/dashboards/*.json; do
-        name=$(basename "$dashboard" .json | tr '.' '-')
-        kubectl create configmap "prefect-dashboard-$name" \
-            --namespace monitoring \
-            --from-file="$dashboard" \
-            --dry-run=client -o yaml \
-            | kubectl label --local -f - grafana_dashboard=1 -o yaml \
-            | kubectl apply -f -
-    done
+    echo "==> scraping the prefect server and loading dashboards"
+    just metrics
+    just dashboards
 
     echo ""
     echo "done. point DNS:"
@@ -369,12 +362,16 @@ health:
     : "${DOMAIN:?set DOMAIN}"
     curl -sf "https://$DOMAIN/api/health" | jq .
 
+# a dashboard whose file is gone is removed from the cluster too, so the
+# directory is the whole truth.
 # reload grafana dashboards from deploy/dashboards/
 dashboards:
     #!/usr/bin/env bash
     set -euo pipefail
+    want=""
     for dashboard in deploy/dashboards/*.json; do
         name=$(basename "$dashboard" .json | tr '.' '-')
+        want="$want prefect-dashboard-$name"
         kubectl create configmap "prefect-dashboard-$name" \
             --namespace monitoring \
             --from-file="$dashboard" \
@@ -383,6 +380,26 @@ dashboards:
             | kubectl apply -f -
         echo "  loaded $name"
     done
+    for cm in $(kubectl -n monitoring get configmaps -l grafana_dashboard=1 -o name | sed 's#configmap/##' | grep '^prefect-dashboard-'); do
+        case " $want " in
+            *" $cm "*) ;;
+            *) kubectl -n monitoring delete configmap "$cm"; echo "  removed $cm" ;;
+        esac
+    done
+
+# creates the basic-auth pair prometheus needs, derived from AUTH_STRING, and
+# applies the ServiceMonitor that uses it.
+# scrape the prefect server's /api/metrics into prometheus
+metrics:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${AUTH_STRING:?set AUTH_STRING}"
+    kubectl create secret generic prefect-metrics-auth \
+        --namespace prefect \
+        --from-literal=username="${AUTH_STRING%%:*}" \
+        --from-literal=password="${AUTH_STRING#*:}" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    kubectl apply -f deploy/prefect-metrics.yaml
 
 # --- analytics ---
 
