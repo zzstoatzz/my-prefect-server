@@ -22,8 +22,8 @@
 	}
 
 	function isMine(item: BriefingItem): boolean {
-		const user = cardFor(item)?.meta?.user;
-		return typeof user === 'string' && MY_HANDLES.has(user);
+		const user = cardFor(item)?.meta.user;
+		return user !== undefined && MY_HANDLES.has(String(user));
 	}
 
 	interface ParsedItemId {

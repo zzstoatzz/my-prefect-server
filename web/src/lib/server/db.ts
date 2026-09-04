@@ -31,11 +31,14 @@ async function getInstance(): Promise<DuckDBInstance> {
 	return instance;
 }
 
-export async function query<T = Record<string, unknown>>(sql: string): Promise<T[]> {
+export async function query<T>(sql: string): Promise<T[]> {
 	const db = await getInstance();
 	const conn = await db.connect();
 	try {
 		const reader = await conn.runAndReadAll(sql);
+		// SAFETY: T names the columns `sql` selects; duckdb's row objects carry no
+		// schema the checker could compare against, so the caller's contract is the
+		// only evidence there is.
 		return reader.getRowObjects() as T[];
 	} finally {
 		conn.closeSync();

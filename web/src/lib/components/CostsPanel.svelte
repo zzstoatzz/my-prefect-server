@@ -19,22 +19,34 @@
 
 	// ── palette + repo links ────────────────────────────────────────────────
 	const PALETTE = ['#22d3ee', '#a78bfa', '#34d399', '#fbbf24', '#f472b6', '#60a5fa', '#fb923c', '#4ade80', '#e879f9', '#2dd4bf', '#f87171', '#94a3b8'];
-	const REPO: Record<string, string> = {
-		relays: 'relay', 'plyr.fm': 'plyr.fm', typeahead: 'typeahead', prefect: 'my-prefect-server',
-		'standard.site': 'pub-search', trending: 'coral', bufo: 'find-bufo', labelz: 'labelz',
-		phi: 'bot'
+	const REPO = new Map<string, string>([
+		['relays', 'relay'],
+		['plyr.fm', 'plyr.fm'],
+		['typeahead', 'typeahead'],
+		['prefect', 'my-prefect-server'],
+		['standard.site', 'pub-search'],
+		['trending', 'coral'],
+		['bufo', 'find-bufo'],
+		['labelz', 'labelz'],
+		['phi', 'bot']
+	]);
+	const repoUrl = (key: string) => {
+		const repo = REPO.get(key);
+		return repo ? `https://tangled.org/zzstoatzz.io/${repo}` : null;
 	};
-	const repoUrl = (key: string) => (REPO[key] ? `https://tangled.org/zzstoatzz.io/${REPO[key]}` : null);
 
 	// LLM flows are Prefect flows defined in this repo's flows/ dir; link each to
 	// its source. Most map name→name.py; a few have differently-named files.
-	const FLOW_FILE: Record<string, string> = {
-		'rebuild-atlas': 'atlas.py', 'leaflet-atlas': 'atlas.py', 'phi-atlas': 'phi_atlas.py',
-		'pds-records': 'pds_records.py', 'phi-tag-maintenance': 'morning.py',
-		'phi-memory-synthesis': 'compact.py'
-	};
+	const FLOW_FILE = new Map<string, string>([
+		['rebuild-atlas', 'atlas.py'],
+		['leaflet-atlas', 'atlas.py'],
+		['phi-atlas', 'phi_atlas.py'],
+		['pds-records', 'pds_records.py'],
+		['phi-tag-maintenance', 'morning.py'],
+		['phi-memory-synthesis', 'compact.py']
+	]);
 	const flowUrl = (name: string) =>
-		`https://tangled.org/zzstoatzz.io/my-prefect-server/blob/main/flows/${FLOW_FILE[name] ?? name.replace(/-/g, '_') + '.py'}`;
+		`https://tangled.org/zzstoatzz.io/my-prefect-server/blob/main/flows/${FLOW_FILE.get(name) ?? name.replace(/-/g, '_') + '.py'}`;
 
 	// why thousands of calls cost a few dollars: prompt caching. cache reads bill
 	// at 0.1× input price, so the dollar figure is meant to look tiny next to the
@@ -44,7 +56,9 @@
 
 	// ── persisted ui state (collapsed by default) ───────────────────────────
 	type View = 'project' | 'provider';
-	type Win = '24h' | '7d' | '30d' | 'all';
+	const WINS = ['24h', '7d', '30d', 'all'] as const;
+	type Win = (typeof WINS)[number];
+	const isWin = (value: string | null): value is Win => WINS.some((w) => w === value);
 	let open = $state(false);
 	let view = $state<View>('project');
 	let win = $state<Win>('7d');
@@ -53,8 +67,8 @@
 		if (localStorage.getItem('hub:costs:open') === '1') open = true;
 		const v = localStorage.getItem('hub:costs:view');
 		if (v === 'project' || v === 'provider') view = v;
-		const w = localStorage.getItem('hub:costs:win') as Win | null;
-		if (w && ['24h', '7d', '30d', 'all'].includes(w)) win = w;
+		const w = localStorage.getItem('hub:costs:win');
+		if (isWin(w)) win = w;
 	});
 	$effect(() => { if (browser) localStorage.setItem('hub:costs:open', open ? '1' : '0'); });
 	$effect(() => { if (browser) localStorage.setItem('hub:costs:view', view); });

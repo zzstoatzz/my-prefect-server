@@ -27,7 +27,7 @@ export async function loadInfraCosts(): Promise<InfraCostSnapshot | null> {
 		// is the most recent snapshot.
 		const resp = await fetch(url);
 		if (!resp.ok) throw new Error(`PDS ${resp.status}`);
-		const body = (await resp.json()) as ListRecordsResponse;
+		const body: ListRecordsResponse = await resp.json();
 		const data = body.records[0]?.value ?? null;
 		cached = { at: Date.now(), data };
 		return data;

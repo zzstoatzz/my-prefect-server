@@ -10,16 +10,21 @@ import type { SectionAccent, SectionPriority } from '$lib/server/briefing';
  * border-l-2 border-l-3 border-l-4
  */
 
-export const ACCENT_STYLES: Record<
-	SectionAccent,
-	{
-		border: string;
-		headerText: string;
-		summaryText: string;
-		dot: string;
-		bgTint: string;
-	}
-> = {
+export interface AccentStyle {
+	border: string;
+	headerText: string;
+	summaryText: string;
+	dot: string;
+	bgTint: string;
+}
+
+export interface PriorityLayout {
+	titleSize: string;
+	padding: string;
+	borderWidth: string;
+}
+
+export const ACCENT_STYLES = {
 	red: {
 		border: 'border-red-500',
 		headerText: 'text-red-400',
@@ -55,12 +60,9 @@ export const ACCENT_STYLES: Record<
 		dot: 'bg-violet-400',
 		bgTint: 'bg-violet-950/40'
 	}
-};
+} satisfies Record<SectionAccent, AccentStyle>;
 
-export const PRIORITY_LAYOUT: Record<
-	SectionPriority,
-	{ titleSize: string; padding: string; borderWidth: string }
-> = {
+export const PRIORITY_LAYOUT = {
 	high: {
 		titleSize: 'text-base',
 		padding: 'px-5 py-4',
@@ -76,4 +78,4 @@ export const PRIORITY_LAYOUT: Record<
 		padding: 'px-4 py-3',
 		borderWidth: 'border-l-2'
 	}
-};
+} satisfies Record<SectionPriority, PriorityLayout>;

@@ -44,18 +44,13 @@ const emptySpend: SpendSummary = {
 let cachedKey = '';
 let cachedSpend: SpendSummary = emptySpend;
 
-function numberValue(value: unknown): number {
-	if (typeof value === 'number' && Number.isFinite(value)) return value;
-	if (typeof value === 'string') {
-		const parsed = Number(value);
-		return Number.isFinite(parsed) ? parsed : 0;
-	}
-	return 0;
+function numberValue(value: number | undefined): number {
+	return value !== undefined && Number.isFinite(value) ? value : 0;
 }
 
 function readEvent(line: string): SpendEvent | null {
 	try {
-		const event = JSON.parse(line) as SpendEvent;
+		const event: SpendEvent = JSON.parse(line);
 		if (!event.recorded_at) return null;
 		return event;
 	} catch {

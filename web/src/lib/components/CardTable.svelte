@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import type { Card } from '$lib/types';
 	import CardRow from '$lib/components/CardRow.svelte';
 	import MobileCard from '$lib/components/MobileCard.svelte';
@@ -53,7 +54,7 @@
 	// is the keyboard / no-JS fallback.
 	$effect(() => {
 		const el = sentinel;
-		if (!el || typeof IntersectionObserver === 'undefined') return;
+		if (!el || !browser) return;
 		const io = new IntersectionObserver(
 			(entries) => {
 				if (remaining > 0 && entries.some((e) => e.isIntersecting)) showMore();
