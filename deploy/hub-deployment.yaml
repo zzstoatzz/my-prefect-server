@@ -22,6 +22,30 @@ spec:
           ports:
             - containerPort: 3000
           env:
+            - name: PRESENCE_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: presence-ingress
+                  key: webhook-token
+                  optional: true
+            - name: PREFECT_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: presence-ingress
+                  key: prefect-api-url
+                  optional: true
+            - name: PREFECT_API_AUTH_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: presence-ingress
+                  key: prefect-api-auth
+                  optional: true
+            - name: PRESENCE_DEPLOYMENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: presence-ingress
+                  key: deployment-id
+                  optional: true
             - name: DUCKDB_PATH
               # slim hub-only db built by flows/transform.py:export_hub_db.
               # the full analytics.duckdb (~1 GB, mostly raw_phi_observations
