@@ -11,19 +11,9 @@ export const POST: RequestHandler = async ({ request, fetch }) => {
 	if (!token || !api || !auth || !deployment) error(503, 'Presence reporting is not configured');
 	if (!authorizedPresenceReport(request.headers.get('authorization'), token)) error(401, 'Unauthorized');
 	const contentType = request.headers.get('content-type')?.split(';')[0].trim();
-	if (contentType !== 'application/x-www-form-urlencoded' && contentType !== 'multipart/form-data') {
-		error(415, 'Use form fields state and observedAt');
-	}
+	if (contentType !== 'application/json') error(415, 'Use JSON with state and observedAt');
 	const report = await (async () => {
-		try {
-			const form = await request.formData();
-			const fields = new URLSearchParams();
-			for (const [name, value] of form) {
-				if (value instanceof File) throw new Error('Files are not accepted');
-				fields.append(name, value);
-			}
-			return parsePresenceReport(fields.toString(), Date.now());
-		}
+		try { return parsePresenceReport(await request.text(), Date.now()); }
 		catch { error(400, 'Supply only home/away and a valid observedAt timestamp'); }
 	})();
 	const response = await fetch(`${api.replace(/\/$/, '')}/deployments/${deployment}/create_flow_run`, {

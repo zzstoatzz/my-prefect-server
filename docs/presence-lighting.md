@@ -92,7 +92,7 @@ Nate's phone; no coordinates are sent. Start with a manual shortcut, then attach
 Arrive and Leave personal automations after the manual path is verified.
 
 The prepared `POST /api/presence` endpoint accepts an
-`application/x-www-form-urlencoded` body containing exactly `state` (`home` or
+`application/json` body containing exactly `state` (`home` or
 `away`) and `observedAt` (ISO 8601 with timezone). A dedicated bearer token
 allows only reports through this route; neither the PDS password nor Prefect
 admin credential belongs on the phone. The route returns 202 for queued work,
@@ -107,23 +107,27 @@ against the deployed Prefect implementation.
 
 The hub manifest references the optional `presence-ingress` Kubernetes secret;
 with no configuration, this endpoint returns 503. Its keys are `webhook-token`,
-`prefect-api-url`, `prefect-api-auth`, and `deployment-id`. These resources have
-not been provisioned. The worker credential must be derived from the encrypted
-store into a mode-0600 file referenced by `PRESENCE_CREDENTIAL_FILE`; the earlier
-temporary file is not usable for deployment.
+`prefect-api-url`, `prefect-api-auth`, and `deployment-id`. These resources are provisioned. The worker credential is derived from the encrypted
+store into a mode-0600 file referenced by `PRESENCE_CREDENTIAL_FILE`. The dedicated
+`report-presence/phone-presence` deployment has no schedule and uses a private,
+immutable source checkout on the worker; existing deployments were not changed.
+
+External phone access is not yet verified: Cloudflare Access currently intercepts
+the route with a browser login. Resolve that routing/authentication layer before
+using the phone shortcut.
 
 ### Manual Shortcut setup (after deployment)
 
 Create a shortcut with a choice of `home` or `away`, capture the current date,
 format it as ISO 8601 with a timezone, and use **Get Contents of URL** to POST
 to `https://hub.waow.tech/api/presence`. Set the `Authorization` header to
-`Bearer <dedicated token>` and Request Body to Form. Add only the chosen `state`
-and formatted `observedAt` fields. URL-encoded and multipart text forms are
-accepted; files and additional fields are rejected. Display the response for
+`Bearer <dedicated token>` and Request Body to JSON. Add only the chosen `state`
+and formatted `observedAt` fields. Additional fields are rejected. JSON avoids SvelteKit's browser-form CSRF checks
+without disabling those protections for the rest of the hub. Display the response for
 the first test. `queued: true` means accepted, not completed; verify the private
 record and corresponding Prefect run separately.
 
-Apple documents the POST/Form action at
+Apple documents the POST action at
 <https://support.apple.com/en-au/guide/shortcuts/apd58d46713f/ios>.
 After the manual path works, separate Arrive and Leave automations can supply
 the state without asking. Geofence location stays in the phone's automation.
