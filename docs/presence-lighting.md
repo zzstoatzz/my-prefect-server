@@ -112,15 +112,18 @@ store into a mode-0600 file referenced by `PRESENCE_CREDENTIAL_FILE`. The dedica
 `report-presence/phone-presence` deployment has no schedule and uses a private,
 immutable source checkout on the worker; existing deployments were not changed.
 
-External phone access is not yet verified: Cloudflare Access currently intercepts
-the route with a browser login. Resolve that routing/authentication layer before
-using the phone shortcut.
+The API hostname exposes only `/api/presence` through an exact ingress rule;
+other hub routes remain behind Cloudflare Access. The public endpoint was tested
+with the dedicated bearer token (202) and without it (401). Prefect health stayed
+200 and the hub continued redirecting to Access. The first real home report
+completed in run `daa87825-0ac5-40f1-97e4-742b277665e9` and was independently read
+back from the private record. Physical lighting remains disabled.
 
 ### Manual Shortcut setup (after deployment)
 
 Create a shortcut with a choice of `home` or `away`, capture the current date,
 format it as ISO 8601 with a timezone, and use **Get Contents of URL** to POST
-to `https://hub.waow.tech/api/presence`. Set the `Authorization` header to
+to `https://prefect-server.waow.tech/api/presence`. Set the `Authorization` header to
 `Bearer <dedicated token>` and Request Body to JSON. Add only the chosen `state`
 and formatted `observedAt` fields. Additional fields are rejected. JSON avoids SvelteKit's browser-form CSRF checks
 without disabling those protections for the rest of the hub. Display the response for

@@ -469,6 +469,7 @@ publish-web-remote:
     echo "==> applying hub manifests"
     kubectl apply -f deploy/hub-deployment.yaml
     sed "s|HUB_DOMAIN_PLACEHOLDER|hub.waow.tech|g" deploy/hub-ingress.yaml | kubectl apply -f -
+    kubectl apply -f deploy/presence-ingress.yaml
     kubectl set image deployment/hub -n prefect hub="$IMAGE"
     kubectl rollout status deployment/hub -n prefect --timeout=180s
     echo "==> deployed $IMAGE"
@@ -481,6 +482,7 @@ publish-web-remote:
 deploy-web:
     kubectl apply -f deploy/hub-deployment.yaml
     sed "s|HUB_DOMAIN_PLACEHOLDER|hub.waow.tech|g" deploy/hub-ingress.yaml | kubectl apply -f -
+    kubectl apply -f deploy/presence-ingress.yaml
     kubectl rollout restart deployment/hub -n prefect
 
 # build, push, and deploy hub
