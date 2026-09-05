@@ -19,6 +19,15 @@ async def main() -> None:
         raise ValueError("Expected home or away")
     async with Client(lights_mcp) as client:
 
+        async def write(tool, arguments):
+            # A disconnected bulb must not prevent commands to the remaining lights.
+            # Readback below decides success, including possibly-applied Hue errors.
+            result = await client.call_tool(tool, arguments, raise_on_error=False)
+            if result.is_error:
+                print(
+                    f"Command not confirmed: {tool} {arguments.get('target', '')}", file=sys.stderr
+                )
+
         async def read(tool):
             result = await client.call_tool(tool, {})
             if result.structured_content is None:
@@ -48,19 +57,22 @@ async def main() -> None:
                 # Stop prior ad-hoc effects; the saved scene can re-enable its own.
                 for light_id in rooms[call.arguments["room"]]["lights"]:
                     if "no_effect" in lights[light_id]["supported_effects"]:
-                        await client.call_tool(
+                        await write(
                             "set_light", {"target": light_id, "state": {"effect": "no_effect"}}
                         )
             else:
                 expected[call.arguments["target"]] = call.arguments["state"]
-            await client.call_tool(call.tool, call.arguments)
+            await write(call.tool, call.arguments)
         for _attempt in range(4):
             await asyncio.sleep(1)
             observed = await read("read_lights")
             mismatches = []
             for light_id, desired in expected.items():
                 actual = observed[light_id]["state"]
-                mismatch = actual["on"] != desired["on"]
+                mismatch = (
+                    observed[light_id]["connectivity"] != "connected"
+                    or actual["on"] != desired["on"]
+                )
                 if desired["on"]:
                     if "brightness" in desired:
                         mismatch |= (

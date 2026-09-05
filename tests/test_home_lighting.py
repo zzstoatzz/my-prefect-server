@@ -113,3 +113,58 @@ def test_stale_report_cannot_actuate_newer_presence(monkeypatch):
         )
         == "NO_CHANGE"
     )
+
+
+def test_unreachable_light_does_not_block_remaining_writes(tmp_path, monkeypatch):
+    import asyncio
+    import runpy
+    import sys
+    from pathlib import Path
+    from types import ModuleType, SimpleNamespace
+
+    lights = {
+        "offline": {
+            "name": "offline",
+            "connectivity": "connectivity_issue",
+            "state": {"on": False},
+        },
+        "online": {"name": "online", "connectivity": "connected", "state": {"on": False}},
+    }
+    writes = []
+
+    class Client:
+        def __init__(self, server):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def call_tool(self, tool, arguments, **kwargs):
+            if tool.startswith("read_"):
+                return SimpleNamespace(structured_content=lights if tool == "read_lights" else {})
+            writes.append(arguments["target"])
+            return SimpleNamespace(is_error=arguments["target"] == "offline")
+
+    client_module = ModuleType("fastmcp")
+    client_module.Client = Client
+    server_module = ModuleType("smart_home.lights.server")
+    server_module.lights_mcp = object()
+    monkeypatch.setitem(sys.modules, "fastmcp", client_module)
+    monkeypatch.setitem(sys.modules, "smart_home.lights.server", server_module)
+    config = tmp_path / "hue.json"
+    config.write_text("{}")
+    monkeypatch.setenv("PRESENCE_HUE_ENV_FILE", str(config))
+    monkeypatch.setattr(sys, "argv", ["presence_lights.py", "away"])
+
+    async def sleep(seconds):
+        pass
+
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+    script = Path(__file__).parents[1] / "scripts/presence_lights.py"
+    main = runpy.run_path(str(script))["main"]
+    with pytest.raises(ValueError, match="offline"):
+        asyncio.run(main())
+    assert writes == ["offline", "online"]
