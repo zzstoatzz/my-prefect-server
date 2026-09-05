@@ -1,6 +1,7 @@
-"""Read private presence and ask the generic Pi flow for a decision, without actuation."""
+"""Store private presence and optionally apply the agreed lighting preset."""
 
 import os
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -30,9 +31,13 @@ def store_presence(report: PresenceUpdate) -> PresenceRecord:
 
 
 @flow(name="report-presence", timeout_seconds=300, log_prints=True)
-def report_presence(report: PresenceUpdate) -> str:
+def report_presence(report: PresenceUpdate, apply_lighting: bool = False) -> str:
     with concurrency("home-presence-writer", strict=True):
-        store_presence(report)
+        record = store_presence(report)
+        if record.value.observedAt != report.observedAt:
+            return "NO_CHANGE"
+        if apply_lighting:
+            return apply_presence_lighting(record)
         return presence_lighting()
 
 
@@ -65,3 +70,39 @@ def presence_lighting() -> str:
         raise ValueError("Pi returned a decision that differs from the presence policy")
     print(f"presence record {record.cid}: {result}; no actuation")
     return result
+
+
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1, persist_result=False)
+def apply_presence_lighting(record: PresenceRecord) -> str:
+    """Called only under the writer lock; failed/partial writes never advance the marker."""
+    marker = Path(os.environ["PRESENCE_LIGHTING_STATE_FILE"])
+    state = record.value.state
+    if state == "unknown":
+        return "NO_CHANGE"
+    if marker.exists() and marker.read_text().strip() == state:
+        return "NO_CHANGE"
+    root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [
+            "/home/stoat/.local/bin/uv",
+            "run",
+            "--with",
+            "smart-home@git+https://github.com/PrefectHQ/fastmcp.git@e3fb4af36892e6477399df2597f0dd5abd469799#subdirectory=examples/smart_home",
+            "--with",
+            "fastmcp==4.0.3",
+            "python",
+            str(root / "scripts/presence_lights.py"),
+            state,
+        ],
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=120,
+    )
+    if result.returncode:
+        raise RuntimeError(f"Lighting failed: {result.stderr[-4000:]}")
+    temporary = marker.with_suffix(".tmp")
+    temporary.write_text(state + "\n")
+    temporary.replace(marker)
+    print(result.stdout.strip())
+    return "ARRIVAL_LOOK" if state == "home" else "LIGHTS_OFF"

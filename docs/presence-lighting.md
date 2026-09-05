@@ -1,10 +1,9 @@
 # Presence-driven lighting
 
-The first slice is a manually updated home/away record in a private ATProto
-Space, followed by a real Prefect run that proposes a lighting action. Physical
-control comes after that path works. The generic `pi-agent` flow executes the
-decision; private-space authentication and notification handling belong outside
-the runner.
+An iPhone Shortcut reports home/away to a private ATProto Space through the
+hub. A serialized Prefect flow stores the report and can apply the agreed
+lighting preset through the smart-home MCP. The original decision-only Pi
+prototype remains available with actuation disabled.
 
 ## Notification contract
 
@@ -78,12 +77,13 @@ verification and removed afterwards. Nothing was copied into flow parameters.
 The temporary verification deployment is paused and is not an operational
 deployment; its credential-file dependency is deliberately no longer present.
 
-The notification receiver, service identity, subscription renewal, durable
-worker authentication, deduplication, and physical actuation are still unwired.
+At this initial milestone, notification subscriptions and physical actuation
+were not wired. The phone-reporting path below now has durable worker credentials
+and serialized actuation; space notifications remain future work.
 Presence is the last reported state, retained until another report changes it.
 The decision-only prototype treats future-dated observations as `NO_CHANGE`.
 Signal health is separate: silence alone does not mean the user left home.
-Do not enable lighting writes using this prototype.
+The decision-only prototype does not perform lighting writes.
 
 ## iPhone reporting contract
 
@@ -102,8 +102,9 @@ The endpoint queues `report-presence`, which holds the strict
 `home-presence-writer` concurrency slot while reading, updating, verifying, and
 making the decision. The global limit must be created with limit 1 before use.
 Older and equal timestamps do not overwrite the current record. The downstream
-Pi call remains decision-only. API idempotency behavior still needs verification
-against the deployed Prefect implementation.
+Pi call remains decision-only unless `apply_lighting` is enabled. The deployed
+API accepted duplicate idempotency keys; actuation deduplication therefore lives
+inside the serialized flow.
 
 The hub manifest references the optional `presence-ingress` Kubernetes secret;
 with no configuration, this endpoint returns 503. Its keys are `webhook-token`,
@@ -117,7 +118,7 @@ other hub routes remain behind Cloudflare Access. The public endpoint was tested
 with the dedicated bearer token (202) and without it (401). Prefect health stayed
 200 and the hub continued redirecting to Access. The first real home report
 completed in run `daa87825-0ac5-40f1-97e4-742b277665e9` and was independently read
-back from the private record. Physical lighting remains disabled.
+back from the private record. That initial verification kept lighting disabled.
 
 ### Manual Shortcut setup (after deployment)
 
@@ -135,3 +136,32 @@ Apple documents the POST action at
 After the manual path works, separate Arrive and Leave automations can supply
 the state without asking. Geofence location stays in the phone's automation.
 Do not share a configured shortcut containing the dedicated token.
+
+## Arrival and departure lighting
+
+The phone's manual home report was verified end to end in run
+`824f929d-6c91-4b98-9ed6-9631940ec31f`. The next deployment enables
+`apply_lighting` on `report-presence/phone-presence`; other callers retain the
+existing decision-only default.
+
+Home recalls the living room's saved Sahara scene and sets all remaining
+lights to steady soft amber at 15%. Away turns every light off, including
+lights outside rooms. The fixed policy calls the smart-home MCP directly;
+it does not need an agent to reinterpret these agreed instructions.
+
+The writer lock covers storage and actuation. A successful bridge readback
+advances a local state marker, so repeated home reports preserve manual
+lighting adjustments. Failed or partial writes leave the marker unchanged
+and retry. Older reports never actuate. This currently depends on the single
+home worker's persistent disk; direct space edits do not trigger it yet.
+
+The worker uses `PRESENCE_HUE_ENV_FILE` for its protected bridge configuration
+and `PRESENCE_LIGHTING_STATE_FILE` for the marker. Source is pinned to an
+immutable checkout, as is the smart-home dependency. Bridge TLS uses the
+trusted certificate. Set `apply_lighting=false` on this deployment to disable
+actuation while keeping phone reporting operational.
+
+On the phone, attach **Presence Home 2** to an Arrive automation and
+**Presence Away** to a Leave automation, both set to Run Immediately.
+The geofence stays on the phone. Actual departure/arrival delivery still
+needs a real trip test.
