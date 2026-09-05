@@ -530,3 +530,15 @@ heavypad-status:
       echo "uv cache:     $(ls /home/stoat/.cache/uv/archive-v0 2>/dev/null | wc -l) archive envs; prune with: uv cache prune"
       echo "env file keys: $(cut -d= -f1 /home/stoat/.config/prod-worker/env | sort | tr "\n" " ")"
       echo "disk:         $(df -h / | awk "NR==2{print \$5\" used of \"\$2}")"'
+
+# Register only the presence flow, using an explicitly published source revision.
+presence-deploy:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    : "${PRESENCE_SOURCE_URL:?set the HTTPS Git source URL}"
+    : "${PRESENCE_SOURCE_REVISION:?set the full Git commit SHA}"
+    : "${PRESENCE_CREDENTIAL_FILE:?set the worker PDS credential path}"
+    : "${PRESENCE_HUE_ENV_FILE:?set the worker Hue configuration path}"
+    : "${PRESENCE_LIGHTING_STATE_FILE:?set the persistent worker marker path}"
+    PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
+        uv run --with prefect prefect deploy --prefect-file deploy/presence.yaml --name phone-presence

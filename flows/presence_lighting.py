@@ -1,12 +1,11 @@
 """Store private presence and optionally apply the agreed lighting preset."""
 
+import asyncio
 import os
-import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
-from mps.pi import Toolset
 from mps.presence import (
     PDS,
     PresenceRecord,
@@ -18,8 +17,6 @@ from mps.presence import (
 )
 from prefect import flow, task
 from prefect.concurrency.sync import concurrency
-
-from flows.pi_agent import Agent, pi_agent
 
 
 @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1, persist_result=False)
@@ -51,25 +48,8 @@ def current_presence() -> PresenceRecord:
 def presence_lighting() -> str:
     record = current_presence()
     action = proposed_action(record.value, datetime.now(UTC))
-    result = pi_agent(
-        prompt=f"The validated presence policy proposes {action}. Return that decision.",
-        instructions=(
-            "You report a proposed lighting decision. Return exactly the supplied "
-            "decision: NO_CHANGE, LIGHTS_OFF, or ARRIVAL_LOOK. You have no tools "
-            "and must not control lights."
-        ),
-        agent=Agent(
-            provider="openai-codex",
-            model="gpt-5.6-luna",
-            thinking="low",
-            toolset=Toolset(names=[]),
-        ),
-        timeout_seconds=120,
-    ).strip()
-    if result != action:
-        raise ValueError("Pi returned a decision that differs from the presence policy")
-    print(f"presence record {record.cid}: {result}; no actuation")
-    return result
+    print(f"presence record {record.cid}: {action}; no actuation")
+    return action
 
 
 @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1, persist_result=False)
@@ -81,28 +61,11 @@ def apply_presence_lighting(record: PresenceRecord) -> str:
         return "NO_CHANGE"
     if marker.exists() and marker.read_text().strip() == state:
         return "NO_CHANGE"
-    root = Path(__file__).resolve().parents[1]
-    result = subprocess.run(
-        [
-            "/home/stoat/.local/bin/uv",
-            "run",
-            "--with",
-            "smart-home@git+https://github.com/PrefectHQ/fastmcp.git@e3fb4af36892e6477399df2597f0dd5abd469799#subdirectory=examples/smart_home",
-            "--with",
-            "fastmcp==4.0.3",
-            "python",
-            str(root / "scripts/presence_lights.py"),
-            state,
-        ],
-        capture_output=True,
-        check=False,
-        text=True,
-        timeout=120,
-    )
-    if result.returncode:
-        raise RuntimeError(f"Lighting failed: {result.stderr[-4000:]}")
+    from mps.lighting import apply_lighting
+
+    verified_lights = asyncio.run(apply_lighting(state))
     temporary = marker.with_suffix(".tmp")
     temporary.write_text(state + "\n")
     temporary.replace(marker)
-    print(result.stdout.strip())
+    print(f"{state}: verified {verified_lights} lights")
     return "ARRIVAL_LOOK" if state == "home" else "LIGHTS_OFF"

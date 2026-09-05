@@ -29,6 +29,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+lighting = [
+    "fastmcp==4.0.3",
+    "smart-home @ git+https://github.com/PrefectHQ/fastmcp.git@e3fb4af36892e6477399df2597f0dd5abd469799#subdirectory=examples/smart_home",
+]
+
 # phi-atlas flow only. installed at deploy time via `--with 'my-prefect-server[atlas] @ git+...'`
 # so other flows' pods don't pull ~250MB of ML libs they never use.
 atlas = [
@@ -99,3 +104,6 @@ ignore = ["E501", "RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
+
+[tool.hatch.metadata]
+allow-direct-references = true

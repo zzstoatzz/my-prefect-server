@@ -943,19 +943,19 @@ wheels = [
 
 [[package]]
 name = "fastmcp"
-version = "4.0.2"
+version = "4.0.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastmcp-slim", extra = ["client", "server"] },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/37/1c/981a1854f91a08872f4b8b9a627d5d751cafc1340d29b21b747f0b520b0a/fastmcp-4.0.2.tar.gz", hash = "sha256:60d5c5ead3b6a117bfada5c0f95fe5c1aba53d1577079ecbdf42eeff0cd9b931", size = 42306015, upload-time = "2026-09-02T23:28:08.386Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5d/1a/bee10aff530338f3b8982a3dd1c377c3ba5d0bc724615bf358422c4e9ecf/fastmcp-4.0.3.tar.gz", hash = "sha256:0dd50baf070105ee4436c245f087ac3c047e655c32d9e783de16d0bf15783a98", size = 42311418, upload-time = "2026-09-05T00:31:36.932Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/58/3f/b97cfb92e0d6db8232c67c258117cd0dd9def86c8b472270bd7196d5cd9d/fastmcp-4.0.2-py3-none-any.whl", hash = "sha256:9075e64a94634ad660971ed14374c87be06f2a16a921028ca87987e6aa2f3bfa", size = 8078, upload-time = "2026-09-02T23:28:03.777Z" },
+    { url = "https://files.pythonhosted.org/packages/e4/cb/66600db497b3be21cf141f01296308169859d48ed9b1bc8ba7c9d83279b7/fastmcp-4.0.3-py3-none-any.whl", hash = "sha256:f743f43193e1daf606e6497a9dddba5bbaad7df7957a98fd093716ecf4458b99", size = 8076, upload-time = "2026-09-05T00:31:33.957Z" },
 ]
 
 [[package]]
 name = "fastmcp-slim"
-version = "4.0.2"
+version = "4.0.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "mcp-types" },
@@ -966,9 +966,9 @@ dependencies = [
     { name = "rich" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9c/7d/c2597734e3a0859d62c9d8f6f35067d1e296537512e280db3af19204be64/fastmcp_slim-4.0.2.tar.gz", hash = "sha256:86b99bdcb872b52d964c79bc6d43ce79f40ed5538b589d102792b4a7cf3947f4", size = 684052, upload-time = "2026-09-02T23:27:39.868Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b0/a9/b7b796b0d4a5e095dadef233833c82ac1136f5c110dd9947b2e9a4988518/fastmcp_slim-4.0.3.tar.gz", hash = "sha256:3ce04a82b82cc41ccb12bb3bb366cfd65b52bc797b8fee332a75da9d480f9b74", size = 685704, upload-time = "2026-09-05T00:31:12.346Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fa/c0/c022eba3a25ebb56111de1b5f76fbfca81925def58880464263582acfcd8/fastmcp_slim-4.0.2-py3-none-any.whl", hash = "sha256:6bd5b5885628f73263fa2247ea1d26e4a514499a6e079ee3e340cd03a7fe5ed8", size = 858100, upload-time = "2026-09-02T23:27:38.459Z" },
+    { url = "https://files.pythonhosted.org/packages/43/4b/6b31820d87f56d5773538860878c8634b618cd1e9044b3bfbd8a78380a0f/fastmcp_slim-4.0.3-py3-none-any.whl", hash = "sha256:3756ed4bd9f82f40adaf51974b7cdd1463ab6b9f479cf69b69b2692969312b87", size = 859717, upload-time = "2026-09-05T00:31:10.93Z" },
 ]
 
 [package.optional-dependencies]
@@ -2062,6 +2062,10 @@ atlas = [
     { name = "scipy" },
     { name = "umap-learn" },
 ]
+lighting = [
+    { name = "fastmcp" },
+    { name = "smart-home" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -2081,6 +2085,7 @@ dev = [
 requires-dist = [
     { name = "dbt-adapters", specifier = "<1.24" },
     { name = "dbt-duckdb", specifier = ">=1.9" },
+    { name = "fastmcp", marker = "extra == 'lighting'", specifier = "==4.0.3" },
     { name = "hdbscan", marker = "extra == 'atlas'", specifier = ">=0.8" },
     { name = "logfire", specifier = ">=4.36.0" },
     { name = "mps", editable = "packages/mps" },
@@ -2090,11 +2095,12 @@ requires-dist = [
     { name = "prefect-dbt", specifier = ">=0.6" },
     { name = "scipy", marker = "extra == 'atlas'", specifier = ">=1.11" },
     { name = "semble-api", specifier = ">=0.0.2" },
+    { name = "smart-home", marker = "extra == 'lighting'", git = "https://github.com/PrefectHQ/fastmcp.git?subdirectory=examples%2Fsmart_home&rev=e3fb4af36892e6477399df2597f0dd5abd469799" },
     { name = "umap-learn", marker = "extra == 'atlas'", specifier = ">=0.5" },
     { name = "websockets", specifier = ">=15.0.1" },
     { name = "zstandard", specifier = ">=0.25.0" },
 ]
-provides-extras = ["atlas"]
+provides-extras = ["lighting", "atlas"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -2434,6 +2440,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ca/b9/fdb0fb095987f0a2b1029e6c9e704c39ffdf00cece75623c3dbaf65d87a5/pdsx-0.0.1a23.tar.gz", hash = "sha256:e26feca8a708ae8bded1095bbd71e60154d5bbaa80d877c1dea4dc443b98b15e", size = 150405, upload-time = "2026-02-18T20:31:43.021Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c6/96/fb15bfd4795034800dce5931293d9366a27c36a148c33fa2a14a44bdba57/pdsx-0.0.1a23-py3-none-any.whl", hash = "sha256:873a9571066035833bd6251f215e10d6f8d5bc2fcc87f6248e5e6df09ce1be99", size = 30721, upload-time = "2026-02-18T20:31:41.659Z" },
+]
+
+[[package]]
+name = "phue2"
+version = "1.0.0a1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/63/77/98619cabaec6e1256b142b93bad1be84ff9a5035a99b27e7e71685f75e5d/phue2-1.0.0a1.tar.gz", hash = "sha256:681fdfde75f2afcc12ed054d177e6d82a940446eba6de266bc1c96c9290db173", size = 40740, upload-time = "2026-09-05T01:50:59.413Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ac/ab/3972dad70bcdd53c0d4882a41672d1984b8ab51acd45da89bec49742d733/phue2-1.0.0a1-py3-none-any.whl", hash = "sha256:3a6f159c7a46f46ee47c622b5b5e1c8344337f241935a3bcad3fa9c7f1fcd2d4", size = 8989, upload-time = "2026-09-05T01:50:58.35Z" },
 ]
 
 [[package]]
@@ -3640,6 +3659,16 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
+]
+
+[[package]]
+name = "smart-home"
+version = "0.1.0"
+source = { git = "https://github.com/PrefectHQ/fastmcp.git?subdirectory=examples%2Fsmart_home&rev=e3fb4af36892e6477399df2597f0dd5abd469799#e3fb4af36892e6477399df2597f0dd5abd469799" }
+dependencies = [
+    { name = "fastmcp" },
+    { name = "phue2" },
+    { name = "pydantic-settings" },
 ]
 
 [[package]]

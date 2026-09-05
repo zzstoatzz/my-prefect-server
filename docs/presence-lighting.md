@@ -1,167 +1,117 @@
 # Presence-driven lighting
 
-An iPhone Shortcut reports home/away to a private ATProto Space through the
-hub. A serialized Prefect flow stores the report and can apply the agreed
-lighting preset through the smart-home MCP. The original decision-only Pi
-prototype remains available with actuation disabled.
+The iPhone's Arrive and Leave Shortcuts automations send only `home` or `away`
+and an observation timestamp. The home geofence stays on the phone. A dedicated
+bearer token authorizes reports to `https://prefect-server.waow.tech/api/presence`;
+the phone receives neither the PDS credential nor Prefect administration access.
 
-## Notification contract
+## Current behavior
 
-Checked against ZDS's `docs/permissioned-data.md` and
-`src/atproto/space.zig` on 2026-09-05:
+The endpoint queues `report-presence/phone-presence`. Under the strict
+`home-presence-writer` concurrency limit (one slot), the flow stores the report
+in the private ATProto record, verifies the stored value, and applies the preset:
 
-- `com.atproto.space.registerNotify` takes `space` and `service`, requires a
-  DPoP-bound space credential, and returns `expiresAt`. ZDS registrations last
-  24 hours. The service is a resolvable DID, optionally with a service fragment;
-  it is not an arbitrary webhook URL.
-- The receiver implements `com.atproto.space.notifyWrite`. Its body contains
-  `space`, `repo`, `rev`, and `hash`, not record contents. In ZDS's fanout path,
-  the space authority signs the notice for the registered service audience.
-  Authenticate that authority, audience, expiry, and method before enqueueing.
-- Notifications are best effort. Renew before expiry and reconcile writer
-  revisions through `listRepos` to recover missed notifications.
-- Permissioned records do not appear on the public firehose. Whole-space
-  enumeration requires a space credential; an authenticated resident can read
-  their own writer repo through the resident access path.
+- Home: recall Sahara in the living room; set all other lights to steady soft
+  amber at 15% brightness.
+- Away: turn every light off, including lights outside rooms.
 
-## First end-to-end run
+The entire plan and expected state are validated before writing. Commands to
+remaining lights continue if a bulb reports an error. Readback must verify every
+light before the persistent marker advances; failures are visible in Prefect
+and retry. A repeated state preserves manual lighting adjustments after a
+successful application. An incomplete application retries the preset, so it can
+reapply settings to lights that already succeeded. Older reports cannot actuate.
 
-Reuse Lore's space and credential conventions.
-Choose a dedicated presence record with home/away state and an observation
-timestamp. Do not put a Pi prompt, tool configuration, or credentials in that
-record.
+The marker is a small file on the single home worker, protected by the same
+writer lock. It survives flow processes and worker restarts. Deleting it makes
+the next report reapply its preset. This is deliberately a single-worker setup.
+The last reported presence persists until a newer report; silence does not mean
+away. Setting `apply_lighting=false` disables writes and returns the deterministic
+policy decision. No LLM is needed for this fixed policy.
 
-On an authenticated notice, fetch the current presence record from its repo
-host. Treat the notice as a wakeup: a delayed home notice must not override a
-newer away record. Ignore unrelated record changes and deduplicate work by the
-current presence record's CID, rather than every revision of the space.
+## Code
 
-Dispatch the generic flow with trusted instructions and an empty toolset for
-the first run. Confirm the returned decision and record the source CID and run
-ID. Once proven, install a lights-only extension on the home worker and add
-serialized actuation with a fresh presence check before applying it. Preserve
-explicit manual lighting choices while home; repeated notifications must not
-reapply an arrival scene.
+- `web/src/routes/api/presence/+server.ts`: authenticated JSON ingress, queuing
+  only. HTTP 202 means queued, not that storage or lighting succeeded.
+- `packages/mps/src/mps/presence.py`: private record validation and storage.
+- `flows/presence_lighting.py`: serialized orchestration, retries, and marker.
+- `packages/mps/src/mps/home_lighting.py`: preset planning and readback contract.
+- `packages/mps/src/mps/lighting.py`: asynchronous smart-home MCP execution.
 
-## Lore reference
+Lighting dependencies are in the `lighting` project extra, pinned to FastMCP
+4.0.3 and the tested smart-home revision. Other workflows do not install them.
 
-Lore's source is in the sibling `pi-extensions` repository under
-`extensions/lore/`, linked from <https://lore.waow.tech/llms.txt>.
-`space.ts` implements delegation-token exchange, DPoP-bound credentials,
-credential renewal, authority-host resolution, and cross-repo reads. `oauth.ts`
-persists and refreshes user sessions. Its private registry demonstrates that
-even the mapping to a space can remain private.
+## Deployment
 
-Lore does not register a notification receiver: it reads on session start and
-on explicit refresh. Its `announceWrite` helper notifies a remote space host
-about a writer revision; it is not a subscription for an agent.
+The running deployment uses the previously tested private source bundle on
+heavypad. Local cleanup is not deployed automatically. Once a source remote is
+available, `deploy/presence.yaml` replaces the temporary bundle/PYTHONPATH setup.
+It registers only the phone-presence deployment; unrelated deployments are not
+updated. Supply these variables to `just presence-deploy`:
 
-The Lore permission set only grants its own space type and entry/registry
-collections. A dedicated structured presence record needs its own grant;
-silently reusing the existing Lore OAuth session will not authorize it.
-Keep presence separate from Lore's intentionally unstructured breadcrumbs.
+| Variable | Value |
+| --- | --- |
+| `PRESENCE_SOURCE_URL` | HTTPS clone URL of this repository |
+| `PRESENCE_SOURCE_REVISION` | Full published commit SHA |
+| `PRESENCE_CREDENTIAL_FILE` | Worker path to the mode-0600 PDS password file |
+| `PRESENCE_HUE_ENV_FILE` | Worker path to protected Hue configuration JSON |
+| `PRESENCE_LIGHTING_STATE_FILE` | Persistent worker path for the state marker |
 
-## Verified first slice
+The flow source and installed package use the same revision. The worker needs
+`uv` on PATH and the `home-presence-writer` global concurrency limit with limit 1.
+Reuse the existing marker when replacing the deployment. The hub's deployment
+ID must continue pointing to `report-presence/phone-presence`.
 
-The owner is `nate.spaces-alpha.bsky.network`
-(`did:plc:x5vcg5tj466g64de3jvvkzjg`). Its private member-list space is
-`at://did:plc:x5vcg5tj466g64de3jvvkzjg/space/io.zzstoatzz.home.space/home`.
-The `io.zzstoatzz.home.presence/self` record starts as `unknown`; we have not
-asserted that the owner is home or away. Anonymous reads were rejected.
+Hue configuration contains `HUE_BRIDGE_IP`, `HUE_BRIDGE_USERNAME`, and
+`HUE_BRIDGE_CERTIFICATE` (a worker-local trusted certificate path). Credentials
+are derived from the encrypted store, not stored in this repository. The
+presence consumer's rotation gap is documented in the secret store README.
 
-`flows/presence_lighting.py` reads the record on the home worker, then invokes
-the generic Pi subflow with an empty toolset. Real run
-`35a13373-29fb-437f-98ef-a9158250baf8` completed with `NO_CHANGE`. The existing
-encrypted-store credential was staged temporarily with mode 0600 for this
-verification and removed afterwards. Nothing was copied into flow parameters.
-The temporary verification deployment is paused and is not an operational
-deployment; its credential-file dependency is deliberately no longer present.
+The hub uses the `presence-ingress` Kubernetes secret (`webhook-token`,
+`prefect-api-url`, `prefect-api-auth`, `deployment-id`). An exact ingress rule
+exposes `/api/presence` on the API hostname; other hub routes retain Cloudflare
+Access. Missing endpoint configuration returns 503, missing authentication 401.
+The JSON body accepts only `state` and `observedAt` with a timezone. The current
+Prefect server accepted duplicate idempotency keys in testing, so correctness
+relies on the flow's lock and marker rather than API deduplication.
 
-At this initial milestone, notification subscriptions and physical actuation
-were not wired. The phone-reporting path below now has durable worker credentials
-and serialized actuation; space notifications remain future work.
-Presence is the last reported state, retained until another report changes it.
-The decision-only prototype treats future-dated observations as `NO_CHANGE`.
-Signal health is separate: silence alone does not mean the user left home.
-The decision-only prototype does not perform lighting writes.
+## iPhone setup and verification
 
-## iPhone reporting contract
+In Shortcuts, attach **Presence Home 2** (renamed “arrive home” on the phone) to
+an Arrive personal automation and **Presence Away** (“leave home”) to Leave.
+Select Run Immediately. Do not create Home accessory automations or share a
+configured shortcut containing its bearer token.
 
-The agreed signal is home/away only. Shortcuts evaluates the home geofence on
-Nate's phone; no coordinates are sent. Start with a manual shortcut, then attach
-Arrive and Leave personal automations after the manual path is verified.
+The manual iPhone home report reached the private record and completed Prefect
+run `824f929d-6c91-4b98-9ed6-9631940ec31f`. Home actuation completed in
+`7b77ec40-16b0-4166-9cdf-95dada5da5d9`, with all 13 lights verified. A repeated
+home report completed in `7a9b16b3-f291-4a4a-a145-f89d05c9157c` without advancing
+the marker. Both phone automations were shown enabled. Actual geofence delivery
+and departure actuation still await a real trip test.
 
-The prepared `POST /api/presence` endpoint accepts an
-`application/json` body containing exactly `state` (`home` or
-`away`) and `observedAt` (ISO 8601 with timezone). A dedicated bearer token
-allows only reports through this route; neither the PDS password nor Prefect
-admin credential belongs on the phone. The route returns 202 for queued work,
-not for completed storage or a changed light.
+## Private space and future notifications
 
-The endpoint queues `report-presence`, which holds the strict
-`home-presence-writer` concurrency slot while reading, updating, verifying, and
-making the decision. The global limit must be created with limit 1 before use.
-Older and equal timestamps do not overwrite the current record. The downstream
-Pi call remains decision-only unless `apply_lighting` is enabled. The deployed
-API accepted duplicate idempotency keys; actuation deduplication therefore lives
-inside the serialized flow.
+The record owner is `nate.spaces-alpha.bsky.network`
+(`did:plc:x5vcg5tj466g64de3jvvkzjg`). The private member-list space is
+`at://did:plc:x5vcg5tj466g64de3jvvkzjg/space/io.zzstoatzz.home.space/home`, with
+record `io.zzstoatzz.home.presence/self`. Anonymous reads were rejected.
 
-The hub manifest references the optional `presence-ingress` Kubernetes secret;
-with no configuration, this endpoint returns 503. Its keys are `webhook-token`,
-`prefect-api-url`, `prefect-api-auth`, and `deployment-id`. These resources are provisioned. The worker credential is derived from the encrypted
-store into a mode-0600 file referenced by `PRESENCE_CREDENTIAL_FILE`. The dedicated
-`report-presence/phone-presence` deployment has no schedule and uses a private,
-immutable source checkout on the worker; existing deployments were not changed.
+The phone currently triggers Prefect directly. Editing the private record
+independently does **not** trigger lighting. We have not implemented a space
+notification subscriber.
 
-The API hostname exposes only `/api/presence` through an exact ingress rule;
-other hub routes remain behind Cloudflare Access. The public endpoint was tested
-with the dedicated bearer token (202) and without it (401). Prefect health stayed
-200 and the hub continued redirecting to Access. The first real home report
-completed in run `daa87825-0ac5-40f1-97e4-742b277665e9` and was independently read
-back from the private record. That initial verification kept lighting disabled.
+Lore's TypeScript implementation in `pi-extensions/extensions/lore/` informed
+the private-space design. Its `space.ts` handles delegation, DPoP credentials,
+authority resolution, and cross-repo reads. Lore reads on session start and
+explicit refresh; `announceWrite` is not a subscription. Lore's OAuth scope
+covers its own collections and cannot silently authorize this presence space.
+See <https://lore.waow.tech/llms.txt>.
 
-### Manual Shortcut setup (after deployment)
-
-Create a shortcut with a choice of `home` or `away`, capture the current date,
-format it as ISO 8601 with a timezone, and use **Get Contents of URL** to POST
-to `https://prefect-server.waow.tech/api/presence`. Set the `Authorization` header to
-`Bearer <dedicated token>` and Request Body to JSON. Add only the chosen `state`
-and formatted `observedAt` fields. Additional fields are rejected. JSON avoids SvelteKit's browser-form CSRF checks
-without disabling those protections for the rest of the hub. Display the response for
-the first test. `queued: true` means accepted, not completed; verify the private
-record and corresponding Prefect run separately.
-
-Apple documents the POST action at
-<https://support.apple.com/en-au/guide/shortcuts/apd58d46713f/ios>.
-After the manual path works, separate Arrive and Leave automations can supply
-the state without asking. Geofence location stays in the phone's automation.
-Do not share a configured shortcut containing the dedicated token.
-
-## Arrival and departure lighting
-
-The phone's manual home report was verified end to end in run
-`824f929d-6c91-4b98-9ed6-9631940ec31f`. The next deployment enables
-`apply_lighting` on `report-presence/phone-presence`; other callers retain the
-existing decision-only default.
-
-Home recalls the living room's saved Sahara scene and sets all remaining
-lights to steady soft amber at 15%. Away turns every light off, including
-lights outside rooms. The fixed policy calls the smart-home MCP directly;
-it does not need an agent to reinterpret these agreed instructions.
-
-The writer lock covers storage and actuation. A successful bridge readback
-advances a local state marker, so repeated home reports preserve manual
-lighting adjustments. Failed or partial writes leave the marker unchanged
-and retry. Older reports never actuate. This currently depends on the single
-home worker's persistent disk; direct space edits do not trigger it yet.
-
-The worker uses `PRESENCE_HUE_ENV_FILE` for its protected bridge configuration
-and `PRESENCE_LIGHTING_STATE_FILE` for the marker. Source is pinned to an
-immutable checkout, as is the smart-home dependency. Bridge TLS uses the
-trusted certificate. Set `apply_lighting=false` on this deployment to disable
-actuation while keeping phone reporting operational.
-
-On the phone, attach **Presence Home 2** to an Arrive automation and
-**Presence Away** to a Leave automation, both set to Run Immediately.
-The geofence stays on the phone. Actual departure/arrival delivery still
-needs a real trip test.
+ZDS's `docs/permissioned-data.md` and `src/atproto/space.zig` were inspected on
+2026-09-05. `registerNotify` registers a resolvable service DID using a DPoP-bound
+space credential; registrations expire after 24 hours in that implementation.
+`notifyWrite` carries revision metadata, not record contents. A future receiver
+must authenticate the authority, audience, expiry, and method, fetch current
+state, renew subscriptions, and reconcile missed notifications. ZDS is a PDS
+implementation, not the account hosting this record; compatibility must be
+verified against the actual space host before adopting its notification path.

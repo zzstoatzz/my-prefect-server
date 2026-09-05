@@ -60,7 +60,6 @@ def test_temperature_only_bulb_uses_supported_warm_limit():
 @pytest.mark.parametrize("succeeds", [True, False])
 def test_lighting_marker_advances_only_after_verified_success(tmp_path, monkeypatch, succeeds):
     from datetime import UTC, datetime
-    from types import SimpleNamespace
 
     from mps.presence import Presence, PresenceRecord
 
@@ -71,11 +70,13 @@ def test_lighting_marker_advances_only_after_verified_success(tmp_path, monkeypa
     monkeypatch.setenv("PRESENCE_LIGHTING_STATE_FILE", str(marker))
     calls = []
 
-    def run(*args, **kwargs):
-        calls.append(args)
-        return SimpleNamespace(returncode=0 if succeeds else 1, stdout="verified", stderr="failed")
+    async def run(state):
+        calls.append(state)
+        if not succeeds:
+            raise ValueError("Lighting readback failed")
+        return 13
 
-    monkeypatch.setattr("flows.presence_lighting.subprocess.run", run)
+    monkeypatch.setattr("mps.lighting.apply_lighting", run)
     record = PresenceRecord(
         uri="test", cid="test", value=Presence(state="home", observedAt=datetime.now(UTC))
     )
@@ -85,7 +86,7 @@ def test_lighting_marker_advances_only_after_verified_success(tmp_path, monkeypa
         assert apply_presence_lighting.fn(record) == "NO_CHANGE"
         assert len(calls) == 1
     else:
-        with pytest.raises(RuntimeError, match="Lighting failed"):
+        with pytest.raises(ValueError, match="Lighting readback failed"):
             apply_presence_lighting.fn(record)
         assert marker.read_text().strip() == "away"
 
@@ -117,9 +118,7 @@ def test_stale_report_cannot_actuate_newer_presence(monkeypatch):
 
 def test_unreachable_light_does_not_block_remaining_writes(tmp_path, monkeypatch):
     import asyncio
-    import runpy
     import sys
-    from pathlib import Path
     from types import ModuleType, SimpleNamespace
 
     lights = {
@@ -157,14 +156,45 @@ def test_unreachable_light_does_not_block_remaining_writes(tmp_path, monkeypatch
     config = tmp_path / "hue.json"
     config.write_text("{}")
     monkeypatch.setenv("PRESENCE_HUE_ENV_FILE", str(config))
-    monkeypatch.setattr(sys, "argv", ["presence_lights.py", "away"])
 
     async def sleep(seconds):
         pass
 
     monkeypatch.setattr(asyncio, "sleep", sleep)
-    script = Path(__file__).parents[1] / "scripts/presence_lights.py"
-    main = runpy.run_path(str(script))["main"]
+    from mps.lighting import apply_lighting
+
     with pytest.raises(ValueError, match="offline"):
-        asyncio.run(main())
+        asyncio.run(apply_lighting("away"))
     assert writes == ["offline", "online"]
+
+
+def test_incomplete_saved_scene_is_rejected_before_execution():
+    from mps.home_lighting import expected_states
+
+    rooms, lights, scenes = inventory()
+    scenes["right-sahara"]["actions"] = [
+        {"target": {"rid": "north"}, "action": {"on": {"on": True}}}
+    ]
+    with pytest.raises(ValueError, match="every light"):
+        expected_states(lighting_calls("home", rooms, lights, scenes), lights, scenes)
+
+
+def test_readback_checks_color_brightness_effect_and_connectivity():
+    from mps.home_lighting import LightState, readback_mismatches
+
+    expected = {"lamp": LightState(on=True, brightness=15, xy=(0.526, 0.413), effect="no_effect")}
+    observed = {
+        "lamp": {
+            "name": "lamp",
+            "connectivity": "connected",
+            "state": {"on": True, "brightness": 15.02, "xy": [0.526, 0.413], "effect": "no_effect"},
+        }
+    }
+    assert readback_mismatches(expected, observed) == []
+    for field, value in (("brightness", 80), ("xy", [0.2, 0.2]), ("effect", "candle")):
+        changed = {
+            "lamp": {**observed["lamp"], "state": {**observed["lamp"]["state"], field: value}}
+        }
+        assert readback_mismatches(expected, changed) == ["lamp"]
+    observed["lamp"]["connectivity"] = "connectivity_issue"
+    assert readback_mismatches(expected, observed) == ["lamp"]
