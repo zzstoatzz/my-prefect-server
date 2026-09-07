@@ -195,7 +195,7 @@ grafana:
       access: proxy
       isDefault: false
       jsonData:
-        path: /analytics/analytics.duckdb?access_mode=read_only
+        path: /analytics/analytics.duckdb
 
   # Provision directly from ConfigMaps instead of two persistent API watchers.
   # Keep the parent chart's datasource generator (Prometheus + DuckDB).
