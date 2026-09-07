@@ -1,4 +1,11 @@
 # Single-node monitoring: retain dashboard/alert inputs, bound scrape cardinality.
+crds:
+  upgradeJob:
+    # Keep API schemas aligned with the pinned operator/chart; Helm otherwise
+    # leaves the original schemas behind and prunes newer configuration fields.
+    enabled: true
+    forceConflicts: true
+
 alertmanager:
   enabled: false
 
@@ -50,6 +57,12 @@ prometheus:
   prometheusSpec:
     scrapeInterval: 60s
     retention: 7d
+    # Chart 87.18.1 only exposes outOfOrderTimeWindow under tsdb; pass the
+    # newer operator field through additionalConfig without duplicate YAML keys.
+    tsdb: null
+    additionalConfig:
+      tsdb:
+        staleSeriesCompactionThreshold: "0.5"
     serviceMonitorSelectorNilUsesHelmValues: false
     podMonitorSelectorNilUsesHelmValues: false
 

@@ -27,6 +27,22 @@ reduction in Prometheus head-series memory: old series remain until head
 compaction. Do not lower its memory limit based solely on an immediate scrape
 count or restart it just to demonstrate a smaller footprint.
 
+Prometheus 3.13.1 also supports experimental early stale-series compaction.
+We set `staleSeriesCompactionThreshold: "0.5"` so that when half the head
+series are stale, Prometheus persists their history in blocks and removes
+their in-memory entries ahead of normal compaction. This does not delete
+historical samples. The chart's CRD upgrade hook keeps the Kubernetes schema
+aligned with its operator; the older schema silently omitted this field.
+Chart 87.18.1 needs this TSDB setting through `additionalConfig`, with the
+chart's default `tsdb` map disabled to avoid duplicate keys.
+
+Verified in Helm revision 11: at 01:37 UTC on September 7, early compaction
+wrote 54,510 stale series to a block in 581 ms. Head series fell to 22,739;
+the historical control-plane query at 00:40 UTC still returned the same
+40,645 series. All 13 scrape targets remained healthy, all 182 rules evaluated
+successfully, and Prometheus stayed at zero restarts. After garbage collection,
+the container working set measured 266 MiB (324 MiB before this operation).
+
 ## Existing analytics datasource issue
 
 The DuckDB snapshot is mounted read-only, but the existing datasource opens
