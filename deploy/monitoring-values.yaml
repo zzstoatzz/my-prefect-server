@@ -1,4 +1,4 @@
-# lightweight kube-prometheus-stack — follows relay/indigo pattern
+# Single-node monitoring: retain dashboard/alert inputs, bound scrape cardinality.
 alertmanager:
   enabled: false
 
@@ -33,6 +33,18 @@ kubelet:
   enabled: true
   serviceMonitor:
     cAdvisor: true
+    cAdvisorInterval: 30s
+    metricRelabelings:
+      # k3s exposes control-plane collectors on the kubelet /metrics endpoint.
+      # These are not inputs to our kubelet dashboards/rules (the apiserver
+      # rules select job="apiserver", whose scrape is disabled above).
+      - action: drop
+        sourceLabels: [__name__]
+        regex: "(apiserver|etcd)_.*"
+      # Preserve the chart's storage histogram bucket reduction.
+      - action: drop
+        sourceLabels: [__name__, le]
+        regex: '(csi_operations|storage_operation_duration)_seconds_bucket;(0.25|2.5|15|25|120|600)(\.0)?'
 
 prometheus:
   prometheusSpec:
@@ -90,7 +102,7 @@ grafana:
   # Ubuntu image required — DuckDB plugin uses glibc binaries, Alpine won't work
   image:
     repository: grafana/grafana
-    tag: "latest-ubuntu"
+    tag: "latest-ubuntu@sha256:06d0bf32de77a7cf32eb8c705332c8f573fc07441d95f29f26f39e4deb98e48f"
 
   grafana.ini:
     auth.anonymous:
@@ -183,12 +195,72 @@ grafana:
       access: proxy
       isDefault: false
       jsonData:
-        path: /analytics/analytics.duckdb
+        path: /analytics/analytics.duckdb?access_mode=read_only
+
+  # Provision directly from ConfigMaps instead of two persistent API watchers.
+  # Keep the parent chart's datasource generator (Prometheus + DuckDB).
+  forceDeployDatasources: true
+  extraConfigmapMounts:
+    - name: provisioned-datasources
+      configMap: kube-prometheus-stack-grafana-datasource
+      mountPath: /etc/grafana/provisioning/datasources
+      readOnly: true
 
   sidecar:
     dashboards:
-      enabled: true
-      label: grafana_dashboard
+      enabled: false
+    datasources:
+      enabled: false
+      alertmanager:
+        enabled: false
+
+  serviceMonitor:
+    metricRelabelings:
+      # Keep every metric referenced by Grafana Overview plus runtime health.
+      - action: keep
+        sourceLabels: [__name__]
+        regex: 'grafana_(build_info|stat_totals_dashboard|alerting_result_total|http_request_duration_seconds_.*)|process_.*|go_.*'
+
+  dashboardProviders:
+    dashboards.yaml:
+      apiVersion: 1
+      providers:
+        - name: provisioned
+          orgId: 1
+          folder: ""
+          type: file
+          disableDeletion: false
+          editable: false
+          updateIntervalSeconds: 30
+          options:
+            path: /var/lib/grafana/dashboards
+
+  # Chart 87.18.1 dashboard ConfigMaps, mounted as directories so kubelet
+  # propagates updates. Personal dashboards share one map, built by just dashboards.
+  dashboardsConfigMaps:
+    prefect: prefect-dashboards
+    cluster-total: kube-prometheus-stack-cluster-total
+    grafana-overview: kube-prometheus-stack-grafana-overview
+    k8s-resources-cluster: kube-prometheus-stack-k8s-resources-cluster
+    k8s-resources-multicluster: kube-prometheus-stack-k8s-resources-multicluster
+    k8s-resources-namespace: kube-prometheus-stack-k8s-resources-namespace
+    k8s-resources-node: kube-prometheus-stack-k8s-resources-node
+    k8s-resources-nodes-overview: kube-prometheus-stack-k8s-resources-nodes-overview
+    k8s-resources-pod: kube-prometheus-stack-k8s-resources-pod
+    k8s-resources-workload: kube-prometheus-stack-k8s-resources-workload
+    k8s-resources-workloads-namespace: kube-prometheus-stack-k8s-resources-workloads-namespace
+    kubelet: kube-prometheus-stack-kubelet
+    namespace-by-pod: kube-prometheus-stack-namespace-by-pod
+    namespace-by-workload: kube-prometheus-stack-namespace-by-workload
+    node-cluster-rsrc-use: kube-prometheus-stack-node-cluster-rsrc-use
+    node-rsrc-use: kube-prometheus-stack-node-rsrc-use
+    nodes: kube-prometheus-stack-nodes
+    nodes-aix: kube-prometheus-stack-nodes-aix
+    nodes-darwin: kube-prometheus-stack-nodes-darwin
+    persistentvolumesusage: kube-prometheus-stack-persistentvolumesusage
+    pod-total: kube-prometheus-stack-pod-total
+    prometheus: kube-prometheus-stack-prometheus
+    workload-total: kube-prometheus-stack-workload-total
 
   resources:
     requests:

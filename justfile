@@ -358,40 +358,27 @@ health:
     : "${DOMAIN:?set DOMAIN}"
     curl -sf "https://$DOMAIN/api/health" | jq .
 
-# a dashboard whose file is gone is removed from the cluster too, so the
-# directory is the whole truth.
-# reload grafana dashboards from deploy/dashboards/
+# The directory is the full personal dashboard inventory. Mount the ConfigMap
+# as a directory (not subPath) so Grafana's file provider sees adds/deletes.
 dashboards:
     #!/usr/bin/env bash
     set -euo pipefail
-    want=""
-    for dashboard in deploy/dashboards/*.json; do
-        name=$(basename "$dashboard" .json | tr '.' '-')
-        want="$want prefect-dashboard-$name"
-        kubectl create configmap "prefect-dashboard-$name" \
-            --namespace monitoring \
-            --from-file="$dashboard" \
-            --dry-run=client -o yaml \
-            | kubectl label --local -f - grafana_dashboard=1 -o yaml \
-            | kubectl apply -f -
-        echo "  loaded $name"
-    done
-    for cm in $(kubectl -n monitoring get configmaps -l grafana_dashboard=1 -o name | sed 's#configmap/##' | grep '^prefect-dashboard-'); do
-        case " $want " in
-            *" $cm "*) ;;
-            *) kubectl -n monitoring delete configmap "$cm"; echo "  removed $cm" ;;
-        esac
-    done
+    kubectl create configmap prefect-dashboards --namespace monitoring \
+        --from-file=deploy/dashboards --dry-run=client -o yaml | kubectl apply -f -
 
 # apply deploy/monitoring-values.yaml to the kube-prometheus-stack release
 monitoring:
     #!/usr/bin/env bash
     set -euo pipefail
     : "${GRAFANA_DOMAIN:=prefect-metrics.waow.tech}"
+    just dashboards
+    config_sha="$(shasum -a 256 deploy/monitoring-values.yaml | cut -d ' ' -f1)"
     sed "s|GRAFANA_DOMAIN_PLACEHOLDER|$GRAFANA_DOMAIN|g" deploy/monitoring-values.yaml \
         | helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
             --namespace monitoring \
+            --version 87.18.1 \
             --values - \
+            --set-string "grafana.podAnnotations.monitoring-config-sha=$config_sha" \
             --wait --timeout 5m
 
 # creates the basic-auth pair prometheus needs, derived from AUTH_STRING, and
