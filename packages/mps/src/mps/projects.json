@@ -1,0 +1,1595 @@
+[
+  {
+    "name": "plyr.fm",
+    "purpose": "Upload, listen to, and share music on AT Protocol.",
+    "repo": "https://tangled.org/zzstoatzz.io/plyr.fm",
+    "costs": "https://tangled.org/zzstoatzz.io/plyr.fm/blob/main/COSTS.md",
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "fly:relay-api",
+      "fly:relay-api-staging",
+      "fly:plyr-api-zig-canary",
+      "fly:plyr-moderation",
+      "fly:plyr-transcoder",
+      "fly:plyr-redis",
+      "fly:plyr-redis-next",
+      "fly:plyr-redis-stg",
+      "cloudflare:plyr-fm",
+      "cloudflare:plyr-fm-stg",
+      "cloudflare:plyr-fm-next",
+      "cloudflare:plyr-storybook",
+      "cloudflare:plyr-fm-docs",
+      "cloudflare:audio-dev",
+      "cloudflare:audio-private-dev",
+      "cloudflare:audio-private-prod",
+      "cloudflare:audio-private-staging",
+      "cloudflare:audio-prod",
+      "cloudflare:audio-staging",
+      "cloudflare:images-dev",
+      "cloudflare:images-prod",
+      "cloudflare:images-staging",
+      "cloudflare:plyr-stats",
+      "cloudflare:plyr.fm",
+      "neon:plyr-moderation",
+      "neon:plyr-stg",
+      "neon:plyr-dev",
+      "neon:plyr-prd"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "pages",
+        "name": "plyr-fm-stg",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "pages",
+        "name": "plyr-fm",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "pages",
+        "name": "plyr-storybook",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "pages",
+        "name": "plyr-fm-docs",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "pages",
+        "name": "plyr-fm-next",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "audio-dev",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "audio-private-dev",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "audio-private-prod",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "audio-private-staging",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "audio-prod",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "audio-staging",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "images-dev",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "images-prod",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "images-staging",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "plyr-stats",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "plyr-api-zig-canary",
+        "state": "suspended",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "plyr-moderation",
+        "state": "deployed",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "plyr-redis",
+        "state": "deployed",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "plyr-redis-next",
+        "state": "deployed",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "plyr-redis-stg",
+        "state": "deployed",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "plyr-transcoder",
+        "state": "suspended",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "relay-api",
+        "state": "deployed",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "relay-api-staging",
+        "state": "deployed",
+        "source": "Fly API"
+      },
+      {
+        "provider": "neon",
+        "kind": "billed resource",
+        "name": "plyr-dev",
+        "state": "billed",
+        "source": "Cost snapshot 2026-09-08"
+      },
+      {
+        "provider": "neon",
+        "kind": "billed resource",
+        "name": "plyr-moderation",
+        "state": "billed",
+        "source": "Cost snapshot 2026-09-08"
+      },
+      {
+        "provider": "neon",
+        "kind": "billed resource",
+        "name": "plyr-prd",
+        "state": "billed",
+        "source": "Cost snapshot 2026-09-08"
+      },
+      {
+        "provider": "neon",
+        "kind": "billed resource",
+        "name": "plyr-stg",
+        "state": "billed",
+        "source": "Cost snapshot 2026-09-08"
+      }
+    ],
+    "services": [
+      {
+        "name": "api",
+        "url": "https://api.plyr.fm/health",
+        "href": "https://api.plyr.fm"
+      },
+      {
+        "name": "moderation",
+        "url": "https://moderation.plyr.fm/",
+        "href": "https://moderation.plyr.fm"
+      },
+      {
+        "name": "transcoder",
+        "url": "https://plyr-transcoder.fly.dev/health",
+        "href": "https://plyr-transcoder.fly.dev"
+      },
+      {
+        "name": "frontend",
+        "url": "https://plyr.fm",
+        "href": "https://plyr.fm"
+      },
+      {
+        "name": "docs",
+        "url": "https://docs.plyr.fm",
+        "href": "https://docs.plyr.fm"
+      },
+      {
+        "name": "mcp",
+        "url": "https://plyrfm.fastmcp.app/mcp",
+        "href": "https://plyrfm.fastmcp.app",
+        "check": {
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream"
+          },
+          "body": "{\"jsonrpc\":\"2.0\",\"method\":\"initialize\",\"id\":1,\"params\":{\"capabilities\":{},\"clientInfo\":{\"name\":\"evergreen\",\"version\":\"0.1\"},\"protocolVersion\":\"2024-11-05\"}}"
+        }
+      }
+    ]
+  },
+  {
+    "name": "typeahead",
+    "purpose": "Find AT Protocol accounts by name or handle.",
+    "repo": "https://tangled.org/zzstoatzz.io/typeahead",
+    "costs": "https://tangled.org/zzstoatzz.io/typeahead/blob/main/COSTS.md",
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:typeahead",
+      "cloudflare:typeahead-db",
+      "cloudflare:typeahead-index",
+      "fly:typeahead-search",
+      "fly:typeahead-ingester",
+      "fly:typeahead-backfill",
+      "fly:typeahead-canary",
+      "fly:typeahead-indexer",
+      "fly:typeahead-refresh-handles"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "typeahead",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "databases",
+        "name": "typeahead-db",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "typeahead-index",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "typeahead-backfill",
+        "state": "suspended",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "typeahead-canary",
+        "state": "suspended",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "typeahead-indexer",
+        "state": "suspended",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "typeahead-ingester",
+        "state": "deployed",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "typeahead-refresh-handles",
+        "state": "suspended",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "typeahead-search",
+        "state": "deployed",
+        "source": "Fly API"
+      }
+    ],
+    "services": [
+      {
+        "name": "worker",
+        "url": "https://typeahead.waow.tech/stats",
+        "href": "https://typeahead.waow.tech"
+      },
+      {
+        "name": "ingester",
+        "url": "https://typeahead-ingester.fly.dev/health",
+        "href": "https://typeahead-ingester.fly.dev"
+      }
+    ]
+  },
+  {
+    "name": "pub-search",
+    "purpose": "Search publications and documents from standard.site.",
+    "repo": "https://tangled.org/zzstoatzz.io/pub-search",
+    "costs": "https://tangled.org/zzstoatzz.io/pub-search/blob/main/COSTS.md",
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "fly:leaflet-search-backend",
+      "cloudflare:leaflet-search",
+      "cloudflare:leaflet-search-index"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "pages",
+        "name": "leaflet-search",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "leaflet-search-index",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "leaflet-search-backend",
+        "state": "deployed",
+        "source": "Fly API"
+      }
+    ],
+    "services": [
+      {
+        "name": "backend",
+        "url": "https://leaflet-search-backend.fly.dev/health",
+        "href": "https://leaflet-search-backend.fly.dev"
+      },
+      {
+        "name": "frontend",
+        "url": "https://pub-search.waow.tech",
+        "href": "https://pub-search.waow.tech"
+      },
+      {
+        "name": "mcp",
+        "url": "https://pub-search-by-zzstoatzz.fastmcp.app/mcp",
+        "href": "https://pub-search-by-zzstoatzz.fastmcp.app",
+        "check": {
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream"
+          },
+          "body": "{\"jsonrpc\":\"2.0\",\"method\":\"initialize\",\"id\":1,\"params\":{\"capabilities\":{},\"clientInfo\":{\"name\":\"evergreen\",\"version\":\"0.1\"},\"protocolVersion\":\"2024-11-05\"}}"
+        }
+      }
+    ]
+  },
+  {
+    "name": "stream",
+    "purpose": "Archive the AT Protocol network and serve live or replayed events.",
+    "repo": "https://tangled.org/zat.dev/stream",
+    "costs": "https://tangled.org/zat.dev/stream/blob/main/COSTS.md",
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "hetzner:stream-cx43",
+      "hetzner:stream-20260728-0501-archive"
+    ],
+    "resources": [
+      {
+        "provider": "hetzner",
+        "kind": "billed resource",
+        "name": "stream-20260728-0501-archive",
+        "state": "billed",
+        "source": "Cost snapshot 2026-09-08"
+      },
+      {
+        "provider": "hetzner",
+        "kind": "billed resource",
+        "name": "stream-cx43",
+        "state": "billed",
+        "source": "Cost snapshot 2026-09-08"
+      }
+    ],
+    "services": [
+      {
+        "name": "status",
+        "url": "https://stream.waow.tech/status",
+        "href": "https://stream.waow.tech"
+      },
+      {
+        "name": "website",
+        "url": "https://stream.waow.tech/",
+        "href": "https://stream.waow.tech/"
+      }
+    ]
+  },
+  {
+    "name": "rally",
+    "purpose": "Keep shared tallies, proposals, and disputes on AT Protocol.",
+    "repo": "https://tangled.org/zzstoatzz.io/rally",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:rally"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "rally",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "databases",
+        "name": "rally",
+        "state": "present",
+        "source": "Cloudflare API"
+      }
+    ],
+    "services": [
+      {
+        "name": "website",
+        "url": "https://rally.waow.tech",
+        "href": "https://rally.waow.tech"
+      }
+    ]
+  },
+  {
+    "name": "doodl",
+    "purpose": "Draw and share images, including live collaborative canvases.",
+    "repo": "https://tangled.org/zzstoatzz.io/doodl",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:doodl-share",
+      "cloudflare:doodl-live",
+      "cloudflare:doodl-sync",
+      "cloudflare:doodl-bot",
+      "cloudflare:doodl-previews"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "doodl-bot",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "doodl-live",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "doodl-share",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "doodl-sync",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "databases",
+        "name": "doodl-sync",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "doodl-previews",
+        "state": "present",
+        "source": "Cloudflare API"
+      }
+    ],
+    "services": [
+      {
+        "name": "website",
+        "url": "https://doodl.waow.tech",
+        "href": "https://doodl.waow.tech"
+      }
+    ]
+  },
+  {
+    "name": "zds",
+    "purpose": "Host AT Protocol accounts, records, blobs, and permissioned spaces.",
+    "repo": "https://tangled.org/zat.dev/zds",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "fly:zds-pds"
+    ],
+    "resources": [
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "zds-pds",
+        "state": "deployed",
+        "source": "Fly API"
+      }
+    ],
+    "services": [
+      {
+        "name": "PDS health",
+        "url": "https://pds.zat.dev/xrpc/_health",
+        "href": "https://pds.zat.dev/xrpc/_health"
+      }
+    ]
+  },
+  {
+    "name": "birds.place",
+    "purpose": "Keep bird sightings, photos, and recordings in your own PDS.",
+    "repo": "https://tangled.org/birds.place/birds.place",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:birds-place",
+      "cloudflare:birds-place-preview"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "birds-place",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "birds-place-preview",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "databases",
+        "name": "birds-place",
+        "state": "present",
+        "source": "Cloudflare API"
+      }
+    ],
+    "services": [
+      {
+        "name": "website",
+        "url": "https://birds.place",
+        "href": "https://birds.place"
+      }
+    ]
+  },
+  {
+    "name": "strata",
+    "purpose": "Inspect collection-level activity in the Stream archive.",
+    "repo": "https://tangled.org/zat.dev/strata",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:strata",
+      "cloudflare:strata-archive",
+      "cloudflare:strata-archive-private"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "strata",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "databases",
+        "name": "strata",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "strata-archive",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "strata-archive-private",
+        "state": "present",
+        "source": "Cloudflare API"
+      }
+    ],
+    "services": [
+      {
+        "name": "website",
+        "url": "https://strata.zat.dev",
+        "href": "https://strata.zat.dev"
+      }
+    ]
+  },
+  {
+    "name": "relay",
+    "purpose": "Relay repository events from the AT Protocol network.",
+    "repo": "https://tangled.org/zzstoatzz.io/relay",
+    "costs": "https://tangled.org/zzstoatzz.io/relay/blob/main/COSTS.md",
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "hetzner:relay"
+    ],
+    "resources": [
+      {
+        "provider": "hetzner",
+        "kind": "billed resource",
+        "name": "relay",
+        "state": "billed",
+        "source": "Cost snapshot 2026-09-08"
+      }
+    ],
+    "services": [
+      {
+        "name": "indigo",
+        "url": "https://relay.waow.tech/xrpc/_health",
+        "href": "https://relay.waow.tech"
+      },
+      {
+        "name": "indigo grafana",
+        "url": "https://relay-metrics.waow.tech/api/health",
+        "href": "https://relay-metrics.waow.tech/d/relay-waow/relay-waow-tech?orgId=1&from=now-1h&to=now&timezone=browser"
+      }
+    ]
+  },
+  {
+    "name": "zlay",
+    "purpose": "Run and evaluate a Zig AT Protocol relay.",
+    "repo": "https://tangled.org/zat.dev/zlay",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "hetzner:zlay",
+      "fly:zlay-zio-0801"
+    ],
+    "resources": [
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "zlay-zio-0801",
+        "state": "suspended",
+        "source": "Fly API"
+      },
+      {
+        "provider": "hetzner",
+        "kind": "billed resource",
+        "name": "zlay",
+        "state": "billed",
+        "source": "Cost snapshot 2026-09-08"
+      }
+    ],
+    "services": [
+      {
+        "name": "zlay",
+        "url": "https://zlay.waow.tech/_health",
+        "href": "https://zlay.waow.tech"
+      },
+      {
+        "name": "zlay grafana",
+        "url": "https://zlay-metrics.waow.tech/api/health",
+        "href": "https://zlay-metrics.waow.tech/?orgId=1&from=now-6h&to=now&timezone=browser"
+      },
+      {
+        "name": "relay-eval",
+        "url": "https://relay-eval.waow.tech",
+        "href": "https://relay-eval.waow.tech"
+      },
+      {
+        "name": "relay evaluation",
+        "url": "https://relay-eval.waow.tech/api/latest",
+        "href": "https://relay-eval.waow.tech"
+      }
+    ]
+  },
+  {
+    "name": "coral",
+    "purpose": "Find topics trending across the network.",
+    "repo": "https://tangled.org/zzstoatzz.io/coral",
+    "costs": "https://tangled.org/zzstoatzz.io/coral/blob/main/COSTS.md",
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "fly:coral",
+      "fly:coral-ner",
+      "cloudflare:coral",
+      "cloudflare:coral-previews"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "coral-previews",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "pages",
+        "name": "coral",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "coral-previews",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "coral",
+        "state": "deployed",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "coral-ner",
+        "state": "suspended",
+        "source": "Fly API"
+      }
+    ],
+    "services": [
+      {
+        "name": "backend",
+        "url": "https://coral.fly.dev/health",
+        "href": "https://coral.fly.dev/docs"
+      },
+      {
+        "name": "frontend",
+        "url": "https://coral.waow.tech",
+        "href": "https://coral.waow.tech"
+      }
+    ]
+  },
+  {
+    "name": "find-bufo",
+    "purpose": "Search for bufo images and serve the bufo bot.",
+    "repo": "https://tangled.org/zzstoatzz.io/find-bufo",
+    "costs": "https://tangled.org/zzstoatzz.io/find-bufo/blob/main/COSTS.md",
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "fly:find-bufo-zig",
+      "fly:bufo-bot"
+    ],
+    "resources": [
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "bufo-bot",
+        "state": "deployed",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "find-bufo-zig",
+        "state": "deployed",
+        "source": "Fly API"
+      }
+    ],
+    "services": [
+      {
+        "name": "search",
+        "url": "https://find-bufo.com/",
+        "href": "https://find-bufo.com"
+      },
+      {
+        "name": "bot",
+        "url": "https://bufo-bot.fly.dev/",
+        "href": "https://bufo-bot.fly.dev"
+      }
+    ]
+  },
+  {
+    "name": "phi",
+    "purpose": "An agent that reads, remembers, and participates on the network.",
+    "repo": "https://tangled.org/zzstoatzz.io/bot",
+    "costs": "https://tangled.org/zzstoatzz.io/bot/blob/main/COSTS.md",
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "fly:zzstoatzz-phi"
+    ],
+    "resources": [
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "zzstoatzz-phi",
+        "state": "deployed",
+        "source": "Fly API"
+      }
+    ],
+    "services": [
+      {
+        "name": "api",
+        "url": "https://phi.zzstoatzz.io/health",
+        "href": "https://phi.zzstoatzz.io"
+      },
+      {
+        "name": "docs",
+        "url": "https://phi.zzstoatzz.io/docs",
+        "href": "https://phi.zzstoatzz.io/docs"
+      }
+    ]
+  },
+  {
+    "name": "prefect",
+    "purpose": "Schedule and run workflows, including these infrastructure checks.",
+    "repo": "https://tangled.org/zzstoatzz.io/my-prefect-server",
+    "costs": "https://tangled.org/zzstoatzz.io/my-prefect-server/blob/main/COSTS.md",
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "hetzner:prefect-server"
+    ],
+    "resources": [
+      {
+        "provider": "hetzner",
+        "kind": "billed resource",
+        "name": "prefect-server",
+        "state": "billed",
+        "source": "Cost snapshot 2026-09-08"
+      }
+    ],
+    "services": [
+      {
+        "name": "api",
+        "url": "https://prefect-server.waow.tech/api/health",
+        "href": "https://prefect-server.waow.tech"
+      },
+      {
+        "name": "grafana",
+        "url": "https://prefect-metrics.waow.tech/api/health",
+        "href": "https://prefect-metrics.waow.tech"
+      },
+      {
+        "name": "discovery pool",
+        "url": "https://hub.waow.tech/api/agents/discovery-pool",
+        "href": "https://hub.waow.tech"
+      },
+      {
+        "name": "hub",
+        "url": "https://hub.waow.tech/api/costs.json",
+        "href": "https://hub.waow.tech"
+      }
+    ]
+  },
+  {
+    "name": "PDS",
+    "purpose": "Host the operator’s AT Protocol identity and records.",
+    "repo": "https://tangled.org/zzstoatzz.io/pds-infra",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "fly:pds-zzstoatzz-io"
+    ],
+    "resources": [
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "pds-zzstoatzz-io",
+        "state": "deployed",
+        "source": "Fly API"
+      }
+    ],
+    "services": [
+      {
+        "name": "PDS",
+        "url": "https://pds.zzstoatzz.io/xrpc/_health",
+        "href": "https://pds.zzstoatzz.io"
+      }
+    ]
+  },
+  {
+    "name": "pdsx",
+    "purpose": "Read and manage AT Protocol records through MCP.",
+    "repo": "https://github.com/zzstoatzz/pdsx",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [],
+    "resources": [],
+    "services": [
+      {
+        "name": "pdsx mcp",
+        "url": "https://pdsx-by-zzstoatzz.fastmcp.app/mcp",
+        "href": "https://pdsx-by-zzstoatzz.fastmcp.app",
+        "check": {
+          "method": "POST",
+          "headers": {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream"
+          },
+          "body": "{\"jsonrpc\":\"2.0\",\"method\":\"initialize\",\"id\":1,\"params\":{\"capabilities\":{},\"clientInfo\":{\"name\":\"evergreen\",\"version\":\"0.1\"},\"protocolVersion\":\"2024-11-05\"}}"
+        }
+      }
+    ]
+  },
+  {
+    "name": "pollz",
+    "purpose": "Create polls and vote through AT Protocol records.",
+    "repo": "https://tangled.org/zzstoatzz.io/pollz",
+    "costs": "https://tangled.org/zzstoatzz.io/pollz/blob/main/COSTS.md",
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "fly:pollz-backend",
+      "cloudflare:pollz-waow-tech"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "pages",
+        "name": "pollz-waow-tech",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "pollz-backend",
+        "state": "deployed",
+        "source": "Fly API"
+      }
+    ],
+    "services": [
+      {
+        "name": "pollz backend",
+        "url": "https://pollz-backend.fly.dev/health",
+        "href": "https://pollz-backend.fly.dev"
+      },
+      {
+        "name": "pollz frontend",
+        "url": "https://pollz.waow.tech",
+        "href": "https://pollz.waow.tech"
+      }
+    ]
+  },
+  {
+    "name": "music-feed",
+    "purpose": "Serve music feeds for Bluesky.",
+    "repo": null,
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [],
+    "resources": [],
+    "services": [
+      {
+        "name": "music-feed",
+        "url": "https://zig-bsky-feed.fly.dev/health",
+        "href": "https://zig-bsky-feed.fly.dev"
+      }
+    ]
+  },
+  {
+    "name": "at-me",
+    "purpose": "An interactive introduction to open social.",
+    "repo": "https://tangled.org/zzstoatzz.io/at-me",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [],
+    "resources": [],
+    "services": [
+      {
+        "name": "at-me",
+        "url": "https://at-me.wisp.place",
+        "href": "https://at-me.wisp.place"
+      }
+    ]
+  },
+  {
+    "name": "status",
+    "purpose": "Publish personal status updates.",
+    "repo": "https://tangled.org/zzstoatzz.io/status",
+    "costs": "https://tangled.org/zzstoatzz.io/status/blob/main/COSTS.md",
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "fly:zzstoatzz-quickslice-status"
+    ],
+    "resources": [
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "zzstoatzz-quickslice-status",
+        "state": "deployed",
+        "source": "Fly API"
+      }
+    ],
+    "services": [
+      {
+        "name": "status",
+        "url": "https://status.zzstoatzz.io",
+        "href": "https://status.zzstoatzz.io"
+      }
+    ]
+  },
+  {
+    "name": "evergreen",
+    "purpose": "Keep the project inventory, health checks, and cost ownership together.",
+    "repo": "https://tangled.org/zzstoatzz.io/evergreen",
+    "costs": "https://tangled.org/zzstoatzz.io/evergreen/blob/main/COSTS.md",
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:evergreen-proxy"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "evergreen-proxy",
+        "state": "present",
+        "source": "Cloudflare API"
+      }
+    ],
+    "services": [
+      {
+        "name": "website",
+        "url": "https://nate.tngl.io/",
+        "href": "https://nate.tngl.io/"
+      }
+    ]
+  },
+  {
+    "name": "mcp-atlas",
+    "purpose": "Discover MCP servers published on AT Protocol.",
+    "repo": "https://tangled.org/zzstoatzz.io/mcp-atlas",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:mcp-atlas"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "mcp-atlas",
+        "state": "present",
+        "source": "Cloudflare API"
+      }
+    ],
+    "services": []
+  },
+  {
+    "name": "pensieve",
+    "purpose": "Find text and images in AT Protocol records.",
+    "repo": "https://tangled.org/zzstoatzz.io/pensieve",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:pensieve"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "pensieve",
+        "state": "present",
+        "source": "Cloudflare API"
+      }
+    ],
+    "services": [
+      {
+        "name": "website",
+        "url": "https://pensieve.waow.tech",
+        "href": "https://pensieve.waow.tech"
+      }
+    ]
+  },
+  {
+    "name": "noti",
+    "purpose": "Manage Bluesky notifications.",
+    "repo": "https://tangled.org/zzstoatzz.io/noti",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:noti",
+      "fly:noti"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "noti",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "databases",
+        "name": "noti",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "noti",
+        "state": "suspended",
+        "source": "Fly API"
+      }
+    ],
+    "services": [
+      {
+        "name": "website",
+        "url": "https://noti.waow.tech",
+        "href": "https://noti.waow.tech"
+      }
+    ]
+  },
+  {
+    "name": "punch",
+    "purpose": "Index Tangled repository pushes.",
+    "repo": "https://tangled.org/zzstoatzz.io/punch",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:punch-indexer",
+      "cloudflare:punch"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "punch-indexer",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "databases",
+        "name": "punch",
+        "state": "present",
+        "source": "Cloudflare API"
+      }
+    ],
+    "services": []
+  },
+  {
+    "name": "bisk",
+    "purpose": "A ball pit of Bluesky posts, sized by likes.",
+    "repo": "https://tangled.org/zzstoatzz.io/bisk",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:bisk"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "pages",
+        "name": "bisk",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "bisk",
+        "state": "present",
+        "source": "Cloudflare API"
+      }
+    ],
+    "services": [
+      {
+        "name": "website",
+        "url": "https://bisk.social",
+        "href": "https://bisk.social"
+      }
+    ]
+  },
+  {
+    "name": "brand",
+    "purpose": "Shared waow.tech brand assets.",
+    "repo": "https://tangled.org/waow.tech/brand",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:brand"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "brand",
+        "state": "present",
+        "source": "Cloudflare API"
+      }
+    ],
+    "services": [
+      {
+        "name": "website",
+        "url": "https://brand.waow.tech",
+        "href": "https://brand.waow.tech"
+      }
+    ]
+  },
+  {
+    "name": "simmer",
+    "purpose": "An iPhone cooking journal with XP and weekly goals.",
+    "repo": "https://tangled.org/zzstoatzz.io/simmer",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:simmer-metadata"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "simmer-metadata",
+        "state": "present",
+        "source": "Cloudflare API"
+      }
+    ],
+    "services": []
+  },
+  {
+    "name": "race38",
+    "purpose": "A live and replayable community vote for Bluesky’s influential posters.",
+    "repo": "https://tangled.org/zzstoatzz.io/race38",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:race38"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "race38",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "race38",
+        "state": "present",
+        "source": "Cloudflare API"
+      }
+    ],
+    "services": [
+      {
+        "name": "website",
+        "url": "https://bsky38.waow.tech",
+        "href": "https://bsky38.waow.tech"
+      }
+    ]
+  },
+  {
+    "name": "after-hours",
+    "purpose": "Browser support for the After Hours project.",
+    "repo": "https://tangled.org/zzstoatzz.io/after-hours",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:after-hours-browser"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "after-hours-browser",
+        "state": "present",
+        "source": "Cloudflare API"
+      }
+    ],
+    "services": []
+  },
+  {
+    "name": "labelz",
+    "purpose": "Serve an AT Protocol labeler.",
+    "repo": "https://tangled.org/zzstoatzz.io/labelz",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "fly:labelz"
+    ],
+    "resources": [
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "labelz",
+        "state": "deployed",
+        "source": "Fly API"
+      }
+    ],
+    "services": []
+  },
+  {
+    "name": "porxie",
+    "purpose": "A paused Fly application; current purpose needs review.",
+    "repo": "https://tangled.org/zzstoatzz.io/porxie",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "fly:zzstoatzz-porxie"
+    ],
+    "resources": [
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "zzstoatzz-porxie",
+        "state": "suspended",
+        "source": "Fly API"
+      }
+    ],
+    "services": []
+  },
+  {
+    "name": "waow.tech",
+    "purpose": "An introduction to the AT Protocol ecosystem.",
+    "repo": "https://tangled.org/zzstoatzz.io/waow.tech",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:waow-tech"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "pages",
+        "name": "waow-tech",
+        "state": "present",
+        "source": "Cloudflare API"
+      }
+    ],
+    "services": [
+      {
+        "name": "website",
+        "url": "https://waow.tech",
+        "href": "https://waow.tech"
+      }
+    ]
+  },
+  {
+    "name": "chicago.at",
+    "purpose": "Community website and event check-in services.",
+    "repo": "https://tangled.org/chicago.at/site",
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "declared",
+    "costKeys": [
+      "cloudflare:chicago-at-checkin",
+      "cloudflare:chicago-at-proxy"
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "chicago-at-checkin",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "chicago-at-proxy",
+        "state": "present",
+        "source": "Cloudflare API"
+      }
+    ],
+    "services": [
+      {
+        "name": "website",
+        "url": "https://chicago.at",
+        "href": "https://chicago.at"
+      }
+    ]
+  },
+  {
+    "name": "Unassigned",
+    "purpose": "Observed resources whose project ownership still needs verification.",
+    "repo": null,
+    "costs": null,
+    "observedAt": "2026-09-09",
+    "ownership": "unknown",
+    "costKeys": [],
+    "services": [
+      {
+        "name": "jetstream",
+        "url": "https://jetstream.waow.tech/",
+        "href": "https://jetstream.waow.tech/"
+      }
+    ],
+    "resources": [
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "lore-site",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "workers",
+        "name": "mikenowack",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "pages",
+        "name": "bsky-highlight-reel",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "pages",
+        "name": "slides",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "relay",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "relay-dev",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "cloudflare",
+        "kind": "buckets",
+        "name": "relay-prd",
+        "state": "present",
+        "source": "Cloudflare API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "bsky-feed",
+        "state": "deployed",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "embed-on-pds",
+        "state": "suspended",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "zig-bsky-feed",
+        "state": "deployed",
+        "source": "Fly API"
+      },
+      {
+        "provider": "fly",
+        "kind": "app",
+        "name": "zz-scratch",
+        "state": "suspended",
+        "source": "Fly API"
+      },
+      {
+        "provider": "hetzner",
+        "kind": "billed resource",
+        "name": "relay-eval",
+        "state": "billed",
+        "source": "Cost snapshot 2026-09-08"
+      },
+      {
+        "provider": "neon",
+        "kind": "billed resource",
+        "name": "follower-weight",
+        "state": "billed",
+        "source": "Cost snapshot 2026-09-08"
+      }
+    ]
+  }
+]

@@ -8,6 +8,7 @@
 		<nav aria-label="main" class="max-w-screen-xl mx-auto flex items-center justify-between px-6 py-4">
 			<a href="/" class="text-xl font-light tracking-widest text-gray-500 lowercase hover:text-gray-300 focus-visible:text-gray-300 transition-colors">hub</a>
 			<div class="flex items-center gap-1">
+                <a href="/projects/" class="px-3 py-2 text-sm text-gray-300 hover:text-white">Projects</a>
 				<a
 					href="https://prefect-server.waow.tech"
 					target="_blank"

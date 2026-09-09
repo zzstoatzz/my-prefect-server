@@ -67,7 +67,7 @@ class NeonConnector:
                     items.append(
                         LineItem(
                             provider=PROVIDER,
-                            project=project_for(name),
+                            project=project_for(name, "neon"),
                             service=name,
                             amount=per + (1 if i < remainder else 0),
                             estimated=True,

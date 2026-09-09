@@ -62,25 +62,13 @@ definitions:
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
 
 deployments:
-  - name: evergreen-health
-    tags: [watch]
-    entrypoint: flows/evergreen_health.py:evergreen_health
-    work_pool: *home
-    schedules:
-      - cron: "11,26,41,56 * * * *"
-        timezone: UTC
-        active: true
-    concurrency_limit:
-      limit: 1
-      collision_strategy: CANCEL_NEW
-
   - name: fleet-health
     tags: [watch]
     entrypoint: flows/fleet_health.py:fleet_health
     # curl-weight HTTP checks only (runs on the home box — no websockets or
     # firehose sampling from a residential connection). deep check for
     # stream.waow.tech (tail advance, seal cost, compaction lag), shallow
-    # 200-checks for the rest of the fleet. unhealthy => failed flow run.
+    # shared inventory checks; findings => Degraded plus fleet-health.unhealthy.
     work_pool:
       name: home-pool
       job_variables:
@@ -88,6 +76,9 @@ deployments:
           uv run
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
+          LOGFIRE_TOKEN: "{{ prefect.blocks.secret.logfire-server-write-token }}"
     schedules:
       # offset from the top of the hour so it never samples stream during the
       # eval's :06/:36 windows or alongside the hourly ingest spin-up

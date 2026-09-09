@@ -78,6 +78,7 @@ export interface SpendSummary {
 // infra costs — io.zzstoatzz.cost.snapshot, read from the public PDS.
 // all amounts are integer USD cents.
 export interface CostRollup {
+	repo?: string | null;
 	key: string;
 	amount: number;
 	estimated: boolean;

@@ -19,21 +19,6 @@
 
 	// ── palette + repo links ────────────────────────────────────────────────
 	const PALETTE = ['#22d3ee', '#a78bfa', '#34d399', '#fbbf24', '#f472b6', '#60a5fa', '#fb923c', '#4ade80', '#e879f9', '#2dd4bf', '#f87171', '#94a3b8'];
-	const REPO = new Map<string, string>([
-		['relays', 'relay'],
-		['plyr.fm', 'plyr.fm'],
-		['typeahead', 'typeahead'],
-		['prefect', 'my-prefect-server'],
-		['standard.site', 'pub-search'],
-		['trending', 'coral'],
-		['bufo', 'find-bufo'],
-		['labelz', 'labelz'],
-		['phi', 'bot']
-	]);
-	const repoUrl = (key: string) => {
-		const repo = REPO.get(key);
-		return repo ? `https://tangled.org/zzstoatzz.io/${repo}` : null;
-	};
 
 	// LLM flows are Prefect flows defined in this repo's flows/ dir; link each to
 	// its source. Most map name→name.py; a few have differently-named files.
@@ -111,7 +96,7 @@
 		<span class="inline-block text-gray-500 transition-transform" class:rotate-90={open}>▶</span>
 		<span class="text-sm font-medium text-gray-200">costs</span>
 		<span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
-			<span class="text-gray-400">infra <span class="font-medium text-gray-200 tabular-nums">{cents(costs?.total ?? 0)}</span>/mo</span>
+			<span class="text-gray-400">infra <span class="font-medium text-gray-200 tabular-nums">{costs ? cents(costs.total) : 'unknown'}</span>/mo</span>
 			<span aria-hidden="true">·</span>
 			<span class="text-gray-400">llm <span class="font-medium text-gray-200 tabular-nums">{dollars(llmTotal)}</span> ({win})</span>
 		</span>
@@ -125,7 +110,7 @@
 				<div class="flex flex-wrap items-center justify-between gap-2">
 					<div>
 						<p class="text-xs font-medium uppercase tracking-wider text-gray-400">infrastructure · monthly</p>
-						<p class="mt-1 text-2xl font-semibold leading-none text-gray-50 tabular-nums">{cents(costs?.total ?? 0)}</p>
+						<p class="mt-1 text-2xl font-semibold leading-none text-gray-50 tabular-nums">{costs ? cents(costs.total) : 'unknown'}</p>
 						<p class="mt-1 text-[11px] text-cyan-300/90">estimated{anyEstimated ? ' · ~ partly estimated' : ''}</p>
 					</div>
 					<div class="flex rounded-md border border-gray-800 bg-gray-950/70 p-0.5">
@@ -139,7 +124,7 @@
 
 				<div class="mt-3 space-y-2">
 					{#each rows as r, i (r.key)}
-						{@const url = view === 'project' ? repoUrl(r.key) : null}
+						{@const url = view === 'project' ? r.repo : null}
 						<div>
 							<div class="flex items-baseline justify-between gap-3 text-sm">
 								<span class="truncate">

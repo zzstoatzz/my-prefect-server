@@ -2,7 +2,7 @@
 
 generated from `prefect.yaml` by `scripts/deployments_inventory.py`; do not edit by hand. `just inventory` regenerates it and CI fails on drift.
 
-41 deployments, all on the `home-pool` process worker. a cadence of `after x` is an automation that fires when deployment x completes; `manual` means the deployment is started by the API, an automation outside `prefect.yaml`, or a person.
+40 deployments, all on the `home-pool` process worker. a cadence of `after x` is an automation that fires when deployment x completes; `manual` means the deployment is started by the API, an automation outside `prefect.yaml`, or a person.
 
 ## pipeline
 
@@ -70,7 +70,6 @@ health, traffic, and cost reporting
 
 | deployment | cadence | purpose | entrypoint |
 |---|---|---|---|
-| `evergreen-health` | `11,26,41,56 * * * *` | Check Evergreen's shared inventory; terminal failures reach phi via Logfire | [`evergreen_health`](flows/evergreen_health.py) |
 | `fleet-health` | `3,18,33,48 * * * *` | fleet health — one deep check for stream, shallow checks for everything else | [`fleet_health`](flows/fleet_health.py) |
 | `mcp-fleet-health` | `12 * * * *` | mcp fleet health — connect, discover, and route across the public MCP servers | [`mcp_fleet_health`](flows/mcp_fleet_health.py) |
 | `diagnostics` | `37 * * * *` | diagnostic flow — liveness canary plus host resource telemetry | [`diagnostics`](flows/diagnostics.py) |

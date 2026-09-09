@@ -130,7 +130,7 @@ def _r2_line_items(stored_by_bucket: dict[str, int]) -> list[LineItem]:
         items.append(
             LineItem(
                 provider=PROVIDER,
-                project=project_for(bucket),
+                project=project_for(bucket, "cloudflare"),
                 service=f"r2:{bucket}",
                 amount=cents,
                 estimated=True,
@@ -177,11 +177,11 @@ def _fixed_line_items_from_json(raw: str) -> list[LineItem]:
     for service, spec in data.items():
         if isinstance(spec, int | float):
             amount = float(spec)
-            project = project_for(service)
+            project = project_for(service, "cloudflare")
             note = "fixed Cloudflare cost (CLOUDFLARE_FIXED_COSTS_JSON)"
         elif isinstance(spec, dict):
             amount = _amount_from_spec(service, spec)
-            project = str(spec.get("project") or project_for(service))
+            project = str(spec.get("project") or project_for(service, "cloudflare"))
             note = str(spec.get("note") or "fixed Cloudflare cost (CLOUDFLARE_FIXED_COSTS_JSON)")
         else:
             raise RuntimeError(f"Cloudflare fixed cost {service!r} must be a number or object")

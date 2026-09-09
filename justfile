@@ -406,7 +406,7 @@ init-analytics:
 
 # build the hub container image (linux/amd64 for hetzner k3s node)
 build-web:
-    docker build --platform linux/amd64 -t atcr.io/zzstoatzz.io/hub:latest web/
+    docker build --platform linux/amd64 -t atcr.io/zzstoatzz.io/hub:latest -f web/Dockerfile .
 
 # build and push the hub image
 push-web: build-web
@@ -446,7 +446,7 @@ publish-web-remote:
     IMAGE="atcr.io/zzstoatzz.io/hub:${TAG}"
 
     echo "==> building hub container image (${IMAGE})"
-    buildah bud -t "$IMAGE" -f web/Dockerfile web
+    buildah bud -t "$IMAGE" -f web/Dockerfile .
 
     echo "==> importing into k3s containerd"
     buildah push "$IMAGE" docker-archive:/tmp/hub.tar:"$IMAGE"

@@ -12,21 +12,18 @@ from mps.costs.projects import UNATTRIBUTED, project_for
 from mps.costs.types import LineItem, Period, Snapshot
 
 
-def test_project_mapping_longest_match_wins():
-    # specific name beats the generic "plyr" substring
-    assert project_for("plyr-transcoder") == "plyr.fm"
-    assert project_for("plyr") == "plyr.fm"
-    assert project_for("audio-prod") == "plyr.fm"
-    assert project_for("audio-private-staging") == "plyr.fm"
-    assert project_for("images-dev") == "plyr.fm"
-    assert project_for("plyr-stats") == "plyr.fm"
-    assert project_for("plyr.fm") == "plyr.fm"
-    assert project_for("relay.waow") == "relays"  # not plyr's relay-api
-    assert project_for("relay-api-staging") == "plyr.fm"
-    assert project_for("leaflet-search-tap") == "standard.site"
-    assert project_for("coral") == "trending"
-    assert project_for("bufo-bot") == "bufo"
-    assert project_for("something-random") == UNATTRIBUTED
+def test_project_mapping_uses_declared_provider_resource_boundaries():
+    assert project_for("plyr-transcoder", "fly") == "plyr.fm"
+    assert project_for("relay-api:compute", "fly") == "plyr.fm"
+    assert project_for("relay-api-staging:compute", "fly") == "plyr.fm"
+    assert project_for("audio-private-staging", "cloudflare") == "plyr.fm"
+    assert project_for("zds-pds:compute", "fly") == "zds"
+    assert project_for("stream-cx43", "hetzner") == "stream"
+    assert project_for("coral", "fly") == "coral"
+    assert project_for("bufo-bot", "fly") == "find-bufo"
+    assert project_for("relay-api-new-experiment", "fly") == UNATTRIBUTED
+    assert project_for("relay-api", "neon") == UNATTRIBUTED
+    assert project_for("something-random", "fly") == UNATTRIBUTED
 
 
 def _snapshot(items: list[LineItem]) -> Snapshot:

@@ -38,3 +38,31 @@ def test_all_healthy_yields_nothing_to_raise_or_page():
     _, unhealthy, broken = summarize([CheckResult("hub", True, "HTTP 200")])
     assert unhealthy == []
     assert broken == []
+
+
+def test_network_retries_finish_before_endpoint_failure_is_classified():
+    import httpx
+    from mps.inventory import EndpointCheck
+
+    from flows.fleet_health import check_endpoint, endpoint_finding
+
+    endpoint = EndpointCheck(name="api", url="https://example.org", href="https://example.org")
+    request = httpx.Request("GET", endpoint.url)
+    error = httpx.HTTPStatusError(
+        "unavailable", request=request, response=httpx.Response(503, request=request)
+    )
+    finding = endpoint_finding("example", endpoint, error)
+    assert check_endpoint.retries == 3
+    assert not finding.healthy
+    assert finding.status == 503
+    assert finding.project == "example"
+    assert finding.kind == "endpoint"
+
+
+def test_shared_inventory_has_unique_endpoints_and_new_projects():
+    from mps.inventory import load_projects
+
+    projects = load_projects()
+    assert {"rally", "doodl", "stream", "zds", "birds.place"} <= {p.name for p in projects}
+    urls = [s.url for p in projects for s in p.services]
+    assert len(set(urls)) == len(urls)

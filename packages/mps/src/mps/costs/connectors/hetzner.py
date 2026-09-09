@@ -134,7 +134,7 @@ class HetznerConnector:
                 items.append(
                     LineItem(
                         provider=PROVIDER,
-                        project=project_for(name),
+                        project=project_for(name, "hetzner"),
                         service=name,
                         amount=_monthly_cents(server),
                         estimated=False,
@@ -153,7 +153,7 @@ class HetznerConnector:
                 seen_volumes.add(vid)
                 vname = volume.get("name", "unknown")
                 size_gb = int(volume.get("size", 0))
-                project = project_for(vname)
+                project = project_for(vname, "hetzner")
                 if project == "unattributed" and volume.get("server") in server_names:
                     project = project_for(server_names[volume["server"]])
                 items.append(

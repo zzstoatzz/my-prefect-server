@@ -25,16 +25,23 @@ Failure semantics: a failed flow run means the sweep itself could not run
 markdown artifact, and emitted as a `fleet-health.unhealthy` event for
 automations to page on.
 
-Everything is stdlib; deps here are installed from git on every flow run.
+Inventory is packaged with mps; reports use Prefect artifacts already stored by the server.
 """
 
 import time
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 
+import httpx
+import logfire
+from mps.inventory import EndpointCheck, load_projects
+from mps.observability import configure_logfire
 from prefect import flow, get_run_logger, task
-from prefect.artifacts import create_markdown_artifact
+from prefect.artifacts import create_markdown_artifact, create_table_artifact
+from prefect.cache_policies import NONE
 from prefect.events import emit_event
+from prefect.states import Completed
 
 TIMEOUT_S = 10
 TAIL_WINDOW_S = 20
@@ -52,23 +59,17 @@ SEAL_MAX_S = 10.0
 # crash-loop keeps failing the shallow site check regardless.
 STARTUP_GRACE_S = 6 * 60
 
-FLEET: list[tuple[str, str]] = [
-    # (name, url) — a 200 within TIMEOUT_S (one retry) is healthy
-    ("stream site", "https://stream.waow.tech/"),
-    ("relay-eval", "https://relay-eval.waow.tech/api/latest"),
-    ("jetstream.waow.tech", "https://jetstream.waow.tech/"),
-    ("hub", "https://hub.waow.tech/api/costs.json"),
-    ("coral", "https://coral.fly.dev/"),
-    ("plyr.fm", "https://plyr.fm/"),
-    ("prefect server", "https://prefect-server.waow.tech/api/health"),
-]
-
 
 @dataclass
 class CheckResult:
     name: str
     healthy: bool
     detail: str
+    project: str = "stream"
+    url: str | None = None
+    status: int = 0
+    ms: float = 0
+    kind: str = "deep"
 
 
 def _get(url: str) -> tuple[int, bytes]:
@@ -124,7 +125,7 @@ def _metric(metrics: str, name: str) -> float | None:
     return None
 
 
-@task(retries=1, retry_delay_seconds=15)
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1, cache_policy=NONE)
 def check_stream_deep() -> CheckResult:
     """The checks unique to stream: tail advance, seal cost, compaction age."""
     logger = get_run_logger()
@@ -183,13 +184,47 @@ def check_stream_deep() -> CheckResult:
     return CheckResult("stream (deep)", True, detail)
 
 
-@task(retries=1, retry_delay_seconds=15)
-def check_url(name: str, url: str) -> CheckResult:
-    try:
-        st, _ = _get(url)
-    except Exception as exc:
-        return CheckResult(name, False, f"{type(exc).__name__}: {exc}")
-    return CheckResult(name, st == 200, f"HTTP {st}")
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1, cache_policy=NONE)
+def check_endpoint(project: str, endpoint: EndpointCheck) -> CheckResult:
+    started = time.monotonic()
+    options = endpoint.check
+    with (
+        httpx.Client(timeout=TIMEOUT_S, follow_redirects=True) as client,
+        client.stream(
+            options.method,
+            endpoint.url,
+            headers=options.headers,
+            content=options.body,
+        ) as response,
+    ):
+        response.raise_for_status()
+        return CheckResult(
+            endpoint.name,
+            True,
+            f"HTTP {response.status_code}",
+            project,
+            endpoint.url,
+            response.status_code,
+            (time.monotonic() - started) * 1000,
+            "endpoint",
+        )
+
+
+def endpoint_finding(project: str, endpoint: EndpointCheck, result) -> CheckResult:
+    """Classify a dead endpoint after the task has exhausted its network retries."""
+    if isinstance(result, CheckResult):
+        return result
+    status = result.response.status_code if isinstance(result, httpx.HTTPStatusError) else 0
+    return CheckResult(
+        endpoint.name,
+        False,
+        f"{type(result).__name__} after retries",
+        project,
+        endpoint.url,
+        status,
+        0,
+        "endpoint",
+    )
 
 
 def summarize(results: list) -> tuple[list[str], list[str], list[str]]:
@@ -211,13 +246,31 @@ def summarize(results: list) -> tuple[list[str], list[str], list[str]]:
 
 
 @flow(log_prints=True)
-def fleet_health() -> None:
+def fleet_health():
     logger = get_run_logger()
+    configure_logfire("prefect-flow-fleet-health")
 
     deep_future = check_stream_deep.submit()
-    shallow_futures = [check_url.submit(name, url) for name, url in FLEET]
-    results: list[CheckResult] = [deep_future.result(raise_on_failure=False)]
-    results += [f.result(raise_on_failure=False) for f in shallow_futures]
+    checks = [(p.name, endpoint) for p in load_projects() for endpoint in p.services]
+    futures = [check_endpoint.submit(project, endpoint) for project, endpoint in checks]
+    deep_result = deep_future.result(raise_on_failure=False)
+    results = [deep_result]
+    results += [
+        endpoint_finding(project, endpoint, future.result(raise_on_failure=False))
+        for (project, endpoint), future in zip(checks, futures, strict=True)
+    ]
+    checked_at = datetime.now(UTC).isoformat()
+    # A table artifact is the existing persistence path. Hub reads this report;
+    # browsing the dashboard never probes the fleet again.
+    create_table_artifact(
+        key="fleet-health-status",
+        table=[
+            {**asdict(result), "checkedAt": checked_at}
+            for result in results
+            if isinstance(result, CheckResult)
+        ],
+        description="Endpoint availability and Stream deep checks for Hub",
+    )
 
     rows, unhealthy, broken_checks = summarize(results)
 
@@ -240,3 +293,8 @@ def fleet_health() -> None:
         raise RuntimeError(
             f"{len(broken_checks)} check(s) could not run: " + " | ".join(broken_checks)
         )
+
+    if unhealthy:
+        logfire.warn("fleet health findings: {findings}", findings=" | ".join(unhealthy))
+        logfire.force_flush()
+        return Completed(name="Degraded", message=" | ".join(unhealthy))

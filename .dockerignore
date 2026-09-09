@@ -1,0 +1,12 @@
+*
+!web/
+!web/**
+!packages/
+!packages/mps/
+!packages/mps/src/
+!packages/mps/src/mps/
+!packages/mps/src/mps/projects.json
+web/node_modules/
+web/.svelte-kit/
+web/build/
+web/.env*

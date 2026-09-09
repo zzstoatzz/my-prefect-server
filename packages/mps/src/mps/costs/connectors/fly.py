@@ -219,7 +219,7 @@ class FlyConnector:
                 items.append(
                     LineItem(
                         provider=PROVIDER,
-                        project=project_for(app),
+                        project=project_for(app, "fly"),
                         service=f"{app}:compute",
                         amount=compute_cents,
                         estimated=True,
@@ -243,7 +243,7 @@ class FlyConnector:
                 items.append(
                     LineItem(
                         provider=PROVIDER,
-                        project=project_for(app),
+                        project=project_for(app, "fly"),
                         service=f"{app}:volumes",
                         amount=_volume_monthly_cents(billable_volumes),
                         estimated=True,
@@ -257,7 +257,7 @@ class FlyConnector:
                 items.append(
                     LineItem(
                         provider=PROVIDER,
-                        project=project_for(app),
+                        project=project_for(app, "fly"),
                         service=f"{app}:snapshots",
                         amount=cents,
                         estimated=True,
