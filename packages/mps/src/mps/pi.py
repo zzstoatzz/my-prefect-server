@@ -1,20 +1,7 @@
-"""run pi (the coding agent) as a subprocess, with least privilege.
-
-two invariants matter here and are easy to lose by accident:
-
-- pi never inherits the worker environment. the worker's systemd unit carries
-  PREFECT_API_AUTH_STRING, and deployments inject provider secrets; a
-  prompt-injected agent that inherits them can read the orchestrator
-  credential out of its own env. `minimal_env` builds the child env from
-  scratch instead.
-- pi never holds a write credential. it edits files in a scratch clone; the
-  calling flow (trusted code an injected prompt cannot rewrite) is what
-  publishes the result.
-"""
+"""Trusted prompt screening and the single isolated Pi execution entrypoint."""
 
 import os
-import shutil
-import subprocess
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
@@ -100,47 +87,32 @@ def run_pi(
     prompt: str,
     *,
     cwd: str,
-    provider: str,
+    provider: str = "aperture",
     model: str | None = None,
     thinking: str = "medium",
     tool_mode: ToolMode = "read-only",
-    env: dict[str, str] | None = None,
     timeout_seconds: int = 1500,
     skills: list[str] | None = None,
 ) -> str:
-    """run `pi -p <prompt>` in cwd and return its final output.
+    """Run Pi inside the prepared Sprite boundary and return its final output.
 
-    `skills` are paths to skill files or directories (`pi --skill`) — the way
-    to give pi the same conventions the operator's own tooling uses, from the
-    same source, rather than paraphrasing them into prompts.
+    Inference credentials remain with the trusted bridge. Callers cannot supply
+    an agent environment or select a provider outside the run grant.
     """
-    if shutil.which("pi") is None:
-        raise RuntimeError(
-            "pi is not installed on this worker — npm install -g @earendil-works/pi-coding-agent"
-        )
+    from mps.pi_execution import run_isolated_pi
 
-    cmd = ["pi", "--print", "--no-session", "--provider", provider]
-    if model:
-        cmd += ["--model", model]
-    for skill in skills or []:
-        cmd += ["--skill", skill]
-    cmd += ["--thinking", thinking, *TOOL_ARGS[tool_mode]]
-    cmd.append(prompt)
-
-    print(f"running: {' '.join(cmd[:-1])} <prompt: {len(prompt)} chars> in {cwd}")
-    # pi -p also accepts prompt content piped on stdin and waits for EOF, so an
-    # inherited open stdin (e.g. under the systemd worker) hangs it
-    result = subprocess.run(  # noqa: PLW1510 — returncode is checked below
-        cmd,
-        capture_output=True,
-        text=True,
-        cwd=cwd,
-        timeout=timeout_seconds,
-        stdin=subprocess.DEVNULL,
-        env=env or minimal_env(),
+    if provider != "aperture" or model not in (None, "openai/gpt-5.6-luna"):
+        raise ValueError("Phi uses Aperture model openai/gpt-5.6-luna")
+    if tool_mode not in TOOL_ARGS:
+        raise ValueError(f"Unknown Pi tool mode: {tool_mode}")
+    result = run_isolated_pi(
+        prompt,
+        workspace=Path(cwd),
+        tool_args=TOOL_ARGS[tool_mode],
+        thinking=thinking,
+        timeout_seconds=timeout_seconds,
+        skills=skills or [],
     )
-    if result.stdout:
-        print(result.stdout)
-    if result.returncode != 0:
-        raise RuntimeError(f"pi exited {result.returncode}: {result.stderr[-2000:]}")
-    return result.stdout
+    if result:
+        print(result)
+    return result

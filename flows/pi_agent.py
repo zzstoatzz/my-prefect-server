@@ -13,6 +13,7 @@ from typing import Literal
 from mps.blocks import secret_sync
 from mps.pi import TOOL_ARGS, minimal_env, run_pi, screen_prompt
 from prefect import flow
+from prefect.artifacts import create_markdown_artifact
 from prefect.flow_runs import pause_flow_run
 from pydantic import BaseModel, Field
 
@@ -46,14 +47,14 @@ class Workspace(BaseModel):
 class Agent(BaseModel):
     """which brain pi gets, and which hands."""
 
-    provider: Literal["anthropic"] = Field(
-        default="anthropic",
-        description="only anthropic is authed on the worker (via secret block)",
+    provider: Literal["aperture"] = Field(
+        default="aperture",
+        description="inference uses the run-scoped Aperture bridge",
         json_schema_extra={"position": 0},
     )
-    model: str | None = Field(
+    model: Literal["openai/gpt-5.6-luna"] | None = Field(
         default=None,
-        description="model id (e.g. claude-haiku-4-5-20251001); empty = provider default",
+        description="Aperture model; empty uses openai/gpt-5.6-luna",
         json_schema_extra={"position": 1},
     )
     thinking: THINKING = Field(default="medium", json_schema_extra={"position": 2})
@@ -61,7 +62,7 @@ class Agent(BaseModel):
         default="read-only",
         description=(
             "full = read/bash/edit/write (pi can modify the workspace and run "
-            "commands as the worker user); read-only = read,grep,find,ls; "
+            "commands inside the isolated workspace); read-only = read,grep,find,ls; "
             "none = pure text"
         ),
         json_schema_extra={"position": 3},
@@ -77,8 +78,8 @@ def pi_agent(
 ) -> str:
     """run `pi -p <prompt>` in the workspace and return its final output.
 
-    pi resolves credentials from provider env vars (ANTHROPIC_API_KEY is
-    injected from a secret block by the deployment).
+    Pi reaches Aperture through the isolated runtime bridge. The trusted
+    prompt judge uses its separate Anthropic secret block.
     """
     anthropic_key = secret_sync("anthropic-api-key")
     screen_prompt(prompt, agent.tool_mode, anthropic_key)
@@ -100,16 +101,19 @@ def pi_agent(
                 env=env,
             )
 
-        return run_pi(
+        output = run_pi(
             prompt,
             cwd=cwd,
             provider=agent.provider,
             model=agent.model,
             thinking=agent.thinking,
             tool_mode=agent.tool_mode,
-            env=env,
             timeout_seconds=timeout_seconds,
         )
+        create_markdown_artifact(
+            key="pi-agent-output", markdown=output, description="Pi workflow result"
+        )
+        return output
 
 
 if __name__ == "__main__":

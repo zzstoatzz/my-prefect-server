@@ -1,0 +1,17 @@
+[Unit]
+Description=Phi per-run inference access to Aperture
+After=network.target
+
+[Service]
+WorkingDirectory=/home/stoat/phi-inference
+Environment=PYTHONPATH=/home/stoat/phi-inference/src
+EnvironmentFile=/home/stoat/.config/prod-worker/env
+ExecStart=/usr/bin/python3 -m mps.inference_service --database /home/stoat/phi-inference/state/grants.sqlite --upstream http://100.99.202.12/v1/chat/completions --workflow-deployment c95a7dd0-486d-4f07-b885-bd991f38cb75
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+MemoryMax=256M
+
+[Install]
+WantedBy=default.target

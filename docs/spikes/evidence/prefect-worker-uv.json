@@ -1,0 +1,10 @@
+{
+  "flow_run_id": "8e7ffc9a-563c-4867-8b68-f873c956ddf5",
+  "state": "Completed",
+  "exit_code": 0,
+  "uv_version": "0.12.12",
+  "python_version": "3.13.7",
+  "output": "phi-worker-ok",
+  "sprite_deleted": true,
+  "provider_cost_usd": null
+}

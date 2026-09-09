@@ -531,7 +531,7 @@ def parse_verdict(text: str) -> str | None:
     return m.group(1).lower() if m else None
 
 
-def review_verdict(pull_uri: str, reviewer_did: str) -> dict[str, str] | None:
+def review_verdict(pull_uri: str, reviewer_did: str, *, round_index: int) -> dict[str, str] | None:
     """the reviewer's latest VERDICT comment on this pull, or None.
 
     comments are sh.tangled.feed.comment records in the reviewer's own repo,
@@ -553,6 +553,8 @@ def review_verdict(pull_uri: str, reviewer_did: str) -> dict[str, str] | None:
         for item in page.get("records") or []:
             value = item.get("value") or {}
             if (value.get("subject") or {}).get("uri") != pull_uri:
+                continue
+            if value.get("pullRoundIdx") != round_index:
                 continue
             body = value.get("body")
             text = body.get("text", "") if isinstance(body, dict) else str(body or "")
