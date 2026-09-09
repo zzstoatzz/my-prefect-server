@@ -75,7 +75,7 @@ function projectRow(p) {
       ? `<ul class="checks">${p.services
           .map((s) => {
             const r = results.get(s.url);
-            return `<li><span>${link(s.href || s.url, s.name)}</span><span class="${monitorError || !r ? "muted" : r.ok ? "good" : "bad"}">${monitorError || !r ? "Unknown" : `HTTP ${r.status || "timeout"} · ${r.ms} ms`}</span></li>`;
+            return `<li><span>${link(s.href || s.url, s.name)}</span><span class="${monitorError || !r ? "muted" : r.ok ? "good" : "bad"}">${monitorError || !r ? "Unknown" : `HTTP ${r.status || "timeout"} · ${Math.round(r.ms)} ms`}</span></li>`;
           })
           .join(
             "",
