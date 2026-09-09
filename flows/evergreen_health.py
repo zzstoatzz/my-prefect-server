@@ -18,7 +18,7 @@ class Service(BaseModel):
 
 class Project(BaseModel):
     name: str = Field(min_length=1)
-    services: list[Service] = Field(min_length=1)
+    services: list[Service]
 
 
 class ServiceResult(Service):

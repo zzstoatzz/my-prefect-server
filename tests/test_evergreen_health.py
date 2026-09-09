@@ -78,3 +78,8 @@ def test_malformed_results_rejected(changes):
 def test_renamed_service_is_inventory_drift():
     with pytest.raises(ValueError, match="complete published inventory"):
         validate_status(PROJECTS, report(name="different"), NOW)
+
+
+def test_unmonitored_projects_are_allowed_without_claiming_health():
+    projects = [*PROJECTS, Project(name="unmonitored", services=[])]
+    assert len(validate_status(projects, report(), NOW)) == 1
