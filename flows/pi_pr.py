@@ -96,7 +96,6 @@ def pi_pr(
             # pi must edit files and run tests here; it still holds no credential,
             # and everything it produces is reviewed as a patch before merge
             tool_mode="full",
-            env=env,
         )
 
         patch = build_patch(cwd, base, title, "gardener", email="gardener@zat.dev")

@@ -45,7 +45,8 @@ async def test_watch_dedupes_handled_comments(monkeypatch):
     async def fake_drain(cursor):
         return [watch_tangled_pulls.relevant_comment(feed_event())], 123
 
-    async def fake_run_deployment(name, parameters, timeout):
+    async def fake_run_deployment(name, parameters, timeout, idempotency_key):
+        assert idempotency_key == f"autofix-revise:{parameters['comment_uri']}"
         started.append(parameters)
 
         class R:
@@ -99,7 +100,8 @@ async def test_watch_survives_stream_failure(monkeypatch):
 
     started = []
 
-    async def fake_run_deployment(name, parameters, timeout):
+    async def fake_run_deployment(name, parameters, timeout, idempotency_key):
+        assert idempotency_key == f"autofix-revise:{parameters['comment_uri']}"
         started.append(parameters)
 
         class R:
@@ -163,3 +165,15 @@ def test_new_round_patch_is_self_contained(tmp_path):
         capture_output=True,
     )
     assert (clean / "a").read_text() == "round one\nrevised\n"
+
+
+def test_only_phi_change_requests_start_revisions():
+    event = feed_event()
+    event["did"] = autofix_revise.PHI_DID
+    for verdict in ("approve", "escalate"):
+        event["commit"]["record"]["body"]["text"] = f"VERDICT: {verdict}"
+        assert watch_tangled_pulls.relevant_comment(event) is None
+    event["commit"]["record"]["body"]["text"] = "VERDICT: request-changes"
+    assert watch_tangled_pulls.relevant_comment(event)["pull"] == PULL
+    event["did"] = "did:plc:stranger"
+    assert watch_tangled_pulls.relevant_comment(event) is None

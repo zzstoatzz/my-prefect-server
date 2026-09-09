@@ -1,0 +1,18 @@
+{
+  "flow_run_id": "8fa2e1bc-94a6-468b-98b6-d24dfdfc5e65",
+  "deployment_id": "c95a7dd0-486d-4f07-b885-bd991f38cb75",
+  "state": "Completed",
+  "answer_in_logs": true,
+  "answer_artifact_ids": [
+    "f9d9f0e7-909c-447b-9311-3d3588771dcc"
+  ],
+  "answer_artifact_matches": true,
+  "package_release": {
+    "sha256": "2284e4287971d902b1177894d620a00bc83369a09bb075b4dd3358b0fc7f87c2",
+    "worker_path": "/home/stoat/phi-spike-worker/releases/2284e4287971d902b1177894d620a00bc83369a09bb075b4dd3358b0fc7f87c2/mps-0.1.0-py3-none-any.whl",
+    "flow_entrypoint": "flows.pi_agent.pi_agent"
+  },
+  "provider_cost_usd": null,
+  "sprite_deleted": true,
+  "grant_revoked": true
+}

@@ -250,7 +250,6 @@ def propose_fix(diagnosis: str, brief: str, anthropic_key: str, dep_name: str) -
     screen_prompt(prompt, "full", anthropic_key)
     with TemporaryDirectory(prefix="autofix-fix-") as workdir:
         cwd = os.path.join(workdir, "repo")
-        env = minimal_env(ANTHROPIC_API_KEY=anthropic_key)
         subprocess.run(
             ["git", "clone", "--depth", "1", REPO_URL, cwd],
             check=True,
@@ -269,10 +268,9 @@ def propose_fix(diagnosis: str, brief: str, anthropic_key: str, dep_name: str) -
         output = run_pi(
             prompt,
             cwd=cwd,
-            provider="anthropic",
+            provider="aperture",
             thinking="medium",
             tool_mode="full",
-            env=env,
             skills=skills,
         ).strip()
         parsed = trailers(output, ("TITLE", "NOTE", "NO-CHANGE"))
@@ -337,10 +335,9 @@ def autofix(
             diagnosis = run_pi(
                 prompt,
                 cwd=cwd,
-                provider="anthropic",
+                provider="aperture",
                 thinking="medium",
                 tool_mode="read-only",
-                env=minimal_env(ANTHROPIC_API_KEY=anthropic_key),
             ).strip()
 
         summary, _ = split_summary(diagnosis)

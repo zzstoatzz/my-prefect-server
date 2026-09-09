@@ -1,0 +1,5 @@
+{
+  "sha256": "2284e4287971d902b1177894d620a00bc83369a09bb075b4dd3358b0fc7f87c2",
+  "worker_path": "/home/stoat/phi-spike-worker/releases/2284e4287971d902b1177894d620a00bc83369a09bb075b4dd3358b0fc7f87c2/mps-0.1.0-py3-none-any.whl",
+  "flow_entrypoint": "flows.pi_agent.pi_agent"
+}

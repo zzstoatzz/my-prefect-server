@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "prefect-sprites"
+version = "0.1.0"
+description = "Run Prefect deployments on Fly Sprites"
+requires-python = ">=3.11"
+dependencies = ["prefect>=3.7.7,<4", "sprites-py @ git+https://github.com/superfly/sprites-py@5551e857c902dfa29a56c01207cc53f37fe14796"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[project.entry-points."prefect.collections"]
+prefect_sprites = "prefect_sprites"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/prefect_sprites"]

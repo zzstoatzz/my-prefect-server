@@ -24,3 +24,14 @@ dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mps"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"../../flows/pi_agent.py" = "flows/pi_agent.py"
+"../../flows/pi_pr.py" = "flows/pi_pr.py"
+"../../flows/autofix.py" = "flows/autofix.py"
+"../../flows/autofix_revise.py" = "flows/autofix_revise.py"
+"../../flows/merge_approved.py" = "flows/merge_approved.py"
+"../../flows/watch_tangled_pulls.py" = "flows/watch_tangled_pulls.py"

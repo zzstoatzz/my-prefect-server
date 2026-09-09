@@ -26,6 +26,8 @@ it already asked.
 """
 
 import argparse
+import hashlib
+import json
 import os
 import subprocess
 import tempfile
@@ -107,11 +109,11 @@ def awaiting_summary(
 
 
 @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
-def wait_for_verdict(pull: str, wait_seconds: int) -> dict[str, str] | None:
+def wait_for_verdict(pull: str, wait_seconds: int, round_index: int) -> dict[str, str] | None:
     """poll phi's PDS for her VERDICT comment; None if she never speaks."""
     deadline = time.monotonic() + wait_seconds
     while True:
-        found = review_verdict(pull, PHI_DID)
+        found = review_verdict(pull, PHI_DID, round_index=round_index)
         if found or time.monotonic() >= deadline:
             return found
         time.sleep(30)
@@ -234,14 +236,21 @@ def record_merged(pull: str) -> str:
     return mark_pull_merged(pull, creds["handle"], creds["password"])
 
 
-def _already_asked() -> bool:
+def _already_asked(pause_key: str) -> bool:
     """true on the pass after Resume: the pause key is on the run's policy."""
     run_id = run_context.id
     if not run_id:
         return False
     with get_client(sync_client=True) as client:
         fr = client.read_flow_run(run_id)
-    return PAUSE_KEY in (fr.empirical_policy.pause_keys or set())
+    return pause_key in (fr.empirical_policy.pause_keys or set())
+
+
+def approval_key(details: dict) -> str:
+    """Bind approval to the target and round as well as the actual patch."""
+    identity = [details["target_repo_did"], details["branch"], details["rounds"], details["patch"]]
+    digest = hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode()).hexdigest()
+    return f"{PAUSE_KEY}:{digest}"
 
 
 @flow(name="merge-approved", log_prints=True, timeout_seconds=3600)
@@ -249,19 +258,26 @@ def merge_approved(pull: str, verdict_wait_seconds: int = 1800) -> State:
     if not pull.startswith(PULL_PREFIX):
         return Completed(name="Skipped", message=f"not a gardener pull: {pull}")
 
-    verdict = wait_for_verdict(pull, verdict_wait_seconds)
+    details = pull_patch(pull)
+    verdict = wait_for_verdict(pull, verdict_wait_seconds, details["rounds"] - 1)
     if verdict is None:
         return Completed(name="No-Verdict", message="phi did not review in time")
     if verdict["verdict"] != "approve":
         return Completed(name=verdict["verdict"].title(), message=verdict["text"][:500])
 
-    details = pull_patch(pull)
+    pause_key = approval_key(details)
+    if approval_key(pull_patch(pull)) != pause_key:
+        return Completed(name="Stale", message="pull changed while awaiting review")
+    if details["branch"] != "main":
+        return Completed(
+            name="Skipped", message="merge-approved only supports pulls targeting main"
+        )
     repo = repo_name_for_did(OPERATOR_DID, details["target_repo_did"])
     paths = touched_paths(details["patch"])
     protected = protected_touches(repo, paths)
     print(f"{repo}: {details['title']!r}, {len(paths)} files, protected={protected}")
 
-    resumed = _already_asked()
+    resumed = _already_asked(pause_key)
     run_id = str(run_context.id)
 
     with tempfile.TemporaryDirectory(prefix="merge-key-") as key_dir:
@@ -313,8 +329,10 @@ def merge_approved(pull: str, verdict_wait_seconds: int = 1800) -> State:
                         ),
                     },
                 )
-                suspend_flow_run(timeout=APPROVAL_TIMEOUT_SECONDS, key=PAUSE_KEY)
+                suspend_flow_run(timeout=APPROVAL_TIMEOUT_SECONDS, key=pause_key)
 
+            if approval_key(pull_patch(pull)) != pause_key:
+                return Completed(name="Stale", message="pull changed after review")
             sha = push_merge(repo, cwd, env)
 
     status_uri = record_merged(pull)

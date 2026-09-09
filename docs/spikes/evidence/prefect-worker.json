@@ -1,0 +1,14 @@
+{
+  "flow_run_id": "60080a42-2180-48ca-997f-10e1e6af41ba",
+  "state": "Completed",
+  "infrastructure_pid": "prefect-ed3e4f65-60080a42218048ca997f10e1e6af41ba-r0",
+  "artifact_ids": [
+    "ae8309a2-7de0-47c2-9d7b-781f329d560f"
+  ],
+  "artifact_keys": [
+    "sprite-prefect-ed3e4f65-60080a42218048ca997f10e1e6af41ba-r0"
+  ],
+  "diagnostics_match": true,
+  "sprite_deleted": true,
+  "cost_usd": null
+}
