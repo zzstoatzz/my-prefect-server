@@ -24,6 +24,7 @@ usage:
     ./scripts/apply_automations.py --dry-run
 """
 
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -51,11 +52,20 @@ def resolve_deployments(client: httpx.Client, base: str) -> dict[str, str]:
 
 
 def main() -> int:
-    dry_run = "--dry-run" in sys.argv
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--name", action="append", help="Apply only this automation (repeatable)")
+    args = parser.parse_args()
+    dry_run = args.dry_run
     base = os.environ.get("PREFECT_API_URL", "http://localhost:4200/api").rstrip("/")
 
     spec = yaml.safe_load(SPEC.read_text())
     wanted = spec.get("automations") or []
+    if args.name:
+        unknown = set(args.name) - {item["name"] for item in wanted}
+        if unknown:
+            parser.error(f"unknown automation names: {', '.join(sorted(unknown))}")
+        wanted = [item for item in wanted if item["name"] in args.name]
     if not wanted:
         print(f"no automations in {SPEC}")
         return 1

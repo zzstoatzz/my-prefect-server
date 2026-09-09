@@ -38,8 +38,27 @@ automations:
     actions:
       - type: send-notification
         block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
-        subject: "{{ deployment.name }} {{ state.name }}"
-        body: "{{ deployment.name }} run {{ flow_run.name }} reached {{ state.name }} - {{ state.message }}"
+        subject: "🔴 {{ deployment.name }} · {{ state.name }}"
+        body: |-
+          Run: **{{ flow_run.name }}**
+          [Open failure details and logs](<https://prefect-server.waow.tech/runs/flow-run/{{ flow_run.id }}>)
+
+  - name: fleet unhealthy -> discord
+    description: "Endpoint or Stream deep-check findings; full results live in Hub."
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      match:
+        prefect.resource.id: fleet-health
+      expect: [fleet-health.unhealthy]
+      threshold: 1
+      within: 60
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "🟡 Fleet · checks need attention"
+        body: "{{ payload.summary }}"
 
   - name: fastmcp activity -> brief
     description: >-

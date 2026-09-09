@@ -331,6 +331,7 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           CLOUDFLARE_API_TOKEN: prefect-block://cloudflare-api-token

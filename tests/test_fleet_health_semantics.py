@@ -11,7 +11,17 @@ What we test:
   - a check task that itself errored (non-CheckResult) does fail the flow
 """
 
-from flows.fleet_health import CheckResult, summarize
+from flows.fleet_health import CheckResult, notification_summary, summarize
+
+
+def test_discord_findings_are_bounded_and_link_to_full_report():
+    findings = [f"service-{i}: @everyone **HTTP 503**\n" + "🔥 " * 300 for i in range(50)]
+    message = notification_summary(findings)
+    assert len(message.encode("utf-16-le")) // 2 < 1900
+    assert "@everyone" not in message
+    assert "…and 45 more." in message
+    assert message.count("• ") == 5
+    assert "[Open fleet results](<https://hub.waow.tech/projects/>)" in message
 
 
 def test_unhealthy_finding_is_reported_but_does_not_break_the_sweep():

@@ -55,3 +55,21 @@ to the web app and that JSON file. Preserve the current production presence rout
 when deploying from a worktree. The duplicate evergreen-health schedule remains
 disabled and is removed from the deployment manifest. Evergreen's public address
 can redirect here once its Tangled hosting configuration is repaired.
+
+## Discord archive
+
+Flow failures use the existing Prefect `flow-run failure -> discord` automation:
+status, run name, and a direct link to the error and logs. The state message is
+not pasted because the server's template engine does not implement truncation
+filters and a long exception can exceed Discord's message limit. Logfire keeps
+feeding phi through its existing raw-data channel; its duplicate Discord channel
+is removed from the `flow run failed` alert after the Prefect template is applied.
+
+Fleet findings carry a preformatted `summary`: at most five short lines, an
+omitted-count indicator, and the Hub link. The full `unhealthy` array remains in
+the event for machine consumers. Formatting is done before the event is emitted
+because the server currently ignores Jinja filters, including `join`.
+
+Apply just these templates with `just automations "--name 'flow-run failure -> discord' --name 'fleet unhealthy -> discord'"`.
+Other projects' Logfire alerts still use Logfire's default Discord rendering;
+this change does not introduce a new notification relay or change phi's triage.

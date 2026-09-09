@@ -28,6 +28,7 @@ automations to page on.
 Inventory is packaged with mps; reports use Prefect artifacts already stored by the server.
 """
 
+import textwrap
 import time
 import urllib.request
 from dataclasses import asdict, dataclass
@@ -42,6 +43,20 @@ from prefect.artifacts import create_markdown_artifact, create_table_artifact
 from prefect.cache_policies import NONE
 from prefect.events import emit_event
 from prefect.states import Completed
+
+
+def notification_summary(findings: list[str]) -> str:
+    """Keep the Discord archive readable on a phone; details stay in Hub."""
+    lines = [f"{len(findings)} check(s) need attention:"]
+    for finding in findings[:5]:
+        plain = " ".join(finding.split()).replace("@", "@\u200b")
+        plain = plain.replace("`", "'").replace("*", "").replace("_", "\\_")
+        lines.append("• " + textwrap.shorten(plain, width=180, placeholder="…"))
+    if len(findings) > 5:
+        lines.append(f"…and {len(findings) - 5} more.")
+    lines.append("\n[Open fleet results](<https://hub.waow.tech/projects/>)")
+    return "\n".join(lines)
+
 
 TIMEOUT_S = 10
 TAIL_WINDOW_S = 20
@@ -287,7 +302,7 @@ def fleet_health():
         emit_event(
             event="fleet-health.unhealthy",
             resource={"prefect.resource.id": "fleet-health"},
-            payload={"unhealthy": unhealthy},
+            payload={"unhealthy": unhealthy, "summary": notification_summary(unhealthy)},
         )
     if broken_checks:
         raise RuntimeError(
