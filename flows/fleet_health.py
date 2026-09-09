@@ -33,16 +33,37 @@ import time
 import urllib.request
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from html.parser import HTMLParser
 
 import httpx
 import logfire
-from mps.inventory import EndpointCheck, load_projects
+from mps.inventory import EndpointCheck, ProjectEntry, load_projects
 from mps.observability import configure_logfire
 from prefect import flow, get_run_logger, task
 from prefect.artifacts import create_markdown_artifact, create_table_artifact
 from prefect.cache_policies import NONE
 from prefect.events import emit_event
 from prefect.states import Completed
+from pydantic import TypeAdapter
+
+
+class EvergreenPage(HTMLParser):
+    has_app = False
+    redirects = False
+
+    def handle_starttag(self, tag, attrs):
+        attributes = dict(attrs)
+        if tag == "meta" and (attributes.get("http-equiv") or "").lower() == "refresh":
+            self.redirects = True
+        if tag == "script" and attributes.get("src") == "app.js":
+            self.has_app = True
+
+
+def validate_evergreen_page(html: str, url: httpx.URL) -> None:
+    page = EvergreenPage()
+    page.feed(html)
+    if url.host != "nate.tngl.io" or page.redirects or not page.has_app:
+        raise ValueError("Evergreen must serve its public app, not a redirect or login page")
 
 
 def notification_summary(findings: list[str]) -> str:
@@ -54,7 +75,7 @@ def notification_summary(findings: list[str]) -> str:
         lines.append("• " + textwrap.shorten(plain, width=180, placeholder="…"))
     if len(findings) > 5:
         lines.append(f"…and {len(findings) - 5} more.")
-    lines.append("\n[Open fleet results](<https://hub.waow.tech/projects/>)")
+    lines.append("\n[Open public status](<https://nate.tngl.io/>)")
     return "\n".join(lines)
 
 
@@ -213,6 +234,15 @@ def check_endpoint(project: str, endpoint: EndpointCheck) -> CheckResult:
         ) as response,
     ):
         response.raise_for_status()
+        if endpoint.url == "https://nate.tngl.io/":
+            response.read()
+            validate_evergreen_page(response.text, response.url)
+            inventory = client.get("https://nate.tngl.io/services.json")
+            inventory.raise_for_status()
+            projects = TypeAdapter(list[ProjectEntry]).validate_json(inventory.content)
+            urls = [service.url for entry in projects for service in entry.services]
+            if not urls or len(urls) != len(set(urls)):
+                raise ValueError("Evergreen's public inventory is empty or has duplicate URLs")
         return CheckResult(
             endpoint.name,
             True,

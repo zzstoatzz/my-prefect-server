@@ -21,7 +21,24 @@ def test_discord_findings_are_bounded_and_link_to_full_report():
     assert "@everyone" not in message
     assert "…and 45 more." in message
     assert message.count("• ") == 5
-    assert "[Open fleet results](<https://hub.waow.tech/projects/>)" in message
+    assert "[Open public status](<https://nate.tngl.io/>)" in message
+
+
+def test_evergreen_http_200_redirect_and_login_pages_are_not_healthy():
+    import httpx
+    import pytest
+
+    from flows.fleet_health import validate_evergreen_page
+
+    public = httpx.URL("https://nate.tngl.io/")
+    validate_evergreen_page('<script type="module" src="app.js"></script>', public)
+    for html, url in [
+        ('<meta http-equiv="refresh" content="0;url=https://hub.waow.tech/projects/">', public),
+        ("<h1>Log in to hub</h1>", httpx.URL("https://example.cloudflareaccess.com/login")),
+        ("<h1>Site unavailable</h1>", public),
+    ]:
+        with pytest.raises(ValueError, match="public app"):
+            validate_evergreen_page(html, url)
 
 
 def test_unhealthy_finding_is_reported_but_does_not_break_the_sweep():

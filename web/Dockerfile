@@ -1,9 +1,8 @@
 FROM docker.io/oven/bun:1-slim
-WORKDIR /repo/web
-COPY web/package.json web/bun.lockb ./
+WORKDIR /app
+COPY package.json bun.lockb ./
 RUN bun install --frozen-lockfile
-COPY web/ .
-COPY packages/mps/src/mps/projects.json /repo/packages/mps/src/mps/projects.json
+COPY . .
 RUN bun run build
 EXPOSE 3000
 ENV NODE_ENV=production
