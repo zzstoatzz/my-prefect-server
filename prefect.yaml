@@ -62,6 +62,18 @@ definitions:
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
 
 deployments:
+  - name: evergreen-health
+    tags: [watch]
+    entrypoint: flows/evergreen_health.py:evergreen_health
+    work_pool: *home
+    schedules:
+      - cron: "11,26,41,56 * * * *"
+        timezone: UTC
+        active: true
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+
   - name: fleet-health
     tags: [watch]
     entrypoint: flows/fleet_health.py:fleet_health
