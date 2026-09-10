@@ -51,15 +51,19 @@ snapshots and indexes published for other products
 
 ## gardener
 
-pi as a coding agent: diagnose, propose, revise, merge
+Gardener (`gardener.pds.zat.dev`) is the maintenance identity; Pi is its
+coding harness. Phi requests and reviews work; the operator authorizes merging.
+Prefect runs the workflows, Sprites isolates execution, and Aperture supplies
+inference. The trusted workflow publishes as Gardener without exposing its
+credentials to Pi. Deployment names remain stable technical identifiers.
 
 | deployment | cadence | purpose | entrypoint |
 |---|---|---|---|
 | `pi-agent` | manual | run `pi -p <prompt>` in the workspace and return its final output | [`pi_agent`](flows/pi_agent.py) |
-| `autofix` | manual | pi diagnoses a failed run and, when proposing is on for that deployment, opens a gardener pull | [`autofix`](flows/autofix.py) |
+| `autofix` | manual | Gardener diagnoses a failed run using Pi and, when proposing is on for that deployment, opens a gardener pull | [`autofix`](flows/autofix.py) |
 | `watch-tangled-pulls` | `*/2 * * * *` | turn the operator's comments on gardener's pulls into autofix-revise runs | [`watch_tangled_pulls`](flows/watch_tangled_pulls.py) |
 | `autofix-revise` | manual | revise a gardener-authored pull in response to an operator comment | [`autofix_revise`](flows/autofix_revise.py) |
-| `pi-pr` | manual | have pi attempt `task` in `repo` and open a tangled PR as gardener | [`pi_pr`](flows/pi_pr.py) |
+| `pi-pr` | manual | Gardener attempts `task` using Pi and authors a Tangled pull | [`pi_pr`](flows/pi_pr.py) |
 | `merge-approved` | manual | a phi-approved gardener pull lands when the operator resumes this run | [`merge_approved`](flows/merge_approved.py) |
 | `dep-bump` | manual | re-pin `dep` to `version` in each downstream; land the ones whose tests pass | [`dep_bump`](flows/dep_bump.py) |
 | `stream-admission` | manual | Gate a stream commit on heavypad | [`stream_admission`](flows/stream_admission.py) |

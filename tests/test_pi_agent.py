@@ -19,9 +19,11 @@ def test_result_is_saved_as_prefect_artifact(monkeypatch):
         inputs={"workspace": module.Workspace().model_dump(), "agent": module.Agent().model_dump(), "timeout_seconds": 1500},
     )
     assert execute.call_args.kwargs["provider"] == "aperture"
+    assert "Gardener (gardener.pds.zat.dev)" in execute.call_args.args[0]
+    assert execute.call_args.args[0].endswith("Investigate")
     assert "env" not in execute.call_args.kwargs
     artifact.assert_called_once_with(
-        key="pi-agent-output", markdown="Investigation result", description="Pi workflow result"
+        key="pi-agent-output", markdown="Investigation result", description="Gardener investigation result (Pi harness)"
     )
 
 

@@ -1,4 +1,4 @@
-"""pi proposes a change to one of the operator's repos; it lands as a gardener pull.
+"""Gardener proposes changes using the Pi harness and authors the resulting pull.
 
 Pi runs in an isolated Sprite workspace without provider or publishing
 credentials. Inference uses the run-scoped Aperture bridge.
@@ -57,7 +57,7 @@ def pi_pr(
     dry_run: bool = False,
     requested_by: str = "",
 ) -> dict[str, Any]:
-    """have pi attempt `task` in `repo` and open a tangled PR as gardener.
+    """Have Gardener attempt `task` using Pi and author a Tangled pull.
 
     `title` and `body` are the caller's own words and are published verbatim;
     `requested_by` names who asked, and is appended to the body so the pull
@@ -99,7 +99,8 @@ def pi_pr(
         ).stdout.strip()
 
         output = run_pi(
-            task,
+            "You are Gardener (gardener.pds.zat.dev), the maintenance agent. "
+            "You use the Pi harness; the trusted workflow publishes your patch.\n\n" + task,
             cwd=cwd,
             provider=agent.provider,
             model=agent.model,
@@ -111,7 +112,7 @@ def pi_pr(
 
         patch = build_patch(cwd, base, title, "gardener", email="gardener@zat.dev")
         if not patch:
-            print("pi made no changes — nothing to propose")
+            print("Gardener made no changes — nothing to propose")
             return {"changed": False, "output": output}
 
         print(f"patch: {len(patch)} bytes")
@@ -120,7 +121,7 @@ def pi_pr(
             artifact_id = create_table_artifact(
                 key="pi-proposed-patch",
                 table=[{"repo": repo, "base": base, "sha256": digest, "patch": patch}],
-                description="Unpublished Pi patch for review",
+                description="Unpublished Gardener patch for review",
             )
             return {
                 "changed": True,
@@ -133,7 +134,7 @@ def pi_pr(
 
         if requested_by:
             body = (
-                f"{body}\n\nrequested by {requested_by}; implemented by pi, published by gardener."
+                f"{body}\n\nrequested by {requested_by}; implemented by gardener using the Pi harness; published by the trusted workflow as gardener."
             )
         handle = secret_sync("gardener-handle")
         password = secret_sync("gardener-password")

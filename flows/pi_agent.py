@@ -111,7 +111,8 @@ def pi_agent(
             )
 
         output = run_pi(
-            prompt,
+            "You are Gardener (gardener.pds.zat.dev), the maintenance agent. "
+            "You use the Pi harness to investigate the following request.\n\n" + prompt,
             cwd=cwd,
             provider=agent.provider,
             model=agent.model,
@@ -120,7 +121,7 @@ def pi_agent(
             timeout_seconds=timeout_seconds,
         )
         create_markdown_artifact(
-            key="pi-agent-output", markdown=output, description="Pi workflow result"
+            key="pi-agent-output", markdown=output, description="Gardener investigation result (Pi harness)"
         )
         return output
 

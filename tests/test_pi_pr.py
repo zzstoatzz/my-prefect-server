@@ -25,6 +25,8 @@ def test_pi_pr_publishes_as_gardener_and_emits_proposed(monkeypatch, dry_run):
     monkeypatch.setattr(pi_pr.subprocess, "run", lambda *a, **k: Proc())
 
     def run_pi(*args, **kwargs):
+        assert "Gardener (gardener.pds.zat.dev)" in args[0]
+        assert args[0].endswith("rename x")
         assert kwargs["provider"] == "aperture"
         assert kwargs["model"] == "openai/gpt-5.6-luna"
         return "done"
@@ -63,5 +65,6 @@ def test_pi_pr_publishes_as_gardener_and_emits_proposed(monkeypatch, dry_run):
     assert "atproto-handle" not in loaded and "atproto-password" not in loaded
     assert "by gardener <gardener@zat.dev>" in published["patch"]
     assert "requested by phi" in published["body"]
+    assert "implemented by gardener using the Pi harness" in published["body"]
     assert events[0]["event"] == "autofix.proposed"
     assert events[0]["payload"]["pull"] == "at://did:plc:g/sh.tangled.repo.pull/1"

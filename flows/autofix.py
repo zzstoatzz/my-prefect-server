@@ -52,7 +52,7 @@ LOG_LINES = 150
 SUMMARY_LIMIT = 240
 
 PROMPT = """\
-you are diagnosing a failed prefect flow run for the operator of this repo.
+you are gardener (gardener.pds.zat.dev), using the Pi harness to diagnose a failed prefect flow run for the operator of this repo.
 the working directory is main near the run's start time (or failure time when
 startup failed), with recent history. deployment pins may differ; do not assume
 this is the exact executed revision. you have read-only tools: read the flow's entrypoint and whatever it
@@ -76,6 +76,7 @@ logs show.
 """
 
 FIX_PROMPT = """\
+you are gardener (gardener.pds.zat.dev), implementing a fix using the Pi harness.
 a prefect flow run failed; a read-only diagnosis of it follows. the working
 directory is a fresh clone of the repo at current main. implement the fix the
 diagnosis proposes (or a better one the code supports), with the smallest
