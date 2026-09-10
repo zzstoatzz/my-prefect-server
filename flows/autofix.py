@@ -23,6 +23,7 @@ import asyncio
 import os
 import subprocess
 import traceback
+from contextlib import suppress
 from datetime import timedelta
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -39,6 +40,7 @@ from prefect.client.schemas.filters import (
 )
 from prefect.client.schemas.sorting import LogSort
 from prefect.events import emit_event
+from prefect.exceptions import ObjectNotFound
 from prefect.runtime import flow_run as run_context
 from prefect.states import Completed, State
 
@@ -51,8 +53,9 @@ SUMMARY_LIMIT = 240
 
 PROMPT = """\
 you are diagnosing a failed prefect flow run for the operator of this repo.
-the working directory is the repo at the commit the run executed, with recent
-history. you have read-only tools: read the flow's entrypoint and whatever it
+the working directory is main near the run's start time (or failure time when
+startup failed), with recent history. deployment pins may differ; do not assume
+this is the exact executed revision. you have read-only tools: read the flow's entrypoint and whatever it
 calls; `git log` is available.
 
 your first line must be exactly `SUMMARY: <one sentence, under 200 characters>`
@@ -130,7 +133,11 @@ def fetch_skills(workdir: str) -> list[str]:
 async def gather(flow_run_id: UUID) -> dict[str, Any]:
     async with get_client() as client:
         run = await client.read_flow_run(flow_run_id)
-        deployment = await client.read_deployment(run.deployment_id) if run.deployment_id else None
+        deployment = None
+        if run.deployment_id:
+            # Deleted deployments must not hide the surviving run and logs.
+            with suppress(ObjectNotFound):
+                deployment = await client.read_deployment(run.deployment_id)
         logs = await client.read_logs(
             log_filter=LogFilter(flow_run_id=LogFilterFlowRunId(any_=[flow_run_id])),
             limit=LOG_LINES,
@@ -155,7 +162,7 @@ def ui_url(kind: str, id_: UUID) -> str:
 
 
 def checkout_as_of(cwd: str, when) -> str:
-    """clone main and check out the commit the run's pull step would have seen."""
+    """Clone main at an approximate run time; this does not resolve deployment pins."""
     env = minimal_env()
     since = (when - timedelta(days=14)).strftime("%Y-%m-%d")
     subprocess.run(
@@ -215,10 +222,13 @@ def split_summary(diagnosis: str) -> tuple[str, str]:
 def render(ctx: dict[str, Any]) -> str:
     run = ctx["run"]
     dep = ctx["deployment"]
+    missing_deployment = (
+        "(deleted or unavailable)" if getattr(run, "deployment_id", None) else "(none)"
+    )
     lines = [
         f"flow run: {run.name} ({run.id})",
         f"state: {run.state.name if run.state else '?'} — {run.state.message if run.state else ''}",
-        f"deployment: {dep.name if dep else '(none)'}",
+        f"deployment: {dep.name if dep else missing_deployment}",
         f"entrypoint: {dep.entrypoint if dep else '?'}",
         f"parameters: {run.parameters}",
         f"started: {run.start_time}  ended: {run.end_time}",
@@ -316,7 +326,13 @@ def autofix(
         screen_prompt(prompt, "read-only", anthropic_key)
 
         with TemporaryDirectory(prefix="autofix-") as cwd:
-            sha = checkout_as_of(cwd, ctx["run"].start_time)
+            failed_run = ctx["run"]
+            when = (
+                failed_run.start_time
+                or (failed_run.state.timestamp if failed_run.state else None)
+                or failed_run.created
+            )
+            sha = checkout_as_of(cwd, when)
             print(f"diagnosing against {sha}")
             diagnosis = run_pi(
                 prompt,
