@@ -9,6 +9,10 @@ import time
 from pathlib import Path
 
 
+class _TerminationRequested(Exception):
+    pass
+
+
 def lease(method: str) -> None:
     argv = [
         "curl",
@@ -41,6 +45,16 @@ def stop_execution_group(path: str | None) -> None:
 
 
 def write_state(directory: Path, state: dict) -> None:
+    if state.get("phase") == "exited":
+        state = dict(state)
+        log = directory / "output.log"
+        if log.exists():
+            with log.open("rb") as file:
+                file.seek(max(0, log.stat().st_size - 65536))
+                state["log_tail"] = file.read().decode(errors="replace")
+        timings = directory / "bootstrap-timings.json"
+        if timings.exists():
+            state["bootstrap_seconds"] = json.loads(timings.read_text())
     temporary = directory / "state.tmp"
     with temporary.open("w") as file:
         json.dump(state, file)
@@ -99,7 +113,7 @@ def execute(directory: Path) -> None:
 
         def terminate(signum, frame):
             if process is not None:
-                os.killpg(process.pid, signal.SIGTERM)
+                raise _TerminationRequested
 
         signal.signal(signal.SIGTERM, terminate)
 
@@ -142,14 +156,18 @@ def execute(directory: Path) -> None:
                                 raise
                             lease("PUT")
                     reason = "process exited"
-                except subprocess.TimeoutExpired:
+                except (subprocess.TimeoutExpired, _TerminationRequested) as exc:
+                    signal.signal(signal.SIGTERM, signal.SIG_IGN)
                     os.killpg(process.pid, signal.SIGTERM)
                     try:
                         process.wait(timeout=10)
                     except subprocess.TimeoutExpired:
                         os.killpg(process.pid, signal.SIGKILL)
                         process.wait()
-                    code, reason = 124, "execution timeout"
+                    if isinstance(exc, _TerminationRequested):
+                        code, reason = 143, "execution cancelled"
+                    else:
+                        code, reason = 124, "execution timeout"
         finally:
             # A detached grandchild may outlive the engine. Never publish an
             # exited outcome before all processes in the execution are stopped.

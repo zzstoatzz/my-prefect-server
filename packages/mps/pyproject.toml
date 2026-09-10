@@ -35,3 +35,4 @@ packages = ["src/mps"]
 "../../flows/autofix_revise.py" = "flows/autofix_revise.py"
 "../../flows/merge_approved.py" = "flows/merge_approved.py"
 "../../flows/watch_tangled_pulls.py" = "flows/watch_tangled_pulls.py"
+"../../flows/test_pull_patch.py" = "flows/test_pull_patch.py"

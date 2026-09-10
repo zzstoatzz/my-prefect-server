@@ -82,7 +82,16 @@ def pi_agent(
     prompt judge uses its separate Anthropic secret block.
     """
     anthropic_key = secret_sync("anthropic-api-key")
-    screen_prompt(prompt, agent.tool_mode, anthropic_key)
+    screen_prompt(
+        prompt,
+        agent.tool_mode,
+        anthropic_key,
+        inputs={
+            "workspace": workspace.model_dump(),
+            "agent": agent.model_dump(),
+            "timeout_seconds": timeout_seconds,
+        },
+    )
 
     if agent.tool_mode == "full":
         print("tool_mode=full requires human approval — pausing (resume in UI)")

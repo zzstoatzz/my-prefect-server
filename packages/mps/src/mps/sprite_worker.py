@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -41,6 +42,11 @@ if __name__ == "__main__":
     parser.add_argument("--pool", default="phi-sprites-spike")
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--inference-url", required=True)
+    parser.add_argument("--credentials-block", default="phi-sprites-api-token")
     args = parser.parse_args()
+    from prefect.blocks.system import Secret
+
+    os.environ["SPRITE_TOKEN"] = Secret.load(args.credentials_block).get()
+
     worker = pi_worker(pool=args.pool, database=args.database, inference_url=args.inference_url)
     asyncio.run(worker.start())

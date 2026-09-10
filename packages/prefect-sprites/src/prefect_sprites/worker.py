@@ -66,6 +66,22 @@ class SpritesWorker(BaseWorker):
         self._release_environment = release_environment
         self._observer_task = None
 
+    async def _measure_stage(self, sprite_name: str, stage: str, operation):
+        started = time.monotonic()
+        outcome = "failed"
+        try:
+            result = await operation
+            outcome = "completed"
+            return result
+        finally:
+            self._logger.info(
+                "Sprite stage sprite=%s stage=%s outcome=%s seconds=%.6f",
+                sprite_name,
+                stage,
+                outcome,
+                time.monotonic() - started,
+            )
+
     @property
     def ownership(self) -> str:
         if not self.work_pool:
@@ -94,8 +110,12 @@ class SpritesWorker(BaseWorker):
         labels = [self.ownership, f"flow-run:{flow_run.id}"]
         async with AsyncSpritesClient(token=configuration.credentials.get_token()) as client:
             try:
-                sprite = await client.create_sprite(
-                    name, url_settings=URLSettings(auth="sprite"), labels=labels
+                sprite = await self._measure_stage(
+                    name,
+                    "create",
+                    client.create_sprite(
+                        name, url_settings=URLSettings(auth="sprite"), labels=labels
+                    ),
                 )
             except SpriteError as creation_error:
                 # The pinned SDK reports HTTP 409 as plain SpriteError, with no
@@ -124,9 +144,13 @@ class SpritesWorker(BaseWorker):
                 config["env"].update(
                     await self._run_environment(name, configuration.timeout_seconds)
                 )
-            await provider.install(sprite, config, local_packages=configuration.local_packages)
+            await self._measure_stage(
+                name,
+                "bootstrap",
+                provider.install(sprite, config, local_packages=configuration.local_packages),
+            )
             if await provider.get_service(sprite) is None:
-                await provider.start(sprite)
+                await self._measure_stage(name, "service_start", provider.start(sprite))
             if task_status is not None:
                 task_status.started(name)
             return SpritesWorkerResult(identifier=name, status_code=0)
@@ -166,24 +190,31 @@ class SpritesWorker(BaseWorker):
                         prefix=self.sprite_prefix, continuation_token=cursor, max_results=100
                     )
                 )
-                for info in page.sprites:
-                    try:
-                        sprite = await client.get_sprite(info.name)
-                        self._check_ownership(sprite)
-                        flow_id = UUID(
-                            next(
-                                label.removeprefix("flow-run:")
-                                for label in sprite.labels
-                                if label.startswith("flow-run:")
+                semaphore = asyncio.Semaphore(8)
+
+                async def reconcile_one(info):
+                    async with semaphore:
+                        try:
+                            self._check_ownership(info)
+                            sprite = client.sprite(info.name)
+                            sprite.labels = info.labels
+                            sprite.created_at = info.created_at
+                            flow_id = UUID(
+                                next(
+                                    label.removeprefix("flow-run:")
+                                    for label in sprite.labels
+                                    if label.startswith("flow-run:")
+                                )
                             )
-                        )
-                        await self.reconcile(sprite, flow_id)
-                    except NotFoundError:
-                        continue
-                    except Exception:
-                        self._logger.exception(
-                            "Could not reconcile Sprite %s; will retry", info.name
-                        )
+                            await self.reconcile(sprite, flow_id)
+                        except NotFoundError:
+                            return
+                        except Exception:
+                            self._logger.exception(
+                                "Could not reconcile Sprite %s; will retry", info.name
+                            )
+
+                await asyncio.gather(*(reconcile_one(info) for info in page.sprites))
                 if not page.has_more:
                     break
                 cursor = page.next_continuation_token
@@ -236,7 +267,7 @@ class SpritesWorker(BaseWorker):
         state = flow_run.state
         if state is None:
             return
-        observation = await provider.inspect(sprite)
+        observation = await self._measure_stage(sprite.name, "inspect", provider.inspect(sprite))
         if observation["phase"] == "prepared":
             age = time.time() - sprite.created_at.timestamp()
             # Allow the bounded (300s) environment installation to finish before
@@ -252,12 +283,28 @@ class SpritesWorker(BaseWorker):
                 "reason": "submission did not start",
                 "finished_at": time.time() - 31,
             }
+        if observation["phase"] == "running" and not state.is_cancelling():
+            service = await provider.get_service(sprite)
+            if (
+                service
+                and service.state
+                and service.state.status in {"stopped", "failed"}
+                and not service.state.next_restart_at
+            ):
+                current = await self.client.read_flow_run(flow_id)
+                if current.state is None or current.state.is_cancelling():
+                    return
+                # Restart only the trusted supervisor. Its persisted-running
+                # recovery path stops orphaned children and records a crash;
+                # it never replays the flow command.
+                events = await sprite.start_service(provider.SERVICE, duration=0.1)
+                if any(event.type == "error" for event in events):
+                    raise InfrastructureNotAvailable("Sprite supervisor recovery failed")
+            return
         if observation["phase"] != "exited":
             return
         if self._release_environment:
             await self._release_environment(sprite.name)
-        if time.time() - observation["finished_at"] < 30:
-            return
         # Provider inspection can take long enough for orchestration to advance
         # to another attempt or pause. Base decisions on a fresh API read.
         flow_run = await self.client.read_flow_run(flow_id)
@@ -272,6 +319,10 @@ class SpritesWorker(BaseWorker):
             state.is_final() or state.is_paused() or state.is_scheduled() or state.is_cancelling()
         )
         if current_attempt and not protected:
+            # Allow late orchestration state delivery before declaring a crash.
+            # A settled run needs no grace period after its process has exited.
+            if time.time() - observation["finished_at"] < 30:
+                return
             with suppress(Abort):
                 await propose_state(
                     self.client,
@@ -285,16 +336,25 @@ class SpritesWorker(BaseWorker):
                 )
         # Keep diagnostics if artifact delivery fails; a subsequent observation
         # retries cleanup. Artifact keys identify the exact infrastructure attempt.
-        await self.client.create_artifact(
-            ArtifactCreate(
-                key=f"sprite-{sprite.name}",
-                type="table",
-                flow_run_id=flow_id,
-                description="Sprite execution outcome and final diagnostic output",
-                data=[observation],
-            )
+        await self._measure_stage(
+            sprite.name,
+            "artifact_delivery",
+            self.client.create_artifact(
+                ArtifactCreate(
+                    key=f"sprite-{sprite.name}",
+                    type="table",
+                    flow_run_id=flow_id,
+                    description="Sprite execution outcome and final diagnostic output",
+                    data=[observation],
+                )
+            ),
         )
-        await sprite.destroy()
+        self._logger.info(
+            "Sprite cleanup sprite=%s seconds_since_execution=%.6f",
+            sprite.name,
+            time.time() - observation["finished_at"],
+        )
+        await self._measure_stage(sprite.name, "delete", sprite.destroy())
 
     async def kill_infrastructure(
         self,
@@ -306,6 +366,14 @@ class SpritesWorker(BaseWorker):
             try:
                 sprite = await client.get_sprite(infrastructure_pid)
                 self._check_ownership(sprite)
+                if await provider.get_service(sprite) is None:
+                    # Cancellation can arrive while uv is still bootstrapping.
+                    # Destroying the owned Sprite stops that installation too;
+                    # it must not later create a service for a cancelled run.
+                    if self._release_environment:
+                        await self._release_environment(infrastructure_pid)
+                    await sprite.destroy()
+                    return
                 await sprite.stop_service(provider.SERVICE, timeout=grace_seconds)
                 service = await provider.get_service(sprite)
                 if (

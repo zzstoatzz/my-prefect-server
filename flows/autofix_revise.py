@@ -79,10 +79,9 @@ title: {title}
 """
 
 
-def latest_round_patch(pull_uri: str) -> str:
-    """download and gunzip the newest round's patch blob."""
-    record = get_record(pull_uri)
-    rounds = record["value"].get("rounds", [])
+def latest_round_patch(record: dict) -> str:
+    """Download the patch from the pull snapshot validated for this review."""
+    rounds = record.get("rounds", [])
     if not rounds:
         return ""
     cid = rounds[-1]["patchBlob"]["ref"]["$link"]
@@ -125,7 +124,8 @@ def autofix_revise(pull: str, comment_uri: str = "") -> State:
     if not pull.startswith(PULL_PREFIX):
         return Completed(name="Skipped", message=f"not a gardener pull: {pull}")
 
-    record = get_record(pull)["value"]
+    snapshot = get_record(pull)
+    record = snapshot["value"]
     rounds = record.get("rounds", [])
     if len(rounds) >= MAX_ROUNDS:
         return Completed(name="Capped", message=f"{len(rounds)} rounds — take it from here by hand")
@@ -140,6 +140,8 @@ def autofix_revise(pull: str, comment_uri: str = "") -> State:
             return Completed(name="Skipped", message="comment belongs to a different pull")
         if comment.get("pullRoundIdx") != len(rounds) - 1:
             return Completed(name="Stale", message="comment reviews a different round")
+        if reviewer == PHI_DID and (comment.get("subject") or {}).get("cid") != snapshot.get("cid"):
+            return Completed(name="Stale", message="Phi reviewed a different pull record")
         if reviewer == PHI_DID and parse_verdict(comment_text(comment)) != "request-changes":
             return Completed(name="Skipped", message="Phi did not request changes")
         latest = {"uri": comment_uri, "text": comment_text(comment)}
@@ -185,7 +187,7 @@ def autofix_revise(pull: str, comment_uri: str = "") -> State:
             capture_output=True,
             text=True,
         ).stdout.strip()
-        patch = latest_round_patch(pull)
+        patch = latest_round_patch(record)
         applied = apply_patch(cwd, patch) if patch else False
 
         prompt = PROMPT.format(
@@ -218,7 +220,9 @@ def autofix_revise(pull: str, comment_uri: str = "") -> State:
     if new_patch:
         if get_record(pull)["value"].get("rounds", []) != rounds:
             return Completed(name="Stale", message="pull changed while Pi was revising")
-        round_n = append_round(pull, new_patch, note, handle, password)
+        round_n = append_round(
+            pull, new_patch, note, handle, password, expected_cid=snapshot["cid"]
+        )
         print(f"round {round_n} appended")
     comment_on_pull(pull, reply, handle, password)
 

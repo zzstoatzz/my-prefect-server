@@ -128,3 +128,41 @@ def test_supervisor_death_does_not_report_live_engine_as_exited(configure):
         if child_pid is not None:
             with suppress(ProcessLookupError):
                 os.killpg(child_pid, signal.SIGKILL)
+
+
+def test_terminal_state_retains_bounded_logs_and_bootstrap_timings(tmp_path):
+    (tmp_path / "output.log").write_bytes(b"discarded" + b"x" * 65536)
+    (tmp_path / "bootstrap-timings.json").write_text('{"dependency_install":1.25}')
+    runtime.write_state(tmp_path, {"phase": "exited", "exit_code": 0})
+    state = json.loads((tmp_path / "state.json").read_text())
+    assert state["log_tail"] == "x" * 65536
+    assert state["bootstrap_seconds"] == {"dependency_install": 1.25}
+
+
+def test_sigterm_bounds_shutdown_when_child_ignores_it(configure):
+    prepare, _lease_calls = configure
+    directory = prepare(
+        "import signal,time; from pathlib import Path; signal.signal(signal.SIGTERM,signal.SIG_IGN); Path('ready').touch(); time.sleep(120)",
+        timeout=120,
+    )
+    launcher = (
+        "from pathlib import Path; from prefect_sprites import runtime; "
+        "runtime.subprocess.run = lambda *a, **k: None; "
+        f"runtime.execute(Path({str(directory)!r}))"
+    )
+    supervisor = subprocess.Popen([sys.executable, "-c", launcher])
+    try:
+        deadline = time.monotonic() + 5
+        while not (directory / "ready").exists():
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+        supervisor.terminate()
+        supervisor.wait(timeout=15)
+        state = json.loads((directory / "state.json").read_text())
+        assert state["phase"] == "exited"
+        assert state["reason"] == "execution cancelled"
+        assert state["exit_code"] == 143
+    finally:
+        if supervisor.poll() is None:
+            supervisor.kill()
+            supervisor.wait(timeout=5)

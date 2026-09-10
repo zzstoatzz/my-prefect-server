@@ -1,4 +1,4 @@
-"""turn the operator's comments on gardener's pulls into autofix-revise runs.
+"""turn operator comments and Phi revision requests into autofix-revise runs.
 
 rung three of the autofix ladder (docs/autofix.md). the operator
 reviews a gardener-authored pull on tangled and leaves a comment; this flow
@@ -12,9 +12,10 @@ cursor state) and also drains /subscribe from the saved time_us cursor for
 low latency. dedupe is by comment uri (a Variable), so overlap between the
 two paths and across runs is harmless.
 
-wantedDids scopes the subscription to the operator, and reconcile reads only
-the operator's repo: only their comments can trigger a revision, so gardener
-replying to itself is structurally impossible.
+The subscription and reconciliation accept the operator and Phi. Phi comments
+trigger revisions only with a request-changes verdict; approval and escalation
+do not. Gardener cannot trigger itself. The revision flow validates the comment
+against the current pull CID and round before executing Pi.
 """
 
 import asyncio

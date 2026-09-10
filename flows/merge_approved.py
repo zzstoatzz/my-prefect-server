@@ -10,7 +10,7 @@ the shape, per pull:
 1. wait for phi's `VERDICT:` comment on the pull. request-changes and
    escalate end the run named after the verdict; nothing merges.
 2. clone the target from the knot, `git am` the latest round, run the
-   repo's tests on the worker. a failing patch ends the run as Tests-Failed
+   repo's tests in a separate Sprite. a failing patch ends the run as Tests-Failed
    and the discord line says so; the pull stays open for the revise loop.
 3. emit `merge.awaiting-approval` (-> discord, with the run link and the
    paths touched, flagging protected ones) and suspend. the worker slot is
@@ -44,6 +44,7 @@ from mps.tangled import (
     touched_paths,
 )
 from prefect import flow, task
+from prefect.artifacts import create_markdown_artifact
 from prefect.client.orchestration import get_client
 from prefect.events import emit_event
 from prefect.flow_runs import suspend_flow_run
@@ -51,8 +52,8 @@ from prefect.runtime import flow_run as run_context
 from prefect.states import Completed, State
 
 from flows.autofix import PULL_PREFIX
-from flows.costs import OPERATOR_CREDS_BLOCK
 
+OPERATOR_CREDS_BLOCK = "operator-atproto-creds"
 OPERATOR_DID = "did:plc:xbtmt2zjwlrfegqvch7fboei"
 PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
 KNOT = "git@tangled.org:zzstoatzz.io/{repo}"
@@ -63,17 +64,6 @@ APPROVAL_TIMEOUT_SECONDS = 86_400
 # repos whose flows install from the github mirror: the knot alone is not
 # enough, prod would keep running the old code
 MIRRORS = {"my-prefect-server": "https://github.com/zzstoatzz/my-prefect-server.git"}
-
-TEST_COMMANDS: dict[str, tuple[list[str], dict[str, str]]] = {
-    "bot": (
-        ["sh", "-c", "uv sync --frozen && uv run pytest -q"],
-        {"BLUESKY_HANDLE": "ci.invalid", "BLUESKY_PASSWORD": "ci"},
-    ),
-}
-DEFAULT_TEST_COMMAND: tuple[list[str], dict[str, str]] = (
-    ["sh", "-c", "uv sync && uv run pytest -q"],
-    {},
-)
 
 # paths whose changes always get the operator's eyes on the diff itself, not
 # just phi's verdict. the discord line flags them; nothing is auto-merged
@@ -109,11 +99,13 @@ def awaiting_summary(
 
 
 @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
-def wait_for_verdict(pull: str, wait_seconds: int, round_index: int) -> dict[str, str] | None:
+def wait_for_verdict(
+    pull: str, wait_seconds: int, round_index: int, expected_cid: str
+) -> dict[str, str] | None:
     """poll phi's PDS for her VERDICT comment; None if she never speaks."""
     deadline = time.monotonic() + wait_seconds
     while True:
-        found = review_verdict(pull, PHI_DID, round_index=round_index)
+        found = review_verdict(pull, PHI_DID, round_index=round_index, expected_cid=expected_cid)
         if found or time.monotonic() >= deadline:
             return found
         time.sleep(30)
@@ -193,21 +185,42 @@ def clone_and_apply(repo: str, patch: str, cwd: str, env: dict[str, str]) -> str
     return base
 
 
+def read_test_result(run_id) -> dict:
+    """The artifact survives deletion of the test Sprite's local storage."""
+    from prefect.client.schemas.filters import ArtifactFilter, ArtifactFilterFlowRunId
+
+    with get_client(sync_client=True) as client:
+        artifacts = client.read_artifacts(
+            artifact_filter=ArtifactFilter(flow_run_id=ArtifactFilterFlowRunId(any_=[run_id]))
+        )
+    results = [a for a in artifacts if a.key == "pull-test-result"]
+    if len(results) != 1:
+        raise RuntimeError("Test run must publish exactly one result artifact")
+    data = results[0].data
+    if isinstance(data, str):
+        data = json.loads(data)
+    return data[0]
+
+
 @task
-def run_tests(repo: str, cwd: str) -> tuple[bool, str]:
-    argv, extra = TEST_COMMANDS.get(repo, DEFAULT_TEST_COMMAND)
-    proc = subprocess.run(
-        argv,
-        cwd=cwd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        env=minimal_env(**extra),
-        check=False,
+def run_tests(repo: str, base: str, patch: str) -> tuple[bool, str]:
+    """Execute the patch in the test Sprite, never on the merge-key host."""
+    from prefect.deployments import run_deployment
+
+    run = run_deployment(
+        "test-pull-patch/test-pull-patch",
+        parameters={"repo": repo, "base": base, "patch": patch},
+        timeout=2100,
     )
-    tail = proc.stdout[-4000:]
-    print(tail)
-    return proc.returncode == 0, tail
+    if run.state is None or not run.state.is_completed():
+        return False, f"Test execution did not complete: {run.id}"
+    result = read_test_result(run.id)
+    if (
+        result.get("base") != base
+        or result.get("patch_sha256") != hashlib.sha256(patch.encode()).hexdigest()
+    ):
+        raise RuntimeError("Test result does not match the merge base")
+    return result["passed"] is True, result["tail"]
 
 
 @task
@@ -248,7 +261,13 @@ def _already_asked(pause_key: str) -> bool:
 
 def approval_key(details: dict) -> str:
     """Bind approval to the target and round as well as the actual patch."""
-    identity = [details["target_repo_did"], details["branch"], details["rounds"], details["patch"]]
+    identity = [
+        details["cid"],
+        details["target_repo_did"],
+        details["branch"],
+        details["rounds"],
+        details["patch"],
+    ]
     digest = hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode()).hexdigest()
     return f"{PAUSE_KEY}:{digest}"
 
@@ -259,7 +278,7 @@ def merge_approved(pull: str, verdict_wait_seconds: int = 1800) -> State:
         return Completed(name="Skipped", message=f"not a gardener pull: {pull}")
 
     details = pull_patch(pull)
-    verdict = wait_for_verdict(pull, verdict_wait_seconds, details["rounds"] - 1)
+    verdict = wait_for_verdict(pull, verdict_wait_seconds, details["rounds"] - 1, details["cid"])
     if verdict is None:
         return Completed(name="No-Verdict", message="phi did not review in time")
     if verdict["verdict"] != "approve":
@@ -294,7 +313,7 @@ def merge_approved(pull: str, verdict_wait_seconds: int = 1800) -> State:
                     name="Stale",
                     message=f"round {details['rounds']} no longer applies to main@{head[:8]}",
                 )
-            ok, tail = run_tests(repo, cwd)
+            ok, tail = run_tests(repo, base, details["patch"])
             if not ok:
                 emit_event(
                     event="merge.tests-failed",
@@ -311,6 +330,17 @@ def merge_approved(pull: str, verdict_wait_seconds: int = 1800) -> State:
                 return Completed(name="Tests-Failed", message=tail[-500:])
 
             if not resumed:
+                detail_id = create_markdown_artifact(
+                    key="merge-approval-details",
+                    description="Exact patch, Phi review, and test output",
+                    markdown=approval_context(details, repo, pull, base, verdict, tail),
+                )
+                detail_url = f"https://prefect-server.waow.tech/artifacts/artifact/{detail_id}"
+                card_id = create_markdown_artifact(
+                    key="merge-approval-context",
+                    description=f"Approve merging {details['title']} into {repo}/main",
+                    markdown=approval_card(details, repo, detail_url, UI_RUN_URL.format(id=run_id)),
+                )
                 emit_event(
                     event="merge.awaiting-approval",
                     resource={
@@ -326,7 +356,7 @@ def merge_approved(pull: str, verdict_wait_seconds: int = 1800) -> State:
                             paths,
                             protected,
                             UI_RUN_URL.format(id=run_id),
-                        ),
+                        ) + f"\nreview change: https://prefect-server.waow.tech/artifacts/artifact/{card_id}",
                     },
                 )
                 suspend_flow_run(timeout=APPROVAL_TIMEOUT_SECONDS, key=pause_key)
@@ -350,6 +380,34 @@ def merge_approved(pull: str, verdict_wait_seconds: int = 1800) -> State:
         },
     )
     return Completed(message=f"{repo} main -> {sha[:12]} ({details['title']})")
+
+
+def approval_card(details: dict, repo: str, detail_url: str, run_url: str) -> str:
+    title = " ".join(details["title"].split())[:160]
+    return (
+        f"## {title}\n\n"
+        f"**Target:** {repo}/main · revision {details['rounds']}\n\n"
+        "**Review:** Phi approved · **Tests:** passed\n\n"
+        "Approving merges this reviewed revision into main.\n\n"
+        f"[View diff, review, and tests]({detail_url})\n\n"
+        f"[Open approval]({run_url})\n"
+    )
+
+
+def approval_context(details: dict, repo: str, pull: str, base: str, verdict: dict, tail: str) -> str:
+    """Keep the exact proposed change and validation beside the paused run."""
+    def quoted(value: str) -> str:
+        return "\n".join("> " + line for line in value.splitlines())
+
+    return (
+        f"# Merge approval: {details['title']}\n\n"
+        f"Resuming this run authorizes merging into **{repo}/main**.\n\n"
+        f"Pull: `{pull}`\n\nRevision: `{details['cid']}`; round {details['rounds']}.\n\n"
+        f"Tested base: `{base}`. The revision is checked again before push.\n\n"
+        f"## Phi review\n\n{quoted(verdict.get('text', 'Approved'))}\n\n"
+        f"## Passing test output\n\n{quoted(tail)}\n\n"
+        f"## Exact patch\n\n{quoted(details['patch'])}\n"
+    )
 
 
 if __name__ == "__main__":

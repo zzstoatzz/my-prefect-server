@@ -1,13 +1,16 @@
 """Sprite submission and inspection independent of a worker process lifetime."""
 
+import asyncio
 import base64
 import io
 import json
+import logging
+import time
 from importlib.resources import files
 from pathlib import Path
 
 from sprites import AsyncSprite
-from sprites.exceptions import APIError, NotFoundError
+from sprites.exceptions import APIError, FileNotFoundError_, NotFoundError
 
 DIRECTORY = "/var/lib/prefect-sprites"
 SERVICE = "prefect-flow"
@@ -15,11 +18,19 @@ SERVICE = "prefect-flow"
 # Neither source, environment nor a user command appears in exec URL parameters.
 # Files live behind a root-only directory, outside an agent's eventual workspace.
 INSTALL = r"""
-import base64, fcntl, hashlib, json, os, pathlib, subprocess, sys
+import base64, fcntl, hashlib, json, os, pathlib, subprocess, sys, time
 os.umask(0o077)
 root = pathlib.Path("/var/lib/prefect-sprites")
 root.mkdir(mode=0o700, parents=True, exist_ok=True)
 payload = json.load(sys.stdin)
+timings = {}
+def measured_run(stage, *args, **kwargs):
+    started = time.monotonic()
+    try:
+        return subprocess.run(*args, **kwargs)
+    finally:
+        timings[stage] = time.monotonic() - started
+        (root / "bootstrap-timings.json").write_text(json.dumps(timings))
 with (root / "install.lock").open("w") as lock:
     fcntl.flock(lock, fcntl.LOCK_EX)
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
@@ -33,19 +44,19 @@ with (root / "install.lock").open("w") as lock:
         if not uv.exists() or not subprocess.check_output([str(uv), "--version"], text=True).startswith(expected + " "):
             installer = root / "uv-install.sh"
             try:
-                subprocess.run(
+                measured_run("uv_download",
                     ["curl", "--fail", "--silent", "--show-error", "--location",
                      "--max-time", "30", "https://astral.sh/uv/0.12.12/install.sh",
                      "--output", str(installer)], check=True,
                 )
-                subprocess.run(
+                measured_run("uv_install",
                     ["sh", str(installer)], check=True,
                     env={**os.environ, "UV_UNMANAGED_INSTALL": "/usr/local/bin"},
                 )
             finally:
                 installer.unlink(missing_ok=True)
         environment = root / "venv"
-        subprocess.run(
+        measured_run("python_environment",
             [str(uv), "venv", "--clear", "--python", "3.13.7", str(environment)], check=True,
         )
         wheels = root / "wheels"
@@ -58,34 +69,20 @@ with (root / "install.lock").open("w") as lock:
             path = wheels / name
             path.write_bytes(base64.b64decode(package["data"], validate=True))
             package_paths.append(str(path))
-        subprocess.run(
-            [str(uv), "pip", "install", "--python", str(environment / "bin/python"),
-             *payload["config"]["requirements"], *package_paths],
-            check=True,
-        )
+        if payload["config"]["requirements"] or package_paths:
+            measured_run("dependency_install",
+                [str(uv), "pip", "install", "--python", str(environment / "bin/python"),
+                 *payload["config"]["requirements"], *package_paths],
+                check=True,
+            )
         (root / "runtime.py").write_text(payload["runtime"])
         (root / "config.json").write_text(json.dumps(payload["config"]))
         marker.write_text(digest)
 print("installed")
 """
 
-INSPECT = r"""
-import json, pathlib
-root = pathlib.Path("/var/lib/prefect-sprites")
-path = root / "state.json"
-state = json.loads(path.read_text()) if path.exists() else {"phase": "prepared"}
-log = root / "output.log"
-if state["phase"] == "exited" and log.exists():
-    with log.open("rb") as file:
-        file.seek(max(0, log.stat().st_size - 65536))
-        state["log_tail"] = file.read().decode(errors="replace")
-print(json.dumps(state))
-"""
 
-
-async def install(
-    sprite: AsyncSprite, config: dict, *, local_packages: list[str] | None = None
-) -> None:
+def _prepare_payload(config: dict, local_packages: list[str] | None) -> bytes:
     packages = []
     names = set()
     for source in local_packages or []:
@@ -100,19 +97,36 @@ async def install(
         "runtime": files("prefect_sprites").joinpath("runtime.py").read_text(),
         "packages": packages,
     }
+    return json.dumps(payload).encode()
+
+
+async def install(
+    sprite: AsyncSprite, config: dict, *, local_packages: list[str] | None = None
+) -> None:
+    started = time.monotonic()
+    payload = await asyncio.to_thread(_prepare_payload, config, local_packages)
+    logger = logging.getLogger("prefect.worker.sprites")
+    logger.info(
+        "Sprite payload prepared in %.3fs (%d bytes)", time.monotonic() - started, len(payload)
+    )
+    started = time.monotonic()
     await sprite.command(
         "sudo",
         "-n",
         "python3",
         "-c",
         INSTALL,
-        stdin=io.BytesIO(json.dumps(payload).encode()),
+        stdin=io.BytesIO(payload),
         timeout=300,
     ).output()
+    logger.info("Sprite transfer and bootstrap completed in %.3fs", time.monotonic() - started)
 
 
 async def inspect(sprite: AsyncSprite) -> dict:
-    result = await sprite.command("sudo", "-n", "python3", "-c", INSPECT, timeout=30).output()
+    try:
+        result = await sprite.filesystem().path(f"{DIRECTORY}/state.json").read_text()
+    except FileNotFoundError_:
+        return {"phase": "prepared"}
     state = json.loads(result)
     if state.get("phase") not in {"prepared", "running", "exited"}:
         raise ValueError("Sprite returned an invalid execution phase")

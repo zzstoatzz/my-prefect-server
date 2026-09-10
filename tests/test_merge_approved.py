@@ -8,6 +8,19 @@ from flows import merge_approved as module
 from flows.merge_approved import awaiting_summary, protected_touches
 
 
+def test_approval_card_keeps_long_details_behind_a_link():
+    card = module.approval_card(
+        {"title": "Retain proposed patches", "rounds": 2, "patch": "large diff" * 10000},
+        "my-prefect-server", "https://example.test/details", "https://example.test/approve",
+    )
+    assert "large diff" not in card
+    assert len(card) < 500
+    assert "my-prefect-server/main" in card
+    assert "Approving merges" in card
+    assert "https://example.test/details" in card
+    assert "https://example.test/approve" in card
+
+
 def test_protected_touches_match_files_and_prefix_dirs() -> None:
     paths = [
         "src/bot/core/policy.py",
@@ -48,10 +61,17 @@ def test_awaiting_summary_omits_protected_line_when_clean() -> None:
 
 
 @pytest.mark.parametrize(
-    "change", [{"rounds": 2}, {"target_repo_did": "other"}, {"branch": "release"}]
+    "change",
+    [{"cid": "changed"}, {"rounds": 2}, {"target_repo_did": "other"}, {"branch": "release"}],
 )
 def test_same_patch_in_changed_revision_cannot_reuse_review(monkeypatch, change):
-    details = {"patch": "unchanged patch", "rounds": 1, "target_repo_did": "repo", "branch": "main"}
+    details = {
+        "cid": "reviewed",
+        "patch": "unchanged patch",
+        "rounds": 1,
+        "target_repo_did": "repo",
+        "branch": "main",
+    }
     reads = iter([details, {**details, **change}])
     monkeypatch.setattr(module, "pull_patch", lambda _: next(reads))
     monkeypatch.setattr(module, "wait_for_verdict", lambda *args: {"verdict": "approve"})
@@ -65,6 +85,7 @@ def test_same_patch_in_changed_revision_cannot_reuse_review(monkeypatch, change)
 
 def test_new_round_during_validation_cannot_use_existing_human_approval(monkeypatch):
     details = {
+        "cid": "reviewed",
         "patch": "same patch",
         "rounds": 1,
         "target_repo_did": "repo",
@@ -87,3 +108,49 @@ def test_new_round_during_validation_cannot_use_existing_human_approval(monkeypa
     state = module.merge_approved.fn(module.PULL_PREFIX + "test")
     assert state.name == "Stale"
     push.assert_not_called()
+
+
+def test_validation_runs_on_the_sprite_deployment(monkeypatch):
+    result = Mock()
+    result.state.is_completed.return_value = True
+    monkeypatch.setattr(
+        module,
+        "read_test_result",
+        lambda _: {
+            "base": "base-sha",
+            "passed": True,
+            "tail": "ok",
+            "patch_sha256": module.hashlib.sha256(b"patch").hexdigest(),
+        },
+    )
+    dispatch = Mock(return_value=result)
+    monkeypatch.setattr("prefect.deployments.run_deployment", dispatch)
+    monkeypatch.setattr(
+        module.subprocess, "run", Mock(side_effect=AssertionError("no local tests"))
+    )
+    assert module.run_tests.fn("bot", "base-sha", "patch") == (True, "ok")
+    assert dispatch.call_args.args == ("test-pull-patch/test-pull-patch",)
+    assert dispatch.call_args.kwargs["parameters"] == {
+        "repo": "bot",
+        "base": "base-sha",
+        "patch": "patch",
+    }
+
+
+def test_incomplete_sprite_tests_cannot_approve_merge(monkeypatch):
+    result = Mock()
+    result.state.is_completed.return_value = False
+    monkeypatch.setattr("prefect.deployments.run_deployment", Mock(return_value=result))
+    assert module.run_tests.fn("bot", "base", "patch")[0] is False
+
+
+@pytest.mark.parametrize("field", ["base", "patch_sha256"])
+def test_test_artifact_must_match_requested_patch(monkeypatch, field):
+    run = Mock()
+    run.state.is_completed.return_value = True
+    outcome = {"base": "base", "patch_sha256": module.hashlib.sha256(b"patch").hexdigest(), "passed": True, "tail": "ok"}
+    outcome[field] = "different"
+    monkeypatch.setattr("prefect.deployments.run_deployment", Mock(return_value=run))
+    monkeypatch.setattr(module, "read_test_result", lambda _: outcome)
+    with pytest.raises(RuntimeError, match="does not match"):
+        module.run_tests.fn("bot", "base", "patch")

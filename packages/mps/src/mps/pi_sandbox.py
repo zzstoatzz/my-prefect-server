@@ -31,6 +31,7 @@ def sandbox_command(
     tools: Path,
     command: list[str],
     inference_socket: Path | None = None,
+    network_access: bool = False,
 ) -> list[str]:
     """Build the root-invoked launcher; the final command runs without privilege.
 
@@ -46,7 +47,6 @@ def sandbox_command(
     args = [
         "bwrap",
         "--unshare-pid",
-        "--unshare-net",
         "--unshare-ipc",
         "--unshare-uts",
         "--unshare-cgroup",
@@ -107,6 +107,15 @@ def sandbox_command(
         "--chdir",
         "/workspace",
     ]
+    if not network_access:
+        args += ["--unshare-net"]
+    else:
+        # Package installation in the separate test Sprite needs public egress.
+        # Filesystem, PID, identity, and environment isolation remain intact.
+        for directory in ("/etc", "/etc/ssl"):
+            args += ["--perms", "0755", "--dir", directory]
+        for source in ("/etc/resolv.conf", "/etc/hosts", "/etc/ssl/certs"):
+            args += ["--ro-bind", source, source]
     if inference_socket is not None:
         if not inference_socket.is_absolute() or not inference_socket.is_socket():
             raise ValueError("Inference endpoint must be an existing Unix socket")
