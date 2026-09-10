@@ -893,7 +893,7 @@ deployments:
       job_variables:
         timeout_seconds: 2400
         local_packages:
-          - /home/stoat/phi-spike-worker/releases/b3bb2df44b4d7f8e07f018dbf41440e6a04496b42cc5694c7047f71a48921e4c/mps-0.1.0-py3-none-any.whl
+          - /home/stoat/phi-spike-worker/releases/65efd08833d8bed2c907afac8cc61b3344a4c4dd95112f9de31ebcd71be01992/mps-0.1.0-py3-none-any.whl
 
   - name: pi-pr
     tags: [gardener]

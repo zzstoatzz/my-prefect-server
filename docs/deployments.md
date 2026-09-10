@@ -82,3 +82,18 @@ health, traffic, and cost reporting
 | `watch-fastmcp` | `*/5 * * * *` | Turn fastmcp activity into events on the hub's bus | [`watch_fastmcp`](flows/watch_fastmcp.py) |
 | `fastmcp-brief` | `0 */4 * * *` | Compose what happened in fastmcp into something worth reading | [`fastmcp_brief`](flows/fastmcp_brief.py) |
 | `strata-hourly` | `21 * * * *` | Summarise every sealed segment the worker lacks or holds at a stale checksum; returns segments ingested | [`ingest_segment_collections`](flows/strata.py) |
+
+### Gardener identity release
+
+The live `pi-agent/sprites-spike` investigation and
+`autofix-revise/autofix-revise` revision deployments use the mps wheel
+`65efd08833d8bed2c907afac8cc61b3344a4c4dd95112f9de31ebcd71be01992` under `/home/stoat/phi-spike-worker/releases/`.
+The investigation entrypoint is `flows.pi_agent.pi_agent`; the revision
+entrypoint is `flows.autofix_revise.autofix_revise`. Both use pool
+`phi-sprites-spike`. Source is published on `codex/gardener-identity-live`.
+
+Legacy home-pool deployments are separate and have not been migrated by this
+release. Phi's request ingress currently exposes investigation only. Proposal
+wording is updated in the package but this release does not activate a new
+proposal route. Artifact keys remain stable; descriptions name Gardener and
+identify Pi as the harness.
