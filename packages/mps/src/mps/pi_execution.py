@@ -13,6 +13,9 @@ import tempfile
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from prefect import get_run_logger
+from prefect.exceptions import MissingContextError
+
 from mps.inference_bridge import inference_bridge
 from mps.inference_models import resolve_inference_model
 from mps.pi_sandbox import AGENT_UID, PI_ENTRYPOINT, aperture_models, sandbox_command
@@ -21,7 +24,10 @@ from mps.pi_sandbox import AGENT_UID, PI_ENTRYPOINT, aperture_models, sandbox_co
 def read_pi_events(output: str) -> str:
     """Keep final text while recording content-free tool and usage evidence."""
     final = None
-    logger = logging.getLogger(__name__)
+    try:
+        logger = get_run_logger()
+    except MissingContextError:
+        logger = logging.getLogger(__name__)
     for line in output.splitlines():
         event = json.loads(line)
         if event.get("type") == "tool_execution_end":
