@@ -244,99 +244,71 @@ def _embed_text_for_record(kind: str, value: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-@task
-def fetch_tpuf_points(tpuf_key: str) -> list[AtlasPoint]:
-    """Pull observations, summaries, interactions from every phi-users-* namespace
-    plus the phi-episodic namespace, with their existing embeddings.
+def _memory_rows(namespace):
+    """Traverse by stable row ID; similarity ranking cannot enumerate a store."""
+    after = None
+    while True:
+        response = namespace.query(
+            rank_by=("id", "asc"),
+            top_k=500,
+            filters=("id", "Gt", after) if after is not None else None,
+            # Legacy namespaces may lack source_uris. Include all attributes
+            # rather than requesting a column that may not exist.
+            include_attributes=True,
+        )
+        rows = response.rows or []
+        if not rows:
+            return
+        if after is not None and rows[-1].id <= after:
+            raise RuntimeError("memory traversal did not advance")
+        yield from rows
+        after = rows[-1].id
+        if len(rows) < 500:
+            return
 
-    TurboPuffer stores the same `text-embedding-3-small` vector we'd compute
-    via openai anyway — reusing it saves embedding cost + cold-start latency.
-    Include "vector" in include_attributes to get it back on each row.
+
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
+def fetch_tpuf_points(tpuf_key: str) -> list[AtlasPoint]:
+    """Read every memory page, retaining existing vectors and evidence refs.
+
+    Fail the task on a source error so retries can recover it. Publishing an
+    apparently complete atlas with a silently omitted namespace loses evidence.
+    This traversal is not a transactionally frozen snapshot across namespaces.
     """
     logger = get_run_logger()
-    client = turbopuffer.Turbopuffer(api_key=tpuf_key, region="gcp-us-central1")
     points: list[AtlasPoint] = []
-
-    # per-user namespaces
-    page = client.namespaces(prefix=USER_NS_PREFIX)
-    ns_ids = [ns.id for ns in page.namespaces]
-    logger.info(f"found {len(ns_ids)} phi-users-* namespaces")
-
-    kind_map = {
-        "observation": "observation",
-        "summary": "summary",
-        "interaction": "interaction",
-    }
-
-    attrs_with_vector = ["content", "tags", "created_at", "vector"]
-
-    for ns_id in ns_ids:
-        handle = restore_handle(ns_id)
-        ns = client.namespace(ns_id)
-        for tpuf_kind, point_kind in kind_map.items():
-            try:
-                resp = ns.query(
-                    rank_by=("vector", "ANN", [0.5] * EMBEDDING_DIM),
-                    top_k=500,
-                    filters=("kind", "Eq", tpuf_kind),
-                    include_attributes=attrs_with_vector,
-                )
-            except Exception as e:
-                if "not found" not in str(e).lower():
-                    logger.warning(f"query {ns_id}/{tpuf_kind} failed: {e}")
-                continue
-            for row in resp.rows or []:
+    with turbopuffer.Turbopuffer(api_key=tpuf_key, region="gcp-us-central1") as client:
+        ns_ids = [ns.id for ns in client.namespaces(prefix=USER_NS_PREFIX)]
+        logger.info(f"found {len(ns_ids)} phi-users-* namespaces")
+        for ns_id in [*ns_ids, EPISODIC_NS]:
+            episodic = ns_id == EPISODIC_NS
+            for row in _memory_rows(client.namespace(ns_id)):
+                kind = "episodic" if episodic else getattr(row, "kind", "")
+                if kind not in {"observation", "summary", "interaction", "episodic"}:
+                    continue
                 content = getattr(row, "content", "") or ""
                 if not content:
                     continue
-                pid = f"{point_kind}-{ns_id}-{row.id}"
+                refs = {
+                    "tpuf_namespace": ns_id,
+                    "tpuf_id": str(row.id),
+                    "source_uris": list(getattr(row, "source_uris", []) or []),
+                }
+                if not episodic:
+                    refs["handle"] = restore_handle(ns_id)
                 point = AtlasPoint(
-                    id=pid,
-                    kind=point_kind,
+                    id=f"episodic-{row.id}" if episodic else f"{kind}-{ns_id}-{row.id}",
+                    kind=kind,
                     label=content[:200],
                     tags=getattr(row, "tags", []) or [],
                     created_at=getattr(row, "created_at", "") or "",
-                    refs={
-                        "handle": handle,
-                        "tpuf_namespace": ns_id,
-                        "tpuf_id": str(row.id),
-                    },
+                    refs=refs,
                 )
                 point._content = content
                 vec = getattr(row, "vector", None)
                 if vec:
                     point._vector = list(vec)
                 points.append(point)
-
-    # phi-episodic
-    try:
-        ep_ns = client.namespace(EPISODIC_NS)
-        resp = ep_ns.query(
-            rank_by=("vector", "ANN", [0.5] * EMBEDDING_DIM),
-            top_k=500,
-            include_attributes=attrs_with_vector,
-        )
-        for row in resp.rows or []:
-            content = getattr(row, "content", "") or ""
-            if not content:
-                continue
-            point = AtlasPoint(
-                id=f"episodic-{row.id}",
-                kind="episodic",
-                label=content[:200],
-                tags=getattr(row, "tags", []) or [],
-                created_at=getattr(row, "created_at", "") or "",
-                refs={"tpuf_namespace": EPISODIC_NS, "tpuf_id": str(row.id)},
-            )
-            point._content = content
-            vec = getattr(row, "vector", None)
-            if vec:
-                point._vector = list(vec)
-            points.append(point)
-    except Exception as e:
-        if "not found" not in str(e).lower():
-            logger.warning(f"episodic query failed: {e}")
-
     n_with_vec = sum(1 for p in points if p._vector is not None)
     logger.info(f"fetched {len(points)} points from turbopuffer ({n_with_vec} with vectors reused)")
     return points
@@ -998,7 +970,7 @@ async def phi_atlas(dry_run: bool = False) -> dict[str, int]:
     phi_password = await secret("atproto-password")
 
     # phase A — gather raw points + the cosmik connection graph
-    tpuf_points = fetch_tpuf_points.fn(tpuf_key)
+    tpuf_points = fetch_tpuf_points(tpuf_key)
     pds_points = fetch_pds_points.fn()
     connections = fetch_cosmik_connections.fn()
     points = tpuf_points + pds_points
