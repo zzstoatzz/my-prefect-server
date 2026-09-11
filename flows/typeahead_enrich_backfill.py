@@ -120,6 +120,28 @@ def _tq(
     return out
 
 
+INGEST_HEALTH = "https://typeahead-ingester.fly.dev/health"
+
+
+def _ingestion_ready(client: httpx.Client, now: float) -> bool:
+    """Bulk work yields on stale, overloaded, or unavailable ingestion."""
+    try:
+        response = client.get(INGEST_HEALTH, timeout=5)
+        response.raise_for_status()
+        health = response.json()
+        ingest = health["ingest"]
+        return (
+            health["status"] == "ok"
+            and ingest["backpressure_active"] is False
+            and 0 <= ingest["queued"] < 400
+            and 0 <= ingest["deletes_queued"] < 400
+            and 0 <= now - ingest["source_event_at"] < 120
+            and 0 <= now - ingest["last_write_at"] < 60
+        )
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return False
+
+
 def _arg(v: Any) -> dict[str, str]:
     return {"type": "text", "value": str(v)}
 
@@ -216,12 +238,26 @@ def typeahead_enrich_backfill(
     deadline = time.monotonic() + budget_seconds
     budget_spent = False
 
-    def flush_writes() -> None:
-        nonlocal pending_writes
+    def flush_writes() -> bool:
+        nonlocal pending_writes, budget_spent
         while pending_writes:
-            chunk, pending_writes = pending_writes[:write_batch], pending_writes[write_batch:]
+            # Check before each write: appview pacing alone does not protect
+            # the shared writer. Unwritten rows remain in the durable queue.
+            while not _ingestion_ready(http, time.time()):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    budget_spent = True
+                    return False
+                logger.info("yielding bulk enrichment to ingestion")
+                time.sleep(min(30, remaining))
+            if time.monotonic() >= deadline:
+                budget_spent = True
+                return False
+            chunk = pending_writes[:write_batch]
             _tq(http, chunk)
+            pending_writes = pending_writes[write_batch:]
             time.sleep(0.15)
+        return True
 
     while limit is None or processed < limit:
         if time.monotonic() >= deadline:
@@ -342,8 +378,8 @@ def typeahead_enrich_backfill(
 
             if dry_run:
                 pending_writes.clear()
-            elif len(pending_writes) >= write_batch:
-                flush_writes()
+            elif len(pending_writes) >= write_batch and not flush_writes():
+                break
 
             elapsed = time.time() - t0
             if elapsed < call_interval:
@@ -359,7 +395,7 @@ def typeahead_enrich_backfill(
             cur_rowid,
         )
 
-    if not dry_run:
+    if not dry_run and not budget_spent:
         flush_writes()
 
     if budget_spent:

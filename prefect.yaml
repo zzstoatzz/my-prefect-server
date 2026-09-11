@@ -427,6 +427,8 @@ deployments:
       dry_run: false
     schedules:
       - cron: "0 20 * * *"
+        # Paused during ingester recovery; re-enable after the write health guard is deployed.
+        active: false
     work_pool:
       name: home-pool
       job_variables:
