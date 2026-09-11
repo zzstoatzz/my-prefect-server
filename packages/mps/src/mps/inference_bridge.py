@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
+import time
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -12,6 +14,7 @@ from socketserver import ThreadingMixIn, UnixStreamServer
 from typing import TYPE_CHECKING
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from mps.inference_grants import InferenceGrants
@@ -66,6 +69,37 @@ def inference_bridge(
             pass  # Never log prompts, upstream errors, or credentials.
 
         def do_POST(self):
+            if self.path != "/v1/chat/completions":
+                return self.handle_post()
+            started = time.monotonic()
+            self.audit_status = None
+            self.audit_outcome = "failed"
+            identity = {}
+            credential = self.headers.get("Authorization", "")
+            if grants is not None and credential.startswith("Bearer "):
+                identity = grants.identify(credential.removeprefix("Bearer "))
+            try:
+                self.handle_post()
+            finally:
+                logging.getLogger(__name__).info(
+                    "inference_request %s",
+                    json.dumps({
+                        "request_id": str(uuid4()),
+                        "attempt": identity.get("attempt"),
+                        "model": identity.get("model", model),
+                        "status": self.audit_status,
+                        "outcome": self.audit_outcome,
+                        "duration_ms": round((time.monotonic() - started) * 1000),
+                    }),
+                )
+
+        def send_response(self, code, message=None):
+            self.audit_status = code
+            if 400 <= code < 500:
+                self.audit_outcome = "denied"
+            return super().send_response(code, message)
+
+        def handle_post(self):
             if self.path == "/workflows/request" and workflow_requests is not None:
                 if not workflow_requests.authorized(self.headers.get("Authorization", "")):
                     self.send_error(401)
@@ -154,9 +188,11 @@ def inference_bridge(
                         self.wfile.write(chunk)
                         self.wfile.flush()
                 except (BrokenPipeError, ConnectionResetError, TimeoutError):
+                    self.audit_outcome = "interrupted"
                     return
             with lock:
                 counters["succeeded"] += 1
+            self.audit_outcome = "succeeded"
 
     server = (
         ThreadingHTTPServer(listen, Handler)

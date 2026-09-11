@@ -111,6 +111,17 @@ class InferenceGrants:
             )
             return result.rowcount == 1
 
+    def identify(self, token: str) -> dict:
+        """Resolve audit identity, without granting access or exposing credentials."""
+        if not token or len(token) > 256:
+            return {}
+        with self.connect() as connection:
+            row = connection.execute(
+                "SELECT attempt, model FROM grants WHERE token_hash = ?",
+                (hashlib.sha256(token.encode()).hexdigest(),),
+            ).fetchone()
+            return {"attempt": row[0], "model": row[1]} if row else {}
+
     def revoke(self, attempt: str) -> None:
         with self.connect() as connection:
             connection.execute(

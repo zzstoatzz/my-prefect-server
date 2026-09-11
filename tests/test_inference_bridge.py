@@ -116,7 +116,8 @@ def test_redirect_is_not_followed(bridge_dir, upstream):
     assert len(calls) == 1
 
 
-def test_tcp_endpoint_authenticates_each_request(bridge_dir, upstream):
+def test_tcp_endpoint_authenticates_each_request(bridge_dir, upstream, caplog):
+    caplog.set_level("INFO", logger="mps.inference_bridge")
     url, calls = upstream
     grants = InferenceGrants(bridge_dir / "grants.sqlite")
     token = grants.issue("flow-run:attempt-0", model="openai/gpt-5.6-luna", request_limit=1)
@@ -135,6 +136,14 @@ def test_tcp_endpoint_authenticates_each_request(bridge_dir, upstream):
             response.read()
             connection.close()
     assert len(calls) == 1
+    events = [json.loads(r.message.split(" ", 1)[1]) for r in caplog.records
+              if r.message.startswith("inference_request ")]
+    assert [event["status"] for event in events] == [401, 403, 200, 403]
+    assert [event["attempt"] for event in events] == [None, None, "flow-run:attempt-0", "flow-run:attempt-0"]
+    assert [event["outcome"] for event in events] == ["denied", "denied", "succeeded", "denied"]
+    assert all(event["duration_ms"] >= 0 for event in events)
+    assert token not in caplog.text
+    assert "messages" not in caplog.text
 
 
 def test_tcp_listener_cannot_be_unauthenticated():

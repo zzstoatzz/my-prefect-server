@@ -1,6 +1,7 @@
 """Long-lived authenticated ingress; only this host needs Aperture access."""
 
 import argparse
+import logging
 import os
 import signal
 import threading
@@ -12,6 +13,7 @@ from mps.workflow_requests import WorkflowRequests
 
 
 def main():
+    logging.basicConfig(level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--upstream", required=True)
