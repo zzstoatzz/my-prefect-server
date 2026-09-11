@@ -1,59 +1,62 @@
-# Model routing audit
+# Model routing and cache verification
 
-The operator wants model selection to remain replaceable across Phi and its Pi workflows. Aperture supports configured OpenAI-compatible upstreams, including self-hosted providers; this spike currently restricts that capability in application code.
+Gardener uses Pi 0.84.4 in a Sprite. The trusted worker resolves the model
+before issuing its inference grant; the same logical name reaches the grant,
+Pi configuration, command line, and bridge. A mismatch fails before inference.
+The Sprite receives a scoped bearer credential, never the upstream key.
 
-## Current sources
+## Switching
 
-- `flows/pi_agent.py` and `flows/pi_pr.py`: schema literals restrict the model to `openai/gpt-5.6-luna`.
-- `mps/pi.py`: repeats that restriction in `run_pi`; the input classifier constructs Anthropic Haiku directly.
-- `mps/sprite_worker.py`: grants Luna regardless of flow parameters. The generic worker callback currently receives only attempt ID and timeout.
-- `mps/pi_execution.py`: passes Luna on Pi's command line.
-- `mps/pi_sandbox.py`: writes Luna into Pi's models.json, with a fixed 8192 output limit.
-- Phi `src/bot/config.py`: main, extraction, and policy models are settings. Their consumers use those settings.
-- Phi `src/bot/agent.py`: main agent supplies Anthropic cache settings and a fixed output limit. Cross-provider behavior requires validation, not merely changing the model string.
-- Phi `src/bot/tools/images.py`: image model is fixed to gpt-image-1.
+Set `agent.model` on a `pi-agent` run to `openai/gpt-5.6-luna` or
+`anthropic/claude-haiku-4.5`. Omit it to use the worker's `PHI_INFERENCE_MODEL`
+default (Luna when unset). The trusted catalog also admits Terra and Sonnet 5;
+the measured tool runs below cover Luna and Haiku. Provider changes start an
+independent cache: an Anthropic cache cannot be reused by OpenAI.
 
-## Required implementation contract
+`mps.inference_models` owns the allowed names, wire names, native API, and
+output caps. The local bridge preserves the logical name for grant validation;
+the host translates it for the upstream. Anthropic uses `/v1/messages`, OpenAI
+uses `/v1/chat/completions`. Native cache fields pass through. Pi records
+provider-reported input, output, cache reads and writes in Prefect logs at each
+completed assistant message, alongside tool success/failure without tool content.
 
-Resolve model selection from trusted configuration before issuing the execution grant. Pass that same selection to the grant, Pi models.json, and Pi invocation. An explicit flow model must be authorized, and a mismatch must fail before inference. Model capabilities and output limits must not silently inherit Luna's settings. Keep request endpoint and credentials controlled by the operator.
+Aperture provides the upstream routing boundary. It does not make native APIs
+identical, share caches across providers, or replace Pi's execution trace.
+The Anthropic key is loaded on heavypad from the existing Prefect Secret
+`anthropic-api-key`. Aperture's advertised paid Anthropic route returned 402;
+we did not enable billing. Native passthrough with the existing key works.
 
-Audit provider-specific Phi settings separately from model names. Standardizing the classifier, main agent, and image generation on Aperture requires checking their API formats and capabilities; it is not proven by the existing Pi chat-completions run.
+## Deployed verification, September 11
 
-No model routing changes have been deployed by this audit.
+Both read-only Pi runs completed using `read` on Phi's cache source. No public
+messages or repository mutations were part of these probes.
 
-## September 11 live discovery
+| Provider | Prefect run | First response cache read | Second response cache read |
+| --- | --- | ---: | ---: |
+| Anthropic Haiku | `ca079d3d-0fdb-47d1-9ab7-3cbdb40f5a1f` | 4,389 | 4,389 |
+| OpenAI Luna | `26c70947-08ec-437a-8192-2fb3332b6eb7` | 0 | 3,282 |
 
-Aperture's model catalog advertises native and Aperture-provided OpenAI and
-Anthropic names. A catalog entry is not proof of authorized inference:
-`/v1/messages` with `claude-haiku-4-5` returned 401 (missing x-api-key; a
-placeholder returned invalid x-api-key). The separate
-`anthropic/claude-haiku-4.5` route returned 402 requiring a payment method.
-No payment method or credential was changed by these probes.
+Haiku's second response additionally wrote 5,245 cache tokens. Pi's `input`
+usage is uncached input; do not add it to Phi's inclusive input count as if
+they were the same metric. The deployed package wheel SHA-256 is
+`ce5fea3ec5381c09992e95d828f290cc2eae685a8d644b3a4d9aa66599f95632`.
 
-Pi's public provider API supports `anthropic-messages`, `openai-completions`,
-and `openai-responses`, including cache retention and provider usage fields.
-The application bridge currently accepts only `/v1/chat/completions` and one
-model. The Sprite worker issues the grant before the flow runs, but its
-`run_environment` callback receives only attempt and timeout. A configurable
-flow model alone cannot change the grant safely. Resolve trusted selection
-before grant issuance and carry the same selection into Pi's model catalog
-and invocation; validate mismatches before requesting inference.
+A separate identical-request probe through the deployed host bridge wrote
+6,302 Anthropic cache tokens on its first request and read all 6,302 on its
+second. Its two-request grant was exhausted and revoked. This verifies native
+cache passthrough independently of Pi's prompt construction.
 
-The deployed Pi installer pins 0.84.4. Locally installed newer provider docs
-must not be treated as proof of that pinned version's capabilities. Verify
-native cache markers and usage parsing against the pinned implementation.
+## Phi boundary
 
-Native Anthropic transport verified with the existing `anthropic-api-key`
-Prefect Secret block, loaded only on heavypad. Two identical Haiku requests
-through Aperture `/v1/messages` reported:
+Phi still uses PydanticAI directly; switching Gardener does not switch Phi.
+Phi's `AGENT_MODEL`, `EXTRACTION_MODEL`, and `POLICY_MODEL` select separate
+roles. Its deployed main-agent settings select Anthropic cache TTLs or an
+OpenAI cache routing key according to the resolved provider. Moving all of
+Phi's inference through Aperture is not proven by Gardener's routing tests.
+Image generation remains separate. No voice, memory, or action-policy change
+is required to change the transport.
 
-| Request | Uncached input | Cache write (5m) | Cache read | Output |
-| --- | ---: | ---: | ---: | ---: |
-| 1 | 9 | 5602 | 0 | 4 |
-| 2 | 9 | 0 | 5602 | 4 |
-
-This proves gateway passthrough of native cache controls with a valid upstream
-credential. It does not yet prove the deployed bridge/Pi chain or production
-Phi cache efficiency. No new payment method was used. The inference service
-must resolve this existing block on the host; the key must never enter the
-Sprite or its model configuration.
+The production cache audit is continuing in the bot repository. In particular,
+the old dashboard mixed concurrent runs; its collapse attribution is not a
+reliable measure of provider behavior. Use independently correlated Logfire
+requests until the corrected recorder has accumulated a fresh window.
