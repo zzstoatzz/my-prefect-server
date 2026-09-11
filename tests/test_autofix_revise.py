@@ -45,7 +45,8 @@ async def test_watch_dedupes_handled_comments(monkeypatch):
     async def fake_drain(cursor):
         return [watch_tangled_pulls.relevant_comment(feed_event())], 123
 
-    async def fake_run_deployment(name, parameters, timeout):
+    async def fake_run_deployment(name, parameters, timeout, idempotency_key):
+        assert idempotency_key == f"autofix-revise:{parameters['comment_uri']}"
         started.append(parameters)
 
         class R:
@@ -99,7 +100,8 @@ async def test_watch_survives_stream_failure(monkeypatch):
 
     started = []
 
-    async def fake_run_deployment(name, parameters, timeout):
+    async def fake_run_deployment(name, parameters, timeout, idempotency_key):
+        assert idempotency_key == f"autofix-revise:{parameters['comment_uri']}"
         started.append(parameters)
 
         class R:
@@ -146,6 +148,8 @@ def test_new_round_patch_is_self_contained(tmp_path):
     from mps.tangled import build_patch
 
     assert autofix_revise.apply_patch(str(repo), round1)
+    # A reply-only run must not republish the already-applied round.
+    assert build_patch(str(repo), base, "reply only", "gardener") == ""
     (repo / "a").write_text("round one\nrevised\n")
     new_round = build_patch(str(repo), base, "revision", "gardener")
 
@@ -163,3 +167,61 @@ def test_new_round_patch_is_self_contained(tmp_path):
         capture_output=True,
     )
     assert (clean / "a").read_text() == "round one\nrevised\n"
+
+
+def test_only_phi_change_requests_start_revisions():
+    event = feed_event()
+    event["did"] = autofix_revise.PHI_DID
+    for verdict in ("approve", "escalate"):
+        event["commit"]["record"]["body"]["text"] = f"VERDICT: {verdict}"
+        assert watch_tangled_pulls.relevant_comment(event) is None
+    event["commit"]["record"]["body"]["text"] = "VERDICT: request-changes"
+    assert watch_tangled_pulls.relevant_comment(event)["pull"] == PULL
+    event["did"] = "did:plc:stranger"
+    assert watch_tangled_pulls.relevant_comment(event) is None
+
+
+def test_revision_downloads_validated_snapshot_without_refetch(monkeypatch):
+    import gzip
+
+    snapshot = {"rounds": [{"patchBlob": {"ref": {"$link": "reviewed-patch"}}}]}
+
+    def unexpected_refetch(*args):
+        raise AssertionError("Must not select a newer pull while preparing this revision")
+
+    def get(url, *, params, timeout):
+        assert params["cid"] == "reviewed-patch"
+
+        class Response:
+            content = gzip.compress(b"reviewed patch contents")
+
+            def raise_for_status(self):
+                pass
+
+        return Response()
+
+    monkeypatch.setattr(autofix_revise, "get_record", unexpected_refetch)
+    monkeypatch.setattr(autofix_revise, "resolve_pds", lambda did: "https://pds.example")
+    monkeypatch.setattr(autofix_revise.httpx, "get", get)
+    assert autofix_revise.latest_round_patch(snapshot) == "reviewed patch contents"
+
+
+def test_phi_feedback_for_other_record_is_stale_even_in_same_round(monkeypatch):
+    comment_uri = f"at://{autofix_revise.PHI_DID}/sh.tangled.feed.comment/review"
+    pull = {"cid": "current-cid", "value": {"rounds": [{}]}}
+    comment = {
+        "value": {
+            "subject": {"uri": PULL, "cid": "older-cid"},
+            "pullRoundIdx": 0,
+            "body": {"text": "VERDICT: request-changes"},
+        }
+    }
+    monkeypatch.setattr(autofix_revise, "get_record", lambda uri: pull if uri == PULL else comment)
+    monkeypatch.setattr(autofix_revise, "list_pull_comments", lambda *args: [])
+
+    def unexpected_secret(*args):
+        raise AssertionError("stale review must stop before credentials or execution")
+
+    monkeypatch.setattr(autofix_revise, "secret_sync", unexpected_secret)
+    result = autofix_revise.autofix_revise.fn(PULL, comment_uri)
+    assert result.name == "Stale"

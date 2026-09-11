@@ -53,7 +53,7 @@ def test_review_verdict_picks_the_latest_verdict_on_this_pull(monkeypatch) -> No
 
     monkeypatch.setattr(tangled, "resolve_pds", lambda did: "https://pds.test")
     monkeypatch.setattr(httpx, "get", fake_get)
-    got = review_verdict(PULL, "did:plc:reviewer")
+    got = review_verdict(PULL, "did:plc:reviewer", round_index=0, expected_cid="reviewed")
     assert got is not None
     assert got["verdict"] == "approve"
     assert got["uri"].endswith("/c4")
@@ -66,13 +66,14 @@ def test_review_verdict_none_when_reviewer_has_not_spoken(monkeypatch) -> None:
         "get",
         lambda url, params=None, timeout=None: _resp(url, json={"records": []}),
     )
-    assert review_verdict(PULL, "did:plc:reviewer") is None
+    assert review_verdict(PULL, "did:plc:reviewer", round_index=0, expected_cid="reviewed") is None
 
 
 def test_pull_patch_reads_the_latest_round_blob_gunzipped(monkeypatch) -> None:
     patch_text = "diff --git a/f b/f\n+hello\n"
     record = {
         "uri": PULL,
+        "cid": "reviewed",
         "value": {
             "title": "t",
             "body": "b",
@@ -112,8 +113,34 @@ def _comment(rkey: str, subject: str, text: str, created: str) -> dict:
     return {
         "uri": f"at://did:plc:reviewer/{tangled.FEED_COMMENT_NSID}/{rkey}",
         "value": {
-            "subject": {"uri": subject},
+            "subject": {"uri": subject, "cid": "reviewed"},
+            "pullRoundIdx": 0,
             "body": {"$type": tangled.MARKDOWN_NSID, "text": text},
             "createdAt": created,
         },
     }
+
+
+def test_review_verdict_rejects_stale_and_unversioned_approvals(monkeypatch):
+    records = [
+        _comment("old", PULL, "VERDICT: approve", "2026-09-03T02:00:00Z"),
+        _comment("missing", PULL, "VERDICT: approve", "2026-09-03T03:00:00Z"),
+    ]
+    del records[1]["value"]["pullRoundIdx"]
+    monkeypatch.setattr(tangled, "resolve_pds", lambda did: "https://pds.test")
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: _resp(url, json={"records": records}))
+    assert review_verdict(PULL, "did:plc:reviewer", round_index=1, expected_cid="reviewed") is None
+    records.append(_comment("new", PULL, "VERDICT: request-changes", "2026-09-03T04:00:00Z"))
+    records[-1]["value"]["pullRoundIdx"] = 1
+    assert (
+        review_verdict(PULL, "did:plc:reviewer", round_index=1, expected_cid="reviewed")["verdict"]
+        == "request-changes"
+    )
+
+
+def test_verdict_requires_matching_cid_in_same_round(monkeypatch):
+    records = [_comment("wrong", PULL, "VERDICT: approve", "2026-09-03T02:00:00Z")]
+    records[0]["value"]["subject"]["cid"] = "other"
+    monkeypatch.setattr(tangled, "resolve_pds", lambda did: "https://pds.test")
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: _resp(url, json={"records": records}))
+    assert review_verdict(PULL, "did:plc:reviewer", round_index=0, expected_cid="reviewed") is None

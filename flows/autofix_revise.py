@@ -16,6 +16,7 @@ import argparse
 import gzip
 import subprocess
 from tempfile import TemporaryDirectory
+from typing import get_args
 
 import httpx
 from mps.blocks import secret_sync
@@ -25,8 +26,12 @@ from mps.tangled import (
     append_round,
     build_patch,
     comment_on_pull,
+    comment_subject,
+    comment_text,
     get_record,
     list_pull_comments,
+    parse_verdict,
+    repo_name_for_did,
     resolve_pds,
 )
 from prefect import flow
@@ -36,12 +41,13 @@ from prefect.states import Completed, State
 from flows.autofix import (
     GARDENER_DID,
     PULL_PREFIX,
-    REPO_URL,
     fetch_skills,
     trailers,
 )
+from flows.pi_pr import CLONE_URL, OWNER, Repo
 
 MAX_ROUNDS = 6
+PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
 
 PROMPT = """\
 you are gardener, revising your own pull request on the operator's repo in
@@ -73,10 +79,9 @@ title: {title}
 """
 
 
-def latest_round_patch(pull_uri: str) -> str:
-    """download and gunzip the newest round's patch blob."""
-    record = get_record(pull_uri)
-    rounds = record["value"].get("rounds", [])
+def latest_round_patch(record: dict) -> str:
+    """Download the patch from the pull snapshot validated for this review."""
+    rounds = record.get("rounds", [])
     if not rounds:
         return ""
     cid = rounds[-1]["patchBlob"]["ref"]["$link"]
@@ -119,21 +124,54 @@ def autofix_revise(pull: str, comment_uri: str = "") -> State:
     if not pull.startswith(PULL_PREFIX):
         return Completed(name="Skipped", message=f"not a gardener pull: {pull}")
 
-    record = get_record(pull)["value"]
+    snapshot = get_record(pull)
+    record = snapshot["value"]
     rounds = record.get("rounds", [])
     if len(rounds) >= MAX_ROUNDS:
         return Completed(name="Capped", message=f"{len(rounds)} rounds — take it from here by hand")
 
     thread = list_pull_comments(OPERATOR_DID, pull)
-    if not thread:
+    if comment_uri:
+        reviewer = comment_uri.removeprefix("at://").split("/", 1)[0]
+        if reviewer not in (OPERATOR_DID, PHI_DID):
+            return Completed(name="Skipped", message="comment is not from an authorized reviewer")
+        comment = get_record(comment_uri)["value"]
+        if comment_subject(comment) != pull:
+            return Completed(name="Skipped", message="comment belongs to a different pull")
+        if comment.get("pullRoundIdx") != len(rounds) - 1:
+            return Completed(name="Stale", message="comment reviews a different round")
+        if reviewer == PHI_DID and (comment.get("subject") or {}).get("cid") != snapshot.get("cid"):
+            return Completed(name="Stale", message="Phi reviewed a different pull record")
+        if reviewer == PHI_DID and parse_verdict(comment_text(comment)) != "request-changes":
+            return Completed(name="Skipped", message="Phi did not request changes")
+        latest = {"uri": comment_uri, "text": comment_text(comment)}
+    elif thread:
+        latest = thread[-1]
+    else:
         return Completed(name="Skipped", message="no operator comments on this pull")
-    latest = next((c for c in thread if c["uri"] == comment_uri), thread[-1])
+
+    target = record.get("target") or {}
+    repo = repo_name_for_did(OPERATOR_DID, target.get("repo", ""))
+    if repo not in get_args(Repo):
+        return Completed(name="Skipped", message="pull target is outside the coding repo allowlist")
+    branch = target.get("branch") or "main"
+    if branch.startswith("-"):
+        raise ValueError("invalid target branch")
 
     anthropic_key = secret_sync("anthropic-api-key")
     with TemporaryDirectory(prefix="autofix-revise-") as workdir:
         cwd = f"{workdir}/repo"
         subprocess.run(
-            ["git", "clone", "--depth", "50", REPO_URL, cwd],
+            [
+                "git",
+                "clone",
+                "--depth",
+                "50",
+                "--branch",
+                branch,
+                CLONE_URL.format(owner=OWNER, repo=repo),
+                cwd,
+            ],
             check=True,
             capture_output=True,
             text=True,
@@ -149,7 +187,7 @@ def autofix_revise(pull: str, comment_uri: str = "") -> State:
             capture_output=True,
             text=True,
         ).stdout.strip()
-        patch = latest_round_patch(pull)
+        patch = latest_round_patch(record)
         applied = apply_patch(cwd, patch) if patch else False
 
         prompt = PROMPT.format(
@@ -165,10 +203,9 @@ def autofix_revise(pull: str, comment_uri: str = "") -> State:
         output = run_pi(
             prompt,
             cwd=cwd,
-            provider="anthropic",
+            provider="aperture",
             thinking="medium",
             tool_mode="full",
-            env=minimal_env(ANTHROPIC_API_KEY=anthropic_key),
             skills=fetch_skills(workdir),
         ).strip()
 
@@ -181,9 +218,30 @@ def autofix_revise(pull: str, comment_uri: str = "") -> State:
     password = secret_sync("gardener-password")
     round_n = None
     if new_patch:
-        round_n = append_round(pull, new_patch, note, handle, password)
+        if get_record(pull)["value"].get("rounds", []) != rounds:
+            return Completed(name="Stale", message="pull changed while Pi was revising")
+        round_n = append_round(
+            pull, new_patch, note, handle, password, expected_cid=snapshot["cid"]
+        )
         print(f"round {round_n} appended")
     comment_on_pull(pull, reply, handle, password)
+
+    if new_patch:
+        emit_event(
+            event="autofix.proposed",
+            resource={
+                "prefect.resource.id": f"autofix.{pull.rsplit('/', 1)[-1]}",
+                "prefect.resource.name": record.get("title", pull),
+            },
+            payload={
+                "deployment": f"autofix-revise ({repo})",
+                "summary": reply[:240],
+                "title": record.get("title", ""),
+                "pull": pull,
+                "pr_url": f"https://tangled.org/{OWNER}/{repo}/pulls",
+                "autofix_url": "",
+            },
+        )
 
     emit_event(
         event="autofix.revised",

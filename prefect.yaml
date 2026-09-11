@@ -824,7 +824,7 @@ deployments:
 
   - name: pi-agent
     tags: [gardener]
-    entrypoint: flows/pi_agent.py:pi_agent
+    entrypoint: flows/pi_agent_local.py:pi_agent_local
     # runs pi (the coding agent) non-interactively on the home box. no
     # schedule — triggered ad hoc for now; the end state is alert-driven
     # (logfire alert -> automation -> this deployment with the alert in the
@@ -864,9 +864,11 @@ deployments:
       job_variables:
         command: >-
           uv run
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git@9495d617fd5a8c7342149dcfd8aef25ade43d2fd'
           prefect flow-run execute
         env:
+          # Preserve the live home-worker implementation until its Sprite migration.
+          MPS_PIN: "@9495d617fd5a8c7342149dcfd8aef25ade43d2fd"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
@@ -876,11 +878,15 @@ deployments:
   - name: watch-tangled-pulls
     tags: [gardener]
     entrypoint: flows/watch_tangled_pulls.py:watch_tangled_pulls
+    pull: []
     # drains operator comments on gardener pulls off stream.waow.tech (cursor
     # replay makes a cron of short runs equivalent to a daemon) and starts
     # autofix-revise runs. no secrets: the stream is public and the operator
     # DID filter is server-side.
-    work_pool: *home
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: uv run --with /home/stoat/phi-spike-worker/releases/b3bb2df44b4d7f8e07f018dbf41440e6a04496b42cc5694c7047f71a48921e4c/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
     schedules:
       - cron: "*/2 * * * *"
         active: true
@@ -888,22 +894,16 @@ deployments:
   - name: autofix-revise
     tags: [gardener]
     entrypoint: flows/autofix_revise.py:autofix_revise
+    pull: []
     # started by watch-tangled-pulls per operator comment. pi (full tools, no
     # credentials) revises the pull in a scratch clone; the flow appends the
     # round and replies as gardener.
     work_pool:
-      name: home-pool
+      name: phi-sprites-spike
       job_variables:
-        command: >-
-          uv run
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
-          prefect flow-run execute
-        env:
-          PREFECT_PLUGINS_ENABLED: "true"
-          PREFECT_PLUGINS_ALLOW: mps-secrets
-          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
-          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-          ANTHROPIC_API_KEY: prefect-block://anthropic-api-key
+        timeout_seconds: 2400
+        local_packages:
+          - /home/stoat/phi-spike-worker/releases/ce5fea3ec5381c09992e95d828f290cc2eae685a8d644b3a4d9aa66599f95632/mps-0.1.0-py3-none-any.whl
 
   - name: pi-pr
     tags: [gardener]
@@ -913,18 +913,42 @@ deployments:
     # reviews it. pi holds no credential — the flow publishes, so a hijacked
     # prompt can only produce a bad diff. requires pi + openai-codex creds on
     # the worker.
-    work_pool: *home
+    # Preserve the deployed local implementation; the new isolated flow needs
+    # a separately verified Sprite deployment before changing this route.
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git@0b9e77c00a550cb51c5f904e2ed060d7834a3160'
+          prefect flow-run execute
+        env:
+          MPS_PIN: "@0b9e77c00a550cb51c5f904e2ed060d7834a3160"
 
   - name: merge-approved
     tags: [gardener]
     entrypoint: flows/merge_approved.py:merge_approved
+    pull: []
     # stage 2 of the approval ladder (docs/autofix.md). started by
     # `autofix proposed -> merge-approved` with the gardener pull; waits for
     # phi's VERDICT, applies the round to a knot clone, runs the repo's tests,
     # then emits merge.awaiting-approval (-> discord) and suspends. the
     # operator's Resume in the ui is the merge. holds the only merge
     # credential (tangled-merge-ssh-key); pi never runs in this flow.
-    work_pool: *home
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: uv run --with /home/stoat/phi-spike-worker/releases/310bb2a3f4fcc35357150c88d810f6f488296ac51c2c119ba29b5e851b284902/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
+
+  - name: test-pull-patch
+    tags: [gardener]
+    entrypoint: flows/test_pull_patch.py:test_pull_patch
+    pull: []
+    work_pool:
+      name: phi-sprites-spike
+      job_variables:
+        timeout_seconds: 2400
+        local_packages:
+          - /home/stoat/phi-spike-worker/releases/2f167908b9ed2379eb2df6bea861eacf629716bfcd7b562832b46ce3c93a4f4e/mps-0.1.0-py3-none-any.whl
 
   - name: dep-bump
     tags: [gardener]

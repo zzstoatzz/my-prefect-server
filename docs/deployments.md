@@ -2,7 +2,7 @@
 
 generated from `prefect.yaml` by `scripts/deployments_inventory.py`; do not edit by hand. `just inventory` regenerates it and CI fails on drift.
 
-40 deployments, all on the `home-pool` process worker. a cadence of `after x` is an automation that fires when deployment x completes; `manual` means the deployment is started by the API, an automation outside `prefect.yaml`, or a person.
+41 deployments, all on the `home-pool` process worker. a cadence of `after x` is an automation that fires when deployment x completes; `manual` means the deployment is started by the API, an automation outside `prefect.yaml`, or a person.
 
 ## pipeline
 
@@ -43,7 +43,7 @@ snapshots and indexes published for other products
 | `leaflet-atlas` | `0 */6 * * *` | Rebuild the 2D semantic map and deploy to Cloudflare Pages | [`rebuild_atlas`](flows/atlas.py) |
 | `pds-records` | manual | General-purpose PDS record management | [`pds_records`](flows/pds_records.py) |
 | `typeahead-identity-hourly` | `20 * * * *` | typeahead-identity-hourly: give newly discovered actors their handles | [`typeahead_identity_hourly`](flows/typeahead_identity.py) |
-| `typeahead-enrich-backfill` | `0 20 * * *` | Enrich actors whose profile has never been checked, paced against the appview | [`typeahead_enrich_backfill`](flows/typeahead_enrich_backfill.py) |
+| `typeahead-enrich-backfill` | `0 20 * * *` (inactive) | Enrich actors whose profile has never been checked, paced against the appview | [`typeahead_enrich_backfill`](flows/typeahead_enrich_backfill.py) |
 | `typeahead-index` | `0 9 */3 * *` | Build the typeahead prefix-index snapshot (the offline `MODE=indexer` job) on the home box and publish it to R2 | [`typeahead_index`](flows/typeahead_index.py) |
 | `typeahead-plc-identity` | `0 5 * * 1` | Resolve typeahead's DID -> (handle, pds) backlog in bulk from the PLC log | [`typeahead_plc_identity`](flows/typeahead_plc_identity.py) |
 | `pub-search-snapshot` | `40 */2 * * *` | Build the pub-search replica snapshot (the `BUILDER_MODE=1` job) on the home box and publish it to R2 | [`pub_search_snapshot`](flows/pub_search_snapshot.py) |
@@ -55,12 +55,13 @@ pi as a coding agent: diagnose, propose, revise, merge
 
 | deployment | cadence | purpose | entrypoint |
 |---|---|---|---|
-| `pi-agent` | manual | run `pi -p <prompt>` in the workspace and return its final output | [`pi_agent`](flows/pi_agent.py) |
+| `pi-agent` | manual | run `pi -p <prompt>` in the workspace and return its final output | [`pi_agent_local`](flows/pi_agent_local.py) |
 | `autofix` | manual | pi diagnoses a failed run and, when proposing is on for that deployment, opens a gardener pull | [`autofix`](flows/autofix.py) |
-| `watch-tangled-pulls` | `*/2 * * * *` | turn the operator's comments on gardener's pulls into autofix-revise runs | [`watch_tangled_pulls`](flows/watch_tangled_pulls.py) |
+| `watch-tangled-pulls` | `*/2 * * * *` | turn operator comments and Phi revision requests into autofix-revise runs | [`watch_tangled_pulls`](flows/watch_tangled_pulls.py) |
 | `autofix-revise` | manual | revise a gardener-authored pull in response to an operator comment | [`autofix_revise`](flows/autofix_revise.py) |
-| `pi-pr` | manual | have pi attempt `task` in `repo` and open a tangled PR as gardener | [`pi_pr`](flows/pi_pr.py) |
+| `pi-pr` | manual | Have Gardener attempt `task` using Pi and author a Tangled pull | [`pi_pr`](flows/pi_pr.py) |
 | `merge-approved` | manual | a phi-approved gardener pull lands when the operator resumes this run | [`merge_approved`](flows/merge_approved.py) |
+| `test-pull-patch` | manual | Run proposed repository tests inside a Sprite without merge credentials | [`test_pull_patch`](flows/test_pull_patch.py) |
 | `dep-bump` | manual | re-pin `dep` to `version` in each downstream; land the ones whose tests pass | [`dep_bump`](flows/dep_bump.py) |
 | `stream-admission` | manual | Gate a stream commit on heavypad | [`stream_admission`](flows/stream_admission.py) |
 

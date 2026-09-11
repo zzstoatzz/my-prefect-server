@@ -1,0 +1,19 @@
+[Unit]
+Description=Prefect worker for Phi-requested Pi workflows on Sprites
+After=network.target phi-inference.service
+
+[Service]
+WorkingDirectory=/home/stoat/phi-spike-worker
+Environment=PYTHONPATH=/home/stoat/phi-spike-worker/src
+Environment=PREFECT_LOGGING_LEVEL=INFO
+EnvironmentFile=/home/stoat/.config/prod-worker/env
+ExecStart=/home/stoat/phi-spike-worker/venv/bin/python -m mps.sprite_worker --pool phi-sprites-spike --database /home/stoat/phi-inference/state/grants.sqlite --inference-url https://heavypad.tailb660b6.ts.net:8443/v1/chat/completions
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=90
+UMask=0077
+NoNewPrivileges=true
+MemoryMax=1G
+
+[Install]
+WantedBy=default.target

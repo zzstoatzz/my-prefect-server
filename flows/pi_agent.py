@@ -11,8 +11,9 @@ import tempfile
 from typing import Literal
 
 from mps.blocks import secret_sync
-from mps.pi import TOOL_ARGS, Toolset, minimal_env, run_pi, screen_prompt
+from mps.pi import TOOL_ARGS, minimal_env, run_pi, screen_prompt
 from prefect import flow
+from prefect.artifacts import create_markdown_artifact
 from prefect.flow_runs import pause_flow_run
 from pydantic import BaseModel, Field
 
@@ -46,14 +47,14 @@ class Workspace(BaseModel):
 class Agent(BaseModel):
     """which brain pi gets, and which hands."""
 
-    provider: str = Field(
-        default="anthropic",
-        description="Pi provider; credentials must already be configured on the worker",
+    provider: Literal["aperture"] = Field(
+        default="aperture",
+        description="inference uses the run-scoped Aperture bridge",
         json_schema_extra={"position": 0},
     )
     model: str | None = Field(
         default=None,
-        description="model id (e.g. claude-haiku-4-5-20251001); empty = provider default",
+        description="Authorized inference model; empty uses the worker default",
         json_schema_extra={"position": 1},
     )
     thinking: THINKING = Field(default="medium", json_schema_extra={"position": 2})
@@ -61,15 +62,10 @@ class Agent(BaseModel):
         default="read-only",
         description=(
             "full = read/bash/edit/write (pi can modify the workspace and run "
-            "commands as the worker user); read-only = read,grep,find,ls; "
+            "commands inside the isolated workspace); read-only = read,grep,find,ls; "
             "none = pure text"
         ),
         json_schema_extra={"position": 3},
-    )
-
-    toolset: Toolset | None = Field(
-        default=None,
-        description="Explicit tools and installed extensions; overrides tool_mode when set",
     )
 
 
@@ -79,31 +75,29 @@ def pi_agent(
     workspace: Workspace = Workspace(),  # noqa: B008
     agent: Agent = Agent(),  # noqa: B008
     timeout_seconds: int = 1500,
-    instructions: str | None = None,
 ) -> str:
     """run `pi -p <prompt>` in the workspace and return its final output.
 
-    pi resolves credentials from provider env vars (ANTHROPIC_API_KEY is
-    injected from a secret block by the deployment).
+    Pi reaches Aperture through the isolated runtime bridge. The trusted
+    prompt judge uses its separate Anthropic secret block.
     """
     anthropic_key = secret_sync("anthropic-api-key")
     screen_prompt(
         prompt,
         agent.tool_mode,
         anthropic_key,
-        instructions=instructions,
-        toolset=agent.toolset,
+        inputs={
+            "workspace": workspace.model_dump(),
+            "agent": agent.model_dump(),
+            "timeout_seconds": timeout_seconds,
+        },
     )
 
-    needs_approval = (
-        agent.toolset.requires_approval if agent.toolset is not None else agent.tool_mode == "full"
-    )
-    if needs_approval:
-        print("coding write tools require human approval — pausing (resume in UI)")
+    if agent.tool_mode == "full":
+        print("tool_mode=full requires human approval — pausing (resume in UI)")
         pause_flow_run(timeout=600)
 
     env = minimal_env()
-    pi_env = minimal_env(ANTHROPIC_API_KEY=anthropic_key if agent.provider == "anthropic" else "")
     with tempfile.TemporaryDirectory(prefix="pi-agent-") as cwd:
         if workspace.repo:
             url = REPO_URLS[workspace.repo]
@@ -114,21 +108,24 @@ def pi_agent(
                 capture_output=True,
                 text=True,
                 env=env,
-                timeout=10,
             )
 
-        return run_pi(
-            prompt,
+        output = run_pi(
+            "You are Gardener (gardener.pds.zat.dev), the maintenance agent. "
+            "You use the Pi harness to investigate the following request.\n\n" + prompt,
             cwd=cwd,
             provider=agent.provider,
             model=agent.model,
             thinking=agent.thinking,
             tool_mode=agent.tool_mode,
-            toolset=agent.toolset,
-            instructions=instructions,
-            env=pi_env,
             timeout_seconds=timeout_seconds,
         )
+        create_markdown_artifact(
+            key="pi-agent-output",
+            markdown=output,
+            description="Gardener investigation result (Pi harness)",
+        )
+        return output
 
 
 if __name__ == "__main__":

@@ -1,0 +1,14 @@
+{
+  "flow_run_id": "9123fdb9-0ead-492a-9223-7c675334247d",
+  "state": "Completed",
+  "exit_code": 0,
+  "output": "pi-prefect-aperture-ok",
+  "automatic_pi_install": true,
+  "pi_version": "0.84.4",
+  "node_version": "24.18.0",
+  "inference_requests": 1,
+  "grant_revoked": true,
+  "sprite_deleted": true,
+  "provider_cost_usd": null,
+  "scope": "Prefect worker to automatic Pi setup to isolated run_pi to Aperture. This is an execution probe, not yet a live Phi-requested deployment."
+}

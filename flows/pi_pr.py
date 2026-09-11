@@ -1,11 +1,7 @@
-"""pi proposes a change to one of the operator's repos; it lands as a gardener pull.
+"""Gardener proposes changes using the Pi harness and authors the resulting pull.
 
-the security shape is the point. pi runs in a throwaway clone with an
-environment built from scratch and holds no write credential of any kind.
-the one credential it can read is the worker's own Codex login in
-`~/.pi/agent/auth.json`, a session minted on the box by device-code login
-(never copied from a laptop); a hijacked prompt can spend that subscription
-and nothing else.
+Pi runs in an isolated Sprite workspace without provider or publishing
+credentials. Inference uses the run-scoped Aperture bridge.
 the flow — code an injected prompt cannot rewrite — is what turns its work
 into a patch and publishes the pull record as gardener, the maintenance
 identity every automated pull uses. worst case, a confused or hijacked pi
@@ -18,6 +14,7 @@ push access to the target repo is needed, so nothing here can write to a repo.
 """
 
 import argparse
+import hashlib
 import subprocess
 import tempfile
 from typing import Any, Literal
@@ -26,6 +23,7 @@ from mps.blocks import secret_sync
 from mps.pi import minimal_env, run_pi, screen_prompt
 from mps.tangled import build_patch, create_pull
 from prefect import flow
+from prefect.artifacts import create_table_artifact
 from prefect.events import emit_event
 from prefect.runtime import flow_run as run_context
 from pydantic import BaseModel, Field
@@ -38,10 +36,10 @@ APPVIEW = "https://tangled.org"
 
 
 class Agent(BaseModel):
-    """which brain pi gets. luna is the configured openai-codex subscription."""
+    """The Aperture model authorized by the execution grant."""
 
-    provider: str = Field(default="openai-codex", json_schema_extra={"position": 0})
-    model: str = Field(default="gpt-5.6-luna", json_schema_extra={"position": 1})
+    provider: Literal["aperture"] = Field(default="aperture", json_schema_extra={"position": 0})
+    model: str | None = Field(default=None, json_schema_extra={"position": 1})
     thinking: Literal["off", "minimal", "low", "medium", "high", "xhigh"] = Field(
         default="medium", json_schema_extra={"position": 2}
     )
@@ -57,7 +55,7 @@ def pi_pr(
     dry_run: bool = False,
     requested_by: str = "",
 ) -> dict[str, Any]:
-    """have pi attempt `task` in `repo` and open a tangled PR as gardener.
+    """Have Gardener attempt `task` using Pi and author a Tangled pull.
 
     `title` and `body` are the caller's own words and are published verbatim;
     `requested_by` names who asked, and is appended to the body so the pull
@@ -65,7 +63,18 @@ def pi_pr(
     """
     agent = agent or Agent()
     anthropic_key = secret_sync("anthropic-api-key")
-    screen_prompt(task, "full", anthropic_key)
+    screen_prompt(
+        task,
+        "full",
+        anthropic_key,
+        inputs={
+            "repo": repo,
+            "title": title,
+            "body": body,
+            "requested_by": requested_by,
+            "dry_run": dry_run,
+        },
+    )
 
     with tempfile.TemporaryDirectory(prefix="pi-pr-") as cwd:
         env = minimal_env()
@@ -88,7 +97,8 @@ def pi_pr(
         ).stdout.strip()
 
         output = run_pi(
-            task,
+            "You are Gardener (gardener.pds.zat.dev), the maintenance agent. "
+            "You use the Pi harness; the trusted workflow publishes your patch.\n\n" + task,
             cwd=cwd,
             provider=agent.provider,
             model=agent.model,
@@ -96,22 +106,32 @@ def pi_pr(
             # pi must edit files and run tests here; it still holds no credential,
             # and everything it produces is reviewed as a patch before merge
             tool_mode="full",
-            env=env,
         )
 
         patch = build_patch(cwd, base, title, "gardener", email="gardener@zat.dev")
         if not patch:
-            print("pi made no changes — nothing to propose")
+            print("Gardener made no changes — nothing to propose")
             return {"changed": False, "output": output}
 
         print(f"patch: {len(patch)} bytes")
         if dry_run:
-            return {"changed": True, "dry_run": True, "patch_bytes": len(patch)}
+            digest = hashlib.sha256(patch.encode()).hexdigest()
+            artifact_id = create_table_artifact(
+                key="pi-proposed-patch",
+                table=[{"repo": repo, "base": base, "sha256": digest, "patch": patch}],
+                description="Unpublished Gardener patch for review",
+            )
+            return {
+                "changed": True,
+                "dry_run": True,
+                "patch_bytes": len(patch.encode()),
+                "patch_sha256": digest,
+                "base": base,
+                "artifact_id": str(artifact_id),
+            }
 
         if requested_by:
-            body = (
-                f"{body}\n\nrequested by {requested_by}; implemented by pi, published by gardener."
-            )
+            body = f"{body}\n\nrequested by {requested_by}; implemented by gardener using the Pi harness; published by the trusted workflow as gardener."
         handle = secret_sync("gardener-handle")
         password = secret_sync("gardener-password")
         pull = create_pull(OWNER, repo, title, patch, body, handle, password)

@@ -1,0 +1,36 @@
+{
+  "observed_failure": {
+    "endpoint": "POST /deployments/{id}/create_flow_run",
+    "accepted_but_discarded": "idempotency_key",
+    "duplicate_runs_cancelled_before_execution": [
+      "592eb2c7-b1d2-416e-bba5-c25a0712c7b4",
+      "2f48af7c-2bfe-40f2-83cc-3ea520ce1620"
+    ]
+  },
+  "fix_source": "/tmp/phi-prefect-server",
+  "base_commit": "ce2759ce2f109b7abce930b2f40e62c14a2c24a5",
+  "validation": {
+    "sqlite_contract_tests": 72,
+    "postgres_contract_tests": 72,
+    "concurrent_requests": 8,
+    "expected_created": 1,
+    "expected_reused": 7,
+    "completed_state_preserved": true,
+    "changed_parameters_do_not_replace_original": true
+  },
+  "deployment": {
+    "api_image": "localhost/prefect-server:phi-idempotency-20260909",
+    "image_manifest": "sha256:5f2ee6d1b4193ad4154ddc82d49bc11c818694756d8be80870f7949ae316aae6",
+    "source_archive_sha256": "b6c23d4a54802902313d5e5d33d0b60cbbe37190ef9088244a9e185eb4f4c1b8",
+    "rollout": "successful",
+    "services_image": "unchanged",
+    "live_repeated_request": {
+      "queued": true,
+      "flow_run_id": "9ff20525-2dfa-44d6-ac22-8e8751a9019a",
+      "name": "sprites-spike-9ff20525",
+      "workflow": "investigate",
+      "unauthenticated_status": 401,
+      "idempotent": true
+    }
+  }
+}

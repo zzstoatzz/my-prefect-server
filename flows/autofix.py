@@ -52,7 +52,7 @@ LOG_LINES = 150
 SUMMARY_LIMIT = 240
 
 PROMPT = """\
-you are diagnosing a failed prefect flow run for the operator of this repo.
+you are gardener (gardener.pds.zat.dev), using the Pi harness to diagnose a failed prefect flow run for the operator of this repo.
 the working directory is main near the run's start time (or failure time when
 startup failed), with recent history. deployment pins may differ; do not assume
 this is the exact executed revision. you have read-only tools: read the flow's entrypoint and whatever it
@@ -76,6 +76,7 @@ logs show.
 """
 
 FIX_PROMPT = """\
+you are gardener (gardener.pds.zat.dev), implementing a fix using the Pi harness.
 a prefect flow run failed; a read-only diagnosis of it follows. the working
 directory is a fresh clone of the repo at current main. implement the fix the
 diagnosis proposes (or a better one the code supports), with the smallest
@@ -250,7 +251,6 @@ def propose_fix(diagnosis: str, brief: str, anthropic_key: str, dep_name: str) -
     screen_prompt(prompt, "full", anthropic_key)
     with TemporaryDirectory(prefix="autofix-fix-") as workdir:
         cwd = os.path.join(workdir, "repo")
-        env = minimal_env(ANTHROPIC_API_KEY=anthropic_key)
         subprocess.run(
             ["git", "clone", "--depth", "1", REPO_URL, cwd],
             check=True,
@@ -269,10 +269,9 @@ def propose_fix(diagnosis: str, brief: str, anthropic_key: str, dep_name: str) -
         output = run_pi(
             prompt,
             cwd=cwd,
-            provider="anthropic",
+            provider="aperture",
             thinking="medium",
             tool_mode="full",
-            env=env,
             skills=skills,
         ).strip()
         parsed = trailers(output, ("TITLE", "NOTE", "NO-CHANGE"))
@@ -337,10 +336,9 @@ def autofix(
             diagnosis = run_pi(
                 prompt,
                 cwd=cwd,
-                provider="anthropic",
+                provider="aperture",
                 thinking="medium",
                 tool_mode="read-only",
-                env=minimal_env(ANTHROPIC_API_KEY=anthropic_key),
             ).strip()
 
         summary, _ = split_summary(diagnosis)

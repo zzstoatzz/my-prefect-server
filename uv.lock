@@ -10,6 +10,7 @@ resolution-markers = [
 members = [
     "mps",
     "my-prefect-server",
+    "prefect-sprites",
 ]
 
 [[package]]
@@ -545,6 +546,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/9b/98/518d8e5081007684232226f475082b30087d0f585e8457db087298259f49/click-8.4.1.tar.gz", hash = "sha256:918b5633eddf6b41c32d4f454bf0de810065c74e3f7dbf8ee5452f8be88d3e96", size = 353007, upload-time = "2026-05-22T04:08:37.769Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c7/0d/67e5b4109ea4a837e80daa87c2c696711955e40449a97e8926672534def2/click-8.4.1-py3-none-any.whl", hash = "sha256:482be17c6991b8c19c5429a1e995d9b0efdbb63172824c41f99965dc0ade8ec2", size = 116639, upload-time = "2026-05-22T04:08:35.26Z" },
+]
+
+[[package]]
+name = "client-signals"
+version = "0.4.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/05/dd/5002f106210ebb4772171e80f206c395e1ac38532c7d601a883903b9b7e6/client_signals-0.4.4.tar.gz", hash = "sha256:1fc1846b9992706349a10c10886f0f326bc56eeedd9af612c41cf9ff1a89562d", size = 3851, upload-time = "2026-08-05T14:46:53.105Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ce/76/e8f0947c8a26ec9fd0ccc960ed3875aec55035afb19bd6c08e9eac574861/client_signals-0.4.4-py3-none-any.whl", hash = "sha256:672551d797c004cfc9d5ae87ed0dca4ba5a64fc35d1edcf1218cc11f12fdfb25", size = 4347, upload-time = "2026-08-05T14:46:52.186Z" },
 ]
 
 [[package]]
@@ -2073,6 +2083,7 @@ dev = [
     { name = "fastmcp" },
     { name = "hdbscan" },
     { name = "numpy" },
+    { name = "prefect-sprites" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
@@ -2108,6 +2119,7 @@ dev = [
     { name = "fastmcp", specifier = ">=4.0.0b5" },
     { name = "hdbscan", specifier = ">=0.8.40" },
     { name = "numpy", specifier = ">=1.26" },
+    { name = "prefect-sprites", editable = "packages/prefect-sprites" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "ruff", specifier = ">=0.16.6" },
@@ -2565,6 +2577,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/81/5c/b9f3d71538df86317caaad6005e19df31846aac1a2aac83befe401aeb2a7/prefect_shell-0.3.5.tar.gz", hash = "sha256:4eaeba6d2845a3c2c6765f8d77ff5335f6032223bf210db419690ce8c0753324", size = 17915, upload-time = "2026-03-10T16:34:29.507Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/35/94/e6355d98d26d0a50760e28a5b76452fa525ee000e0decedf42a68a2df7ae/prefect_shell-0.3.5-py3-none-any.whl", hash = "sha256:04fd8b90970ec3820efa2aba9f65294e36c5966b440c171e03fc7680bfc2b8ac", size = 11973, upload-time = "2026-03-10T16:34:27.624Z" },
+]
+
+[[package]]
+name = "prefect-sprites"
+version = "0.1.0"
+source = { editable = "packages/prefect-sprites" }
+dependencies = [
+    { name = "prefect" },
+    { name = "sprites-py" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "prefect", specifier = ">=3.7.7,<4" },
+    { name = "sprites-py", git = "https://github.com/superfly/sprites-py?rev=5551e857c902dfa29a56c01207cc53f37fe14796" },
 ]
 
 [[package]]
@@ -3691,6 +3718,16 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ff/77/1ab6e5bafb9c80d8128f065a355377a04ac5b3c38eb719d920a9909d346e/snowplow_tracker-1.1.0.tar.gz", hash = "sha256:95d8fdc8bd542fd12a0b9a076852239cbaf0599eda8721deaf5f93f7138fe755", size = 34135, upload-time = "2025-02-21T10:58:48.112Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/78/10/1c76269cbf2d6e127f4415044d9ddb0295858230678bbf4bfba905593c82/snowplow_tracker-1.1.0-py3-none-any.whl", hash = "sha256:24ea32ddac9cca547421bf9ab162f5f33c00711c6ef118ad5f78093cee962224", size = 44128, upload-time = "2025-02-21T10:58:45.818Z" },
+]
+
+[[package]]
+name = "sprites-py"
+version = "0.6.0"
+source = { git = "https://github.com/superfly/sprites-py?rev=5551e857c902dfa29a56c01207cc53f37fe14796#5551e857c902dfa29a56c01207cc53f37fe14796" }
+dependencies = [
+    { name = "client-signals" },
+    { name = "httpx" },
+    { name = "websockets" },
 ]
 
 [[package]]

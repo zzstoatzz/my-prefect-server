@@ -1,0 +1,12 @@
+{
+  "run_id": "0ac5698a-4bfd-4bac-a31b-83598219e5c0",
+  "wheel_sha256": "65efd08833d8bed2c907afac8cc61b3344a4c4dd95112f9de31ebcd71be01992",
+  "state": "Completed",
+  "artifact_id": "15d8224f-a261-45a1-b4e1-65a3af992d02",
+  "artifact_description": "Gardener investigation result (Pi harness)",
+  "sprite_deleted": true,
+  "grant_requests": 3,
+  "grant_revoked": true,
+  "mode": "Read-only Prefect deployment smoke; not a fresh Phi delegation or public review cycle",
+  "bot_commit": "cd9e80746be95552546879f5d266d469cbf50df8"
+}

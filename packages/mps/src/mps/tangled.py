@@ -368,16 +368,23 @@ def login(handle: str, password: str) -> tuple[str, str, dict[str, str]]:
     return pds, did, {"Authorization": f"Bearer {resp.json()['accessJwt']}"}
 
 
-def append_round(pull_uri: str, patch: str, note: str, handle: str, password: str) -> int:
+def append_round(
+    pull_uri: str, patch: str, note: str, handle: str, password: str, *, expected_cid: str
+) -> int:
     """add a new round to an existing pull you authored; returns the round count."""
     did, collection, rkey = pull_uri.removeprefix("at://").split("/", 2)
     if collection != PULL_NSID:
         raise ValueError(f"not a pull uri: {pull_uri}")
+    if not expected_cid:
+        raise ValueError("A revision requires the reviewed pull CID")
+    snapshot = get_record(pull_uri)
+    if snapshot.get("cid") != expected_cid:
+        raise ValueError("Pull changed while preparing the revision")
     pds, session_did, auth = login(handle, password)
     if session_did != did:
         raise ValueError("rounds can only be added to your own pulls")
 
-    current = get_record(pull_uri)["value"]
+    current = snapshot["value"]
     blob_resp = httpx.post(
         f"{pds}/xrpc/com.atproto.repo.uploadBlob",
         content=_gzip.compress(patch.encode()),
@@ -394,7 +401,13 @@ def append_round(pull_uri: str, patch: str, note: str, handle: str, password: st
         record["body"] = f"{current.get('body', '')}\n\n---\nround {len(rounds)}: {note}".strip()
     put = httpx.post(
         f"{pds}/xrpc/com.atproto.repo.putRecord",
-        json={"repo": did, "collection": PULL_NSID, "rkey": rkey, "record": record},
+        json={
+            "repo": did,
+            "collection": PULL_NSID,
+            "rkey": rkey,
+            "record": record,
+            "swapRecord": expected_cid,
+        },
         headers=auth,
         timeout=30,
     )
@@ -502,7 +515,8 @@ def pull_patch(pull_uri: str) -> dict[str, Any]:
     did, collection, _rkey = pull_uri.removeprefix("at://").split("/", 2)
     if collection != PULL_NSID:
         raise ValueError(f"not a pull uri: {pull_uri}")
-    value = get_record(pull_uri)["value"]
+    snapshot = get_record(pull_uri)
+    value = snapshot["value"]
     rounds = value.get("rounds") or []
     if not rounds:
         raise ValueError(f"pull has no rounds: {pull_uri}")
@@ -517,6 +531,7 @@ def pull_patch(pull_uri: str) -> dict[str, Any]:
     raw = resp.content
     patch = _gzip.decompress(raw).decode() if raw[:2] == b"\x1f\x8b" else raw.decode()
     return {
+        "cid": snapshot["cid"],
         "title": value.get("title", ""),
         "body": value.get("body", ""),
         "target_repo_did": (value.get("target") or {}).get("repo", ""),
@@ -531,11 +546,15 @@ def parse_verdict(text: str) -> str | None:
     return m.group(1).lower() if m else None
 
 
-def review_verdict(pull_uri: str, reviewer_did: str) -> dict[str, str] | None:
+def review_verdict(
+    pull_uri: str, reviewer_did: str, *, round_index: int, expected_cid: str
+) -> dict[str, str] | None:
     """the reviewer's latest VERDICT comment on this pull, or None.
 
     comments are sh.tangled.feed.comment records in the reviewer's own repo,
     read straight from their PDS."""
+    if not expected_cid:
+        raise ValueError("A verdict requires a pull CID")
     pds = resolve_pds(reviewer_did)
     cursor = None
     found: list[dict[str, str]] = []
@@ -553,6 +572,10 @@ def review_verdict(pull_uri: str, reviewer_did: str) -> dict[str, str] | None:
         for item in page.get("records") or []:
             value = item.get("value") or {}
             if (value.get("subject") or {}).get("uri") != pull_uri:
+                continue
+            if (value.get("subject") or {}).get("cid") != expected_cid:
+                continue
+            if value.get("pullRoundIdx") != round_index:
                 continue
             body = value.get("body")
             text = body.get("text", "") if isinstance(body, dict) else str(body or "")

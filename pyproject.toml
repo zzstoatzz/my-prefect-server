@@ -55,6 +55,7 @@ packages = ["packages/mps/src/mps"]
 
 [tool.uv.sources]
 mps = { workspace = true }
+prefect-sprites = { workspace = true }
 
 [tool.uv.workspace]
 members = ["packages/*"]
@@ -77,6 +78,7 @@ dev = [
     "boto3>=1.43.88",
     "fastmcp>=4.0.0b5",
     "umap-learn>=0.5",
+    "prefect-sprites",
 ]
 
 [tool.pytest.ini_options]

@@ -1,10 +1,16 @@
+import pytest
 from prefect.testing.utilities import prefect_test_harness
 
 from flows import pi_pr
 
 
-def test_pi_pr_publishes_as_gardener_and_emits_proposed(monkeypatch):
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_pi_pr_publishes_as_gardener_and_emits_proposed(monkeypatch, dry_run):
     loaded, published, events = [], {}, []
+    artifacts = []
+    monkeypatch.setattr(
+        pi_pr, "create_table_artifact", lambda **kw: artifacts.append(kw) or "artifact-id"
+    )
 
     def secret_sync(name):
         loaded.append(name)
@@ -17,7 +23,15 @@ def test_pi_pr_publishes_as_gardener_and_emits_proposed(monkeypatch):
         stdout = "abc123\n"
 
     monkeypatch.setattr(pi_pr.subprocess, "run", lambda *a, **k: Proc())
-    monkeypatch.setattr(pi_pr, "run_pi", lambda *a, **k: "done")
+
+    def run_pi(*args, **kwargs):
+        assert "Gardener (gardener.pds.zat.dev)" in args[0]
+        assert args[0].endswith("rename x")
+        assert kwargs["provider"] == "aperture"
+        assert kwargs["model"] is None
+        return "done"
+
+    monkeypatch.setattr(pi_pr, "run_pi", run_pi)
     monkeypatch.setattr(
         pi_pr,
         "build_patch",
@@ -35,12 +49,22 @@ def test_pi_pr_publishes_as_gardener_and_emits_proposed(monkeypatch):
     monkeypatch.setattr(pi_pr, "emit_event", lambda **kw: events.append(kw))
 
     with prefect_test_harness():
-        out = pi_pr.pi_pr("rename x", "title", "body", repo="tangled-mcp", requested_by="phi")
+        out = pi_pr.pi_pr(
+            "rename x", "title", "body", repo="tangled-mcp", requested_by="phi", dry_run=dry_run
+        )
 
     assert out["changed"] is True
+    if dry_run:
+        assert published == {} and events == []
+        assert "gardener-password" not in loaded
+        assert out["artifact_id"] == "artifact-id"
+        assert artifacts[0]["table"][0]["patch"].startswith("From 0")
+        assert artifacts[0]["table"][0]["sha256"] == out["patch_sha256"]
+        return
     assert published["handle"] == "<gardener-handle>"
     assert "atproto-handle" not in loaded and "atproto-password" not in loaded
     assert "by gardener <gardener@zat.dev>" in published["patch"]
     assert "requested by phi" in published["body"]
+    assert "implemented by gardener using the Pi harness" in published["body"]
     assert events[0]["event"] == "autofix.proposed"
     assert events[0]["payload"]["pull"] == "at://did:plc:g/sh.tangled.repo.pull/1"

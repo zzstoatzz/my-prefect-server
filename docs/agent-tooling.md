@@ -31,7 +31,18 @@ can do before hand-rolling `curl`, and before claiming something isn't possible.
 if you are about to say "the MCP can't do X" or offer to build a missing tool,
 grep its tool list first. that has been wrong more than once.
 
-## parameterized Pi runs
+## Local Pi and isolated Gardener runs
+
+`flows/pi_agent.py` is Gardener’s isolated Sprite entry point. Its provider and
+model must match the trusted inference grant; it cannot load local extensions or
+accept an arbitrary execution environment.
+
+The home-pool `pi-agent` deployment uses `flows/pi_agent_local.py` and
+`mps.pi_local` for the separately configured local runner described below.
+Presence lighting now runs its deterministic lighting flow directly; it does not
+need either Pi runner.
+
+### Parameterized local Pi runs
 
 `pi-agent` accepts the objective as `prompt`, an optional `instructions` system
 prompt, and `agent` settings for provider, model, thinking, and tools. Omitting
@@ -70,3 +81,13 @@ The runner is not a sandbox: installed extensions execute as the worker user.
 A presence receiver can invoke this same flow with a fresh objective. Presence
 state, duplicate-event handling, and manual lighting overrides belong to that
 application, not the generic Pi runner. No lighting deployment is enabled here.
+
+
+### Deployment reconciliation
+
+The live `autofix` and `pi-pr` home-worker deployments remain pinned to their
+previously deployed revisions in `prefect.yaml`. Their newer source calls the
+isolated runner and must not be installed on the home worker accidentally by
+`deploy --all`. Moving those two deployments to Sprites is a separate rollout.
+`autofix-revise` retains its verified provider-switching wheel. The existing
+`sprites-spike` deployment remains independently registered and unchanged.

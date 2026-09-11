@@ -1,4 +1,4 @@
-"""turn the operator's comments on gardener's pulls into autofix-revise runs.
+"""turn operator comments and Phi revision requests into autofix-revise runs.
 
 rung three of the autofix ladder (docs/autofix.md). the operator
 reviews a gardener-authored pull on tangled and leaves a comment; this flow
@@ -12,9 +12,10 @@ cursor state) and also drains /subscribe from the saved time_us cursor for
 low latency. dedupe is by comment uri (a Variable), so overlap between the
 two paths and across runs is harmless.
 
-wantedDids scopes the subscription to the operator, and reconcile reads only
-the operator's repo: only their comments can trigger a revision, so gardener
-replying to itself is structurally impossible.
+The subscription and reconciliation accept the operator and Phi. Phi comments
+trigger revisions only with a request-changes verdict; approval and escalation
+do not. Gardener cannot trigger itself. The revision flow validates the comment
+against the current pull CID and round before executing Pi.
 """
 
 import asyncio
@@ -29,6 +30,7 @@ from mps.tangled import (
     LEGACY_COMMENT_NSID,
     comment_subject,
     comment_text,
+    parse_verdict,
     resolve_pds,
 )
 from prefect import flow
@@ -37,6 +39,7 @@ from prefect.events import emit_event
 from prefect.variables import Variable
 
 from flows.autofix import PULL_PREFIX
+from flows.autofix_revise import PHI_DID
 
 STREAM_URL = "wss://stream.waow.tech/subscribe"
 
@@ -59,6 +62,11 @@ def relevant_comment(event: dict[str, Any]) -> dict[str, str] | None:
     if commit.get("collection") not in (FEED_COMMENT_NSID, LEGACY_COMMENT_NSID):
         return None
     record = commit.get("record") or {}
+    reviewer = event.get("did")
+    if reviewer not in (OPERATOR_DID, PHI_DID):
+        return None
+    if reviewer == PHI_DID and parse_verdict(comment_text(record)) != "request-changes":
+        return None
     subject = comment_subject(record)
     if not subject.startswith(PULL_PREFIX):
         return None
@@ -80,7 +88,7 @@ async def drain(cursor: int | None) -> tuple[list[dict[str, str]], int | None]:
     import websockets
 
     params = (
-        f"?wantedDids={OPERATOR_DID}"
+        f"?wantedDids={OPERATOR_DID}&wantedDids={PHI_DID}"
         f"&wantedCollections={FEED_COMMENT_NSID}"
         f"&wantedCollections={LEGACY_COMMENT_NSID}"
     )
@@ -109,12 +117,12 @@ async def drain(cursor: int | None) -> tuple[list[dict[str, str]], int | None]:
     return comments, max(last_time_us or 0, connect_us - CURSOR_OVERLAP_US)
 
 
-def reconcile() -> list[dict[str, str]]:
+def reconcile_reviewer(reviewer: str) -> list[dict[str, str]]:
     """the operator's newest comments straight from their PDS (the authority)."""
     resp = httpx.get(
-        f"{resolve_pds(OPERATOR_DID)}/xrpc/com.atproto.repo.listRecords",
+        f"{resolve_pds(reviewer)}/xrpc/com.atproto.repo.listRecords",
         params={
-            "repo": OPERATOR_DID,
+            "repo": reviewer,
             "collection": FEED_COMMENT_NSID,
             "limit": RECONCILE_LIMIT,
         },
@@ -124,6 +132,8 @@ def reconcile() -> list[dict[str, str]]:
     out = []
     for rec in resp.json().get("records", []):
         value = rec.get("value", {})
+        if reviewer == PHI_DID and parse_verdict(comment_text(value)) != "request-changes":
+            continue
         subject = comment_subject(value)
         if subject.startswith(PULL_PREFIX):
             out.append(
@@ -135,6 +145,10 @@ def reconcile() -> list[dict[str, str]]:
                 }
             )
     return out
+
+
+def reconcile() -> list[dict[str, str]]:
+    return [*reconcile_reviewer(OPERATOR_DID), *reconcile_reviewer(PHI_DID)]
 
 
 @flow(name="watch-tangled-pulls", log_prints=True, timeout_seconds=300)
@@ -167,6 +181,7 @@ async def watch_tangled_pulls() -> int:
             "autofix-revise/autofix-revise",
             parameters={"pull": comment["pull"], "comment_uri": comment["uri"]},
             timeout=0,
+            idempotency_key=f"autofix-revise:{comment['uri']}",
         )
         print(f"revise run {run.id} for comment {comment['uri']}")
 
