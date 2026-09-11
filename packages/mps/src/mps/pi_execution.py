@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import os
 import platform
 import shutil
@@ -15,6 +16,45 @@ from urllib.parse import urlsplit
 from mps.inference_bridge import inference_bridge
 from mps.inference_models import resolve_inference_model
 from mps.pi_sandbox import AGENT_UID, PI_ENTRYPOINT, aperture_models, sandbox_command
+
+
+def read_pi_events(output: str) -> str:
+    """Keep final text while recording content-free tool and usage evidence."""
+    final = None
+    logger = logging.getLogger(__name__)
+    for line in output.splitlines():
+        event = json.loads(line)
+        if event.get("type") == "tool_execution_end":
+            tool = event.get("toolName")
+            if tool not in {"read", "grep", "find", "ls", "bash", "edit", "write"}:
+                tool = "other"
+            logger.info(
+                "pi_tool %s", json.dumps({"tool": tool, "error": bool(event.get("isError"))})
+            )
+        if event.get("type") != "message_end":
+            continue
+        message = event.get("message", {})
+        if message.get("role") != "assistant":
+            continue
+        if message.get("stopReason") in {"error", "aborted"}:
+            raise RuntimeError("Pi inference did not complete")
+        usage = message.get("usage", {})
+        metrics = {
+            key: value
+            for key in ("input", "output", "cacheRead", "cacheWrite", "totalTokens")
+            if type(value := usage.get(key)) is int and value >= 0
+        }
+        logger.info("pi_usage %s", json.dumps(metrics))
+        text = "".join(
+            part.get("text", "")
+            for part in message.get("content", [])
+            if part.get("type") == "text"
+        )
+        if text:
+            final = text
+    if final is None:
+        raise RuntimeError("Pi returned no final text")
+    return final
 
 
 def prepare_pi_runtime() -> Path:
@@ -176,6 +216,8 @@ def run_isolated_pi(
                         "node",
                         PI_ENTRYPOINT,
                         "--print",
+                        "--mode",
+                        "json",
                         "--no-session",
                         "--provider",
                         "aperture",
@@ -200,7 +242,7 @@ def run_isolated_pi(
                     raise RuntimeError(
                         f"Isolated Pi exited {result.returncode}: {result.stderr[-2000:]}"
                     )
-                return result.stdout
+                return read_pi_events(result.stdout)
         finally:
             # Restore trusted caller ownership without following agent symlinks.
             # The checkout remains untrusted input even after ownership changes.
