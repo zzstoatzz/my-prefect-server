@@ -16,6 +16,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from uuid import uuid4
 
+from mps.inference_models import resolve_inference_model
+
 if TYPE_CHECKING:
     from mps.inference_grants import InferenceGrants
 
@@ -36,6 +38,8 @@ def inference_bridge(
     upstream: str,
     model: str = "openai/gpt-5.6-luna",
     authorization: str | None = None,
+    anthropic_api_key: str | None = None,
+    translate_model: bool = True,
     max_requests: int = 32,
     max_output_tokens: int = 8192,
     agent_uid: int | None = 2000,
@@ -43,7 +47,7 @@ def inference_bridge(
     grants: InferenceGrants | None = None,
     workflow_requests=None,
 ):
-    """Expose only chat completions; do not forward caller headers or redirects.
+    """Expose authorized native inference APIs; do not forward caller headers or redirects.
 
     The socket's parent must be a trusted per-attempt directory. The caller owns
     upstream identity and budget configuration, never the sandboxed process.
@@ -69,7 +73,7 @@ def inference_bridge(
             pass  # Never log prompts, upstream errors, or credentials.
 
         def do_POST(self):
-            if self.path != "/v1/chat/completions":
+            if self.path not in ("/v1/chat/completions", "/v1/messages"):
                 return self.handle_post()
             started = time.monotonic()
             self.audit_status = None
@@ -83,14 +87,16 @@ def inference_bridge(
             finally:
                 logging.getLogger(__name__).info(
                     "inference_request %s",
-                    json.dumps({
-                        "request_id": str(uuid4()),
-                        "attempt": identity.get("attempt"),
-                        "model": identity.get("model", model),
-                        "status": self.audit_status,
-                        "outcome": self.audit_outcome,
-                        "duration_ms": round((time.monotonic() - started) * 1000),
-                    }),
+                    json.dumps(
+                        {
+                            "request_id": str(uuid4()),
+                            "attempt": identity.get("attempt"),
+                            "model": identity.get("model", model),
+                            "status": self.audit_status,
+                            "outcome": self.audit_outcome,
+                            "duration_ms": round((time.monotonic() - started) * 1000),
+                        }
+                    ),
                 )
 
         def send_response(self, code, message=None):
@@ -130,7 +136,7 @@ def inference_bridge(
             ):
                 self.send_error(401)
                 return
-            if self.path != "/v1/chat/completions":
+            if self.path not in ("/v1/chat/completions", "/v1/messages"):
                 self.send_error(404)
                 return
             try:
@@ -140,8 +146,11 @@ def inference_bridge(
                 if not 0 < length <= 2 * 1024 * 1024:
                     raise ValueError("Invalid request size")
                 body = json.loads(self.rfile.read(length))
-                if not isinstance(body, dict) or body.get("model") != model:
-                    raise ValueError("Unsupported model")
+                if not isinstance(body, dict) or not isinstance(body.get("model"), str):
+                    raise ValueError("Model is required")
+                selected = resolve_inference_model(body["model"])
+                if (grants is None and selected.name != model) or self.path != selected.path:
+                    raise ValueError("Unauthorized model or API")
                 if not isinstance(body.get("messages"), list):
                     raise ValueError("Messages are required")
                 for key in ("max_tokens", "max_completion_tokens"):
@@ -149,13 +158,18 @@ def inference_bridge(
                         value = body[key]
                         if type(value) is not int or value < 1:
                             raise ValueError("Invalid output limit")
-                        body[key] = min(value, max_output_tokens)
+                        body[key] = min(value, max_output_tokens, selected.max_output_tokens)
                 if "max_tokens" not in body and "max_completion_tokens" not in body:
-                    body["max_completion_tokens"] = max_output_tokens
+                    limit_key = (
+                        "max_tokens"
+                        if selected.api == "anthropic-messages"
+                        else "max_completion_tokens"
+                    )
+                    body[limit_key] = min(max_output_tokens, selected.max_output_tokens)
             except (ValueError, TypeError):
                 self.send_error(400, "Invalid inference request")
                 return
-            if grants is not None and not grants.consume(token, model):
+            if grants is not None and not grants.consume(token, selected.name):
                 self.send_error(403, "Inference grant unavailable")
                 return
             with lock:
@@ -166,7 +180,14 @@ def inference_bridge(
             headers = {"Content-Type": "application/json"}
             if authorization:
                 headers["Authorization"] = authorization
-            request = Request(upstream, data=json.dumps(body).encode(), headers=headers)
+            endpoint = upstream
+            if selected.api == "anthropic-messages":
+                endpoint = upstream.removesuffix("/v1/chat/completions").rstrip("/") + selected.path
+                headers["anthropic-version"] = "2023-06-01"
+                if anthropic_api_key:
+                    headers["x-api-key"] = anthropic_api_key
+            body["model"] = selected.wire_name if translate_model else selected.name
+            request = Request(endpoint, data=json.dumps(body).encode(), headers=headers)
             try:
                 response = opener.open(request, timeout=60)
             except HTTPError as exc:

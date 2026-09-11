@@ -39,9 +39,7 @@ class Agent(BaseModel):
     """The Aperture model authorized by the execution grant."""
 
     provider: Literal["aperture"] = Field(default="aperture", json_schema_extra={"position": 0})
-    model: Literal["openai/gpt-5.6-luna"] = Field(
-        default="openai/gpt-5.6-luna", json_schema_extra={"position": 1}
-    )
+    model: str | None = Field(default=None, json_schema_extra={"position": 1})
     thinking: Literal["off", "minimal", "low", "medium", "high", "xhigh"] = Field(
         default="medium", json_schema_extra={"position": 2}
     )
@@ -133,9 +131,7 @@ def pi_pr(
             }
 
         if requested_by:
-            body = (
-                f"{body}\n\nrequested by {requested_by}; implemented by gardener using the Pi harness; published by the trusted workflow as gardener."
-            )
+            body = f"{body}\n\nrequested by {requested_by}; implemented by gardener using the Pi harness; published by the trusted workflow as gardener."
         handle = secret_sync("gardener-handle")
         password = secret_sync("gardener-password")
         pull = create_pull(OWNER, repo, title, patch, body, handle, password)

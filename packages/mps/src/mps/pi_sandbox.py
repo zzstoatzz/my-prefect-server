@@ -6,19 +6,26 @@ never exposes the host root, Sprite management socket, or orchestration files.
 
 from pathlib import Path
 
+from mps.inference_models import resolve_inference_model
+
 AGENT_UID = 2000
 PI_ENTRYPOINT = "/opt/phi-agent/pi/node_modules/@earendil-works/pi-coding-agent/dist/cli.js"
 
 
-def aperture_models(base_url: str = "http://127.0.0.1:8888/v1") -> dict:
+def aperture_models(
+    base_url: str = "http://127.0.0.1:8888/v1", *, model: str | None = None
+) -> dict:
     """Pi's public models.json contract, using the local inference bridge."""
+    selected = resolve_inference_model(model)
     return {
         "providers": {
             "aperture": {
-                "baseUrl": base_url,
-                "api": "openai-completions",
+                "baseUrl": base_url.removesuffix("/v1")
+                if selected.api == "anthropic-messages"
+                else base_url,
+                "api": selected.api,
                 "apiKey": "local-inference-bridge",
-                "models": [{"id": "openai/gpt-5.6-luna", "maxTokens": 8192}],
+                "models": [{"id": selected.name, "maxTokens": selected.max_output_tokens}],
             }
         }
     }

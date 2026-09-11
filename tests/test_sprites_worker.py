@@ -279,7 +279,7 @@ async def test_worker_injects_grant_only_into_private_submission(harness):
     worker._run_environment = AsyncMock(return_value={"PHI_INFERENCE_TOKEN": "attempt-token"})
     configuration = SpritesJobConfiguration(credentials={"token": "test"})
     await worker.run(flow_run, configuration)
-    worker._run_environment.assert_awaited_once_with(sprite.name, configuration.timeout_seconds)
+    worker._run_environment.assert_awaited_once_with(sprite.name, configuration.timeout_seconds, flow_run)
     assert provider.install.call_args.args[1]["env"]["PHI_INFERENCE_TOKEN"] == "attempt-token"
     assert "PHI_INFERENCE_TOKEN" not in configuration.env
     assert "attempt-token" not in str(worker.client.update_flow_run.call_args)

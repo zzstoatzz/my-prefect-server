@@ -25,6 +25,7 @@ def test_caller_passes_capabilities_to_isolated_runner(monkeypatch, tmp_path, ca
                 "thinking": "medium",
                 "timeout_seconds": 1500,
                 "skills": [],
+                "model": "openai/gpt-5.6-luna",
             },
         )
     ]

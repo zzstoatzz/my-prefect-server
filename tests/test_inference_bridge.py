@@ -136,10 +136,18 @@ def test_tcp_endpoint_authenticates_each_request(bridge_dir, upstream, caplog):
             response.read()
             connection.close()
     assert len(calls) == 1
-    events = [json.loads(r.message.split(" ", 1)[1]) for r in caplog.records
-              if r.message.startswith("inference_request ")]
+    events = [
+        json.loads(r.message.split(" ", 1)[1])
+        for r in caplog.records
+        if r.message.startswith("inference_request ")
+    ]
     assert [event["status"] for event in events] == [401, 403, 200, 403]
-    assert [event["attempt"] for event in events] == [None, None, "flow-run:attempt-0", "flow-run:attempt-0"]
+    assert [event["attempt"] for event in events] == [
+        None,
+        None,
+        "flow-run:attempt-0",
+        "flow-run:attempt-0",
+    ]
     assert [event["outcome"] for event in events] == ["denied", "denied", "succeeded", "denied"]
     assert all(event["duration_ms"] >= 0 for event in events)
     assert token not in caplog.text
@@ -152,3 +160,74 @@ def test_tcp_listener_cannot_be_unauthenticated():
         inference_bridge(None, upstream="http://localhost", listen=("127.0.0.1", 0)),
     ):
         raise AssertionError("Unauthenticated listener started")
+
+
+def test_native_anthropic_preserves_cache_and_checks_grant(bridge_dir, upstream):
+    url, calls = upstream
+    grants = InferenceGrants(bridge_dir / "grants.sqlite")
+    token = grants.acquire("anthropic-test", model="anthropic/claude-sonnet-5")
+    with inference_bridge(
+        None,
+        upstream=url + "/v1/chat/completions",
+        listen=("127.0.0.1", 0),
+        grants=grants,
+        anthropic_api_key="trusted-anthropic-key",
+    ) as counts:
+        connection = HTTPConnection("127.0.0.1", counts["port"])
+        body = {
+            "model": "anthropic/claude-sonnet-5",
+            "messages": [],
+            "max_tokens": 99999,
+            "system": [
+                {
+                    "type": "text",
+                    "text": "stable",
+                    "cache_control": {"type": "ephemeral", "ttl": "1h"},
+                }
+            ],
+        }
+        connection.request(
+            "POST",
+            "/v1/messages",
+            json.dumps(body),
+            {
+                "Authorization": f"Bearer {token}",
+                "x-api-key": "untrusted",
+            },
+        )
+        response = connection.getresponse()
+        assert response.status == 200
+        response.read()
+        connection.close()
+        headers, payload = calls[0]
+        assert payload["system"] == body["system"]
+        assert payload["model"] == "claude-sonnet-5"
+        assert payload["max_tokens"] == 8192
+        assert headers["X-Api-Key"] == "trusted-anthropic-key"
+        assert headers["Anthropic-Version"] == "2023-06-01"
+
+
+def test_grant_cannot_switch_to_another_authorized_model(bridge_dir, upstream):
+    url, calls = upstream
+    grants = InferenceGrants(bridge_dir / "grants.sqlite")
+    token = grants.acquire("luna-only", model="openai/gpt-5.6-luna")
+    with inference_bridge(None, upstream=url, listen=("127.0.0.1", 0), grants=grants) as status:
+        connection = HTTPConnection("127.0.0.1", status["port"])
+        connection.request(
+            "POST",
+            "/v1/messages",
+            json.dumps(
+                {
+                    "model": "anthropic/claude-sonnet-5",
+                    "messages": [],
+                    "max_tokens": 10,
+                }
+            ),
+            {"Authorization": f"Bearer {token}"},
+        )
+        response = connection.getresponse()
+        assert response.status == 403
+        response.read()
+        connection.close()
+    assert not calls
+    assert grants.usage("luna-only")["requests"] == 0

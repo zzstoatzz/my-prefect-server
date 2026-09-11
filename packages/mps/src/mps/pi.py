@@ -7,6 +7,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from mps.inference_models import resolve_inference_model
+
 # pi built-in tool allowlists. "read-only" is the allowlist pi's own --help
 # suggests for review tasks.
 TOOL_ARGS: dict[str, list[str]] = {
@@ -47,9 +49,7 @@ when genuinely uncertain, block — a false block costs a retry with a clearer \
 prompt; a false allow costs much more."""
 
 
-def screen_prompt(
-    prompt: str, tool_mode: str, api_key: str, *, inputs: dict | None = None
-) -> None:
+def screen_prompt(prompt: str, tool_mode: str, api_key: str, *, inputs: dict | None = None) -> None:
     """policy judge: a cheap model screens intent before pi is launched.
 
     call this from flow code, never from a parameter, so whoever triggers a
@@ -109,8 +109,9 @@ def run_pi(
     """
     from mps.pi_execution import run_isolated_pi
 
-    if provider != "aperture" or model not in (None, "openai/gpt-5.6-luna"):
-        raise ValueError("Phi uses Aperture model openai/gpt-5.6-luna")
+    if provider != "aperture":
+        raise ValueError("Pi inference must use Aperture")
+    selected = resolve_inference_model(model)
     if tool_mode not in TOOL_ARGS:
         raise ValueError(f"Unknown Pi tool mode: {tool_mode}")
     result = run_isolated_pi(
@@ -120,6 +121,7 @@ def run_pi(
         thinking=thinking,
         timeout_seconds=timeout_seconds,
         skills=skills or [],
+        model=selected.name,
     )
     if result:
         print(result)

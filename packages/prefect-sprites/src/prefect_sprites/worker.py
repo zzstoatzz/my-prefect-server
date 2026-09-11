@@ -57,7 +57,7 @@ class SpritesWorker(BaseWorker):
     def __init__(
         self,
         *args,
-        run_environment: Callable[[str, int], Awaitable[dict[str, str]]] | None = None,
+        run_environment: Callable[[str, int, FlowRun], Awaitable[dict[str, str]]] | None = None,
         release_environment: Callable[[str], Awaitable[None]] | None = None,
         **kwargs,
     ):
@@ -142,7 +142,7 @@ class SpritesWorker(BaseWorker):
             }
             if self._run_environment:
                 config["env"].update(
-                    await self._run_environment(name, configuration.timeout_seconds)
+                    await self._run_environment(name, configuration.timeout_seconds, flow_run)
                 )
             await self._measure_stage(
                 name,

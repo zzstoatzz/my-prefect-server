@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from mps.inference_bridge import inference_bridge
+from mps.inference_models import resolve_inference_model
 from mps.pi_sandbox import AGENT_UID, PI_ENTRYPOINT, aperture_models, sandbox_command
 
 
@@ -117,6 +118,7 @@ def run_isolated_pi(
     thinking: str,
     timeout_seconds: int,
     skills: list[str],
+    model: str | None = None,
 ) -> str:
     if sys.platform != "linux" or os.geteuid() != 0:
         raise RuntimeError("Phi Pi execution requires the prepared Sprite runtime")
@@ -125,6 +127,10 @@ def run_isolated_pi(
     endpoint = urlsplit(upstream)
     if endpoint.scheme != "https" or not endpoint.hostname or endpoint.username or not token:
         raise RuntimeError("Sprite execution requires an HTTPS inference endpoint and run token")
+    selected = resolve_inference_model(model)
+    granted = os.environ.get("PHI_INFERENCE_MODEL", "openai/gpt-5.6-luna")
+    if selected.name != granted:
+        raise ValueError("Requested model does not match the worker inference grant")
     workspace = workspace.resolve(strict=True)
     if not workspace.is_dir() or workspace == Path("/"):
         raise ValueError("Pi requires a dedicated scratch directory")
@@ -135,7 +141,7 @@ def run_isolated_pi(
         home = root / "home"
         config = home / ".pi/agent"
         config.mkdir(parents=True)
-        (config / "models.json").write_text(json.dumps(aperture_models()))
+        (config / "models.json").write_text(json.dumps(aperture_models(model=selected.name)))
         skill_args = []
         for index, source in enumerate(skills):
             source_path = Path(source)
@@ -156,6 +162,8 @@ def run_isolated_pi(
                 root / "inference.sock",
                 upstream=upstream,
                 authorization=f"Bearer {token}",
+                model=selected.name,
+                translate_model=False,
             ):
                 command = sandbox_command(
                     workspace=workspace,
@@ -172,7 +180,7 @@ def run_isolated_pi(
                         "--provider",
                         "aperture",
                         "--model",
-                        "openai/gpt-5.6-luna",
+                        selected.name,
                         "--thinking",
                         thinking,
                         *tool_args,

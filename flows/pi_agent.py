@@ -52,9 +52,9 @@ class Agent(BaseModel):
         description="inference uses the run-scoped Aperture bridge",
         json_schema_extra={"position": 0},
     )
-    model: Literal["openai/gpt-5.6-luna"] | None = Field(
+    model: str | None = Field(
         default=None,
-        description="Aperture model; empty uses openai/gpt-5.6-luna",
+        description="Authorized inference model; empty uses the worker default",
         json_schema_extra={"position": 1},
     )
     thinking: THINKING = Field(default="medium", json_schema_extra={"position": 2})
@@ -121,7 +121,9 @@ def pi_agent(
             timeout_seconds=timeout_seconds,
         )
         create_markdown_artifact(
-            key="pi-agent-output", markdown=output, description="Gardener investigation result (Pi harness)"
+            key="pi-agent-output",
+            markdown=output,
+            description="Gardener investigation result (Pi harness)",
         )
         return output
 

@@ -6,9 +6,11 @@ import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from prefect.client.schemas.objects import FlowRun
 from prefect_sprites import SpritesWorker
 
 from mps.inference_grants import InferenceGrants
+from mps.inference_models import resolve_inference_model
 
 
 def pi_worker(*, pool: str, database: Path, inference_url: str) -> SpritesWorker:
@@ -17,14 +19,22 @@ def pi_worker(*, pool: str, database: Path, inference_url: str) -> SpritesWorker
         raise ValueError("Inference endpoint must use HTTPS")
     grants = InferenceGrants(database)
 
-    async def environment(attempt: str, timeout: int) -> dict[str, str]:
+    async def environment(attempt: str, timeout: int, flow_run: FlowRun) -> dict[str, str]:
+        agent = flow_run.parameters.get("agent") or {}
+        if not isinstance(agent, dict):
+            raise ValueError("Invalid agent configuration")
+        selected = resolve_inference_model(agent.get("model"))
         token = grants.acquire(
             attempt,
-            model="openai/gpt-5.6-luna",
+            model=selected.name,
             lifetime=min(timeout + 300, 86400),
             request_limit=32,
         )
-        return {"PHI_INFERENCE_URL": inference_url, "PHI_INFERENCE_TOKEN": token}
+        return {
+            "PHI_INFERENCE_URL": inference_url,
+            "PHI_INFERENCE_TOKEN": token,
+            "PHI_INFERENCE_MODEL": selected.name,
+        }
 
     async def release(attempt: str) -> None:
         grants.revoke(attempt)

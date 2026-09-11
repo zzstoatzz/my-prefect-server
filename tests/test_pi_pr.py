@@ -28,7 +28,7 @@ def test_pi_pr_publishes_as_gardener_and_emits_proposed(monkeypatch, dry_run):
         assert "Gardener (gardener.pds.zat.dev)" in args[0]
         assert args[0].endswith("rename x")
         assert kwargs["provider"] == "aperture"
-        assert kwargs["model"] == "openai/gpt-5.6-luna"
+        assert kwargs["model"] is None
         return "done"
 
     monkeypatch.setattr(pi_pr, "run_pi", run_pi)
