@@ -1,5 +1,11 @@
+from datetime import UTC, datetime
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
+import httpx
+import pytest
+from prefect.exceptions import ObjectNotFound
 from prefect.testing.utilities import prefect_test_harness
 
 from flows import autofix
@@ -8,6 +14,7 @@ from flows import autofix
 class FakeState:
     def __init__(self, name, message):
         self.name, self.message = name, message
+        self.timestamp = datetime(2026, 9, 10, tzinfo=UTC)
 
 
 class FakeDeployment:
@@ -21,6 +28,7 @@ class FakeRun:
         self.state = FakeState("Failed", "boom")
         self.parameters = {}
         self.start_time = self.end_time = None
+        self.created = datetime(2026, 9, 9, tzinfo=UTC)
 
 
 def ctx(dep_name):
@@ -30,6 +38,64 @@ def ctx(dep_name):
         "logs": [],
         "failed_tasks": [],
     }
+
+
+async def test_gather_preserves_evidence_after_deployment_deletion(monkeypatch):
+    run = FakeRun("startup-crash")
+    run.deployment_id = uuid4()
+    logs = [SimpleNamespace(message="older", level=20), SimpleNamespace(message="newer", level=40)]
+    client = AsyncMock()
+    client.read_flow_run.return_value = run
+    request = httpx.Request("GET", "https://prefect.example/api/deployments/deleted")
+    client.read_deployment.side_effect = ObjectNotFound(
+        httpx.HTTPStatusError("deleted", request=request, response=httpx.Response(404))
+    )
+    client.read_logs.return_value = list(reversed(logs))
+    client.read_task_runs.return_value = []
+    client.__aenter__.return_value = client
+    monkeypatch.setattr(autofix, "get_client", lambda: client)
+
+    evidence = await autofix.gather(run.id)
+
+    assert evidence["run"] is run
+    assert evidence["deployment"] is None
+    assert evidence["logs"] == logs
+    assert "deleted or unavailable" in autofix.render(evidence)
+    client.read_deployment.side_effect = RuntimeError("API unavailable")
+    with pytest.raises(RuntimeError, match="API unavailable"):
+        await autofix.gather(run.id)
+
+
+@pytest.mark.parametrize("clock", ["start", "state", "created"])
+def test_diagnosis_uses_available_run_timestamp(monkeypatch, clock):
+    evidence = ctx("strata")
+    run = evidence["run"]
+    if clock == "start":
+        run.start_time = datetime(2026, 9, 9, 23, tzinfo=UTC)
+        expected = run.start_time
+    elif clock == "state":
+        expected = run.state.timestamp
+    else:
+        run.state = None
+        expected = run.created
+    monkeypatch.setattr(autofix, "gather", AsyncMock(return_value=evidence))
+    observed = []
+
+    def checkout(cwd, when):
+        observed.append(when)
+        return "abc"
+
+    monkeypatch.setattr(autofix, "checkout_as_of", checkout)
+    monkeypatch.setattr(autofix, "secret_sync", lambda _: "fake")
+    monkeypatch.setattr(autofix, "screen_prompt", lambda *args: None)
+    monkeypatch.setattr(autofix, "run_pi", lambda *args, **kwargs: "SUMMARY: diagnosis")
+    monkeypatch.setattr(autofix, "emit_event", lambda **kwargs: None)
+    monkeypatch.setattr(autofix, "run_context", SimpleNamespace(id=None))
+
+    result = autofix.autofix.fn(run.id)
+
+    assert result.name == "Diagnosed"
+    assert observed == [expected]
 
 
 def test_gather_error_never_fails_the_run(monkeypatch):
