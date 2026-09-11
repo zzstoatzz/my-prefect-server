@@ -11,7 +11,7 @@ import tempfile
 from typing import Literal
 
 from mps.blocks import secret_sync
-from mps.pi import TOOL_ARGS, minimal_env, run_pi, screen_prompt
+from mps.pi import TOOL_ARGS, Toolset, minimal_env, run_pi, screen_prompt
 from prefect import flow
 from prefect.flow_runs import pause_flow_run
 from pydantic import BaseModel, Field
@@ -46,9 +46,9 @@ class Workspace(BaseModel):
 class Agent(BaseModel):
     """which brain pi gets, and which hands."""
 
-    provider: Literal["anthropic"] = Field(
+    provider: str = Field(
         default="anthropic",
-        description="only anthropic is authed on the worker (via secret block)",
+        description="Pi provider; credentials must already be configured on the worker",
         json_schema_extra={"position": 0},
     )
     model: str | None = Field(
@@ -67,6 +67,11 @@ class Agent(BaseModel):
         json_schema_extra={"position": 3},
     )
 
+    toolset: Toolset | None = Field(
+        default=None,
+        description="Explicit tools and installed extensions; overrides tool_mode when set",
+    )
+
 
 @flow(name="pi-agent", log_prints=True, timeout_seconds=1800)
 def pi_agent(
@@ -74,6 +79,7 @@ def pi_agent(
     workspace: Workspace = Workspace(),  # noqa: B008
     agent: Agent = Agent(),  # noqa: B008
     timeout_seconds: int = 1500,
+    instructions: str | None = None,
 ) -> str:
     """run `pi -p <prompt>` in the workspace and return its final output.
 
@@ -81,13 +87,23 @@ def pi_agent(
     injected from a secret block by the deployment).
     """
     anthropic_key = secret_sync("anthropic-api-key")
-    screen_prompt(prompt, agent.tool_mode, anthropic_key)
+    screen_prompt(
+        prompt,
+        agent.tool_mode,
+        anthropic_key,
+        instructions=instructions,
+        toolset=agent.toolset,
+    )
 
-    if agent.tool_mode == "full":
-        print("tool_mode=full requires human approval — pausing (resume in UI)")
+    needs_approval = (
+        agent.toolset.requires_approval if agent.toolset is not None else agent.tool_mode == "full"
+    )
+    if needs_approval:
+        print("coding write tools require human approval — pausing (resume in UI)")
         pause_flow_run(timeout=600)
 
     env = minimal_env()
+    pi_env = minimal_env(ANTHROPIC_API_KEY=anthropic_key if agent.provider == "anthropic" else "")
     with tempfile.TemporaryDirectory(prefix="pi-agent-") as cwd:
         if workspace.repo:
             url = REPO_URLS[workspace.repo]
@@ -98,6 +114,7 @@ def pi_agent(
                 capture_output=True,
                 text=True,
                 env=env,
+                timeout=10,
             )
 
         return run_pi(
@@ -107,7 +124,9 @@ def pi_agent(
             model=agent.model,
             thinking=agent.thinking,
             tool_mode=agent.tool_mode,
-            env=env,
+            toolset=agent.toolset,
+            instructions=instructions,
+            env=pi_env,
             timeout_seconds=timeout_seconds,
         )
 

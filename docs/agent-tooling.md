@@ -30,3 +30,43 @@ can do before hand-rolling `curl`, and before claiming something isn't possible.
 
 if you are about to say "the MCP can't do X" or offer to build a missing tool,
 grep its tool list first. that has been wrong more than once.
+
+## parameterized Pi runs
+
+`pi-agent` accepts the objective as `prompt`, an optional `instructions` system
+prompt, and `agent` settings for provider, model, thinking, and tools. Omitting
+`agent.toolset` preserves the legacy `tool_mode` presets and Pi discovery behavior.
+The existing deployment declares its read-only preset explicitly and leaves
+`toolset` unset, so older callers can still override `tool_mode`.
+
+An explicit `toolset` supplies exact tool names and paths to extensions already
+installed on the worker. It disables ambient extensions, context files, and prompt
+templates; an empty `names` list enables no tools. For example, a lights deployment
+can use these parameters once its isolated MCP extension is installed:
+
+```yaml
+prompt: Read the living-room lights and describe their current state.
+instructions: Control only the home's Hue lights through the configured MCP tools.
+agent:
+  provider: openai-codex
+  model: gpt-5.6-luna
+  toolset:
+    names: [mcp]
+    extensions: [/opt/pi/extensions/lights.ts]
+```
+
+The extension owns the MCP server configuration. Use an adapter configured with
+only the intended servers; loading a global adapter does not itself isolate its
+server list. Extension paths and instructions are trusted operator configuration,
+not fields to copy from incoming events. This flow does not install extensions,
+provision MCP credentials, or authenticate a new model provider. Keep credentials
+in the worker's existing credential setup, not in flow parameters.
+
+Prompt screening always runs. Without custom instructions it retains the coding
+policy; with them it screens the objective against the configured purpose and
+tools. Explicit `bash`, `edit`, or `write` tools retain the human-approval pause.
+The runner is not a sandbox: installed extensions execute as the worker user.
+
+A presence receiver can invoke this same flow with a fresh objective. Presence
+state, duplicate-event handling, and manual lighting overrides belong to that
+application, not the generic Pi runner. No lighting deployment is enabled here.

@@ -1,0 +1,31 @@
+# Register separately once the source repository and revision are available.
+# just presence-deploy validates these environment variables before registration.
+name: presence-lighting
+pull:
+  - prefect.deployments.steps.run_shell_script:
+      expand_env_vars: true
+      script: |
+        git clone --quiet "$PRESENCE_SOURCE_URL" presence-source
+        git -C presence-source checkout --quiet --detach "$PRESENCE_SOURCE_REVISION"
+  - prefect.deployments.steps.set_working_directory:
+      directory: presence-source
+
+deployments:
+  - name: phone-presence
+    entrypoint: flows/presence_lighting.py:report_presence
+    parameters:
+      apply_lighting: true
+    schedules: []
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server[lighting] @ git+{{ $PRESENCE_SOURCE_URL }}@{{ $PRESENCE_SOURCE_REVISION }}'
+          prefect flow-run execute
+        env:
+          PRESENCE_SOURCE_URL: "{{ $PRESENCE_SOURCE_URL }}"
+          PRESENCE_SOURCE_REVISION: "{{ $PRESENCE_SOURCE_REVISION }}"
+          PRESENCE_CREDENTIAL_FILE: "{{ $PRESENCE_CREDENTIAL_FILE }}"
+          PRESENCE_HUE_ENV_FILE: "{{ $PRESENCE_HUE_ENV_FILE }}"
+          PRESENCE_LIGHTING_STATE_FILE: "{{ $PRESENCE_LIGHTING_STATE_FILE }}"

@@ -828,6 +828,12 @@ deployments:
     # (logfire alert -> automation -> this deployment with the alert in the
     # prompt). requires pi installed on the worker box (npm install -g
     # @earendil-works/pi-coding-agent); auth comes from the injected key.
+    parameters:
+      agent:
+        provider: anthropic
+        thinking: medium
+        tool_mode: read-only
+        toolset: null
     work_pool:
       name: home-pool
       job_variables:

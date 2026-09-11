@@ -1,0 +1,23 @@
+# Only this bearer-authenticated endpoint is exposed on the API hostname.
+# All other hub routes remain behind Cloudflare Access on hub.waow.tech.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: presence
+  namespace: prefect
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [prefect-server.waow.tech]
+      secretName: prefect-server.waow.tech-tls
+  rules:
+    - host: prefect-server.waow.tech
+      http:
+        paths:
+          - path: /api/presence
+            pathType: Exact
+            backend:
+              service:
+                name: hub
+                port:
+                  number: 3000
