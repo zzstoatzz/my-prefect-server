@@ -34,3 +34,19 @@ tool through Aperture would not by itself provide the missing tool trace.
 No broader model allowance or tool access was needed for this investigation.
 The existing model-routing audit remains relevant when another model is
 deliberately enabled; this run does not justify increasing the model budget.
+
+## Deployed verification
+
+Commit `d7ca887` adds metadata-only inference outcome logging and was deployed
+to the trusted inference service on September 11. Follow-up Prefect run
+`a0cf02c7-7242-4eca-b3cb-8e4edd332125` completed at 16:15:42 UTC and reviewed
+the shipped identifier rendering. Its three requests appear in the service
+journal under attempt `prefect-ed3e4f65-a0cf02c772424ecab3cb8e4edd332125-r0`,
+with model Luna, HTTP 200, successful delivery, and durations of 3134, 5507,
+and 8395 milliseconds. The grant records three of 32 requests used and is
+revoked. Local tests also verify denied requests and credential redaction.
+
+These are bridge request outcomes, not token billing or a replacement for
+Pi's tool history. The follow-up artifact identifies the statements preserving
+deployment and classified-run IDs; older runs remain available via detail
+queries rather than being copied into the brief workflow-health block.
