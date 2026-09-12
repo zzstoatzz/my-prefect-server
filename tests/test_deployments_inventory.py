@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location(
@@ -47,6 +48,7 @@ def test_purpose_prefers_description_then_flow_docstring_then_module(tmp_path: P
         == "declared"
     )
     assert inv.purpose({"entrypoint": "flows/one.py:one"}, tmp_path) == "flow line wraps here"
+    assert inv.purpose({"entrypoint": "flows.one.one"}, tmp_path) == "flow line wraps here"
     assert inv.purpose({"entrypoint": "flows/two.py:two"}, tmp_path) == "module line"
     with pytest.raises(inv.InventoryError):
         inv.purpose({"entrypoint": "flows/three.py:three"}, tmp_path)
@@ -62,13 +64,21 @@ def test_group_requires_exactly_one_group_tag():
 
 def test_render_sections_by_group_in_declared_order():
     deps = [
-        inv.Deployment("w", "watch", "manual", "watches", "flows/w.py:w"),
+        inv.Deployment("w", "watch", "manual", "watches", "flows.w.w"),
         inv.Deployment("p", "pipeline", "`0 * * * *`", "ingests", "flows/p.py:p"),
     ]
     text = inv.render(deps)
     assert text.index("## pipeline") < text.index("## watch")
     assert "| `p` | `0 * * * *` | ingests | [`p`](flows/p.py) |" in text
     assert "## phi" not in text
+    assert "[`w`](flows/w.py)" in text
+
+
+def test_wheel_deployments_use_module_entrypoints():
+    deployments = yaml.safe_load(inv.SPEC.read_text())["deployments"]
+    for deployment in deployments:
+        if deployment.get("pull") == []:
+            assert ":" not in deployment["entrypoint"], deployment["name"]
 
 
 def test_committed_inventory_matches_prefect_yaml():

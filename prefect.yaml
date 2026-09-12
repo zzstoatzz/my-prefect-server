@@ -877,7 +877,7 @@ deployments:
 
   - name: watch-tangled-pulls
     tags: [gardener]
-    entrypoint: flows/watch_tangled_pulls.py:watch_tangled_pulls
+    entrypoint: flows.watch_tangled_pulls.watch_tangled_pulls
     pull: []
     # drains operator comments on gardener pulls off stream.waow.tech (cursor
     # replay makes a cron of short runs equivalent to a daemon) and starts
@@ -893,7 +893,7 @@ deployments:
 
   - name: autofix-revise
     tags: [gardener]
-    entrypoint: flows/autofix_revise.py:autofix_revise
+    entrypoint: flows.autofix_revise.autofix_revise
     pull: []
     # started by watch-tangled-pulls per operator comment. pi (full tools, no
     # credentials) revises the pull in a scratch clone; the flow appends the
@@ -926,7 +926,7 @@ deployments:
 
   - name: merge-approved
     tags: [gardener]
-    entrypoint: flows/merge_approved.py:merge_approved
+    entrypoint: flows.merge_approved.merge_approved
     pull: []
     # stage 2 of the approval ladder (docs/autofix.md). started by
     # `autofix proposed -> merge-approved` with the gardener pull; waits for
@@ -941,7 +941,7 @@ deployments:
 
   - name: test-pull-patch
     tags: [gardener]
-    entrypoint: flows/test_pull_patch.py:test_pull_patch
+    entrypoint: flows.test_pull_patch.test_pull_patch
     pull: []
     work_pool:
       name: phi-sprites-spike

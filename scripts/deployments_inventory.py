@@ -82,11 +82,19 @@ def first_paragraph(doc: str) -> str:
     return " ".join(lines).rstrip(".")
 
 
+def entrypoint_source(entrypoint: str) -> tuple[str, str]:
+    if ":" in entrypoint:
+        path, fn = entrypoint.rsplit(":", 1)
+        return path, fn
+    module, fn = entrypoint.rsplit(".", 1)
+    return module.replace(".", "/") + ".py", fn
+
+
 def purpose(dep: dict, root: Path) -> str:
     if dep.get("description"):
         return str(dep["description"]).strip().rstrip(".")
     entrypoint = dep["entrypoint"]
-    path, fn = entrypoint.split(":")
+    path, fn = entrypoint_source(entrypoint)
     tree = ast.parse((root / path).read_text())
     for node in ast.walk(tree):
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == fn:
@@ -148,7 +156,7 @@ def render(deps: list[Deployment]) -> str:
             "|---|---|---|---|",
         ]
         for d in members:
-            path, fn = d.entrypoint.split(":")
+            path, fn = entrypoint_source(d.entrypoint)
             lines.append(f"| `{d.name}` | {d.cadence} | {d.purpose} | [`{fn}`]({path}) |")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
