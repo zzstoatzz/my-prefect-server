@@ -6,7 +6,7 @@ this file is a set of notes for us:
 - `.env` keys: `HCLOUD_TOKEN`, `POSTGRES_PASSWORD`, `AUTH_STRING`, `DOMAIN`, `LETSENCRYPT_EMAIL` (+ optional `GRAFANA_DOMAIN`). the live server is `DOMAIN=prefect-server.waow.tech`.
 - `AUTH_STRING` (`user:pass`) is the Prefect API admin credential. The Zig server's Prefect-compatible BasicAuth is enabled via the `prefect-auth` secret; unauthenticated `/api/*` calls return `Unauthorized`, while `/ui-settings` reports `auth: "BASIC"` for the bundled Prefect v2 UI login flow. Use `AUTH_STRING` for CLI/API queries.
 - query the live server with `just prefect <args>` (e.g. `just prefect flow-run ls`); it injects `PREFECT_API_URL`/`PREFECT_API_AUTH_STRING` from `.env`. raw API: `curl -H "Authorization: Basic $(printf "$AUTH_STRING" | base64)" https://$DOMAIN/api/...`.
-- flow *runtime* secrets (`ANTHROPIC_API_KEY`, `TURBOPUFFER_API_KEY`, `CLOUDFLARE_API_TOKEN`, `TURSO_*`) are NOT in `.env` — they're Prefect Secret blocks, injected into flow runs via `job_variables.env` in `prefect.yaml`, resolved at `prefect deploy` time. flow code never touches the Secret API directly.
+- flow *runtime* secrets (`ANTHROPIC_API_KEY`, `TURBOPUFFER_API_KEY`, `CLOUDFLARE_API_TOKEN`, `TURSO_*`) are NOT in `.env` — they're Prefect Secret blocks, injected into flow runs via `job_variables.env` in `prefect.yaml`, resolved at worker startup by `mps.secrets_plugin`. flows needing explicit typed block access use `mps.blocks`.
 
 ## cluster access
 
@@ -33,8 +33,9 @@ this file is a set of notes for us:
 - push to configured remotes. This repo currently has `origin` (tangled.org);
   if a `github` mirror remote is present in a checkout, push that too.
 - after server restart, re-fetch kubeconfig with `just kubeconfig`
-- **flow execution runs on the `home-pool` *process* worker on the home box (heavypad)** — a systemd unit polling the server outbound over Tailscale (`deploy/home-worker/`). the `kubernetes-pool` bullets below describe the retained-but-unused k8s fallback path (no k8s worker runs in normal operation), and the analytics paths are hostPaths under `/home/stoat/prefect-analytics`, not a k8s PVC.
-- flow code never goes in worker images or ConfigMaps — it's pulled at runtime via `git_clone`
+- **most flow execution runs on the `home-pool` *process* worker on the home box (heavypad)** — a systemd unit polling the server outbound over Tailscale (`deploy/home-worker/`). the `kubernetes-pool` bullets below describe the retained-but-unused k8s fallback path (no k8s worker runs in normal operation), and the analytics paths are hostPaths under `/home/stoat/prefect-analytics`, not a k8s PVC.
+- Git-backed flow code is pulled at runtime; selected Gardener flows instead import modules from pinned mps wheels, including on `phi-sprites-spike`. Preserve the declared loading mode: `pull: []` plus a wheel needs a dotted entrypoint unless files are explicitly supplied by the worker. See `docs/deployments-validation.md`.
+- run `just hooks` once per clone. `just validate-deployments` checks code-delivery contracts; CI repeats it before registration. Never change entrypoint syntax to satisfy documentation formatting. A passing static check does not establish artifact availability or runtime readiness.
 - worker image is `prefecthq/prefect:3-python3.14-kubernetes` (the `-kubernetes` tag matters; uv is pre-installed)
 - `PREFECT_INTEGRATIONS_KUBERNETES_OBSERVER_NAMESPACES=prefect` is what makes namespace-scoped RBAC work
 - kubernetes work pool base job template defaults namespace to `default` — must be `prefect`

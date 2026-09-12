@@ -30,6 +30,7 @@ steps:
     command: |
       set -euo pipefail
       for lib in /nix/store/*-gcc-*-lib/lib; do export LD_LIBRARY_PATH="$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; done
+      uv run scripts/validate_deployments.py
       uv sync
       ruff check .
       ruff format --check .
@@ -45,7 +46,7 @@ steps:
       set -euo pipefail
       uv run scripts/deployments_inventory.py --check
 
-  # MPS_PIN pins every deployment's `uv run --with ...` to this exact commit
+  # MPS_PIN pins the tracking deployments' `uv run --with ...` to this exact commit
   # (see the header comment in prefect.yaml). Without it the install falls back
   # to unpinned main and uv may serve a stale cached commit, so fail loudly
   # rather than register deployments that quietly install the wrong code.
@@ -74,4 +75,5 @@ steps:
       fi
       export MPS_PIN="@${SHA}"
       echo "pinning deployments to ${MPS_PIN}"
+      uv run scripts/validate_deployments.py --release
       uv run --with prefect prefect --no-prompt deploy --all

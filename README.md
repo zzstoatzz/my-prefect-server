@@ -16,24 +16,27 @@ prefect 3 python.
   heavypad (home, tailscale)               hetzner VM (k3s, EU)
   ────────────────────────────             ─────────────────────────────
   home-pool process worker      ── poll ─► prefect-server (zig) + postgres
-  runs every flow               ◄─ runs ── + redis
+  runs home-pool flows          ◄─ runs ── + redis
   owns analytics.duckdb,
   llm-spend.jsonl               ── rsync ► hub.waow.tech + grafana (public)
 ```
 
 ## design
 
-- **home computes, the edge serves** — every flow runs on the home box, which
-  polls outbound and needs no ingress. the VM holds the control plane and
+- **home computes, the edge serves** — home-pool flows run on the home box, which
+  polls outbound. selected gardener jobs run in Sprites, managed from home.
+  the VM holds the control plane and
   serves bytes. the hub reads a copy of the analytics synced every few
   minutes, so a public page never waits on a trip home.
 - **prefect.yaml is the source of truth** — schedules, triggers, tags,
   parameters, and job variables live in one file. a push to `main` registers
-  all of it, pinned to that commit, and [deployments.md](docs/deployments.md)
+  all of it, preserving explicit legacy pins and wheel routes.
+  [deployments.md](docs/deployments.md)
   is generated from the same file so the inventory cannot drift.
-- **flow code is pulled, never baked** — runs install the package from the
-  pushed commit at start; there is no worker image to rebuild when a flow
-  changes.
+- **code delivery is explicit** — Git-backed runs install and check out the
+  same revision; wheel-backed runs import packaged flow modules.
+  [deployment validation](docs/deployments-validation.md) checks these contracts
+  before registration.
 - **degraded is a state name, not a boolean** — a run whose upstream was dead
   but that did its job returns `Completed(name="Degraded")`. it stays visible
   and filterable and does not page. retries sit on every task that touches
@@ -42,8 +45,8 @@ prefect 3 python.
 - **one writer for the analytics** — `analytics.duckdb` opens read-write only
   under a global concurrency limit of one; readers snapshot the file.
 - **secrets are blocks** — runtime credentials are Prefect Secret blocks named
-  in `prefect.yaml` and resolved when a run starts. flow code never touches
-  the Secret API and `.env` holds only operator tooling.
+  in `prefect.yaml` and resolved when a run starts, or loaded through
+  `mps.blocks` by flows that need typed access. `.env` holds operator tooling.
 - **the agent needs the operator to land a change** — pi diagnoses failures
   and opens pulls as gardener, phi reviews, and the merge credential stays
   behind a human Resume. [autofix.md](docs/autofix.md) is the ladder.
@@ -52,6 +55,7 @@ prefect 3 python.
 
 ```sh
 uv sync                                   # workspace: flows + packages/mps
+just hooks                                # install staged deployment validation
 just check                                # ruff, ty, pytest, the hub's svelte-check and oxlint; what CI runs before deploying
 just inventory                            # regenerate docs/deployments.md after editing prefect.yaml
 just prefect flow-run ls                  # any prefect CLI command against the live server

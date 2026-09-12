@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: deployment-contracts
+        name: Deployment contracts
+        entry: uv run scripts/validate_deployments.py
+        language: system
+        pass_filenames: false
+        always_run: true

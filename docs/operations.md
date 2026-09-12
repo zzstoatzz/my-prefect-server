@@ -14,8 +14,8 @@ copy `.env.example` to `.env` and fill in `HCLOUD_TOKEN`, `POSTGRES_PASSWORD`,
 - flow runtime secrets (`ANTHROPIC_API_KEY`, `TURBOPUFFER_API_KEY`,
   `CLOUDFLARE_API_TOKEN`, `TURSO_*`) are Prefect Secret blocks, not `.env`.
   `prefect.yaml` references them as `prefect-block://` values in
-  `job_variables.env`, resolved when a run starts. flow code never calls the
-  Secret API.
+  `job_variables.env`, resolved when a run starts. flows that load blocks
+  explicitly use the typed helpers in `mps.blocks`.
 - `kubeconfig.yaml` at the repo root (gitignored) is what `kubectl` and every
   cluster recipe use. `just kubeconfig` fetches it after the server boots.
 
@@ -40,12 +40,16 @@ Running and `/health` 200 have both been true while every run crashed.
 
 ## the worker (heavypad)
 
-flow execution runs on the home box as a systemd process worker for
+most flow execution runs on the home box as a systemd process worker for
 `home-pool`, polling the server outbound over Tailscale. no ingress, no
 port-forward. the installer and unit are in [deploy/home-worker/](../deploy/home-worker/);
 [deploy/hub-data-sync/](../deploy/hub-data-sync/) rsyncs `hub.duckdb` and
 `llm-spend.jsonl` to the VM every few minutes so the hub serves fresh data
 without a round trip home.
+
+`phi-sprites-spike` runs selected gardener jobs in Sprites. Its supervisor
+and local wheel artifacts live on Heavypad; see the deployment declarations
+and [validation contracts](deployments-validation.md).
 
 `kubernetes-pool` survives only as a defined fallback. its base job template
 is applied by `just storage`; no k8s worker runs in normal operation.
@@ -58,14 +62,17 @@ just heavypad-status   # installed toolchain, worker unit, disk, codex login exp
 
 `prefect.yaml` owns schedules, triggers, tags, parameters, and per-deployment
 job variables. every push to `main` registers all of them through
-`.tangled/workflows/deploy.yml`, pinned to the pushed commit. the inventory in
+`.tangled/workflows/deploy.yml`. Git-backed jobs using MPS_PIN track the pushed
+commit; explicit legacy pins and wheel routes retain their declared versions.
+The static [validator](deployments-validation.md) runs before registration. The inventory in
 [deployments.md](deployments.md) is generated from the same file and CI fails
 if it is stale.
 
 ```sh
 just check                                       # what CI runs before it deploys
 just inventory                                   # regenerate docs/deployments.md
-just prefect deploy --all                        # register by hand (CI does this on push)
+MPS_PIN="@$(git rev-parse HEAD)" just validate-deployments --release # check the intended pin
+# Use the same MPS_PIN with just prefect deploy for manual registration.
 just prefect deployment run 'diagnostics/diagnostics' --watch   # exercise the real worker
 just automations                                 # apply deploy/automations.yaml (idempotent)
 just work-pool                                   # apply deploy/work-pools templates

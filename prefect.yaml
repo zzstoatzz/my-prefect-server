@@ -76,6 +76,8 @@ deployments:
           uv run
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
     schedules:
       # offset from the top of the hour so it never samples stream during the
       # eval's :06/:36 windows or alongside the hourly ingest spin-up
@@ -98,6 +100,8 @@ deployments:
           --with 'fastmcp>=4.0.0b5'
           --with 'fastmcp-slim>=4.0.0b5'
           prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
     schedules:
       - cron: "12 * * * *"
         active: true
@@ -114,6 +118,8 @@ deployments:
           uv run
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
     schedules:
       # :37 rather than the top of the hour, so the host sample is not taken
       # while the hourly ingest is spinning up and skewing what it measures.
@@ -164,6 +170,7 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
@@ -238,6 +245,7 @@ deployments:
           --with 'my-prefect-server[atlas] @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
@@ -281,6 +289,7 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           OMP_NUM_THREADS: "1"
@@ -328,6 +337,7 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           CLOUDFLARE_API_TOKEN: prefect-block://cloudflare-api-token
@@ -369,6 +379,7 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           LOGFIRE_READ_TOKEN: prefect-block://logfire-read-token
@@ -403,6 +414,7 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           TURSO_URL: prefect-block://typeahead-turso-url
@@ -437,6 +449,7 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           TURSO_URL: prefect-block://typeahead-turso-url
@@ -458,6 +471,7 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           # typeahead-specific turso blocks — the shared `turso-url`/`turso-token`
@@ -516,6 +530,7 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           # full libsql:// URL — unlike typeahead-index, this flow does NOT strip
@@ -563,6 +578,7 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           # shared turso blocks ARE the leaf db (atlas uses the same ones);
@@ -609,6 +625,7 @@ deployments:
           --with boto3
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           # canary for the mps-secrets startup plugin: job_variables carry block
           # NAMES; the plugin resolves them in-process at `import prefect`, so
           # no plaintext lands in the orchestration db / deployment reads.
@@ -641,6 +658,8 @@ deployments:
           uv run
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
     parameters:
       slot: curation
     schedules:
@@ -665,6 +684,8 @@ deployments:
           uv run
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
     parameters:
       slot: likes-review
     schedules:
@@ -688,6 +709,8 @@ deployments:
           uv run
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
     parameters:
       slot: pull-review
 
@@ -705,6 +728,8 @@ deployments:
           uv run
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
     parameters:
       slot: editorial
     schedules:
@@ -727,6 +752,8 @@ deployments:
           uv run
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
     parameters:
       slot: character-retro
     schedules:
@@ -746,6 +773,8 @@ deployments:
           uv run
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
     parameters:
       slot: chicken-scout
     schedules:
@@ -765,6 +794,8 @@ deployments:
           uv run
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
     parameters:
       slot: chicken-precheck
     schedules:
@@ -813,6 +844,7 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
@@ -844,6 +876,7 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
@@ -996,6 +1029,7 @@ deployments:
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
           STRATA_URL: https://strata.zat.dev
           STRATA_INGEST_TOKEN: prefect-block://strata-ingest-token

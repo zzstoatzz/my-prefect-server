@@ -477,6 +477,7 @@ web: push-web deploy-web
 
 # everything CI runs before it deploys: lint, format, types, tests, the hub's svelte-check and oxlint
 check:
+    just validate-deployments
     uv run ruff check .
     uv run ruff format --check .
     uv run ty check
@@ -529,3 +530,11 @@ presence-deploy:
     : "${PRESENCE_LIGHTING_STATE_FILE:?set the persistent worker marker path}"
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
         uv run --with prefect prefect deploy --prefect-file deploy/presence.yaml --name phone-presence
+
+# Fast, read-only deployment contracts (also enforced in CI).
+validate-deployments *args:
+    uv run scripts/validate_deployments.py {{ args }}
+
+# Install staged-content validation for this checkout.
+hooks:
+    uvx --from pre-commit==4.6.0 pre-commit install
