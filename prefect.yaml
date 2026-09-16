@@ -96,9 +96,11 @@ deployments:
       job_variables:
         command: >-
           uv run
+          --refresh-package fastmcp --refresh-package fastmcp-slim
+          --upgrade
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
-          --with 'fastmcp>=4.0.0b5'
-          --with 'fastmcp-slim>=4.0.0b5'
+          --with 'fastmcp>=4.0'
+          --with 'fastmcp-slim>=4.0'
           prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"

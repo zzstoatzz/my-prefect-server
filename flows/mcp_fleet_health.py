@@ -16,6 +16,7 @@ run (the atlas registry is unreachable after retries).
 import asyncio
 import time
 from dataclasses import dataclass
+from importlib.metadata import version
 
 import httpx
 from fastmcp import Client
@@ -77,6 +78,7 @@ async def mcp_fleet_health(
     connect_timeout_s: float = 20,
 ) -> None:
     logger = get_run_logger()
+    logger.info("fastmcp %s", version("fastmcp"))
     fleet = await fetch_fleet(atlas_url)
 
     clients = {name: Client(url, timeout=15) for name, url in fleet.items()}
