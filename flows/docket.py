@@ -176,7 +176,7 @@ class Docket(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# atproto I/O (mirrors flows/phi_atlas.py + flows/curate.py patterns)
+# atproto I/O (mirrors flows/phi_atlas.py patterns)
 # ---------------------------------------------------------------------------
 
 

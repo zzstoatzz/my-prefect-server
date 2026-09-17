@@ -39,7 +39,7 @@ alerting, add its name to that automation's `expect` list.
 
 ## retries on anything that touches the network
 
-House policy, matching what `flows/curate.py` already used:
+House policy:
 
 ```python
 NETWORK_RETRIES = {

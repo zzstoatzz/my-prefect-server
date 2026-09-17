@@ -2059,7 +2059,6 @@ dependencies = [
     { name = "mps" },
     { name = "prefect" },
     { name = "prefect-dbt" },
-    { name = "semble-api" },
     { name = "websockets" },
     { name = "zstandard" },
 ]
@@ -2105,7 +2104,6 @@ requires-dist = [
     { name = "prefect", specifier = ">=3.7.7" },
     { name = "prefect-dbt", specifier = ">=0.6" },
     { name = "scipy", marker = "extra == 'atlas'", specifier = ">=1.11" },
-    { name = "semble-api", specifier = ">=0.0.2" },
     { name = "smart-home", marker = "extra == 'lighting'", git = "https://github.com/PrefectHQ/fastmcp.git?subdirectory=examples%2Fsmart_home&rev=e3fb4af36892e6477399df2597f0dd5abd469799" },
     { name = "umap-learn", marker = "extra == 'atlas'", specifier = ">=0.5" },
     { name = "websockets", specifier = ">=15.0.1" },
@@ -3633,20 +3631,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/1c/03/e834bcd866f2f8a49a85eaff47340affa3bfa391ee9912a952a1faa68c7b/secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be", size = 19884, upload-time = "2025-11-23T19:02:53.191Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/46/f5af3402b579fd5e11573ce652019a67074317e18c1935cc0b4ba9b35552/secretstorage-3.5.0-py3-none-any.whl", hash = "sha256:0ce65888c0725fcb2c5bc0fdb8e5438eece02c523557ea40ce0703c266248137", size = 15554, upload-time = "2025-11-23T19:02:51.545Z" },
-]
-
-[[package]]
-name = "semble-api"
-version = "0.0.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "httpx2" },
-    { name = "pydantic" },
-    { name = "pydantic-settings" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/96/cd/4ca97c8b82f7c7282414b95a718747a4d4722ba5a9c117efb7e9a14865a5/semble_api-0.0.2.tar.gz", hash = "sha256:04d2db59965dcb1454c9780920cbb2f286fd78240b1820d5829e9192a1c6dfbf", size = 95503, upload-time = "2026-06-11T04:47:45.62Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/d3/82/dc0db6032ec084f8767305072d798c1f12fd7de85159de89d0d7b70f87fc/semble_api-0.0.2-py3-none-any.whl", hash = "sha256:7b27b9a6e849b819104c3a9cac93d822ed9d551b13c62444a841f487cb0ce2a9", size = 21867, upload-time = "2026-06-11T04:47:44.516Z" },
 ]
 
 [[package]]

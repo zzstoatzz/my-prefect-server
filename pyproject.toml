@@ -23,7 +23,6 @@ dependencies = [
     "prefect-dbt>=0.6",
     "prefect>=3.7.7",
     "logfire>=4.36.0",
-    "semble-api>=0.0.2",
     "zstandard>=0.25.0",
     "websockets>=15.0.1",
 ]

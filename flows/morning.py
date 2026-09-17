@@ -5,7 +5,7 @@ Daily at 0 13 * * * (8am CT), 1h before phi's reflection at 14:00 UTC.
 NOT triggered by transform — runs on its own cron.
 
 Phases 1-3: mechanical tag maintenance (dedup, relationships, storage).
-Curation is handled by a separate flow (curate.py) triggered on completion.
+Observation review is a separate flow (curate.py) triggered on completion.
 """
 
 import hashlib

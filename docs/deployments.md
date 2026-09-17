@@ -23,7 +23,7 @@ phi's identity and memory
 | deployment | cadence | purpose | entrypoint |
 |---|---|---|---|
 | `phi-tag-maintenance` | `0 13 * * *` | Morning flow: tag maintenance | [`morning`](flows/morning.py) |
-| `curate` | after `phi-tag-maintenance` | Phi reviews and curates its own semble records | [`curate`](flows/curate.py) |
+| `curate` | after `phi-tag-maintenance` | Phi reviews its private observations about the people it talks to | [`curate`](flows/curate.py) |
 | `phi-atlas` | `0 13 * * *` | Daily map of phi's mental landscape | [`phi_atlas`](flows/phi_atlas.py) |
 | `docket` | after `phi-atlas` | Establish today's promotion object | [`docket`](flows/docket.py) |
 | `phi-curation` | `0 3 * * 1` | phi's weekly publication-curation pass | [`phi_trigger`](flows/phi_trigger.py) |
