@@ -221,18 +221,6 @@ deployments:
     schedules:
       - cron: "0 13 * * *"  # 8am CT daily
 
-  - name: curate
-    tags: [phi]
-    entrypoint: flows/curate.py:curate
-    work_pool: *home
-    triggers:
-      - type: event
-        expect:
-          - "prefect.flow-run.Completed"
-        match_related:
-          prefect.resource.name: "phi-tag-maintenance"
-          prefect.resource.role: "deployment"
-
   - name: phi-atlas
     tags: [phi]
     entrypoint: flows/phi_atlas.py:phi_atlas

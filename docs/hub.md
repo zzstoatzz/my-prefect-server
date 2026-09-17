@@ -45,9 +45,6 @@ DuckDB allows one read-write process per file, and flows on independent schedule
                         phi identity flows
   ─────────────────────────────────────────────
   phi-tag-maintenance (daily 8am CT)   ──► TurboPuffer
-          │
-          ▼
-  curate                   ──► TurboPuffer
   phi-atlas (daily 8am CT) ──► PDS atlas blob
           │
           ▼
@@ -73,7 +70,6 @@ DuckDB allows one read-write process per file, and flows on independent schedule
 | `brief` | on `transform` completion | loads top 200 scored items, sends to claude haiku 4.5 via pydantic-ai, writes `briefing.json`. cached by items content hash (skips LLM when data unchanged) |
 | `phi-memory-synthesis` | on `transform` completion | synthesizes per-user relationship summaries from phi's observations + interactions. extracts new observations from liked posts (LLM). writes summaries to TurboPuffer (`phi-users-*`). cached by observations content hash |
 | `phi-tag-maintenance` | cron `0 13 * * *` (8am CT) | tag maintenance (dedup, merge, relationship discovery) in TurboPuffer. runs 1h before phi's daily reflection |
-| `curate` | on `phi-tag-maintenance` completion | agentic review of phi's private observations in TurboPuffer (contradictions, staleness, near-duplicates). it has no access to phi's Semble library or PDS: a daily Semble janitor lived here until 2026-09-17 and spent months deleting her notes, refiling cards against her own shelving, duplicating collection links, and orphaning edges, all outside her telemetry. the library has one curator, phi, live |
 | `phi-atlas` | cron `0 13 * * *` (8am CT) | builds phi's daily private/public semantic atlas from TurboPuffer + PDS records, writes `io.zzstoatzz.phi.atlas/self` |
 | `docket` | on `phi-atlas` completion | synthesizes promotion-pressure candidates from the atlas and writes `io.zzstoatzz.phi.docket/self` |
 | `bufo-traffic` | cron `7 * * * *` | rolls find-bufo.com requests from logfire (zig HTTP spans + the retired rust backend's access logs, routes normalized in SQL) into one `com.find-bufo.traffic` record per UTC day on the operator PDS; the bufo-bot stats page draws its traffic charts from those public records |
@@ -145,7 +141,7 @@ the mechanical TurboPuffer tag-graph cleanup:
 2. embed tags and identify near-duplicates via LLM (e.g., "atproto" / "at protocol" / "AT Protocol")
 3. apply merges: rewrite tags in TurboPuffer, discover inter-tag relationships, store in `phi-tag-relationships` namespace
 
-`curate` is a separate event-triggered flow after `phi-tag-maintenance`. it reviews phi's private observations with an agent and touches nothing else. do not give a background flow write access to phi's Semble library again: a second curator with its own doctrine, invisible to her telemetry, is how the library stayed messy no matter how often she cleaned it.
+there is no background curator. a `curate` flow ran after `phi-tag-maintenance` until 2026-09-17: one Haiku agent tidied phi's Semble library and another hard-deleted rows from her per-person memory, both as phi and both outside her telemetry. the library half kept her shelves duplicative no matter how often she cleaned them; the memory half erased roughly 100 observations in its last two weeks. do not give a background flow write access to phi's library or delete access to her memory again. her own process reconciles observations on write and keeps retired versions readable.
 
 `phi-atlas` is a separate daily flow that maps phi's private memory and public PDS records into `io.zzstoatzz.phi.atlas/self`. `docket` runs after `phi-atlas` and writes `io.zzstoatzz.phi.docket/self`, a small daily set of promotion-pressure candidates. those `io.zzstoatzz.phi.*` records stay as raw PDS writes because they are phi-owned records, not Semble graph mutations.
 

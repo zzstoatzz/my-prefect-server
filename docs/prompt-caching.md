@@ -73,7 +73,7 @@ floor *and* caching is configured, it pays off:
   runs ~4:1 read:write — comfortably past the ~2× write-premium break-even.
 
 **d. multi-turn agents need automatic caching, not just static breakpoints.**
-`curate` used to be documented as an engaged haiku/tool-definition cache case,
+`curate` (removed 2026-09-17) used to be documented as an engaged haiku/tool-definition cache case,
 but live spend data on 2026-06-24 showed 0 cache reads/writes for both
 `run_curation_agent` and `run_observation_review`. That means the explicit
 instruction/tool breakpoints are still below the haiku floor, or otherwise not
@@ -96,7 +96,6 @@ We don't hand-place `cache_control` breakpoints — pydantic-ai's
 | `phi_atlas.py` | haiku-4-5 | instructions | 0% | one-line prompt, sub-floor |
 | `morning.py` | sonnet-4-6 | **none** | 0% | clears floor but caching not configured |
 | `docket.py` | sonnet-4-6 | instructions | ~30% | ~3.3k/call clears the 2048 floor |
-| `curate.py` | haiku-4-5 | automatic **+** instructions **+** tool defs | verifying | live 2026-06-24 showed explicit breakpoints at 0%; automatic cache is the new lever |
 
 The sibling **phi** bot (`zzstoatzz.io/bot`, the `phi` row in the panel) caches
 its ~30 tool definitions (~12k tokens) at a **1-hour** TTL via

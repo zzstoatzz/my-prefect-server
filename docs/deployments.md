@@ -2,7 +2,7 @@
 
 generated from `prefect.yaml` by `scripts/deployments_inventory.py`; do not edit by hand. `just inventory` regenerates it and CI fails on drift.
 
-41 deployments, all on the `home-pool` process worker. a cadence of `after x` is an automation that fires when deployment x completes; `manual` means the deployment is started by the API, an automation outside `prefect.yaml`, or a person.
+40 deployments, all on the `home-pool` process worker. a cadence of `after x` is an automation that fires when deployment x completes; `manual` means the deployment is started by the API, an automation outside `prefect.yaml`, or a person.
 
 ## pipeline
 
@@ -23,7 +23,6 @@ phi's identity and memory
 | deployment | cadence | purpose | entrypoint |
 |---|---|---|---|
 | `phi-tag-maintenance` | `0 13 * * *` | Morning flow: tag maintenance | [`morning`](flows/morning.py) |
-| `curate` | after `phi-tag-maintenance` | Phi reviews its private observations about the people it talks to | [`curate`](flows/curate.py) |
 | `phi-atlas` | `0 13 * * *` | Daily map of phi's mental landscape | [`phi_atlas`](flows/phi_atlas.py) |
 | `docket` | after `phi-atlas` | Establish today's promotion object | [`docket`](flows/docket.py) |
 | `phi-curation` | `0 3 * * 1` | phi's weekly publication-curation pass | [`phi_trigger`](flows/phi_trigger.py) |
