@@ -1,5 +1,5 @@
 """
-LLM-classify unclassified inbox emails (personal / work / notification /
+Classify unclassified inbox emails (personal / work / notification /
 promotional) so scoring can down-weight promotional noise.
 
 Chained: ingest fetches + persists raw emails, this flow enriches them, then
@@ -7,8 +7,13 @@ transform's dbt build joins the categories in. Split out of ingest so a
 classifier outage can't fail ingestion of the other sources, and so ingest
 stays pure fetch+persist.
 
+The classifier is TypeSafe's Jev (a System One model): one request per batch
+carries the emails as state and one Choice question per email, evaluated in
+parallel. Jev returns a category plus its own confidence, which is persisted
+for calibration. It replaced Claude Haiku on 2026-09-18.
+
 Cache policy: each batch is keyed by its message_ids — a batch never hits the
-LLM twice within 24h, so the common re-run is seconds.
+model twice within 24h, so the common re-run is seconds.
 """
 
 import datetime
@@ -17,16 +22,25 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from genai_prices.types import Usage
 from mps.blocks import secret_sync
 from mps.db import unclassified_emails, write_email_classifications
-from mps.email import EmailClassification, IndexedClassifications
+from mps.email import (
+    EmailClassification,
+    EmailRow,
+    classification_request,
+    classifications_from_answers,
+)
+from mps.spend import record_usage
 from prefect import flow, get_run_logger, task, unmapped
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 
-# bump to invalidate cached classifications. "v3" matches the keys minted when
-# this task lived in ingest, so the move doesn't re-classify the whole inbox.
-_CACHE_VERSION = "v3"
+# bump to invalidate cached classifications. v4: Jev replaced Haiku, so a
+# batch cached under v3 in the last 24h is re-judged rather than replayed.
+_CACHE_VERSION = "v4"
+
+TYPESAFE_MODEL = "jev-latest"
 
 
 def _db_path() -> str:
@@ -36,26 +50,12 @@ def _db_path() -> str:
     )
 
 
-EMAIL_CLASSIFIER_PROMPT = """\
-you categorize inbox emails for a solo developer's dashboard.
-given numbered (sender, subject, snippet) lines, assign each index one:
-
-- personal: written by a human directly to the recipient
-- work: professional correspondence needing attention (invoices, contracts,
-  recruiter/client mail, account security)
-- notification: automated but informational (mailing lists, forum threads,
-  CI results, statements ready, receipts)
-- promotional: marketing, sales, product announcements, engagement bait
-
-return a classification for every index you were given.
-"""
-
 CLASSIFY_BATCH_SIZE = 25
 
 
 @dataclass
 class ByEmailBatch(CachePolicy):
-    """Cache key is the batch's message_ids — same batch never hits the LLM twice."""
+    """Cache key is the batch's message_ids — same batch never hits the model twice."""
 
     def compute_key(
         self,
@@ -72,7 +72,7 @@ class ByEmailBatch(CachePolicy):
 
 
 @task
-def load_unclassified_emails() -> list[tuple[str, str, str, str]]:
+def load_unclassified_emails() -> list[EmailRow]:
     return unclassified_emails(_db_path())
 
 
@@ -81,41 +81,28 @@ def load_unclassified_emails() -> list[tuple[str, str, str, str]]:
     cache_expiration=datetime.timedelta(hours=24),
     persist_result=True,
     result_serializer="json",
+    retries=3,
+    retry_delay_seconds=[2, 5, 10],
+    retry_jitter_factor=1,
 )
-def classify_email_batch(
-    batch: list[tuple[str, str, str, str]], api_key: str
-) -> list[EmailClassification]:
-    """LLM-classify one batch of emails. Cached by the batch's message_ids."""
-    from mps.spend import record_pydantic_ai_result
-    from pydantic_ai import Agent
-    from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
-    from pydantic_ai.providers.anthropic import AnthropicProvider
+def classify_email_batch(batch: list[EmailRow], api_key: str) -> list[EmailClassification]:
+    """Jev-classify one batch of emails in a single request. Cached by the batch's message_ids."""
+    from typesafe_sdk import TypeSafeClient
 
-    lines = [
-        f"{i}. sender={sender!r} subject={subject!r} snippet={snippet[:200]!r}"
-        for i, (_, sender, subject, snippet) in enumerate(batch)
-    ]
-    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
-    agent = Agent[None, IndexedClassifications](
-        model,
-        output_type=IndexedClassifications,
-        system_prompt=EMAIL_CLASSIFIER_PROMPT,
-        name="email-classifier",
-        retries=2,
-        model_settings=AnthropicModelSettings(anthropic_cache_instructions="5m"),
-    )
-    result = agent.run_sync("classify these emails:\n\n" + "\n".join(lines))
-    record_pydantic_ai_result(
+    state, questions = classification_request(batch)
+    with TypeSafeClient(api_key=api_key, model=TYPESAFE_MODEL) as client:
+        response = client.system_one(state=state, questions=questions)
+    record_usage(
         task_name="classify_email_batch",
-        model="claude-haiku-4-5",
-        result=result,
+        provider="typesafe",
+        model=response.model,
+        usage=Usage(
+            input_tokens=response.usage.input_tokens or 0,
+            output_tokens=response.usage.output_tokens or 0,
+        ),
         metadata={"email_count": len(batch)},
     )
-    return [
-        EmailClassification(message_id=batch[c.index][0], category=c.category)
-        for c in result.output.classifications
-        if 0 <= c.index < len(batch)
-    ]
+    return classifications_from_answers(batch, response.choices)
 
 
 @task
@@ -132,14 +119,15 @@ def classify_emails():
         logger.info("no unclassified emails")
         return
 
-    api_key = secret_sync("anthropic-api-key")
+    api_key = secret_sync("typesafe-api-key")
     batches = [
         pending[i : i + CLASSIFY_BATCH_SIZE] for i in range(0, len(pending), CLASSIFY_BATCH_SIZE)
     ]
     futures = classify_email_batch.map(batches, unmapped(api_key))
     classified = [c for batch in futures.result() for c in batch]
     total = persist_email_classifications(classified)
-    logger.info(f"classified {len(classified)} emails ({total} total)")
+    low = sum(1 for c in classified if c.confidence is not None and c.confidence < 0.5)
+    logger.info(f"classified {len(classified)} emails ({total} total); {low} below 0.5 confidence")
 
 
 if __name__ == "__main__":

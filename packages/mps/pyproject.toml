@@ -19,6 +19,7 @@ dependencies = [
     "pdsx",
     "genai-prices>=0.0.62",
     "logfire>=4.36.0",
+    "typesafe-sdk>=0.7.0",
 ]
 
 [build-system]

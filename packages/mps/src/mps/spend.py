@@ -38,9 +38,26 @@ class _ZeroPrice:
     total_price = Decimal(0)
 
 
+# Providers genai-prices does not cover, priced per input token with free
+# output. TypeSafe's Jev models charge $42 per billion input tokens
+# (docs.typesafe.ai/models); output tokens are free.
+_FLAT_INPUT_USD_PER_TOKEN: dict[str, Decimal] = {
+    "typesafe": Decimal("42") / Decimal(10**9),
+}
+
+
+class _FlatInputPrice:
+    def __init__(self, usage: Usage, per_token: Decimal) -> None:
+        self.input_price = Decimal(_int(usage.input_tokens)) * per_token
+        self.output_price = Decimal(0)
+        self.total_price = self.input_price
+
+
 def _calc_price(usage: Usage, model: str, provider: str, ts: dt.datetime) -> Any:
     """calc_price with an alias fallback. Never raises: an unknown model is
     logged and priced at zero so its tokens are still recorded."""
+    if (per_token := _FLAT_INPUT_USD_PER_TOKEN.get(provider)) is not None:
+        return _FlatInputPrice(usage, per_token)
     priced_model = _PRICING_ALIASES.get(model, model)
     try:
         return calc_price(usage, priced_model, provider_id=provider, genai_request_timestamp=ts)

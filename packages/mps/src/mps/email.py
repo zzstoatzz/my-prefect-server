@@ -12,36 +12,100 @@ import email.header
 import email.utils
 import imaplib
 import re
-from typing import Literal
+from collections.abc import Mapping, Sequence
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel
+from typesafe_sdk import Choice, ChoiceAnswer
 
 SNIPPET_CHARS = 500
 
 EmailCategory = Literal["personal", "work", "notification", "promotional"]
 
+# one Choice option per category; the descriptions are the rubric Jev reads,
+# so they must stand on their own without the question ID.
+EMAIL_CATEGORY_CRITERIA: dict[EmailCategory, str] = {
+    "personal": "Written by a human directly to the recipient.",
+    "work": (
+        "Professional correspondence needing attention: invoices, contracts, "
+        "recruiter or client mail, account security."
+    ),
+    "notification": (
+        "Automated but informational: mailing lists, forum threads, CI results, "
+        "statements ready, receipts."
+    ),
+    "promotional": "Marketing, sales, product announcements, engagement bait.",
+}
+
+CLASSIFY_SNIPPET_CHARS = 200
+
 
 class EmailClassification(BaseModel):
-    """LLM-assigned category for one inbox message."""
+    """Model-assigned category for one inbox message.
+
+    ``confidence`` is Jev's own certainty in the chosen category (0 to 1, from
+    how peaked its probability distribution is). It is recorded for calibration
+    and is not yet used to gate anything."""
 
     message_id: str
     category: EmailCategory
+    confidence: float | None = None
 
 
-class IndexedClassification(BaseModel):
-    """Classifier output for one message, referenced by prompt index.
-
-    Message-ids are long and error-prone for the model to echo back; indexes
-    keep the structured output small and reliable."""
-
-    index: int
-    category: EmailCategory
+EmailRow = tuple[str, str, str, str]
+"""(message_id, sender, subject, snippet) as ``mps.db.unclassified_emails`` returns it."""
 
 
-class IndexedClassifications(BaseModel):
-    """Batch classification output."""
+def _question_id(index: int) -> str:
+    return f"category_{index}"
 
-    classifications: list[IndexedClassification]
+
+def classification_request(batch: Sequence[EmailRow]) -> tuple[dict[str, Any], dict[str, Choice]]:
+    """The Jev state and questions for one batch: the emails as an array, one
+    Choice per index pointing at its element by path."""
+    state = {
+        "emails": [
+            {"sender": sender, "subject": subject, "snippet": snippet[:CLASSIFY_SNIPPET_CHARS]}
+            for _, sender, subject, snippet in batch
+        ]
+    }
+    questions = {
+        _question_id(i): Choice(
+            instructions=(
+                f"Which category does the inbox email `emails[{i}]` belong to? "
+                "Judge who sent it and why from its sender, subject and snippet. "
+                "The recipient is a solo software developer."
+            ),
+            criteria={str(k): v for k, v in EMAIL_CATEGORY_CRITERIA.items()},
+        )
+        for i in range(len(batch))
+    }
+    return state, questions
+
+
+def _as_category(choice: str) -> EmailCategory:
+    for category in get_args(EmailCategory):
+        if choice == category:
+            return category
+    raise ValueError(f"category {choice!r} is not one of the offered criteria")
+
+
+def classifications_from_answers(
+    batch: Sequence[EmailRow], answers: Mapping[str, ChoiceAnswer]
+) -> list[EmailClassification]:
+    """Pair each batch row with its Choice answer. Every row gets exactly one
+    classification; a missing answer is a contract violation, not a skip."""
+    out: list[EmailClassification] = []
+    for i, (message_id, *_rest) in enumerate(batch):
+        answer = answers[_question_id(i)]
+        out.append(
+            EmailClassification(
+                message_id=message_id,
+                category=_as_category(answer.choice),
+                confidence=answer.confidence,
+            )
+        )
+    return out
 
 
 class EmailItem(BaseModel):

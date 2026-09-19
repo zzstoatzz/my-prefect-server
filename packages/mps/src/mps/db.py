@@ -307,12 +307,18 @@ def write_email_classifications(items: list[EmailClassification], db_path: str) 
                 classified_at TIMESTAMP DEFAULT now()
             )
         """)
-        rows = [
-            (item.message_id, item.category, datetime.datetime.now(datetime.UTC)) for item in items
-        ]
+        con.execute(
+            "ALTER TABLE raw_email_classifications ADD COLUMN IF NOT EXISTS confidence DOUBLE"
+        )
+        now = datetime.datetime.now(datetime.UTC)
+        rows = [(item.message_id, item.category, now, item.confidence) for item in items]
         if rows:
             con.executemany(
-                "INSERT OR REPLACE INTO raw_email_classifications VALUES (?, ?, ?)",
+                """
+                INSERT OR REPLACE INTO raw_email_classifications
+                    (message_id, category, classified_at, confidence)
+                VALUES (?, ?, ?, ?)
+                """,
                 rows,
             )
         return _count(con, "raw_email_classifications")
