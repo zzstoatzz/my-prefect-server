@@ -58,6 +58,22 @@ is applied by `just storage`; no k8s worker runs in normal operation.
 just heavypad-status   # installed toolchain, worker unit, disk, codex login expiry
 ```
 
+### disk on heavypad
+
+Measured 2026-09-19: 878 GB used of 1.8 TB. What holds it, who cleans it, and
+who a cleanup touches:
+
+| path | size | owner | retention | affected by cleanup |
+| --- | --- | --- | --- | --- |
+| `~/typeahead-index/build/build-*` | 446 GB (37 builds) | `typeahead-index` | **the flow prunes after each publish** (since 2026-09-19): keeps the 2 newest plus whatever `typeahead.waow.tech/health/freshness` reports as serving; prunes nothing when that endpoint is unreachable | only that flow; the search service serves from R2. A person running an offline differential against an older build must copy it first |
+| `~/typeahead-plc/weekly/*.jsonl.gz` | 51 GB (200 weeks) | `typeahead-plc-identity` | none; the whole PLC bundle history stays | the flow itself: `--after` is computed from the newest bundle, and a full re-derive needs every week. Do not prune by hand |
+| `~/stream-gate`, `~/github.com`, `~/data` | 43 / 28 / 11 GB | stream, checkouts, misc | none | stream's gate state; clones other flows reuse |
+| `~/.cache/uv` | 8,458 archive envs (size not scanned; `diagnostics` reports the count hourly) | every flow, since each run installs from git | none; `uv cache prune` is safe (drops unreferenced entries only) | every home-pool flow's next start is slower |
+
+The index builds were the only thing growing fast (about 14 GB every 3 days).
+Nothing else on the box needs a scheduled cleanup yet; revisit when
+`diagnostics` shows disk free trending down.
+
 ## flows
 
 `prefect.yaml` owns schedules, triggers, tags, parameters, and per-deployment

@@ -26,12 +26,16 @@ Expected env (set by the deployment):
   - INDEX_BUILD_ROOT             (persistent NVMe path; NOT /tmp — build peaks ~65GB)
 """
 
+import json
+import logging
 import os
 import shutil
 import subprocess
+import urllib.request
 from pathlib import Path
 
 from prefect import flow, get_run_logger, task
+from prefect.exceptions import MissingContextError
 from prefect.tasks import exponential_backoff
 
 # typeahead's canonical remote is tangled (there is NO github mirror yet —
@@ -159,8 +163,72 @@ def run_indexer(binary: Path) -> None:
     _stream([str(binary)], binary.parent, env, timeout=7200)
 
 
+# builds the flow leaves on disk after a successful publish. The published
+# snapshot lives in R2 and App B promotes from there, so a build directory is
+# a reproducible artifact, not a serving dependency. Two is the serving build
+# plus its predecessor for an offline differential (docs/evals in typeahead).
+KEEP_BUILDS = 2
+FRESHNESS_URL = "https://typeahead.waow.tech/health/freshness"
+
+
+def serving_build_id(url: str = FRESHNESS_URL, timeout: int = 10) -> str | None:
+    """The build_id the search service is serving, or None if unreachable."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:
+            return json.load(resp).get("build_id") or None
+    except (OSError, ValueError):
+        return None
+
+
+def builds_to_prune(
+    build_dirs: list[Path], serving: str | None, keep: int = KEEP_BUILDS
+) -> list[Path]:
+    """Every `build-<id>` dir except the `keep` newest and the serving one.
+
+    Build ids start with a unix-second timestamp (`b<seconds>-<hex>`), so
+    lexical order is chronological. Never prunes when the serving id is
+    unknown: a stale snapshot is a state we recover from, a deleted build
+    that a person was about to inspect is not.
+    """
+    if serving is None:
+        return []
+    ordered = sorted(build_dirs, key=lambda p: p.name, reverse=True)
+    return [p for p in ordered[keep:] if p.name != f"build-{serving}"]
+
+
+@task
+def prune_builds(build_root: str | None = None) -> int:
+    """Delete old build directories under the build root; returns bytes freed.
+
+    Runs only after run_indexer succeeded, so the newest directory is the
+    build this run just published. Affects nobody but this flow: no other
+    deployment reads the build root, and the search service serves from R2.
+    """
+    try:
+        logger = get_run_logger()
+    except MissingContextError:
+        logger = logging.getLogger(__name__)
+    root = Path(build_root or os.environ.get("INDEX_BUILD_ROOT", str(INDEXER_HOME / "build")))
+    build_dirs = [p for p in root.iterdir() if p.is_dir() and p.name.startswith("build-")]
+    serving = serving_build_id()
+    if serving is None:
+        logger.warning("serving build_id unknown (%s unreachable); pruning nothing", FRESHNESS_URL)
+        return 0
+    victims = builds_to_prune(build_dirs, serving)
+    freed = 0
+    for victim in victims:
+        size = sum(f.stat().st_size for f in victim.rglob("*") if f.is_file())
+        shutil.rmtree(victim)
+        freed += size
+        logger.info(f"pruned {victim.name} ({size / 2**30:.1f} GiB)")
+    kept = sorted(p.name for p in build_dirs if p not in victims)
+    logger.info(f"kept {kept}; serving {serving}; freed {freed / 2**30:.1f} GiB")
+    return freed
+
+
 @flow(name="typeahead-index", log_prints=True, timeout_seconds=14400)
 def typeahead_index():
     repo = clone_repo()
     binary = build_binary(repo)
     run_indexer(binary)
+    prune_builds()
