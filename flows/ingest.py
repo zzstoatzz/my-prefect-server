@@ -278,7 +278,7 @@ def fetch_all_tangled_items() -> list[TangledItem]:
 
 @task(**NETWORK_RETRIES)
 def fetch_emails() -> list[EmailItem]:
-    """Fetch recent inbox mail from the local hydroxide bridge.
+    """Fetch recent inbox mail from the local Proton Mail Bridge.
 
     Skips (returns []) if the bridge isn't running or creds aren't set up yet,
     so the rest of ingest keeps flowing while proton is unconfigured.

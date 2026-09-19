@@ -1,8 +1,8 @@
-"""Proton mail fetch via a local hydroxide IMAP bridge.
+"""Proton mail fetch via the local Proton Mail Bridge.
 
-Proton doesn't speak IMAP directly — hydroxide (github.com/emersion/hydroxide)
-runs on the same box and bridges Proton's API to IMAP on localhost:1143.
-Login uses the hydroxide-generated bridge password, not the Proton password.
+Proton doesn't speak IMAP directly — the official Bridge runs headless on the
+same box and serves IMAP on localhost:1143 (see deploy/protonmail-bridge).
+Login uses the bridge-generated IMAP password, not the Proton password.
 """
 
 import contextlib

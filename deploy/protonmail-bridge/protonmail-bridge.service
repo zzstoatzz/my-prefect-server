@@ -1,0 +1,14 @@
+[Unit]
+Description=Proton Mail Bridge (official, headless, IMAP on 127.0.0.1:1143)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/protonmail-bridge --noninteractive
+Restart=always
+RestartSec=10
+Environment=QT_QPA_PLATFORM=offscreen
+
+[Install]
+WantedBy=default.target
