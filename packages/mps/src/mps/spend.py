@@ -29,13 +29,12 @@ _PRICING_ALIASES: dict[str, str] = {
 }
 
 
-class _ZeroPrice:
-    """Sentinel so an unknown model records token usage at zero cost rather
-    than dropping the whole row (record_usage swallows exceptions)."""
+class _UnknownPrice:
+    """Preserve volume without presenting missing pricing as free inference."""
 
-    input_price = Decimal(0)
-    output_price = Decimal(0)
-    total_price = Decimal(0)
+    input_price = None
+    output_price = None
+    total_price = None
 
 
 # Providers genai-prices does not cover, priced per input token with free
@@ -55,7 +54,7 @@ class _FlatInputPrice:
 
 def _calc_price(usage: Usage, model: str, provider: str, ts: dt.datetime) -> Any:
     """calc_price with an alias fallback. Never raises: an unknown model is
-    logged and priced at zero so its tokens are still recorded."""
+    logged with unknown cost so its tokens are still recorded."""
     if (per_token := _FLAT_INPUT_USD_PER_TOKEN.get(provider)) is not None:
         return _FlatInputPrice(usage, per_token)
     priced_model = _PRICING_ALIASES.get(model, model)
@@ -63,12 +62,12 @@ def _calc_price(usage: Usage, model: str, provider: str, ts: dt.datetime) -> Any
         return calc_price(usage, priced_model, provider_id=provider, genai_request_timestamp=ts)
     except LookupError:
         logger.warning(
-            "no price for model=%r provider=%r; recording usage at $0 — add a "
+            "no price for model=%r provider=%r; recording unknown cost — add a "
             "_PRICING_ALIASES entry or upgrade genai-prices",
             model,
             provider,
         )
-        return _ZeroPrice()
+        return _UnknownPrice()
 
 
 RAW_LLM_SPEND_SCHEMA = """
@@ -123,8 +122,8 @@ def _int(value: Any) -> int:
     return int(value or 0)
 
 
-def _money(value: Decimal | float | None) -> float:
-    return float(value or 0)
+def _money(value: Decimal | float | None) -> float | None:
+    return float(value) if value is not None else None
 
 
 def _usage_from_pydantic_result(result: Any) -> Usage:
@@ -201,7 +200,8 @@ def record_usage(
     usage: Usage,
     request_count: int = 1,
     metadata: dict[str, Any] | None = None,
-) -> None:
+    invocation_id: str | None = None,
+) -> dict[str, Any] | None:
     """Persist one LLM usage/cost row.
 
     This is intentionally best-effort. Cost telemetry should not turn a
@@ -226,6 +226,7 @@ def record_usage(
             "flow_name": flow_name,
             "flow_run_id": flow_run_id,
             "task_name": task_name,
+            "invocation_id": invocation_id,
             "provider": provider,
             "model": model,
             "request_count": request_count,
@@ -237,11 +238,30 @@ def record_usage(
             "input_cost_usd": _money(price.input_price),
             "output_cost_usd": _money(price.output_price),
             "total_cost_usd": _money(price.total_price),
+            "cost_basis": "unknown" if price.total_price is None else "catalog_estimate",
+            "pricing_model": _PRICING_ALIASES.get(model, model),
+            "billed_cost_usd": None,
             "metadata": metadata or {},
         }
-        _append_jsonl(log_path or spend_log_path(), event)
+        # Remote logs survive deletion of ephemeral workers. Do not forward
+        # arbitrary caller metadata: it can contain prompts or identifiers.
+        from prefect import get_run_logger
+        from prefect.exceptions import MissingContextError
+
+        try:
+            run_logger = get_run_logger()
+        except MissingContextError:
+            run_logger = logger
+        public_event = {key: value for key, value in event.items() if key != "metadata"}
+        run_logger.info("llm_usage %s", json.dumps(public_event))
+        try:
+            _append_jsonl(log_path or spend_log_path(), event)
+        except OSError:
+            run_logger.warning("LLM usage local persistence failed; usage emitted to run logs")
+        return public_event
     except Exception:
-        return
+        logger.warning("LLM usage recording failed")
+        return None
 
 
 def record_pydantic_ai_result(

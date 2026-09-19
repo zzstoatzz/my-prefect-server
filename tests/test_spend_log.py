@@ -51,7 +51,7 @@ def test_record_usage_prices_aliased_model(tmp_path: Path) -> None:
     assert event["total_cost_usd"] > 0  # priced via alias, row not dropped
 
 
-def test_record_usage_unknown_model_records_zero_cost(tmp_path: Path) -> None:
+def test_record_usage_unknown_model_records_unknown_cost(tmp_path: Path) -> None:
     # A truly unknown model must still preserve token usage rather than drop the
     # row — the dashboard should never silently lose volume.
     log_path = tmp_path / "llm-spend.jsonl"
@@ -68,7 +68,8 @@ def test_record_usage_unknown_model_records_zero_cost(tmp_path: Path) -> None:
     event = json.loads(line)
     assert event["model"] == "claude-nonexistent-99"
     assert event["input_tokens"] == 1000
-    assert event["total_cost_usd"] == 0
+    assert event["total_cost_usd"] is None
+    assert event["cost_basis"] == "unknown"
 
 
 def test_import_spend_log_materializes_raw_llm_spend(tmp_path: Path) -> None:
@@ -107,3 +108,41 @@ def test_import_spend_log_materializes_raw_llm_spend(tmp_path: Path) -> None:
     finally:
         con.close()
     assert row == ("abc123", "brief", "generate_briefing", 0.3, '{"item_count":4}')
+
+
+def test_null_cost_survives_analytics_import(tmp_path):
+    log = tmp_path / "spend.jsonl"
+    record_usage(
+        log_path=str(log),
+        task_name="pi",
+        provider="aperture",
+        model="unknown",
+        usage=Usage(input_tokens=10, output_tokens=2),
+    )
+    db = tmp_path / "analytics.duckdb"
+    import_spend_log.fn(log, db)
+    with duckdb.connect(str(db)) as con:
+        assert con.execute("SELECT total_cost_usd FROM raw_llm_spend").fetchone() == (None,)
+
+
+def test_remote_usage_survives_local_write_failure(monkeypatch, caplog):
+    import logging
+
+    import mps.spend as spend
+
+    def fail(*args):
+        raise OSError("unwritable")
+
+    monkeypatch.setattr(spend, "_append_jsonl", fail)
+    with caplog.at_level(logging.INFO):
+        event = record_usage(
+            task_name="pi_judge",
+            provider="anthropic",
+            model="claude-haiku-4-5",
+            usage=Usage(input_tokens=10),
+            metadata={"secret": "sentinel"},
+        )
+    assert event is not None
+    assert "llm_usage " in caplog.text
+    assert "sentinel" not in caplog.text
+    assert "persistence failed" in caplog.text

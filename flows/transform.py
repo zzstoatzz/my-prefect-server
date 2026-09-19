@@ -111,9 +111,9 @@ def import_spend_log(log_path: Path, analytics_db: Path) -> int:
                     int(event.get("cache_read_tokens") or 0),
                     int(event.get("output_tokens") or 0),
                     int(event.get("total_tokens") or 0),
-                    float(event.get("input_cost_usd") or 0),
-                    float(event.get("output_cost_usd") or 0),
-                    float(event.get("total_cost_usd") or 0),
+                    event.get("input_cost_usd"),
+                    event.get("output_cost_usd"),
+                    event.get("total_cost_usd"),
                     json.dumps(
                         event.get("metadata") or {},
                         separators=(",", ":"),
