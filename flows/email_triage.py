@@ -166,6 +166,8 @@ def email_triage(post: Literal["discord", "log"] = "discord"):
         )
     except FlowPauseTimeout:
         return Completed(name="Unanswered", message="no reply within the window")
+    if not isinstance(reply, TriageReply):
+        raise RuntimeError(f"resumed without typed input: {reply!r}")
 
     actions = read_reply_with_luna(reply.instructions, shortlist, candidates, api_key)
     total = persist_decisions(actions, shortlist, candidates, run_id, reply.instructions)
