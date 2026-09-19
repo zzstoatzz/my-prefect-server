@@ -190,6 +190,19 @@ deployments:
           prefect.resource.name: "classify-emails"
           prefect.resource.role: "deployment"
 
+  # daily inbox triage: luna shortlists what needs nate from Jev's categories,
+  # the shortlist goes to discord, the run pauses for his free-form reply
+  # (`just triage-reply "..."`), and his decisions are recorded. 8:20am CT,
+  # after the hourly ingest -> classify chain has run at :00.
+  - name: email-triage
+    tags: [pipeline]
+    entrypoint: flows/email_triage.py:email_triage
+    work_pool: *home
+    concurrency_limit: *cancel_new
+    schedules:
+      - cron: "20 13 * * *"
+        active: true
+
   - name: brief
     tags: [pipeline]
     entrypoint: flows/brief.py:brief

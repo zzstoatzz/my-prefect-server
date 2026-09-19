@@ -108,6 +108,42 @@ automations:
         subject: "{{ resource.name }}"
         body: "{{ payload.brief }}"
 
+  - name: email shortlist -> discord
+    description: >-
+      The daily email-triage run's shortlist, composed by luna, with the link
+      to the paused run. The flow emits hub.email.shortlist and holds no
+      webhook credentials; the reply comes back through the run's typed input.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - hub.email.shortlist
+      threshold: 1
+      within: 60
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "email"
+        body: "{{ payload.body }}"
+
+  - name: email triage done -> discord
+    description: >-
+      Confirmation of what the owner decided, after the paused run resumes.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - hub.email.triage.done
+      threshold: 1
+      within: 60
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "email"
+        body: "{{ payload.body }}"
+
   - name: flow-run failure -> autofix
     description: >-
       Same trigger as the discord alert, but it starts the autofix deployment

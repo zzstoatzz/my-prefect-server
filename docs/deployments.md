@@ -2,7 +2,7 @@
 
 generated from `prefect.yaml` by `scripts/deployments_inventory.py`; do not edit by hand. `just inventory` regenerates it and CI fails on drift.
 
-40 deployments, all on the `home-pool` process worker. a cadence of `after x` is an automation that fires when deployment x completes; `manual` means the deployment is started by the API, an automation outside `prefect.yaml`, or a person.
+41 deployments, all on the `home-pool` process worker. a cadence of `after x` is an automation that fires when deployment x completes; `manual` means the deployment is started by the API, an automation outside `prefect.yaml`, or a person.
 
 ## pipeline
 
@@ -13,6 +13,7 @@ the hub pipeline: ingest, classify, transform, brief
 | `ingest` | `0 * * * *` | Fetch GitHub, tangled.org, and phi memory concurrently, then persist sequentially | [`ingest`](flows/ingest.py) |
 | `classify-emails` | after `ingest` | Classify unclassified inbox emails (personal / work / notification / promotional) so scoring can down-weight promotional noise | [`classify_emails`](flows/classify_emails.py) |
 | `transform` | after `classify-emails` | Run the dbt project over analytics.duckdb and export the hub-only tables | [`transform`](flows/transform.py) |
+| `email-triage` | `20 13 * * *` | Daily email triage: shortlist what needs nate, ask him in Discord, record what he decides | [`email_triage`](flows/email_triage.py) |
 | `brief` | after `transform` | Write the hub briefing: an LLM reads the scored action items and produces briefing.json | [`brief`](flows/brief.py) |
 | `phi-memory-synthesis` | after `transform` | Synthesize per-user relationship summaries from phi's memory | [`compact`](flows/compact.py) |
 

@@ -1,12 +1,13 @@
 """DuckDB write helpers shared across flows."""
 
 import datetime
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 
 import duckdb
 
 from mps.email import EmailClassification, EmailItem
+from mps.email_triage import Candidate
 from mps.likes import LikedPost, LikeRecord
 from mps.lock import analytics_write_slot
 from mps.phi import PhiInteraction, PhiObservation
@@ -322,3 +323,64 @@ def write_email_classifications(items: list[EmailClassification], db_path: str) 
                 rows,
             )
         return _count(con, "raw_email_classifications")
+
+
+def recent_classified_emails(db_path: str, hours: int = 36) -> list[Candidate]:
+    """Emails received in the window, with Jev's category and confidence.
+
+    Reads a snapshot copy so it never contends with the single writer."""
+    con = duckdb.connect(db_path, read_only=True)
+    try:
+        con.execute("SELECT 1 FROM raw_email_classifications LIMIT 1")
+    except duckdb.CatalogException:
+        con.close()
+        return []
+    rows = con.execute(
+        """
+        SELECT e.message_id, coalesce(e.sender_name, ''), e.sender_address, coalesce(e.subject, ''),
+               coalesce(e.snippet, ''), e.received_at, c.category, c.confidence
+        FROM raw_emails e
+        JOIN raw_email_classifications c USING (message_id)
+        WHERE try_cast(e.received_at AS TIMESTAMPTZ) >= now() - to_hours(?)
+        ORDER BY e.received_at DESC
+        """,
+        [hours],
+    ).fetchall()
+    con.close()
+    return [
+        Candidate(
+            message_id=r[0],
+            sender_name=r[1],
+            sender_address=r[2],
+            subject=r[3],
+            snippet=r[4],
+            received_at=str(r[5]),
+            category=r[6],
+            confidence=r[7],
+        )
+        for r in rows
+    ]
+
+
+def write_email_triage(
+    decisions: Sequence[tuple[str, str, str]], run_id: str, instructions: str, db_path: str
+) -> int:
+    """Record the owner's decisions: (message_id, action, note) per shortlisted email."""
+    with _write_conn(db_path) as con:
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS raw_email_triage (
+                message_id VARCHAR,
+                action VARCHAR,
+                note VARCHAR,
+                run_id VARCHAR,
+                instructions VARCHAR,
+                decided_at TIMESTAMP DEFAULT now(),
+                PRIMARY KEY (message_id, run_id)
+            )
+        """)
+        now = datetime.datetime.now(datetime.UTC)
+        con.executemany(
+            "INSERT OR REPLACE INTO raw_email_triage VALUES (?, ?, ?, ?, ?, ?)",
+            [(m, a, n, run_id, instructions, now) for m, a, n in decisions],
+        )
+        return _count(con, "raw_email_triage")

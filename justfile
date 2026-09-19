@@ -543,3 +543,9 @@ hooks:
 coding-jobs output=(env_var('HOME') / '.local/state/mps/coding-jobs') *args:
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
         uv run scripts/coding_jobs_audit.py '{{output}}' {{args}}
+
+# answer the paused email-triage run in your own words (resumes it with the text)
+[positional-arguments]
+triage-reply *text:
+    PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
+        ./scripts/triage_reply.py "$@"
