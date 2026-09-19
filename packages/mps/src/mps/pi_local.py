@@ -13,11 +13,11 @@ two invariants matter here and are easy to lose by accident:
 """
 
 import shutil
-import subprocess
 
 from pydantic import BaseModel, Field, field_validator
 
 from mps.pi import JUDGE_SYSTEM, TOOL_ARGS, ToolMode, Verdict, minimal_env
+from mps.pi_process import run_json_process
 
 
 class Toolset(BaseModel):
@@ -121,7 +121,7 @@ def run_pi(
             "pi is not installed on this worker — npm install -g @earendil-works/pi-coding-agent"
         )
 
-    cmd = ["pi", "--print", "--no-session", "--provider", provider]
+    cmd = ["pi", "--print", "--mode", "json", "--no-session", "--provider", provider]
     if model:
         cmd += ["--model", model]
     for skill in skills or []:
@@ -143,17 +143,14 @@ def run_pi(
     print(f"running pi with provider={provider}, tool_mode={tool_mode} in {cwd}")
     # pi -p also accepts prompt content piped on stdin and waits for EOF, so an
     # inherited open stdin (e.g. under the systemd worker) hangs it
-    result = subprocess.run(  # noqa: PLW1510 — returncode is checked below
+    result = run_json_process(
         cmd,
-        capture_output=True,
-        text=True,
+        provider=provider,
+        model=model or "unknown",
         cwd=cwd,
-        timeout=timeout_seconds,
-        stdin=subprocess.DEVNULL,
+        timeout_seconds=timeout_seconds,
         env=env or minimal_env(),
     )
-    if result.stdout:
-        print(result.stdout)
-    if result.returncode != 0:
-        raise RuntimeError(f"pi exited {result.returncode}: {result.stderr[-2000:]}")
-    return result.stdout
+    if result:
+        print(result)
+    return result

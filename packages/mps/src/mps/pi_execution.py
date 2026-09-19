@@ -18,6 +18,7 @@ from prefect.exceptions import MissingContextError
 
 from mps.inference_bridge import inference_bridge
 from mps.inference_models import resolve_inference_model
+from mps.pi_process import run_json_process
 from mps.pi_sandbox import AGENT_UID, PI_ENTRYPOINT, aperture_models, sandbox_command
 
 
@@ -235,20 +236,14 @@ def run_isolated_pi(
                         *skill_args,
                     ],
                 )
-                result = subprocess.run(
+                return run_json_process(
                     command,
-                    input=prompt,
-                    text=True,
-                    capture_output=True,
-                    timeout=timeout_seconds,
+                    prompt=prompt,
+                    provider="aperture",
+                    model=selected.name,
+                    timeout_seconds=timeout_seconds,
                     env={"PATH": "/usr/bin:/bin"},
-                    check=False,
                 )
-                if result.returncode:
-                    raise RuntimeError(
-                        f"Isolated Pi exited {result.returncode}: {result.stderr[-2000:]}"
-                    )
-                return read_pi_events(result.stdout)
         finally:
             # Restore trusted caller ownership without following agent symlinks.
             # The checkout remains untrusted input even after ownership changes.

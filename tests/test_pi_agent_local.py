@@ -9,9 +9,9 @@ from flows import pi_agent_local as pi_agent
 
 @pytest.fixture
 def process(monkeypatch):
-    run = Mock(return_value=Mock(stdout="done", stderr="", returncode=0))
+    run = Mock(return_value="done")
     monkeypatch.setattr(pi.shutil, "which", lambda _: "/bin/pi")
-    monkeypatch.setattr(pi.subprocess, "run", run)
+    monkeypatch.setattr(pi, "run_json_process", run)
     return run
 
 
