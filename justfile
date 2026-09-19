@@ -538,3 +538,8 @@ validate-deployments *args:
 # Install staged-content validation for this checkout.
 hooks:
     uvx --from pre-commit==4.6.0 pre-commit install
+
+# Read-only coding-job evidence inventory; output stays local and private.
+coding-jobs output=(env_var('HOME') / '.local/state/mps/coding-jobs') *args:
+    PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
+        uv run scripts/coding_jobs_audit.py '{{output}}' {{args}}

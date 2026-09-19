@@ -71,6 +71,7 @@ just push                                 # github first (installs come from the
 | [deployments.md](docs/deployments.md) | every deployment with its cadence and purpose, generated from `prefect.yaml` |
 | [hub.md](docs/hub.md) | the ingest → classify → transform → brief pipeline and the hub it feeds |
 | [autofix.md](docs/autofix.md) | the gardener: failed run → pi diagnosis → pull → phi review → operator merge |
+| [coding-jobs.md](docs/coding-jobs.md) | audit retained coding jobs, outputs, reviews, and telemetry coverage |
 | [prefect-patterns.md](docs/prefect-patterns.md) | the mechanism behind the conventions in `CLAUDE.md`, with citations |
 | [agent-tooling.md](docs/agent-tooling.md) | the two MCP servers in `plugins/mps/` and what each can do |
 | [prompt-caching.md](docs/prompt-caching.md) | why thousands of LLM calls cost a few dollars |
