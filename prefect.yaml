@@ -866,12 +866,9 @@ deployments:
     work_pool:
       name: home-pool
       job_variables:
-        command: >-
-          uv run
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
-          prefect flow-run execute
+        command: uv run --with /home/stoat/phi-spike-worker/releases/e72933ca8b33154b42bbb7d6d88059e3dcb934dddb439e16388252728a27d27b/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
         env:
-          MPS_PIN: "{{ $MPS_PIN }}"
+          MPS_PIN: "@8a7edeea882095cb82e53e673853a37091188ed8"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
@@ -890,10 +887,7 @@ deployments:
     work_pool:
       name: home-pool
       job_variables:
-        command: >-
-          uv run
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git@9495d617fd5a8c7342149dcfd8aef25ade43d2fd'
-          prefect flow-run execute
+        command: uv run --with /home/stoat/phi-spike-worker/releases/371b7aaea5e32129e136d7e8743de002ce118606da87fa9c298e7a52118cb84a/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
         env:
           # Preserve the live home-worker implementation until its Sprite migration.
           MPS_PIN: "@9495d617fd5a8c7342149dcfd8aef25ade43d2fd"
@@ -931,7 +925,7 @@ deployments:
       job_variables:
         timeout_seconds: 2400
         local_packages:
-          - /home/stoat/phi-spike-worker/releases/ce5fea3ec5381c09992e95d828f290cc2eae685a8d644b3a4d9aa66599f95632/mps-0.1.0-py3-none-any.whl
+          - /home/stoat/phi-spike-worker/releases/1553f70cb4612fe219d0e1d82232a560947a18e194eb1ee4fe0ec80aa2aa741e/mps-0.1.0-py3-none-any.whl
 
   - name: pi-pr
     tags: [gardener]
