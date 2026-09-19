@@ -68,11 +68,15 @@ who a cleanup touches:
 | `~/typeahead-index/build/build-*` | 446 GB (37 builds) | `typeahead-index` | **the flow prunes after each publish** (since 2026-09-19): keeps the 2 newest plus whatever `typeahead.waow.tech/health/freshness` reports as serving; prunes nothing when that endpoint is unreachable | only that flow; the search service serves from R2. A person running an offline differential against an older build must copy it first |
 | `~/typeahead-plc/weekly/*.jsonl.gz` | 51 GB (200 weeks) | `typeahead-plc-identity` | none; the whole PLC bundle history stays | the flow itself: `--after` is computed from the newest bundle, and a full re-derive needs every week. Do not prune by hand |
 | `~/stream-gate`, `~/github.com`, `~/data` | 43 / 28 / 11 GB | stream, checkouts, misc | none | stream's gate state; clones other flows reuse |
-| `~/.cache/uv` | 8,458 archive envs (size not scanned; `diagnostics` reports the count hourly) | every flow, since each run installs from git | none; `uv cache prune` is safe (drops unreferenced entries only) | every home-pool flow's next start is slower |
+| `~/.cache/uv` | **115 GB** (100 GB in `archive-v0`, 8,458 envs; `diagnostics` reports the count hourly) | every flow, since each run installs from git | none; `uv cache prune` is safe (drops unreferenced entries only) | every home-pool flow's next start is slower |
+| `~/.cache/llama.cpp/models` | 35 GB: gemma-4-12b-it, Qwen3.5-9B, Qwen3.6-35B-A3B (all Q4_K_M, fetched 2026-08-26; `server.log` shows a CPU-only llama-server, no CUDA) | a hand-run inference experiment | none | nobody; re-downloadable |
+| `~/.cache/huggingface/hub` | 32 GB: FLUX.1-dev, untouched since 2024-08-19 | an old experiment | none | nobody; safe to delete |
+| `/tmp` | 11 GB, 771 entries; three fixed-name 2.6 GB duckdb snapshots (`brief`, `compact`, `ingest` overwrite theirs each run), an `iroh-mcp-smoke` dir, a leaflet build | flows and hand runs | Ubuntu cleans `/tmp` only at boot (`D /tmp 1777 root root -`), and the box has been up 22 days | a flow mid-run if its snapshot is removed underneath it |
 
 The index builds were the only thing growing fast (about 14 GB every 3 days).
-Nothing else on the box needs a scheduled cleanup yet; revisit when
-`diagnostics` shows disk free trending down.
+The rest is a one-time ~180 GB of caches and stale experiments (uv archive,
+FLUX, the llama models if not wanted); `uv cache prune` and `rm` by hand,
+between flow runs. Revisit when `diagnostics` shows disk free trending down.
 
 ## flows
 
