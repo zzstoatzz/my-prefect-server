@@ -155,8 +155,13 @@ deployments:
     concurrency_limit: *cancel_new
     triggers:
       - type: event
+        # ingest finishes Completed(name="Degraded") when one source is down,
+        # and the event is named after the state NAME. Expecting only
+        # Completed stalled classify -> transform -> brief for three days
+        # (2026-09-15 to 09-18) while the proton bridge was 401ing.
         expect:
           - "prefect.flow-run.Completed"
+          - "prefect.flow-run.Degraded"
         match_related:
           prefect.resource.name: "ingest"
           prefect.resource.role: "deployment"

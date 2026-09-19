@@ -37,6 +37,19 @@ our `flow-run failure -> discord` automation expects exactly
 and filterable in the UI without paging anyone. To opt a custom state *into*
 alerting, add its name to that automation's `expect` list.
 
+**The same naming cuts the other way for chained deployments.** A downstream
+trigger that expects only `prefect.flow-run.Completed` never fires after a
+`Degraded` upstream run. `classify-emails` (and so `transform` and `brief`)
+sat idle for three days in September 2026 while `ingest` was Degraded on a
+dead email source. Every trigger chained off a flow that can return a custom
+Completed name must list that name too:
+
+```yaml
+expect:
+  - "prefect.flow-run.Completed"
+  - "prefect.flow-run.Degraded"
+```
+
 ## retries on anything that touches the network
 
 House policy:

@@ -11,7 +11,7 @@ the hub pipeline: ingest, classify, transform, brief
 | deployment | cadence | purpose | entrypoint |
 |---|---|---|---|
 | `ingest` | `0 * * * *` | Fetch GitHub, tangled.org, and phi memory concurrently, then persist sequentially | [`ingest`](flows/ingest.py) |
-| `classify-emails` | after `ingest` | LLM-classify unclassified inbox emails (personal / work / notification / promotional) so scoring can down-weight promotional noise | [`classify_emails`](flows/classify_emails.py) |
+| `classify-emails` | after `ingest` | Classify unclassified inbox emails (personal / work / notification / promotional) so scoring can down-weight promotional noise | [`classify_emails`](flows/classify_emails.py) |
 | `transform` | after `classify-emails` | Run the dbt project over analytics.duckdb and export the hub-only tables | [`transform`](flows/transform.py) |
 | `brief` | after `transform` | Write the hub briefing: an LLM reads the scored action items and produces briefing.json | [`brief`](flows/brief.py) |
 | `phi-memory-synthesis` | after `transform` | Synthesize per-user relationship summaries from phi's memory | [`compact`](flows/compact.py) |
