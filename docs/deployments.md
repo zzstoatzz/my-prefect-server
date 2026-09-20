@@ -71,7 +71,7 @@ health, traffic, and cost reporting
 
 | deployment | cadence | purpose | entrypoint |
 |---|---|---|---|
-| `fleet-health` | `3,18,33,48 * * * *` | fleet health — one deep check for stream, shallow checks for everything else | [`fleet_health`](flows/fleet_health.py) |
+| `fleet-health` | `3,18,33,48 * * * *` | Fleet health: Evergreen's complete inventory, Stream deep checks, and extra data surfaces | [`fleet_health`](flows/fleet_health.py) |
 | `mcp-fleet-health` | `12 * * * *` | mcp fleet health — connect, discover, and route across the public MCP servers | [`mcp_fleet_health`](flows/mcp_fleet_health.py) |
 | `diagnostics` | `37 * * * *` | diagnostic flow — liveness canary plus host resource telemetry | [`diagnostics`](flows/diagnostics.py) |
 | `costs` | `0 8 * * *` | Collect infra costs from all connectors and snapshot them to PDS | [`costs`](flows/costs.py) |

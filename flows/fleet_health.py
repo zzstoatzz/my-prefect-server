@@ -1,4 +1,4 @@
-"""fleet health — one deep check for stream, shallow checks for everything else.
+"""Fleet health: Evergreen's complete inventory, Stream deep checks, and extra data surfaces.
 
 Born 2026-08-12, the morning after a day of diagnosing stream by hand. The
 things that needed discovering with ad-hoc probes are exactly what this flow
@@ -25,7 +25,7 @@ Failure semantics: a failed flow run means the sweep itself could not run
 markdown artifact, and emitted as a `fleet-health.unhealthy` event for
 automations to page on.
 
-Everything is stdlib; deps here are installed from git on every flow run.
+The Evergreen report reader uses the package's existing httpx and pydantic dependencies.
 """
 
 import time
@@ -35,6 +35,8 @@ from dataclasses import dataclass
 from prefect import flow, get_run_logger, task
 from prefect.artifacts import create_markdown_artifact
 from prefect.events import emit_event
+
+from flows.evergreen_checks import check_evergreen
 
 TIMEOUT_S = 10
 TAIL_WINDOW_S = 20
@@ -52,15 +54,10 @@ SEAL_MAX_S = 10.0
 # crash-loop keeps failing the shallow site check regardless.
 STARTUP_GRACE_S = 6 * 60
 
-FLEET: list[tuple[str, str]] = [
-    # (name, url) — a 200 within TIMEOUT_S (one retry) is healthy
-    ("stream site", "https://stream.waow.tech/"),
+SUPPLEMENTAL_CHECKS: list[tuple[str, str]] = [
     ("relay-eval", "https://relay-eval.waow.tech/api/latest"),
     ("jetstream.waow.tech", "https://jetstream.waow.tech/"),
     ("hub", "https://hub.waow.tech/api/costs.json"),
-    ("coral", "https://coral.fly.dev/"),
-    ("plyr.fm", "https://plyr.fm/"),
-    ("prefect server", "https://prefect-server.waow.tech/api/health"),
 ]
 
 
@@ -215,9 +212,19 @@ def fleet_health() -> None:
     logger = get_run_logger()
 
     deep_future = check_stream_deep.submit()
-    shallow_futures = [check_url.submit(name, url) for name, url in FLEET]
+    evergreen_future = check_evergreen.submit()
+    shallow_futures = [check_url.submit(name, url) for name, url in SUPPLEMENTAL_CHECKS]
     results: list[CheckResult] = [deep_future.result(raise_on_failure=False)]
     results += [f.result(raise_on_failure=False) for f in shallow_futures]
+    evergreen = evergreen_future.result(raise_on_failure=False)
+    if isinstance(evergreen, list):
+        results += [
+            CheckResult(f"{r.project}/{r.name}", r.ok, f"HTTP {r.status} ({r.url})")
+            for r in evergreen
+        ]
+        logger.info("Evergreen inventory: %d endpoints checked", len(evergreen))
+    else:
+        results.append(evergreen)
 
     rows, unhealthy, broken_checks = summarize(results)
 

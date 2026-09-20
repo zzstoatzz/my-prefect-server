@@ -67,8 +67,9 @@ deployments:
     entrypoint: flows/fleet_health.py:fleet_health
     # curl-weight HTTP checks only (runs on the home box — no websockets or
     # firehose sampling from a residential connection). deep check for
-    # stream.waow.tech (tail advance, seal cost, compaction lag), shallow
-    # 200-checks for the rest of the fleet. unhealthy => failed flow run.
+    # stream.waow.tech (tail advance, seal cost, compaction lag), plus Evergreen's
+    # complete published inventory and three supplemental data surfaces.
+    # Unhealthy targets emit findings; a broken/incomplete sweep fails the run.
     work_pool:
       name: home-pool
       job_variables:
