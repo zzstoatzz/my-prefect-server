@@ -77,3 +77,10 @@ At 00:02 Chicago on 2026-09-21, the lingering group from the completed run was
 identified by PID, PGID, executable, working directory, listener, and worker
 cgroup, then stopped with SIGTERM. Both the `go run` parent and simulator child
 exited, and port 7777 was no longer listening; escalation was not required.
+
+Production smoke run
+[`stream-admission-a70d63be`](https://prefect-server.waow.tech/runs/flow-run/a70d63be-af7a-488e-b2b4-f47ce9472c28)
+then exercised the deployed fix from commit `2759d18`: the Stream unit gate
+passed, `stop_simulator` completed for process group 738793, and the flow exited
+cleanly. A separate SSH check afterward found no simulator process and no
+listener on port 7777.
