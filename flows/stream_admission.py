@@ -30,10 +30,12 @@ rejects a receipt whose suites are not all "pass". This flow only chooses
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
 import shlex
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -45,6 +47,7 @@ WORKTREE = Path(os.environ.get("STREAM_GATE_DIR", "/home/stoat/stream-gate"))
 UPSTREAM = Path(os.environ.get("STREAM_UPSTREAM_REPO", "/home/stoat/jetstream"))
 UPSTREAM_URL = "https://github.com/bluesky-social/jetstream"
 SIMULATOR_PORT = 7777
+SIMULATOR_LOG = Path("/tmp/stream-gate-sim.log")
 
 # The process worker runs with a bare PATH (/home/stoat/.local/bin:/usr/local/
 # bin:/usr/bin:/bin), so go and just — which live in the shared nix profile —
@@ -211,12 +214,60 @@ def ensure_uv_cache() -> None:
     log.info("uv cache warm (zstandard, websockets)")
 
 
-@task
-def ensure_simulator() -> bool:
-    """Start the pinned simulator if nothing is serving :7777.
+def _simulator_listener_pid() -> int | None:
+    result = _run(
+        f"ss -tlnp 2>/dev/null | grep :{SIMULATOR_PORT} | "
+        "grep -oE 'pid=[0-9]+' | cut -d= -f2 | head -1",
+        timeout=30,
+    )
+    return int(result.stdout.strip()) if result.returncode == 0 and result.stdout.strip() else None
 
-    Left running between flow runs on purpose — it is the same standing world
-    the interactive gate expects, and starting it costs ~2.5 min.
+
+def _process_group_exists(pgid: int) -> bool:
+    try:
+        os.killpg(pgid, 0)
+    except (PermissionError, ProcessLookupError):
+        # We created the group and own every member. EPERM after signaling it
+        # means those members are gone (macOS reports this while reaping).
+        return False
+    return True
+
+
+def _terminate_process_group(pgid: int, timeout_s: float = 10) -> bool:
+    """Terminate a process group, escalating after the grace period.
+
+    Returns True when SIGKILL was required. The leader may be our child (a
+    simulator started in this flow) or an orphan inherited from an older flow.
+    """
+    try:
+        os.killpg(pgid, signal.SIGTERM)
+    except ProcessLookupError:
+        return False
+
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        with contextlib.suppress(ChildProcessError):
+            os.waitpid(pgid, os.WNOHANG)
+        if not _process_group_exists(pgid):
+            return False
+        time.sleep(0.1)
+
+    with contextlib.suppress(PermissionError, ProcessLookupError):
+        os.killpg(pgid, signal.SIGKILL)
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline and _process_group_exists(pgid):
+        with contextlib.suppress(ChildProcessError):
+            os.waitpid(pgid, os.WNOHANG)
+        time.sleep(0.1)
+    return True
+
+
+@task
+def ensure_simulator() -> int:
+    """Start the pinned simulator and return its process-group id.
+
+    The caller owns the returned group and must stop it when admission ends.
+    A simulator left by an older flow is adopted for this run, then stopped.
 
     A standing simulator ages: at 20 commits/s every repo's getRepo CAR
     grows until the export outlives the oracle's 120s serving window
@@ -251,27 +302,40 @@ def ensure_simulator() -> bool:
             != 0
         )
         if not stale and not wedged:
-            log.info("simulator already serving :%d", SIMULATOR_PORT)
-            return False
+            pid = _simulator_listener_pid()
+            if pid is None:
+                raise RuntimeError("simulator serves :7777 but its process cannot be identified")
+            pgid = os.getpgid(pid)
+            log.info("adopting simulator process group %d on :%d", pgid, SIMULATOR_PORT)
+            return pgid
         log.info(
             "recycling simulator (stale=%s wedged=%s): a %s world outgrows the oracle's serving window",
             stale,
             wedged,
             ">12h" if stale else "wedged",
         )
-        _run(
-            f"PID=$(ss -tlnp 2>/dev/null | grep :{SIMULATOR_PORT} | grep -oE 'pid=[0-9]+' | cut -d= -f2 | head -1); [ -n \"$PID\" ] && kill $PID; sleep 2",
-            timeout=30,
-        )
+        pid = _simulator_listener_pid()
+        if pid is None:
+            raise RuntimeError("stale simulator serves :7777 but its process cannot be identified")
+        _terminate_process_group(os.getpgid(pid))
     log.info("starting the pinned simulator on :%d", SIMULATOR_PORT)
-    subprocess.Popen(
-        "nohup go run ./cmd/simulator serve --reset --accounts=100 --commits-per-sec=20"
-        " >/tmp/stream-gate-sim.log 2>&1 &",
-        shell=True,
-        cwd=UPSTREAM,
-        start_new_session=True,
-        env=dict(os.environ),
-    )
+    with SIMULATOR_LOG.open("w") as output:
+        process = subprocess.Popen(
+            [
+                "go",
+                "run",
+                "./cmd/simulator",
+                "serve",
+                "--reset",
+                "--accounts=100",
+                "--commits-per-sec=20",
+            ],
+            cwd=UPSTREAM,
+            start_new_session=True,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            env=dict(os.environ),
+        )
     # a cold start also downloads and builds the simulator's go modules, which
     # took longer than a 3-minute window on this box's first run
     for attempt in range(300):
@@ -282,9 +346,20 @@ def ensure_simulator() -> bool:
             == 0
         ):
             log.info("simulator up after %ds", attempt * 2)
-            return True
+            return process.pid
+        if process.poll() is not None:
+            _terminate_process_group(process.pid)
+            raise RuntimeError(f"simulator exited with {process.returncode}; see {SIMULATOR_LOG}")
         time.sleep(2)
+    _terminate_process_group(process.pid)
     raise RuntimeError("simulator did not come up on :7777; see /tmp/stream-gate-sim.log")
+
+
+@task
+def stop_simulator(pgid: int) -> None:
+    log = get_run_logger()
+    forced = _terminate_process_group(pgid)
+    log.info("stopped simulator process group %d%s", pgid, " with SIGKILL" if forced else "")
 
 
 @task
@@ -333,51 +408,54 @@ def stream_admission(
     resolved = checkout(sha)
     ensure_upstream()
     ensure_uv_cache()
-    ensure_simulator()
-    ensure_powerloss_image()
+    simulator_pgid = ensure_simulator()
+    try:
+        ensure_powerloss_image()
 
-    skips = set(skip or [])
-    if only:
-        unknown = set(only) - set(ALL_SUITES)
-        if unknown:
-            raise ValueError(f"unknown suites: {sorted(unknown)}")
-        skips |= set(ALL_SUITES) - set(only)
+        skips = set(skip or [])
+        if only:
+            unknown = set(only) - set(ALL_SUITES)
+            if unknown:
+                raise ValueError(f"unknown suites: {sorted(unknown)}")
+            skips |= set(ALL_SUITES) - set(only)
 
-    env = {"STREAM_ADMIT_SKIP": ",".join(sorted(skips))} if skips else {}
-    # so the receipt records the upstream pin instead of null (admit reads this
-    # exactly as the justfile does)
-    env["STREAM_UPSTREAM_REPO"] = str(UPSTREAM)
-    if not build_image:
-        env["STREAM_ADMIT_NO_BUILD"] = "1"
-    log.info(
-        "running the gate on %s (%d suites, %d skipped, build_image=%s)",
-        resolved,
-        len(ALL_SUITES) - len(skips),
-        len(skips),
-        build_image,
-    )
-    started = time.monotonic()
-    result = _run("./scripts/admit run", cwd=WORKTREE, env=env, timeout=timeout_s)
-    elapsed = round(time.monotonic() - started)
+        env = {"STREAM_ADMIT_SKIP": ",".join(sorted(skips))} if skips else {}
+        # so the receipt records the upstream pin instead of null (admit reads this
+        # exactly as the justfile does)
+        env["STREAM_UPSTREAM_REPO"] = str(UPSTREAM)
+        if not build_image:
+            env["STREAM_ADMIT_NO_BUILD"] = "1"
+        log.info(
+            "running the gate on %s (%d suites, %d skipped, build_image=%s)",
+            resolved,
+            len(ALL_SUITES) - len(skips),
+            len(skips),
+            build_image,
+        )
+        started = time.monotonic()
+        result = _run("./scripts/admit run", cwd=WORKTREE, env=env, timeout=timeout_s)
+        elapsed = round(time.monotonic() - started)
 
-    for line in result.stdout.splitlines():
-        print(line)
+        for line in result.stdout.splitlines():
+            print(line)
 
-    receipt_path = WORKTREE / "receipts" / f"{resolved}.json"
-    receipt = None
-    if receipt_path.exists():
-        receipt = json.loads(receipt_path.read_text())
+        receipt_path = WORKTREE / "receipts" / f"{resolved}.json"
+        receipt = None
+        if receipt_path.exists():
+            receipt = json.loads(receipt_path.read_text())
 
-    summary = {
-        "sha": resolved,
-        "ok": result.returncode == 0,
-        "elapsed_s": elapsed,
-        "skipped": sorted(skips),
-        "receipt_written": receipt is not None,
-        "suites": (receipt or {}).get("suites"),
-        "image": (receipt or {}).get("image"),
-    }
-    log.info("gate finished in %ss: %s", elapsed, "PASS" if summary["ok"] else "FAIL")
-    if not summary["ok"]:
-        raise RuntimeError(f"admission failed after {elapsed}s (see logs above)")
-    return summary
+        summary = {
+            "sha": resolved,
+            "ok": result.returncode == 0,
+            "elapsed_s": elapsed,
+            "skipped": sorted(skips),
+            "receipt_written": receipt is not None,
+            "suites": (receipt or {}).get("suites"),
+            "image": (receipt or {}).get("image"),
+        }
+        log.info("gate finished in %ss: %s", elapsed, "PASS" if summary["ok"] else "FAIL")
+        if not summary["ok"]:
+            raise RuntimeError(f"admission failed after {elapsed}s (see logs above)")
+        return summary
+    finally:
+        stop_simulator(simulator_pgid)
