@@ -224,6 +224,18 @@ def _simulator_listener_pid() -> int | None:
 
 
 def _process_group_exists(pgid: int) -> bool:
+    proc = Path("/proc")
+    if proc.is_dir():
+        for stat_path in proc.glob("[0-9]*/stat"):
+            try:
+                fields = stat_path.read_text().rsplit(") ", 1)[1].split()
+                state, process_group = fields[0], int(fields[2])
+            except (IndexError, OSError, ValueError):
+                continue
+            if process_group == pgid and state != "Z":
+                return True
+        return False
+
     try:
         os.killpg(pgid, 0)
     except (PermissionError, ProcessLookupError):
