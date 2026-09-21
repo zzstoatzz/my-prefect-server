@@ -26,6 +26,8 @@ from prefect.artifacts import acreate_markdown_artifact
 from prefect.cache_policies import NO_CACHE
 from prefect.events import emit_event
 
+from flows.fleet_health import unhealthy_payload
+
 DEFAULT_ATLAS_URL = "https://mcp.waow.tech/api/atlas.json"
 
 
@@ -128,5 +130,5 @@ async def mcp_fleet_health(
         emit_event(
             event="fleet-health.unhealthy",
             resource={"prefect.resource.id": "mcp-fleet-health"},
-            payload={"unhealthy": unhealthy},
+            payload=unhealthy_payload(unhealthy),
         )

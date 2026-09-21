@@ -11,7 +11,7 @@ What we test:
   - a check task that itself errored (non-CheckResult) does fail the flow
 """
 
-from flows.fleet_health import CheckResult, summarize
+from flows.fleet_health import CheckResult, summarize, unhealthy_payload
 
 
 def test_unhealthy_finding_is_reported_but_does_not_break_the_sweep():
@@ -38,3 +38,10 @@ def test_all_healthy_yields_nothing_to_raise_or_page():
     _, unhealthy, broken = summarize([CheckResult("hub", True, "HTTP 200")])
     assert unhealthy == []
     assert broken == []
+
+
+def test_unhealthy_event_carries_the_summary_the_discord_automation_renders():
+    payload = unhealthy_payload(["stream (deep): tail stalled", "hub: HTTP 503"])
+    assert payload["unhealthy"] == ["stream (deep): tail stalled", "hub: HTTP 503"]
+    assert payload["summary"] == "stream (deep): tail stalled\nhub: HTTP 503"
+    assert len(unhealthy_payload(["x" * 5000])["summary"]) <= 2000

@@ -207,6 +207,11 @@ def summarize(results: list) -> tuple[list[str], list[str], list[str]]:
     return rows, unhealthy, broken_checks
 
 
+def unhealthy_payload(unhealthy: list[str]) -> dict[str, object]:
+    """`fleet unhealthy -> discord` renders `summary`; discord caps a message at 2000."""
+    return {"unhealthy": unhealthy, "summary": "\n".join(unhealthy)[:1800]}
+
+
 @flow(log_prints=True)
 def fleet_health() -> None:
     logger = get_run_logger()
@@ -241,7 +246,7 @@ def fleet_health() -> None:
         emit_event(
             event="fleet-health.unhealthy",
             resource={"prefect.resource.id": "fleet-health"},
-            payload={"unhealthy": unhealthy},
+            payload=unhealthy_payload(unhealthy),
         )
     if broken_checks:
         raise RuntimeError(
