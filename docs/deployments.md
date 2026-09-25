@@ -2,7 +2,7 @@
 
 generated from `prefect.yaml` by `scripts/deployments_inventory.py`; do not edit by hand. `just inventory` regenerates it and CI fails on drift.
 
-41 deployments, all on the `home-pool` process worker. a cadence of `after x` is an automation that fires when deployment x completes; `manual` means the deployment is started by the API, an automation outside `prefect.yaml`, or a person.
+42 deployments, all on the `home-pool` process worker. a cadence of `after x` is an automation that fires when deployment x completes; `manual` means the deployment is started by the API, an automation outside `prefect.yaml`, or a person.
 
 ## pipeline
 
@@ -43,6 +43,7 @@ snapshots and indexes published for other products
 | `leaflet-atlas` | `0 */6 * * *` | Rebuild the 2D semantic map and deploy to Cloudflare Pages | [`rebuild_atlas`](flows/atlas.py) |
 | `pds-records` | manual | General-purpose PDS record management | [`pds_records`](flows/pds_records.py) |
 | `typeahead-identity-hourly` | `20 * * * *` | typeahead-identity-hourly: give newly discovered actors their handles | [`typeahead_identity_hourly`](flows/typeahead_identity.py) |
+| `typeahead-handle-repair` | manual | typeahead-handle-repair: one-off repair of handles the old #identity path wrote stale | [`typeahead_handle_repair`](flows/typeahead_handle_repair.py) |
 | `typeahead-enrich-backfill` | `0 20 * * *` (inactive) | Enrich actors whose profile has never been checked, paced against the appview | [`typeahead_enrich_backfill`](flows/typeahead_enrich_backfill.py) |
 | `typeahead-index` | `0 9 */3 * *` | Build the typeahead prefix-index snapshot (the offline `MODE=indexer` job) on the home box and publish it to R2 | [`typeahead_index`](flows/typeahead_index.py) |
 | `typeahead-plc-identity` | `0 5 * * 1` | Resolve typeahead's DID -> (handle, pds) backlog in bulk from the PLC log | [`typeahead_plc_identity`](flows/typeahead_plc_identity.py) |
