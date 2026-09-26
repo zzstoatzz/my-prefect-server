@@ -36,3 +36,21 @@ tail -f ~/Library/Logs/prefect-laptop-worker.log
   polling) is systemd-specific and not used here. launchd `KeepAlive` restarts
   a worker that exits; a worker that wedges across sleep would not be caught.
   If that shows up, `just laptop-worker restart` and extend the guard.
+
+## plan usage gate
+
+`fastmcp-triage` runs Claude Code on the operator's Max subscription, so it
+checks plan usage first and finishes `Deferred` unless both the 5-hour and
+7-day windows are under `usage_threshold` (default 50%). Claude Code publishes
+those numbers (`rate_limits.five_hour` / `seven_day`, `used_percentage`,
+`resets_at`) only to the status line command, so the status line is a small
+wrapper that saves them and then runs the original command unchanged:
+
+- `~/.local/share/claude-usage/statusline.sh`: the wrapper (`statusLine.command`
+  in `~/.claude/settings.json`)
+- `~/.local/share/claude-usage/orca-statusline.sh`: Orca's original command, verbatim
+- `~/.local/state/claude-usage/latest.json`: the snapshot the flow reads
+
+The snapshot refreshes only while an interactive session is open; a window
+whose reset time has passed counts as empty, and a missing snapshot defers.
+Undo: `cp ~/.local/share/claude-usage/settings.json.before-usage-wrapper ~/.claude/settings.json`.

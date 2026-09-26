@@ -32,6 +32,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, Literal
 
@@ -70,6 +71,9 @@ TOKEN_SHAPES = re.compile(
     r"|AKIA[0-9A-Z]{16}"
 )
 SUMMARY_CHAR_BUDGET = 1600
+# the Max plan usage the agent draws from, saved by the status line wrapper
+# (deploy/laptop-worker/README.md) because Claude Code exposes it nowhere else
+USAGE_SNAPSHOT = Path.home() / ".local" / "state" / "claude-usage" / "latest.json"
 
 TRIAGE_PROMPT = """\
 you are triaging one fastmcp thread for its maintainer, nate (zzstoatzz), in an
@@ -226,6 +230,38 @@ def needs_triage(context: dict[str, Any], triaged: str | None) -> bool:
     if context.get("state") != "open" or context.get("merged"):
         return False
     return triaged != context.get("updated_at")
+
+
+def usage_verdict(
+    snapshot: dict[str, Any] | None, now: float, threshold: float
+) -> tuple[bool, str]:
+    """Whether both plan windows are under `threshold` percent used.
+
+    A window whose reset time has passed counts as 0. No snapshot means the
+    usage is unknown, and unknown defers.
+    """
+    limits = (snapshot or {}).get("rate_limits") or {}
+    if not limits:
+        return False, "no usage snapshot"
+    parts = []
+    ok = True
+    for key, name in (("five_hour", "5h"), ("seven_day", "7d")):
+        window = limits.get(key) or {}
+        used = float(window.get("used_percentage") or 0)
+        if (window.get("resets_at") or 0) <= now:
+            used = 0.0
+        ok = ok and used < threshold
+        parts.append(f"{name} {used:.0f}%")
+    age_min = (now - float((snapshot or {}).get("saved_at") or now)) / 60
+    windows = " · ".join(parts)
+    return ok, f"{windows} (snapshot {age_min:.0f}m old)"
+
+
+def read_usage_snapshot() -> dict[str, Any] | None:
+    try:
+        return json.loads(USAGE_SNAPSHOT.read_text())
+    except (OSError, ValueError):
+        return None
 
 
 # --- the agent ---------------------------------------------------------------
@@ -541,12 +577,19 @@ def fastmcp_triage(
     numbers: list[int] | None = None,
     window_hours: int = 24,
     publish_prs: bool = True,
+    usage_threshold: float = 50,
 ) -> State | dict[str, Any]:
     """Triage the threads recent fastmcp briefs surfaced, opening the pull requests the agent proposes.
 
-    `numbers` targets specific threads; `publish_prs=False` is a dry run.
+    `numbers` targets specific threads; `publish_prs=False` is a dry run. Runs
+    only while both Max plan windows are under `usage_threshold` percent used.
     """
     logger = get_run_logger()
+    ok, usage = usage_verdict(read_usage_snapshot(), time.time(), usage_threshold)
+    if not ok:
+        logger.info("deferred: plan usage %s, threshold %.0f%%", usage, usage_threshold)
+        return Completed(name="Deferred", message=f"plan usage {usage}")
+    logger.info("plan usage %s", usage)
     surfaced = {i["number"]: i for i in surfaced_recently(window_hours)}
     wanted = numbers or list(surfaced)
     run_name = flow_run.name or datetime.datetime.now().strftime("%Y%m%d-%H%M%S")

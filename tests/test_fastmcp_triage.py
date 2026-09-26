@@ -240,3 +240,41 @@ def test_publish_refuses_a_change_carrying_the_operators_token(tmp_path, monkeyp
         check=True,
     ).stdout
     assert pushed.strip() == ""
+
+
+# --- the plan usage gate -----------------------------------------------------
+
+
+def _snapshot(
+    five: float, seven: float, *, five_resets: float = 2e9, seven_resets: float = 2e9
+) -> dict:
+    return {
+        "rate_limits": {
+            "five_hour": {"used_percentage": five, "resets_at": five_resets},
+            "seven_day": {"used_percentage": seven, "resets_at": seven_resets},
+        },
+        "saved_at": 1e9,
+    }
+
+
+def test_runs_only_while_both_windows_are_under_the_threshold():
+    from flows.fastmcp_triage import usage_verdict
+
+    assert usage_verdict(_snapshot(16, 25), 1e9, 50)[0] is True
+    assert usage_verdict(_snapshot(60, 25), 1e9, 50)[0] is False
+    assert usage_verdict(_snapshot(16, 50), 1e9, 50)[0] is False
+
+
+def test_a_window_that_has_reset_counts_as_empty():
+    from flows.fastmcp_triage import usage_verdict
+
+    ok, detail = usage_verdict(_snapshot(90, 25, five_resets=1e9 - 1), 1e9, 50)
+    assert ok is True
+    assert "5h 0%" in detail
+
+
+def test_unknown_usage_defers():
+    from flows.fastmcp_triage import usage_verdict
+
+    assert usage_verdict(None, 1e9, 50) == (False, "no usage snapshot")
+    assert usage_verdict({"saved_at": 1e9}, 1e9, 50)[0] is False
