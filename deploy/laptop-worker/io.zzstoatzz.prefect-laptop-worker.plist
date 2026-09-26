@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.zzstoatzz.prefect-laptop-worker</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>set -a; . "$HOME/.config/prefect-laptop-worker/env"; set +a; exec uv run --refresh-package prefect --upgrade --with prefect prefect worker start --pool laptop-pool --type process --name laptop --with-healthcheck</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/nate/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>PREFECT_WORKER_WEBSERVER_HOST</key>
+    <string>127.0.0.1</string>
+    <key>PREFECT_WORKER_WEBSERVER_PORT</key>
+    <string>8791</string>
+  </dict>
+  <key>WorkingDirectory</key>
+  <string>/Users/nate/.local/state/prefect-laptop-worker</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/nate/Library/Logs/prefect-laptop-worker.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/nate/Library/Logs/prefect-laptop-worker.log</string>
+</dict>
+</plist>

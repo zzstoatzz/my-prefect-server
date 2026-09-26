@@ -519,6 +519,32 @@ heavypad-status:
       echo "env file keys: $(cut -d= -f1 /home/stoat/.config/prod-worker/env | sort | tr "\n" " ")"
       echo "disk:         $(df -h / | awk "NR==2{print \$5\" used of \"\$2}")"'
 
+# the laptop-pool worker on this Mac (deploy/laptop-worker). install copies the
+# launchd agent and loads it; status prints launchd state, the health endpoint,
+# and the env file key names only.
+laptop-worker action="status":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    label=io.zzstoatzz.prefect-laptop-worker
+    plist="$HOME/Library/LaunchAgents/$label.plist"
+    case "{{ action }}" in
+      install)
+        test -f "$HOME/.config/prefect-laptop-worker/env" || { echo "missing env file; run just sync in the secrets store"; exit 1; }
+        mkdir -p "$HOME/.local/state/prefect-laptop-worker"
+        launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
+        for _ in $(seq 1 20); do launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1 || break; sleep 0.5; done
+        install -m 0644 deploy/laptop-worker/$label.plist "$plist"
+        launchctl bootstrap "gui/$(id -u)" "$plist"
+        echo "loaded $label" ;;
+      restart) launchctl kickstart -k "gui/$(id -u)/$label" ;;
+      uninstall) launchctl bootout "gui/$(id -u)/$label"; rm -f "$plist" ;;
+      status)
+        launchctl print "gui/$(id -u)/$label" 2>/dev/null | grep -E "^\s+(state|pid|last exit code) =" || echo "not loaded"
+        echo "health: $(curl -s -m 3 http://127.0.0.1:8791/health || echo unreachable)"
+        echo "env file keys: $(cut -d= -f1 "$HOME/.config/prefect-laptop-worker/env" | tr "\n" " ")" ;;
+      *) echo "usage: just laptop-worker [install|restart|uninstall|status]"; exit 1 ;;
+    esac
+
 # Register only the presence flow, using an explicitly published source revision.
 presence-deploy:
     #!/usr/bin/env bash
