@@ -100,6 +100,11 @@ starts. The Discord brief is unchanged until the last stage.
    - Someone else's claim skips a thread before any agent runs: an assignee,
      an open PR by anyone, or a contributor PR the issue-link gate closed
      (`missing-issue-link`). The reporter's first claim is in the prompt.
+   - Checks: the agent runs prek in the sandbox until a run changes nothing
+     and reports it (`checks_clean`). The flow re-checks the staged change
+     with ruff and codespell at main's pinned versions via isolated `uvx`;
+     it never runs prek itself, whose system hooks (ty, loq) would execute
+     the agent-built venv. Any failure opens a draft with a warning on top.
    - `allow_ready` (default off) opens every PR as a draft, keeping the
      agent's ready/ship-now advice in the body. Agreed with the fastmcp
      session on 2026-09-26 while the operator is away for two weeks.

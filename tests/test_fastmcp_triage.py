@@ -204,7 +204,8 @@ def test_publish_commits_and_opens_a_draft_without_running_repo_hooks(
         context, clone, {"result": _result(), "session_id": "s"}, "run-url"
     )
 
-    assert out == {"pr": "https://github.com/PrefectHQ/fastmcp/pull/9", "draft": True}
+    assert out["pr"] == "https://github.com/PrefectHQ/fastmcp/pull/9"
+    assert out["draft"] is True
     assert not marker.exists(), "a hook in the agent's clone ran during publish"
     create = next(c for c in calls if c[:2] == ("pr", "create"))
     assert "--draft" in create and "fix/openapi-error-logging" in create
@@ -335,3 +336,64 @@ def test_ready_opens_as_a_draft_while_ready_is_disabled(tmp_path, monkeypatch, g
     )
     assert out["draft"] is True
     assert "--draft" in next(c for c in calls if c[:2] == ("pr", "create"))
+
+
+# --- independent checks ------------------------------------------------------
+
+
+def test_pins_come_from_mains_pre_commit_config():
+    from flows.fastmcp_triage import pinned_tool_versions
+
+    config = """
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
+    rev: v0.14.10
+  - repo: local
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+"""
+    assert pinned_tool_versions(config) == {"ruff": "0.14.10", "codespell": "2.4.1"}
+
+
+def _publish_ready(tmp_path, monkeypatch, *, checks_clean: bool, failures: list[str]):
+    clone = _repo_with_remote(tmp_path)
+    (clone / "fix.py").write_text("x = 1\n")
+    calls: list[tuple[str, ...]] = []
+
+    def fake_gh(*args: str) -> str:
+        calls.append(args)
+        return (
+            "gho_" + "z" * 36
+            if args[:2] == ("auth", "token")
+            else "https://github.com/PrefectHQ/fastmcp/pull/9\n"
+        )
+
+    monkeypatch.setattr(fastmcp_triage, "_gh", fake_gh)
+    monkeypatch.setattr(fastmcp_triage, "verify_changed_files", lambda clone: list(failures))
+    agent = {"result": _result(action="ready", checks_clean=checks_clean), "session_id": "s"}
+    out = fastmcp_triage.publish.fn(
+        {"number": 5280, "kind": "issue"}, clone, agent, "run", allow_ready=True
+    )
+    body = (clone.parent / "pr-body.md").read_text()
+    return out, body
+
+
+def test_clean_checks_let_ready_stay_ready(tmp_path, monkeypatch, git_identity):
+    out, body = _publish_ready(tmp_path, monkeypatch, checks_clean=True, failures=[])
+    assert out["draft"] is False
+    assert "checks did not pass" not in body
+
+
+def test_a_failed_check_opens_a_draft_that_says_so(tmp_path, monkeypatch, git_identity):
+    out, body = _publish_ready(
+        tmp_path, monkeypatch, checks_clean=True, failures=["ruff format failed"]
+    )
+    assert out["draft"] is True
+    assert "ruff format failed" in body
+
+
+def test_an_unreported_prek_run_opens_a_draft(tmp_path, monkeypatch, git_identity):
+    out, body = _publish_ready(tmp_path, monkeypatch, checks_clean=False, failures=[])
+    assert out["draft"] is True
+    assert "clean second prek run" in body

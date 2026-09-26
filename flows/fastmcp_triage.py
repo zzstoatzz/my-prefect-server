@@ -91,7 +91,8 @@ read AGENTS.md, then work through this repository's skills:
   choose none and say so. otherwise, if it is a real, tractable bug, carry it
   through fix-issue: a regression test that fails without the fix, then the
   smallest causal fix, then the repository's checks
-  (`uv run prek run --all-files` works offline here, and `uv run pytest -n auto`).
+  (`uv run prek run --all-files` works offline here: run it until a run changes
+  nothing and set `checks_clean` only then; and `uv run pytest -n auto`).
   for changes to shared dispatch or security paths, do the independent
   adversarial pass the code-review skill asks for.
 - anything else: the short read only.
@@ -128,6 +129,28 @@ class TriageResult(BaseModel):
     pr_title: str = Field(default="", max_length=90)
     pr_body: str = Field(default="", max_length=8000)
     branch: str = Field(default="", description="fix/<short-slug>")
+    checks_clean: bool = Field(
+        default=False,
+        description="a second `uv run prek run --all-files` passed without changing anything",
+    )
+
+
+# tools whose pinned versions (from main's pre-commit config, read before the
+# agent runs) the flow uses to re-check a change without running repo code
+TRUSTED_HOOKS = {
+    "astral-sh/ruff-pre-commit": "ruff",
+    "codespell-project/codespell": "codespell",
+}
+HOOK_PIN = re.compile(r"repo:\s*https://github\.com/(\S+?)\s*\n(?:\s*#.*\n)*\s*rev:\s*v?(\S+)")
+
+
+def pinned_tool_versions(pre_commit_config: str) -> dict[str, str]:
+    """{"ruff": "0.14.10", ...} for the trusted hooks pinned in a pre-commit config."""
+    pins = {}
+    for repo, rev in HOOK_PIN.findall(pre_commit_config):
+        if tool := TRUSTED_HOOKS.get(repo):
+            pins[tool] = rev
+    return pins
 
 
 # --- what to look at ---------------------------------------------------------
@@ -415,6 +438,9 @@ def prepare_workspace(context: dict[str, Any], run_name: str) -> Path:
         capture_output=True,
         env={**os.environ, "PREK_HOME": str(PREK_CACHE)},
     )
+    # pinned from main, before any pull request or agent can change the config
+    pins = pinned_tool_versions((clone / ".pre-commit-config.yaml").read_text())
+    (run / "trusted-tools.json").write_text(json.dumps(pins))
     if context["kind"] == "pull_request":
         _git(clone, "fetch", "--quiet", "origin", f"pull/{context['number']}/head")
         _git(clone, "checkout", "--quiet", "--detach", "FETCH_HEAD")
@@ -461,6 +487,38 @@ def run_agent(clone: Path) -> dict[str, Any]:
 
 
 # --- publishing --------------------------------------------------------------
+
+
+def verify_changed_files(clone: Path) -> list[str]:
+    """Re-check the staged change with main's pinned ruff and codespell.
+
+    The agent runs prek itself, in the sandbox. This is the independent check,
+    and it deliberately skips prek: its system hooks (ty, loq) run binaries from
+    the venv the agent built. ruff and codespell run from isolated uvx
+    environments and never execute repository code.
+    """
+    pins_file = clone.parent / "trusted-tools.json"
+    pins = json.loads(pins_file.read_text()) if pins_file.exists() else {}
+    if not {"ruff", "codespell"} <= pins.keys():
+        return ["could not read main's pinned ruff and codespell versions"]
+
+    changed = _git(clone, "diff", "--cached", "--name-only", "--diff-filter=ACMR").split()
+    if not changed:
+        return []
+    python = [name for name in changed if name.endswith(".py")]
+    checks = [("codespell", ["uvx", f"codespell@{pins['codespell']}", *changed])]
+    if python:
+        ruff = f"ruff@{pins['ruff']}"
+        checks += [
+            ("ruff format", ["uvx", ruff, "format", "--check", "--no-cache", *python]),
+            ("ruff check", ["uvx", ruff, "check", "--no-cache", *python]),
+        ]
+    problems = []
+    for name, argv in checks:
+        proc = subprocess.run(argv, cwd=clone, capture_output=True, text=True, check=False)
+        if proc.returncode != 0:
+            problems.append(f"{name} failed")
+    return problems
 
 
 def leaks(text: str, known: list[str]) -> list[str]:
@@ -514,6 +572,12 @@ def publish(
     if problems:
         return {"blocked": problems}
 
+    # a failed check never ships as ready: the pull request opens as a draft
+    # that says what failed, so CI's static analysis is not the first to know
+    check_failures = verify_changed_files(clone)
+    if not result.checks_clean:
+        check_failures.insert(0, "the agent did not report a clean second prek run")
+
     branch = branch_for(result, context["number"])
     name = subprocess.run(
         ["git", "config", "--global", "user.name"], capture_output=True, text=True, check=True
@@ -536,7 +600,14 @@ def publish(
     _git(clone, "push", "--quiet", "origin", branch)
 
     body_file = clone.parent / "pr-body.md"
-    body_file.write_text(result.pr_body + pr_footer(result, run_url, agent.get("session_id")))
+    warning = (
+        "> [!WARNING]\n> checks did not pass: " + "; ".join(check_failures) + "\n\n"
+        if check_failures
+        else ""
+    )
+    body_file.write_text(
+        warning + result.pr_body + pr_footer(result, run_url, agent.get("session_id"))
+    )
     args = [
         "pr",
         "create",
@@ -553,11 +624,11 @@ def publish(
     ]
     # ready is the agent's call, but while allow_ready is off (the operator is
     # away) every pull request opens as a draft; the footer keeps the advice
-    draft = result.action == "draft" or not allow_ready
+    draft = result.action == "draft" or not allow_ready or bool(check_failures)
     if draft:
         args.append("--draft")
     url = _gh(*args).strip()
-    return {"pr": url, "draft": draft}
+    return {"pr": url, "draft": draft, "checks": check_failures}
 
 
 # --- receipts and delivery ---------------------------------------------------
