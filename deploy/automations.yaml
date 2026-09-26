@@ -108,6 +108,25 @@ automations:
         subject: "{{ resource.name }}"
         body: "{{ payload.brief }}"
 
+  - name: triage ready -> discord
+    description: >-
+      What the laptop's fastmcp-triage run concluded about the threads a brief
+      surfaced: the short read, any pull request it opened (draft or ready,
+      the agent's call), and the session to resume.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - hub.triage.ready
+      threshold: 1
+      within: 60
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "{{ resource.name }}"
+        body: "{{ payload.summary }}"
+
   - name: email shortlist -> discord
     description: >-
       The daily email-triage run's shortlist, composed by luna, with the link

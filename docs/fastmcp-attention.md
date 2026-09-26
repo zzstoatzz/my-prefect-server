@@ -65,14 +65,40 @@ starts. The Discord brief is unchanged until the last stage.
 
 1. **structured brief.** `hub.brief.ready` carries `surfaced` (number, url,
    thread_id, updated_at, severity) next to the rendered `brief`.
-2. **laptop triage.** A `laptop-pool` process worker on the operator's Mac,
-   kept alive by launchd. An automation on `hub.brief.ready` runs a
-   `fastmcp-triage` deployment there with `concurrency_limit: 1` and
-   `collision_strategy: CANCEL_NEW`. The event is a wake-up only: each run
-   reads current thread state and the ledger, so a run that queued while the
-   laptop slept does current work and a backlog collapses to one run. Claude
-   runs headless with read-only tools; the session id and result land as a
-   Prefect artifact and a `hub.triage.ready` event.
+2. **laptop triage.** `fastmcp-triage` runs on `laptop-pool`
+   ([deploy/laptop-worker](../deploy/laptop-worker/README.md)), triggered by
+   `hub.brief.ready`, with `limit: 1` and `collision_strategy: CANCEL_NEW`.
+   The event is a wake-up only, as Prefect's debouncing guide
+   (`v3/advanced/debouncing-events.mdx`) prescribes: each run re-reads the last
+   day of `surfaced` items and each thread's current state, skips what is
+   closed or already triaged at its current version (receipt: artifact
+   `fastmcp-triage-<number>`), so a run that queued while the laptop slept does
+   current work and a backlog collapses to one run. The zig server does not
+   implement `schedule_after`; nothing here relies on it.
+
+   Each thread gets headless Claude Code in a fresh local clone of fastmcp,
+   working through the repository's own skills (fix-issue for bugs,
+   review-issue and code-review for other people's pull requests). The agent
+   chooses `none`, `draft`, or `ready`, and an urgency, and says why; that
+   judgment is deliberately not hard-coded, so it can widen as the agent earns
+   it. The boundary is mechanical instead:
+
+   - Claude Code's sandbox limits its network to PyPI and denies reads of the
+     home directory, which also hides the keychain (verified 2026-09-26:
+     `gh`, `git ls-remote`, and `curl api.github.com` fail inside; the gh
+     keychain item reads as not found). Its Read/Edit tools are limited to the
+     clone, and `.git` and `.claude` are unwritable, so nothing it leaves
+     executes when the flow runs git afterwards.
+   - The flow publishes: it commits with hooks disabled, refuses anything
+     containing the operator's GitHub token or a token-shaped string, pushes,
+     and opens the pull request. It never runs code the agent wrote; the pull
+     request's CI does. It never merges, comments, assigns, or edits an
+     existing pull request, and never opens one for someone else's.
+   - The run uses `--setting-sources project` and `--strict-mcp-config`, so
+     the operator's own hooks and claude.ai connectors are absent.
+
+   Results land in Discord through `triage ready -> discord`, each with the
+   session to `claude --resume`.
 3. **ack ledger.** The operator's acks live in a private space on
    pds.zat.dev, owned by a dedicated operator account (the main account's PDS
    does not serve spaces, and public records would reveal activity on private

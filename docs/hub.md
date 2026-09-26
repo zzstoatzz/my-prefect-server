@@ -84,8 +84,9 @@ DuckDB allows one read-write process per file, and flows on independent schedule
 | `phi-curation` / `phi-editorial` / `phi-character-retro` / `phi-chicken-precheck` / `phi-chicken-scout` | crons (weekly Mon 03 / daily 15 / monthly 1st 17 / daily 04 / daily 18, UTC) | thin `phi-trigger` deployments that kick named passes on the phi bot via its control API — the bot defines what runs, prefect owns the clock |
 | `watch-fastmcp` | cron `*/5 * * * *` | polls fastmcp's github notifications (conditional requests) and emits `github.<reason>` events onto the hub bus |
 | `fastmcp-brief` | automations + cron `0 */4 * * *` floor | reads the recent event window off the bus and composes a brief when something merits surfacing |
+| `fastmcp-triage` | on `hub.brief.ready`, **laptop-pool** | headless Claude Code in a sandboxed fastmcp clone triages what the brief surfaced; the flow opens any pull request the agent proposes. see [fastmcp-attention.md](fastmcp-attention.md) |
 
-all flows run on the `home-pool` process worker on the home box (heavypad); `kubernetes-pool` is retained as an unused fallback. code is pulled at runtime via `git clone` from tangled.sh (github fallback). deps install via `uv run --with 'my-prefect-server @ git+...'`. deployments are registered by CI on every push to main (`.tangled/workflows/deploy.yml`).
+all flows except `fastmcp-triage` (laptop-pool) run on the `home-pool` process worker on the home box (heavypad); `kubernetes-pool` is retained as an unused fallback. code is pulled at runtime via `git clone` from tangled.sh (github fallback). deps install via `uv run --with 'my-prefect-server @ git+...'`. deployments are registered by CI on every push to main (`.tangled/workflows/deploy.yml`).
 
 ## dbt layer
 

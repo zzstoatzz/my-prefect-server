@@ -60,6 +60,18 @@ definitions:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+    # the operator's Mac (deploy/laptop-worker). work here runs only while that
+    # machine is awake; nothing on the critical path belongs on this pool.
+    laptop: &laptop
+      name: laptop-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
+          prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
+
 
 deployments:
   - name: fleet-health
@@ -888,6 +900,28 @@ deployments:
     schedules:
       - cron: "0 */4 * * *"
         active: true
+
+  - name: fastmcp-triage
+    tags: [watch]
+    entrypoint: flows/fastmcp_triage.py:fastmcp_triage
+    # headless Claude Code in a sandboxed fastmcp clone, one run per wake-up;
+    # the flow publishes, the agent cannot. docs/fastmcp-attention.md.
+    # The brief event only wakes it: every run re-reads the last day of briefs
+    # and each thread's current state, so a run that queued while the laptop
+    # slept does current work, and CANCEL_NEW collapses the backlog to one.
+    work_pool: *laptop
+    concurrency_limit: *cancel_new
+    triggers:
+      - type: event
+        enabled: false
+        expect:
+          - "hub.brief.ready"
+        match:
+          prefect.resource.id: "hub.brief.fastmcp"
+    # trigger off and dry run until an end-to-end run on the laptop has been
+    # inspected; then enable both to let it open the pull requests it proposes.
+    parameters:
+      publish_prs: false
 
   - name: pi-agent
     tags: [gardener]

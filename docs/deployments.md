@@ -2,7 +2,7 @@
 
 generated from `prefect.yaml` by `scripts/deployments_inventory.py`; do not edit by hand. `just inventory` regenerates it and CI fails on drift.
 
-42 deployments, all on the `home-pool` process worker. a cadence of `after x` is an automation that fires when deployment x completes; `manual` means the deployment is started by the API, an automation outside `prefect.yaml`, or a person.
+43 deployments, all on the `home-pool` process worker. a cadence of `after x` is an automation that fires when deployment x completes; `manual` means the deployment is started by the API, an automation outside `prefect.yaml`, or a person.
 
 ## pipeline
 
@@ -79,4 +79,5 @@ health, traffic, and cost reporting
 | `bufo-traffic` | `7 * * * *` | Roll the trailing window of find-bufo.com requests into per-day PDS records | [`bufo_traffic`](flows/bufo_traffic.py) |
 | `watch-fastmcp` | `*/5 * * * *` | Turn fastmcp activity into events on the hub's bus | [`watch_fastmcp`](flows/watch_fastmcp.py) |
 | `fastmcp-brief` | `0 */4 * * *` | Compose what happened in fastmcp into something worth reading | [`fastmcp_brief`](flows/fastmcp_brief.py) |
+| `fastmcp-triage` | on `hub.brief.ready` (disabled) | Triage the threads recent fastmcp briefs surfaced, opening the pull requests the agent proposes | [`fastmcp_triage`](flows/fastmcp_triage.py) |
 | `strata-hourly` | `21 * * * *` | Summarise every sealed segment the worker lacks or holds at a stale checksum; returns segments ingested | [`ingest_segment_collections`](flows/strata.py) |

@@ -31,6 +31,16 @@ def test_cadence_renders_cron_trigger_and_manual():
         )
         == "after `ingest`"
     )
+    assert (
+        inv.cadence({"name": "a", "triggers": [{"expect": ["hub.brief.ready"]}]})
+        == "on `hub.brief.ready`"
+    )
+    assert (
+        inv.cadence({"name": "a", "triggers": [{"expect": ["x"], "enabled": False}]})
+        == "on `x` (disabled)"
+    )
+    with pytest.raises(inv.InventoryError):
+        inv.cadence({"name": "a", "triggers": [{"expect": []}]})
     assert inv.cadence({"name": "a"}) == "manual"
 
 

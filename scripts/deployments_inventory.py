@@ -67,9 +67,14 @@ def cadence(dep: dict) -> str:
         parts.append(text)
     for t in triggers:
         upstream = (t.get("match_related") or {}).get("prefect.resource.name")
-        if not upstream:
-            raise InventoryError(f"{dep['name']}: trigger without an upstream deployment")
-        parts.append(f"after `{upstream}`")
+        if upstream:
+            parts.append(f"after `{upstream}`")
+            continue
+        events = t.get("expect") or []
+        if not events:
+            raise InventoryError(f"{dep['name']}: trigger without an upstream deployment or event")
+        text = ", ".join(f"on `{e}`" for e in events)
+        parts.append(text + (" (disabled)" if t.get("enabled") is False else ""))
     return ", ".join(parts) or "manual"
 
 
