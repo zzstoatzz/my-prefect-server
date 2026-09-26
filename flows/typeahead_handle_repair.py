@@ -14,10 +14,17 @@ Candidates:
     plc.directory/export — the changes after the bundle cutoff and before the
     fix deployed.
 
+  - with `include_invalid_rows`, every row storing the literal handle.invalid
+    (the appview's verification-failure placeholder, copied in by enrichment),
+    so ones whose handle verifies again get it back.
+
 For each candidate whose stored handle differs from the PLC claim, the DID
 document is fetched live from plc.directory and its handle verified back to the
-DID (/.well-known/atproto-did, then DNS TXT over DoH). Only a verified handle is
-written, and only if the row still holds the handle we read (compare-and-set),
+DID (/.well-known/atproto-did, then DNS TXT over DoH). A verified handle is
+written; an unverified one is re-checked after `recheck_delay_s` and, if it
+still fails, recorded as handle.invalid, matching the ingester (typeahead
+ingest.zig/identity.zig) and the appview. Writes only land if the row still
+holds the handle we read (compare-and-set),
 so a concurrent live ingester write is never clobbered. `updated_at` is bumped
 so the search overlay picks the row up; `profile_checked_at` is left alone.
 Idempotent and re-runnable.
@@ -29,6 +36,7 @@ import json
 import time
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +52,7 @@ EXPORT_PAGE = 1000
 EXPORT_INTERVAL_S = 0.6  # plc.directory export allows ~500 requests / 5 min
 LOOKUP_PAGE = 500
 WRITE_BATCH = 100
+INVALID_HANDLE = "handle.invalid"
 
 REPAIR_SQL = (
     "UPDATE actors SET handle = ?2, pds = COALESCE(NULLIF(?3, ''), pds), "
@@ -158,22 +167,31 @@ def _stored_handles(http: httpx.Client, dids: list[str]) -> dict[str, str]:
     return out
 
 
-def _verify(http: httpx.Client, did: str) -> tuple[str | None, str | None]:
-    """(verified handle or None, pds) from the live DID document"""
+@dataclass(frozen=True)
+class Resolved:
+    """what the live DID document says, and whether its handle verified"""
+
+    doc_found: bool
+    claimed: str | None = None
+    verified: bool = False
+    pds: str | None = None
+
+
+def _verify(http: httpx.Client, did: str) -> Resolved:
     r = http.get(f"{PLC}/{did}")
     if r.status_code != 200:
-        return None, None
+        return Resolved(doc_found=False)
     doc = r.json()
     handle = handle_from_aka(doc.get("alsoKnownAs"))
     pds = pds_from_doc(doc)
     if not handle:
-        return None, pds
+        return Resolved(doc_found=True, pds=pds)
     try:
         wk = http.get(
             f"https://{handle}/.well-known/atproto-did", timeout=5, follow_redirects=False
         )
         if wk.status_code == 200 and wk.text.strip() == did:
-            return handle, pds
+            return Resolved(doc_found=True, claimed=handle, verified=True, pds=pds)
     except httpx.HTTPError:
         pass
     try:
@@ -184,17 +202,58 @@ def _verify(http: httpx.Client, did: str) -> tuple[str | None, str | None]:
         )
         vals = [a.get("data", "").strip('"') for a in dns.json().get("Answer") or []]
         if [v for v in vals if v.startswith("did=")] == [f"did={did}"]:
-            return handle, pds
+            return Resolved(doc_found=True, claimed=handle, verified=True, pds=pds)
     except (httpx.HTTPError, ValueError):
         pass
-    return None, pds
+    return Resolved(doc_found=True, claimed=handle, pds=pds)
+
+
+def write_for(old: str, res: Resolved, final_pass: bool) -> str | None:
+    """the handle to write for a row holding `old`, or None to leave it.
+
+    A verified handle replaces anything different. An unverified claim is
+    recorded as handle.invalid, but only on the final pass: a fresh domain can
+    lag its DNS or well-known, so the first failure is re-checked later. A
+    document with no handle, or no document, is left alone."""
+    if res.claimed is None:
+        return None
+    if res.verified:
+        return res.claimed if res.claimed != old.lower() else None
+    if final_pass and old.lower() != INVALID_HANDLE:
+        return INVALID_HANDLE
+    return None
+
+
+def _invalid_rows(http: httpx.Client) -> dict[str, str]:
+    """DIDs whose row stores the literal handle.invalid (idx_actors_handle SEARCH)"""
+    out: dict[str, str] = {}
+    last = 0
+    while True:
+        res = _tq(
+            http,
+            [
+                {
+                    "sql": "SELECT rowid, did FROM actors WHERE handle = ?1 COLLATE NOCASE "
+                    "AND rowid > ?2 ORDER BY rowid LIMIT ?3",
+                    "args": [_arg(INVALID_HANDLE), _arg(last), _arg(LOOKUP_PAGE)],
+                }
+            ],
+        )
+        rows = res[0].get("rows", [])
+        if not rows:
+            return out
+        for row in rows:
+            out[row[1]["value"]] = ""
+        last = int(rows[-1][0]["value"])
 
 
 @flow(name="typeahead-handle-repair", log_prints=True, timeout_seconds=6 * 3600)
 def typeahead_handle_repair(
-    stale_path: str = "/home/stoat/drift-out/stale.jsonl",
+    stale_path: str = "/home/stoat/drift-out2/stale.jsonl",
     tail_after: str = "2026-09-16T23:59:59.962Z",
     tail_until: str = "2026-09-25T18:01:00Z",
+    include_invalid_rows: bool = True,
+    recheck_delay_s: float = 900.0,
     workers: int = 8,
     dry_run: bool = False,
 ) -> dict[str, Any]:
@@ -205,67 +264,76 @@ def typeahead_handle_repair(
     logger.info("stale scan: %d DIDs", len(claims))
     for did, h in _export_tail(http, tail_after, tail_until, logger).items():
         claims[did] = h
+    if include_invalid_rows:
+        invalid = _invalid_rows(http)
+        logger.info("rows stored as %s: %d", INVALID_HANDLE, len(invalid))
+        for did, h in invalid.items():
+            claims.setdefault(did, h)
     logger.info("candidates before filtering: %d", len(claims))
 
     stored = _stored_handles(http, list(claims))
     todo = [(d, stored[d]) for d, h in claims.items() if needs_check(stored.get(d), h)]
-    logger.info("rows whose handle differs from PLC: %d", len(todo))
+    logger.info("rows whose handle differs from PLC or is invalid: %d", len(todo))
 
-    queued = changed = unverified = gone = 0
+    counts = {"repaired": 0, "marked_invalid": 0, "changed": 0, "no_doc": 0, "no_handle": 0}
     pending: list[dict[str, Any]] = []
 
     def flush() -> None:
-        nonlocal pending, changed
+        nonlocal pending
         if pending and not dry_run:
             while not _ingestion_ready(http, time.time()):
                 logger.info("ingester not ready; holding writes 60s")
                 time.sleep(60)
-            changed += sum(int(res.get("affected_row_count", 0)) for res in _tq(http, pending))
+            counts["changed"] += sum(
+                int(res.get("affected_row_count", 0)) for res in _tq(http, pending)
+            )
         pending = []
 
-    def check(item: tuple[str, str]) -> tuple[str, str, str | None, str | None]:
+    def check(item: tuple[str, str]) -> tuple[str, str, Resolved]:
         did, old = item
         vclient = httpx.Client(timeout=10, headers=UA)
         try:
-            handle, pds = _verify(vclient, did)
+            return did, old, _verify(vclient, did)
         except httpx.HTTPError:
-            handle, pds = None, None
+            return did, old, Resolved(doc_found=False)
         finally:
             vclient.close()
-        return did, old, handle, pds
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        for n, (did, old, handle, pds) in enumerate(pool.map(check, todo), 1):
-            if handle is None:
-                if pds is None:
-                    gone += 1
-                else:
-                    unverified += 1
-            elif handle != old.lower():
-                pending.append(repair_statement(did, old, handle, pds))
-                queued += 1
-            if len(pending) >= WRITE_BATCH:
-                flush()
-            if n % 1000 == 0:
-                logger.info(
-                    "progress: %d/%d checked, %d queued, %d changed, %d unverified, %d unresolvable",
-                    n,
-                    len(todo),
-                    queued,
-                    changed,
-                    unverified,
-                    gone,
-                )
-    flush()
+    def run_pass(items: list[tuple[str, str]], final_pass: bool) -> list[tuple[str, str]]:
+        """write what this pass settles; return the unverified rows to re-check"""
+        recheck: list[tuple[str, str]] = []
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for n, (did, old, res) in enumerate(pool.map(check, items), 1):
+                if not res.doc_found:
+                    counts["no_doc"] += 1
+                elif res.claimed is None:
+                    counts["no_handle"] += 1
+                elif not res.verified and not final_pass:
+                    recheck.append((did, old))
+                new = write_for(old, res, final_pass)
+                if new is not None:
+                    pending.append(repair_statement(did, old, new, res.pds))
+                    counts["marked_invalid" if new == INVALID_HANDLE else "repaired"] += 1
+                if len(pending) >= WRITE_BATCH:
+                    flush()
+                if n % 1000 == 0:
+                    logger.info("progress (final=%s): %d/%d %s", final_pass, n, len(items), counts)
+        flush()
+        return recheck
+
+    recheck = run_pass(todo, final_pass=False)
+    logger.info("first pass done: %s; %d unverified to re-check", counts, len(recheck))
+    if recheck:
+        logger.info("waiting %.0fs before re-checking unverified handles", recheck_delay_s)
+        time.sleep(recheck_delay_s)
+        run_pass(recheck, final_pass=True)
 
     summary = {
         "dry_run": dry_run,
         "candidates": len(claims),
         "differing": len(todo),
-        "queued": queued,
-        "changed": changed,
-        "unverified": unverified,
-        "unresolvable": gone,
+        "rechecked": len(recheck),
+        **counts,
     }
     logger.info("done: %s", summary)
     return summary

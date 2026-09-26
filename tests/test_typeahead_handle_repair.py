@@ -4,13 +4,16 @@ candidate, genesis ops are not repair candidates, and the write is a
 compare-and-set that cannot clobber a newer live ingester write."""
 
 from flows.typeahead_handle_repair import (
+    INVALID_HANDLE,
     REPAIR_SQL,
+    Resolved,
     handle_from_aka,
     needs_check,
     pds_from_doc,
     repair_statement,
     tail_claims,
     typeahead_handle_repair,
+    write_for,
 )
 
 
@@ -66,3 +69,24 @@ def test_write_is_compare_and_set_on_the_handle_we_read():
 
 def test_flow_is_time_bounded():
     assert typeahead_handle_repair.timeout_seconds == 6 * 3600
+
+
+def test_verified_handle_replaces_a_different_one_only():
+    ok = Resolved(doc_found=True, claimed="new.example", verified=True)
+    assert write_for("old.bsky.social", ok, final_pass=False) == "new.example"
+    assert write_for("New.Example", ok, final_pass=False) is None
+    assert write_for(INVALID_HANDLE, ok, final_pass=False) == "new.example"
+
+
+def test_unverified_claim_is_marked_invalid_only_on_the_final_pass():
+    # a fresh domain can lag its DNS or well-known: streetnewzvlogger.sprk.so
+    # failed a first check and verified minutes later (2026-09-26)
+    bad = Resolved(doc_found=True, claimed="new.example", verified=False)
+    assert write_for("old.bsky.social", bad, final_pass=False) is None
+    assert write_for("old.bsky.social", bad, final_pass=True) == INVALID_HANDLE
+    assert write_for(INVALID_HANDLE, bad, final_pass=True) is None
+
+
+def test_missing_document_or_handle_leaves_the_row_alone():
+    assert write_for("old.bsky.social", Resolved(doc_found=False), final_pass=True) is None
+    assert write_for("old.bsky.social", Resolved(doc_found=True), final_pass=True) is None
