@@ -237,7 +237,9 @@ def sandbox_settings() -> dict[str, Any]:
         "sandbox": {
             "enabled": True,
             "allowUnsandboxedCommands": False,
-            "network": {"allowedDomains": AGENT_NETWORK},
+            # localhost ports only (the fastmcp suite starts local servers); this
+            # opens no outbound route, so the GitHub boundary is unchanged
+            "network": {"allowedDomains": AGENT_NETWORK, "allowLocalBinding": True},
             "filesystem": {
                 "denyRead": ["~/"],
                 "allowRead": [

@@ -88,6 +88,8 @@ def test_the_agent_cannot_reach_github():
     settings = sandbox_settings()
     domains = settings["sandbox"]["network"]["allowedDomains"]
     assert not [d for d in domains if "github" in d]
+    # the fastmcp suite binds localhost ports; that must not widen egress
+    assert settings["sandbox"]["network"]["allowLocalBinding"] is True
     assert settings["sandbox"]["allowUnsandboxedCommands"] is False
 
 
