@@ -260,3 +260,40 @@ class TestUnbriefed:
         briefed = {"1": stale["updated_at"]}
         briefed.update(TestBriefedStateFitsPrefectsVariableLimit._state(400))
         assert unbriefed([stale], fit_briefed(briefed)) == [stale]
+
+
+class TestBriefItems:
+    """`payload.surfaced` must describe exactly what the message shows."""
+
+    def test_items_match_the_rendered_message_in_order(self):
+        from flows.fastmcp_brief import brief_items
+
+        threads = [
+            {**_thread(n), "url": f"https://github.com/PrefectHQ/fastmcp/pull/{n}"}
+            for n in (5269, 5271)
+        ]
+        brief = Brief(items=[_item(5271, "bug"), _item(9999), _item(5269, "waiting")], considered=2)
+        body = render(brief, 6, threads)
+        items = brief_items(brief, threads)
+
+        assert [i["number"] for i in items] == [5271, 5269]
+        assert all(f"({i['url']})" in body for i in items)
+        assert items[0] == {
+            "number": 5271,
+            "url": "https://github.com/PrefectHQ/fastmcp/pull/5271",
+            "severity": "bug",
+            "headline": _item(5271).headline,
+            "thread_id": "5271",
+            "updated_at": "2026-07-27T18:00:00Z",
+        }
+
+    def test_items_cut_by_the_discord_budget_are_not_reported(self):
+        from flows.fastmcp_brief import brief_items
+
+        threads = [_thread(n) for n in range(60)]
+        brief = Brief(items=[_item(n) for n in range(60)], considered=60)
+        body = render(brief, 6, threads)
+        items = brief_items(brief, threads)
+
+        assert 0 < len(items) < 60
+        assert body.count("`#") == len(items)

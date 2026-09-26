@@ -9,6 +9,8 @@ Output goes back onto the bus as `hub.brief.ready`, and a second automation
 renders `{{ payload.brief }}` into Discord through the existing block. That
 keeps the LLM's output in the events table, reuses the delivery path already in
 production, and means this flow needs no notification credentials of its own.
+`payload.surfaced` carries the same items as data (thread_id + updated_at name
+the version shown) for consumers that should not parse the markdown.
 
 The rendered brief is hard-capped: Discord rejects message content over 2000
 characters, and the zig sender prepends a bold subject, so a brief that ignores
@@ -273,26 +275,18 @@ SEVERITY_MARK = {
 }
 
 
-def render(
-    brief: Brief,
-    window_hours: int,
-    threads: list[dict[str, Any]] | None = None,
-) -> str:
-    """Ranked items as compact markdown, sized to fit Discord.
+def _shown(brief: Brief, threads: list[dict[str, Any]] | None) -> list[tuple[BriefItem, str, str]]:
+    """The items that make it into the message, with their link and block.
 
     Links come from the thread the model was shown, keyed by number — never
     from the model's own `url` field. A generated URL is a citation the reader
     trusts, and the one thing worse than no link is a confident wrong one.
     Items whose number matches nothing we actually saw are dropped.
     """
-    if not brief.items:
-        return ""
-
     trusted = {t["number"]: t["url"] for t in (threads or []) if t.get("number") and t.get("url")}
 
-    out: list[str] = []
+    out: list[tuple[BriefItem, str, str]] = []
     used = 0
-    shown = 0
     for item in brief.items:
         url = trusted.get(item.number)
         if trusted and url is None:
@@ -303,15 +297,46 @@ def render(
         block = f"{mark} **[{item.headline}]({url})** `#{item.number}`\n-# {item.why}"
         if used + len(block) + 2 > BRIEF_CHAR_BUDGET:
             break
-        out.append(block)
+        out.append((item, url, block))
         used += len(block) + 2
-        shown += 1
+    return out
 
-    dropped = len(brief.items) - shown
-    tail = f"-# {shown} of {brief.considered} threads · last {window_hours}h"
+
+def render(
+    brief: Brief,
+    window_hours: int,
+    threads: list[dict[str, Any]] | None = None,
+) -> str:
+    """Ranked items as compact markdown, sized to fit Discord."""
+    if not brief.items:
+        return ""
+
+    shown = _shown(brief, threads)
+    dropped = len(brief.items) - len(shown)
+    tail = f"-# {len(shown)} of {brief.considered} threads · last {window_hours}h"
     if dropped:
         tail += f" · {dropped} more"
-    return "\n\n".join(out) + "\n\n" + tail
+    return "\n\n".join(block for _, _, block in shown) + "\n\n" + tail
+
+
+def brief_items(brief: Brief, threads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The rendered items as data, for consumers that must not parse markdown.
+
+    Exactly the items in the message, in the same order. thread_id and
+    updated_at identify the version that was surfaced.
+    """
+    by_number = {t.get("number"): t for t in threads}
+    return [
+        {
+            "number": item.number,
+            "url": url,
+            "severity": item.severity,
+            "headline": item.headline,
+            "thread_id": str(by_number.get(item.number, {}).get("thread_id") or ""),
+            "updated_at": by_number.get(item.number, {}).get("updated_at") or "",
+        }
+        for item, url, _ in _shown(brief, threads)
+    ]
 
 
 @flow(name="fastmcp-brief", log_prints=True, timeout_seconds=600)
@@ -362,7 +387,12 @@ def fastmcp_brief(window_hours: int = 6, ignore_briefed: bool = False) -> dict[s
             "prefect.resource.name": "fastmcp",
             "hubtopic": "fastmcp",
         },
-        payload={"brief": body, "items": len(brief.items), "threads": len(threads)},
+        payload={
+            "brief": body,
+            "items": len(brief.items),
+            "threads": len(threads),
+            "surfaced": brief_items(brief, threads),
+        },
     )
     logger.info("emitted brief with %d items (%d chars)", len(brief.items), len(body))
     return {"items": len(brief.items), "threads": len(threads), "chars": len(body)}

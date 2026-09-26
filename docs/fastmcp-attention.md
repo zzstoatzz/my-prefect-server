@@ -63,7 +63,7 @@ From the live event log:
 Each stage is additive and ships (commit, push, deploy, verify) before the next
 starts. The Discord brief is unchanged until the last stage.
 
-1. **structured brief.** `hub.brief.ready` carries `items` (number, url,
+1. **structured brief.** `hub.brief.ready` carries `surfaced` (number, url,
    thread_id, updated_at, severity) next to the rendered `brief`.
 2. **laptop triage.** A `laptop-pool` process worker on the operator's Mac,
    kept alive by launchd. An automation on `hub.brief.ready` runs a
