@@ -913,15 +913,15 @@ deployments:
     concurrency_limit: *cancel_new
     triggers:
       - type: event
-        enabled: false
         expect:
           - "hub.brief.ready"
         match:
           prefect.resource.id: "hub.brief.fastmcp"
-    # trigger off and dry run until an end-to-end run on the laptop has been
-    # inspected; then enable both to let it open the pull requests it proposes.
+    # live from 2026-09-26 (weekend trial). allow_ready stays at its default
+    # (false): every pull request opens as a draft while nate is away. to
+    # pause, set `enabled: false` on the trigger.
     parameters:
-      publish_prs: false
+      publish_prs: true
 
   - name: pi-agent
     tags: [gardener]

@@ -65,7 +65,7 @@ starts. The Discord brief is unchanged until the last stage.
 
 1. **structured brief.** `hub.brief.ready` carries `surfaced` (number, url,
    thread_id, updated_at, severity) next to the rendered `brief`.
-2. **laptop triage.** `fastmcp-triage` runs on `laptop-pool`
+2. **laptop triage** (live since 2026-09-26, drafts only). `fastmcp-triage` runs on `laptop-pool`
    ([deploy/laptop-worker](../deploy/laptop-worker/README.md)), triggered by
    `hub.brief.ready`, with `limit: 1` and `collision_strategy: CANCEL_NEW`.
    The event is a wake-up only, as Prefect's debouncing guide
