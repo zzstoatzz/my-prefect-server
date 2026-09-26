@@ -97,6 +97,13 @@ starts. The Discord brief is unchanged until the last stage.
    - The run uses `--setting-sources project` and `--strict-mcp-config`, so
      the operator's own hooks and claude.ai connectors are absent.
 
+   - Someone else's claim skips a thread before any agent runs: an assignee,
+     an open PR by anyone, or a contributor PR the issue-link gate closed
+     (`missing-issue-link`). The reporter's first claim is in the prompt.
+   - `allow_ready` (default off) opens every PR as a draft, keeping the
+     agent's ready/ship-now advice in the body. Agreed with the fastmcp
+     session on 2026-09-26 while the operator is away for two weeks.
+
    Results land in Discord through `triage ready -> discord`, each with the
    session to `claude --resume`.
 3. **ack ledger.** The operator's acks live in a private space on

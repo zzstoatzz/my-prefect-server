@@ -278,3 +278,60 @@ def test_unknown_usage_defers():
 
     assert usage_verdict(None, 1e9, 50) == (False, "no usage snapshot")
     assert usage_verdict({"saved_at": 1e9}, 1e9, 50)[0] is False
+
+
+# --- first claim -------------------------------------------------------------
+
+
+def _issue(**extra) -> dict:
+    return {"kind": "issue", "number": 5280, "assignees": [], "linked_pull_requests": [], **extra}
+
+
+def _pr(number: int, state: str, labels: tuple[str, ...] = ()) -> dict:
+    return {
+        "number": number,
+        "state": state,
+        "author": {"login": "contributor"},
+        "labels": [{"name": name} for name in labels],
+    }
+
+
+@pytest.mark.parametrize(
+    ("context", "claimed"),
+    [
+        (_issue(), False),
+        (_issue(assignees=["HardMax71"]), True),
+        (_issue(linked_pull_requests=[_pr(9001, "OPEN")]), True),
+        # the issue-link gate closes contributor PRs; closed still means claimed
+        (_issue(linked_pull_requests=[_pr(9002, "CLOSED", ("missing-issue-link",))]), True),
+        # a closed PR that was simply abandoned is not a claim
+        (_issue(linked_pull_requests=[_pr(9003, "CLOSED")]), False),
+        ({"kind": "pull_request", "assignees": ["x"]}, False),
+    ],
+)
+def test_someone_elses_claim_skips_the_issue(context, claimed):
+    from flows.fastmcp_triage import claim_reason
+
+    assert (claim_reason(context) is not None) is claimed
+
+
+def test_ready_opens_as_a_draft_while_ready_is_disabled(tmp_path, monkeypatch, git_identity):
+    clone = _repo_with_remote(tmp_path)
+    (clone / "fix.py").write_text("x = 1\n")
+    calls: list[tuple[str, ...]] = []
+
+    def fake_gh(*args: str) -> str:
+        calls.append(args)
+        return (
+            "gho_" + "z" * 36
+            if args[:2] == ("auth", "token")
+            else "https://github.com/PrefectHQ/fastmcp/pull/9\n"
+        )
+
+    monkeypatch.setattr(fastmcp_triage, "_gh", fake_gh)
+    ready = {"result": _result(action="ready"), "session_id": "s"}
+    out = fastmcp_triage.publish.fn(
+        {"number": 5280, "kind": "issue"}, clone, ready, "run", allow_ready=False
+    )
+    assert out["draft"] is True
+    assert "--draft" in next(c for c in calls if c[:2] == ("pr", "create"))
