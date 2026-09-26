@@ -89,5 +89,5 @@ The live `autofix` and `pi-pr` home-worker deployments remain pinned to their
 previously deployed revisions in `prefect.yaml`. Their newer source calls the
 isolated runner and must not be installed on the home worker accidentally by
 `deploy --all`. Moving those two deployments to Sprites is a separate rollout.
-`autofix-revise` retains its verified provider-switching wheel. The existing
-`sprites-spike` deployment remains independently registered and unchanged.
+`autofix-revise` retains its verified provider-switching wheel. The
+`sprites-spike` deployment was deleted on 2026-09-26 (zero successful runs).

@@ -441,32 +441,6 @@ deployments:
           TURSO_URL: prefect-block://typeahead-turso-url
           TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
 
-  - name: typeahead-handle-repair
-    tags: [publish]
-    entrypoint: flows/typeahead_handle_repair.py:typeahead_handle_repair
-    # ONE-OFF, manual trigger only (no schedule). Repairs actor handles the
-    # pre-2026-09-25 #identity path wrote stale (typeahead 6ba533a fixed the
-    # live path). Reads the drift scan's ~/drift-out/stale.jsonl on heavypad
-    # plus plc.directory/export for the gap after the weekly bundle cutoff;
-    # verifies every handle against the live DID doc before a compare-and-set
-    # write. Idempotent; delete this deployment once its run is verified.
-    concurrency_limit: 1
-    parameters:
-      dry_run: false
-    work_pool:
-      name: home-pool
-      job_variables:
-        command: >-
-          uv run
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
-          prefect flow-run execute
-        env:
-          MPS_PIN: "{{ $MPS_PIN }}"
-          PREFECT_PLUGINS_ENABLED: "true"
-          PREFECT_PLUGINS_ALLOW: mps-secrets
-          TURSO_URL: prefect-block://typeahead-turso-url
-          TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
-
   - name: typeahead-enrich-backfill
     tags: [publish]
     entrypoint: flows/typeahead_enrich_backfill.py:typeahead_enrich_backfill
@@ -486,8 +460,6 @@ deployments:
       dry_run: false
     schedules:
       - cron: "0 20 * * *"
-        # Paused during ingester recovery; re-enable after the write health guard is deployed.
-        active: false
     work_pool:
       name: home-pool
       job_variables:
