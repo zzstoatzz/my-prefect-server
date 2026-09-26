@@ -57,6 +57,17 @@ def fit_briefed(briefed: dict[str, str]) -> dict[str, str]:
     return dict(items)
 
 
+def unbriefed(threads: list[dict[str, Any]], briefed: dict[str, str]) -> list[dict[str, Any]]:
+    """Threads whose current version has not been looked at yet.
+
+    A version is the thread's updated_at, so a thread that moves again comes
+    back. An entry evicted by `fit_briefed` also comes back, as if never seen.
+    """
+    return [
+        t for t in threads if briefed.get(str(t.get("thread_id"))) != (t.get("updated_at") or "")
+    ]
+
+
 # discord's content limit is 2000; the sender wraps body in "**subject**\n\n"
 # and we leave room for the footer line
 BRIEF_CHAR_BUDGET = 1600
@@ -316,9 +327,7 @@ def fastmcp_brief(window_hours: int = 6, ignore_briefed: bool = False) -> dict[s
     briefed: dict[str, str] = (
         {str(k): str(v) for k, v in stored.items()} if isinstance(stored, dict) else {}
     )
-    fresh = [
-        t for t in threads if briefed.get(str(t.get("thread_id"))) != (t.get("updated_at") or "")
-    ]
+    fresh = unbriefed(threads, briefed)
     if not fresh:
         logger.info("all %d threads already briefed", len(threads))
         return {"items": 0, "threads": len(threads), "fresh": 0}

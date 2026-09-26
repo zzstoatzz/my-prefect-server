@@ -229,3 +229,34 @@ class TestBriefedStateFitsPrefectsVariableLimit:
         kept = fit_briefed(self._state(400))
         newest = max(self._state(400).values())
         assert newest in kept.values()
+
+
+class TestUnbriefed:
+    """What counts as news to the brief: a thread version it has not looked at.
+
+    "Briefed" means the pipeline looked at it, including threads the model
+    discarded. It says nothing about whether the operator has seen it.
+    """
+
+    def test_a_version_already_looked_at_is_not_news(self):
+        from flows.fastmcp_brief import unbriefed
+
+        thread = _thread(5280)
+        assert unbriefed([thread], {"5280": thread["updated_at"]}) == []
+
+    def test_a_thread_that_moves_again_is_news(self):
+        from flows.fastmcp_brief import unbriefed
+
+        thread = {**_thread(5280), "updated_at": "2026-09-26T04:06:12Z"}
+        assert unbriefed([thread], {"5280": "2026-09-25T20:43:53Z"}) == [thread]
+
+    def test_a_thread_evicted_from_the_stored_state_is_news_again(self):
+        # the drift the ack ledger is meant to replace: fit_briefed forgets the
+        # oldest versions to fit the Variable, and a forgotten thread that is
+        # still unread comes back as if never briefed
+        from flows.fastmcp_brief import fit_briefed, unbriefed
+
+        stale = {**_thread(1), "thread_id": "1", "updated_at": "2026-01-01T00:00:00Z"}
+        briefed = {"1": stale["updated_at"]}
+        briefed.update(TestBriefedStateFitsPrefectsVariableLimit._state(400))
+        assert unbriefed([stale], fit_briefed(briefed)) == [stale]
