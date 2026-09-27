@@ -31,8 +31,14 @@ github notifications ──► watch-fastmcp (*/5) ──► github.<reason> eve
 ## Observability
 
 [FastMCP triage in Logfire](https://logfire-us.pydantic.dev/waow/zig-prefect-server/dashboards/fastmcp-triage)
-shows run outcomes, duration, candidate/triaged/skipped/failed/blocked counts,
-draft PR links, Claude session IDs, plan usage at admission, and estimated cost.
+opens with a plain-language activity status, live draft/review/problem totals,
+and a dated snapshot of the first three proposed fixes. Setup checks and dry
+runs are excluded from live totals. Run and thread details are collapsed by
+default; timestamps there use readable UTC dates. The overview is verified at
+390 px phone width. Empty live history is explicit, not a claim of worker health.
+
+Run records retain duration, candidate/triaged/skipped/failed/blocked counts,
+Claude session IDs, plan usage at admission, and estimated cost for investigation.
 Grafana's executive overview and GitHub intelligence dashboards link there.
 The dashboard definition lives in `deploy/logfire/fastmcp-triage.json`.
 

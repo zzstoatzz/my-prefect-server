@@ -6,21 +6,34 @@
   },
   "spec": {
     "display": {
-      "name": "FastMCP triage",
-      "description": "Claude Code on laptop-pool. Cost is Claude's API-equivalent estimate on a Max subscription, not a billed charge. Telemetry begins with the observability deployment; older runs remain in Prefect. Unfinished includes running and interrupted jobs, within the selected time range."
+      "name": "FastMCP assistant"
     },
     "duration": "24h",
     "refreshInterval": "1m",
     "variables": [],
     "panels": {
-      "outcomes": {
+      "intro": {
         "kind": "Panel",
         "spec": {
           "display": {
-            "name": "Run outcomes"
+            "name": "Claude on your laptop"
           },
           "plugin": {
-            "kind": "Table",
+            "kind": "Markdown",
+            "spec": {
+              "text": "Reviews FastMCP activity and proposes **draft fixes**. You decide what ships. Runs while your laptop is awake.\n\n[View runs in Prefect](https://prefect-server.waow.tech/deployments/deployment/b51cf6df-c9df-4239-8d86-846cb52c1ee4)"
+            }
+          }
+        }
+      },
+      "status": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Latest activity"
+          },
+          "plugin": {
+            "kind": "Values",
             "spec": {}
           },
           "queries": [
@@ -30,12 +43,65 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT attributes->>'status' AS outcome, count(*) AS runs FROM records WHERE service_name = 'fastmcp-triage' AND message = 'fastmcp triage finished' GROUP BY outcome"
+                    "query": "WITH latest AS (SELECT message, attributes, start_timestamp FROM records WHERE service_name = 'fastmcp-triage' AND attributes->>'publish_prs' = 'true' AND message IN ('fastmcp triage started', 'fastmcp triage finished') ORDER BY start_timestamp DESC LIMIT 1) SELECT COALESCE((SELECT CASE WHEN message = 'fastmcp triage started' THEN CASE WHEN start_timestamp < now() - INTERVAL '4 hours' THEN 'Run needs checking' ELSE 'Working now' END ELSE CASE attributes->>'status' WHEN 'completed' THEN 'Work completed' WHEN 'noop' THEN 'Nothing new to do' WHEN 'deferred' THEN 'Waiting for plan capacity' WHEN 'degraded' THEN 'Some work needs attention' WHEN 'failed' THEN 'Run failed' ELSE 'Check run details' END END FROM latest), CASE WHEN EXISTS (SELECT 1 FROM records WHERE service_name = 'fastmcp-triage' AND message = 'fastmcp triage finished' AND attributes->>'publish_prs' = 'false') THEN 'Setup checks only' ELSE 'No live runs in this window' END) AS status"
                   }
                 }
               }
             }
           ]
+        }
+      },
+      "counts": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Live work in this time range"
+          },
+          "plugin": {
+            "kind": "Values",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT COALESCE(sum((attributes->>'prs')::bigint),0) AS \"Draft PRs\", COALESCE(sum((attributes->>'triaged')::bigint),0) AS \"Reviewed\", count(*) FILTER (WHERE attributes->>'status' IN ('failed','degraded')) AS \"Problems\" FROM records WHERE service_name = 'fastmcp-triage' AND message = 'fastmcp triage finished' AND attributes->>'publish_prs' = 'true'"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "context": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Reading this view"
+          },
+          "plugin": {
+            "kind": "Markdown",
+            "spec": {
+              "text": "**Setup checks only** means monitoring has received verification runs, but no live work in this time range.\n\nLive totals exclude checks and dry runs. Monitoring began September 26; earlier results appear in the dated snapshot.\n\nThis is run history, not a worker health check. [Check laptop availability](https://prefect-server.waow.tech/work-pools/work-pool/laptop-pool)."
+            }
+          }
+        }
+      },
+      "earlier": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Earlier work · September 26"
+          },
+          "plugin": {
+            "kind": "Markdown",
+            "spec": {
+              "text": "**Three draft fixes from five completed runs**, before monitoring was connected:\n\n[**#5291 · Empty tool results**](https://github.com/PrefectHQ/fastmcp/pull/5291)\n\n[**#5293 · Low-rate request limits**](https://github.com/PrefectHQ/fastmcp/pull/5293)\n\n[**#5294 · Image MIME types**](https://github.com/PrefectHQ/fastmcp/pull/5294)\n\nSnapshot from September 26. Open a PR for its current status."
+            }
+          }
         }
       },
       "runs": {
@@ -55,7 +121,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT start_timestamp, attributes->>'status' AS outcome, attributes->>'publish_prs' AS publishing, attributes->>'error_type' AS error, (attributes->>'duration_seconds')::double AS seconds, (attributes->>'candidates')::bigint AS candidates, (attributes->>'triaged')::bigint AS triaged, (attributes->>'skipped')::bigint AS skipped, (attributes->>'failed')::bigint AS failed, (attributes->>'blocked')::bigint AS blocked, (attributes->>'prs')::bigint AS prs, (attributes->>'cost_usd')::double AS estimated_cost_usd, attributes->>'usage' AS plan_usage, attributes->>'run_url' AS run FROM records WHERE service_name = 'fastmcp-triage' AND message = 'fastmcp triage finished' ORDER BY start_timestamp DESC LIMIT 100"
+                    "query": "SELECT to_char(start_timestamp, '%b %d, %H:%M UTC') AS \"When\", CASE attributes->>'status' WHEN 'completed' THEN 'Work completed' WHEN 'noop' THEN 'Nothing new' WHEN 'deferred' THEN 'Plan capacity limit' WHEN 'degraded' THEN 'Needs attention' WHEN 'failed' THEN 'Failed' ELSE attributes->>'status' END AS \"Result\", attributes->>'run_url' AS \"Open run\" FROM records WHERE service_name = 'fastmcp-triage' AND attributes->>'publish_prs' = 'true' AND message = 'fastmcp triage finished' ORDER BY start_timestamp DESC LIMIT 30"
                   }
                 }
               }
@@ -80,7 +146,7 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT start_timestamp, attributes->>'number' AS thread, attributes->>'outcome' AS outcome, attributes->>'publish_prs' AS publishing, (attributes->>'duration_seconds')::double AS seconds, (attributes->>'cost_usd')::double AS estimated_cost_usd, attributes->>'reason' AS skip_reason, attributes->>'action' AS agent_advice, attributes->>'pr_url' AS pull_request, attributes->>'session_id' AS claude_session, attributes->>'error_type' AS error, attributes->>'run_url' AS run FROM records WHERE service_name = 'fastmcp-triage' AND message = 'fastmcp triage thread' ORDER BY start_timestamp DESC LIMIT 100"
+                    "query": "SELECT '#' || (attributes->>'number') AS \"Thread\", CASE WHEN attributes->>'outcome' = 'skipped' THEN CASE WHEN attributes->>'reason' = 'claimed' THEN 'Already claimed' ELSE 'Closed or already reviewed' END WHEN attributes->>'outcome' = 'blocked' THEN 'Publishing blocked' WHEN attributes->>'outcome' = 'failed' THEN 'Review failed' WHEN COALESCE(attributes->>'pr_url', '') != '' THEN 'Draft PR opened' ELSE 'Reviewed' END AS \"Result\", COALESCE(NULLIF(attributes->>'pr_url',''), attributes->>'run_url') AS \"Open result\" FROM records WHERE service_name = 'fastmcp-triage' AND attributes->>'publish_prs' = 'true' AND message = 'fastmcp triage thread' ORDER BY start_timestamp DESC LIMIT 30"
                   }
                 }
               }
@@ -88,11 +154,11 @@
           ]
         }
       },
-      "unfinished": {
+      "outcomes": {
         "kind": "Panel",
         "spec": {
           "display": {
-            "name": "Runs without a finish record"
+            "name": "Setup checks and dry runs"
           },
           "plugin": {
             "kind": "Table",
@@ -105,7 +171,32 @@
                 "plugin": {
                   "kind": "LogfireNonTimeSeriesQuery",
                   "spec": {
-                    "query": "SELECT s.start_timestamp, s.attributes->>'run_url' AS run FROM records s WHERE s.service_name = 'fastmcp-triage' AND s.message = 'fastmcp triage started' AND NOT EXISTS (SELECT 1 FROM records f WHERE f.service_name = 'fastmcp-triage' AND f.message = 'fastmcp triage finished' AND f.attributes->>'run_id' = s.attributes->>'run_id') ORDER BY s.start_timestamp DESC LIMIT 100"
+                    "query": "SELECT CASE attributes->>'status' WHEN 'completed' THEN 'Work completed' WHEN 'noop' THEN 'Nothing new' WHEN 'deferred' THEN 'Plan capacity limit' WHEN 'degraded' THEN 'Needs attention' WHEN 'failed' THEN 'Failed' ELSE attributes->>'status' END AS \"Result\", count(*) AS \"Checks\" FROM records WHERE service_name = 'fastmcp-triage' AND message = 'fastmcp triage finished' AND attributes->>'publish_prs' = 'false' GROUP BY \"Result\""
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "unfinished": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Live runs still open"
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT to_char(s.start_timestamp, '%b %d, %H:%M UTC') AS \"Started\", s.attributes->>'run_url' AS run FROM records s WHERE s.service_name = 'fastmcp-triage' AND s.message = 'fastmcp triage started' AND s.attributes->>'publish_prs' = 'true' AND NOT EXISTS (SELECT 1 FROM records f WHERE f.service_name = 'fastmcp-triage' AND f.message = 'fastmcp triage finished' AND f.attributes->>'run_id' = s.attributes->>'run_id') ORDER BY s.start_timestamp DESC LIMIT 100"
                   }
                 }
               }
@@ -118,23 +209,38 @@
       {
         "kind": "Grid",
         "spec": {
+          "display": {
+            "title": "Overview",
+            "collapse": {
+              "open": true
+            }
+          },
           "items": [
             {
               "x": 0,
               "y": 0,
               "width": 24,
-              "height": 4,
+              "height": 3,
               "content": {
-                "$ref": "#/spec/panels/outcomes"
+                "$ref": "#/spec/panels/status"
               }
             },
             {
               "x": 0,
-              "y": 4,
+              "y": 3,
               "width": 24,
-              "height": 8,
+              "height": 5,
               "content": {
-                "$ref": "#/spec/panels/runs"
+                "$ref": "#/spec/panels/intro"
+              }
+            },
+            {
+              "x": 0,
+              "y": 8,
+              "width": 24,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/counts"
               }
             },
             {
@@ -143,16 +249,78 @@
               "width": 24,
               "height": 8,
               "content": {
+                "$ref": "#/spec/panels/earlier"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Live run details",
+            "collapse": {
+              "open": false
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 7,
+              "content": {
+                "$ref": "#/spec/panels/runs"
+              }
+            },
+            {
+              "x": 0,
+              "y": 7,
+              "width": 24,
+              "height": 7,
+              "content": {
                 "$ref": "#/spec/panels/threads"
               }
             },
             {
               "x": 0,
-              "y": 20,
+              "y": 14,
               "width": 24,
-              "height": 8,
+              "height": 5,
               "content": {
                 "$ref": "#/spec/panels/unfinished"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "kind": "Grid",
+        "spec": {
+          "display": {
+            "title": "Setup checks and how to read this",
+            "collapse": {
+              "open": false
+            }
+          },
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 6,
+              "content": {
+                "$ref": "#/spec/panels/context"
+              }
+            },
+            {
+              "x": 0,
+              "y": 6,
+              "width": 24,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/outcomes"
               }
             }
           ]
