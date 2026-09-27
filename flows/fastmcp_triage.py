@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
+import logfire
 from prefect import flow, get_run_logger, task
 from prefect.artifacts import create_markdown_artifact
 from prefect.events import emit_event
@@ -45,6 +46,7 @@ from prefect.states import Completed, State
 from pydantic import BaseModel, Field
 
 from flows.fastmcp_brief import SEVERITY_MARK, _api_url, _auth
+from flows.triage_observability import TriageReport, observe_triage
 
 REPO = "PrefectHQ/fastmcp"
 LOCAL_CHECKOUT = Path.home() / "github.com" / "prefecthq" / "fastmcp"
@@ -698,78 +700,123 @@ def fastmcp_triage(
     `numbers` targets specific threads; `publish_prs=False` is a dry run. Runs
     only while both Max plan windows are under `usage_threshold` percent used.
     """
-    logger = get_run_logger()
-    ok, usage = usage_verdict(read_usage_snapshot(), time.time(), usage_threshold)
-    if not ok:
-        logger.info("deferred: plan usage %s, threshold %.0f%%", usage, usage_threshold)
-        return Completed(name="Deferred", message=f"plan usage {usage}")
-    logger.info("plan usage %s", usage)
-    surfaced = {i["number"]: i for i in surfaced_recently(window_hours)}
-    wanted = numbers or list(surfaced)
-    run_name = flow_run.name or datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    run_url = flow_run.ui_url or ""
+    logfire.configure(
+        service_name="fastmcp-triage",
+        send_to_logfire="if-token-present",
+        console=False,
+        advanced=logfire.AdvancedOptions(base_url="https://logfire-us.pydantic.dev"),
+    )
+    with observe_triage(
+        TriageReport(flow_run.id or "", flow_run.ui_url or "", publish_prs)
+    ) as report:
+        logger = get_run_logger()
+        ok, usage = usage_verdict(read_usage_snapshot(), time.time(), usage_threshold)
+        report.usage = usage
+        if not ok:
+            report.status = "deferred"
+            logger.info("deferred: plan usage %s, threshold %.0f%%", usage, usage_threshold)
+            return Completed(name="Deferred", message=f"plan usage {usage}")
+        logger.info("plan usage %s", usage)
+        surfaced = {i["number"]: i for i in surfaced_recently(window_hours)}
+        wanted = numbers or list(surfaced)
+        report.candidates = len(wanted)
+        run_name = flow_run.name or datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+        run_url = flow_run.ui_url or ""
 
-    outcomes: list[dict[str, Any]] = []
-    failed: list[int] = []
-    for number in wanted:
-        context = thread_context(number)
-        if not needs_triage(context, triaged_version(number)):
-            logger.info("#%d: closed or already triaged at %s", number, context.get("updated_at"))
-            continue
-        if reason := claim_reason(context):
-            logger.info("#%d: skipped, already claimed: %s", number, reason)
-            continue
-        try:
-            clone = prepare_workspace(context, run_name)
-            agent = run_agent(clone)
-            published = (
-                publish(context, clone, agent, run_url, allow_ready=allow_ready)
-                if publish_prs
-                else {"note": "dry run"}
+        outcomes: list[dict[str, Any]] = []
+        failed: list[int] = []
+        for number in wanted:
+            context = thread_context(number)
+            if not needs_triage(context, triaged_version(number)):
+                report.skipped += 1
+                report.thread(number, "skipped", reason="closed_or_unchanged")
+                logger.info(
+                    "#%d: closed or already triaged at %s", number, context.get("updated_at")
+                )
+                continue
+            if reason := claim_reason(context):
+                report.skipped += 1
+                report.thread(number, "skipped", reason="claimed")
+                logger.info("#%d: skipped, already claimed: %s", number, reason)
+                continue
+            thread_started = time.monotonic()
+            try:
+                clone = prepare_workspace(context, run_name)
+                agent = run_agent(clone)
+                report.cost_usd += agent.get("cost_usd") or 0
+                published = (
+                    publish(context, clone, agent, run_url, allow_ready=allow_ready)
+                    if publish_prs
+                    else {"note": "dry run"}
+                )
+            except Exception as exc:
+                report.failed += 1
+                report.thread(
+                    number,
+                    "failed",
+                    error_type=type(exc).__name__,
+                    duration_seconds=time.monotonic() - thread_started,
+                )
+                # one thread's failure must not cost the others their triage
+                logger.exception("#%d: triage failed", number)
+                failed.append(number)
+                continue
+            report.triaged += 1
+            report.prs += bool(published.get("pr"))
+            report.blocked += bool(published.get("blocked"))
+            report.thread(
+                number,
+                "blocked" if published.get("blocked") else "triaged",
+                duration_seconds=time.monotonic() - thread_started,
+                action=agent["result"].action,
+                session_id=agent.get("session_id"),
+                cost_usd=agent.get("cost_usd"),
+                pr_url=published.get("pr", ""),
+                draft=published.get("draft", False),
             )
-        except Exception:
-            # one thread's failure must not cost the others their triage
-            logger.exception("#%d: triage failed", number)
-            failed.append(number)
-            continue
-        if publish_prs:
-            if published.get("pr"):
-                # a "Fixes #N" pull request touches the issue, and a receipt at
-                # the old version would send it straight back through triage
-                context["updated_at"] = _gh(
-                    "api", f"repos/{REPO}/issues/{number}", "--jq", ".updated_at"
-                ).strip()
-            create_markdown_artifact(
-                key=f"{RECEIPT_PREFIX}{number}",
-                markdown=render_receipt(context, agent, published),
-                description=f"fastmcp #{number} triage",
+            if publish_prs:
+                if published.get("pr"):
+                    # a "Fixes #N" pull request touches the issue, and a receipt at
+                    # the old version would send it straight back through triage
+                    context["updated_at"] = _gh(
+                        "api", f"repos/{REPO}/issues/{number}", "--jq", ".updated_at"
+                    ).strip()
+                create_markdown_artifact(
+                    key=f"{RECEIPT_PREFIX}{number}",
+                    markdown=render_receipt(context, agent, published),
+                    description=f"fastmcp #{number} triage",
+                )
+            outcomes.append(
+                {
+                    "number": number,
+                    "url": context.get("url"),
+                    "severity": (surfaced.get(number) or {}).get("severity", ""),
+                    "agent": agent,
+                    "published": published,
+                }
             )
-        outcomes.append(
-            {
-                "number": number,
-                "url": context.get("url"),
-                "severity": (surfaced.get(number) or {}).get("severity", ""),
-                "agent": agent,
-                "published": published,
-            }
-        )
 
-    if outcomes:
-        emit_event(
-            event="hub.triage.ready",
-            resource={
-                "prefect.resource.id": "hub.triage.fastmcp",
-                "prefect.resource.name": "fastmcp triage",
-                "hubtopic": "fastmcp",
-            },
-            payload={
-                "summary": render_summary(outcomes),
-                "threads": [o["number"] for o in outcomes],
-            },
-        )
-    if failed:
-        return Completed(name="Degraded", message=f"triage failed for {failed}")
-    return {"triaged": [o["number"] for o in outcomes]}
+        if outcomes:
+            emit_event(
+                event="hub.triage.ready",
+                resource={
+                    "prefect.resource.id": "hub.triage.fastmcp",
+                    "prefect.resource.name": "fastmcp triage",
+                    "hubtopic": "fastmcp",
+                },
+                payload={
+                    "summary": render_summary(outcomes),
+                    "threads": [o["number"] for o in outcomes],
+                },
+            )
+        report.status = "completed" if outcomes else "noop"
+        if failed or report.blocked:
+            report.status = "degraded"
+            return Completed(
+                name="Degraded",
+                message=f"triage failed for {failed}; publishing blocked for {report.blocked} threads",
+            )
+        return {"triaged": [o["number"] for o in outcomes]}
 
 
 if __name__ == "__main__":

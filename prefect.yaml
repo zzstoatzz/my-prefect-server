@@ -881,7 +881,17 @@ deployments:
     # The brief event only wakes it: every run re-reads the last day of briefs
     # and each thread's current state, so a run that queued while the laptop
     # slept does current work, and CANCEL_NEW collapses the backlog to one.
-    work_pool: *laptop
+    work_pool:
+      name: laptop-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
+          prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
+          PREFECT_PLUGINS_ENABLED: "true"
+          LOGFIRE_TOKEN: prefect-block://logfire-server-write-token
     concurrency_limit: *cancel_new
     triggers:
       - type: event

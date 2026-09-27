@@ -45,6 +45,12 @@
       "url": "https://prefect-server.waow.tech",
       "icon": "external link",
       "targetBlank": true
+    },
+    {
+      "title": "FastMCP triage",
+      "url": "https://logfire-us.pydantic.dev/waow/zig-prefect-server/dashboards/fastmcp-triage",
+      "type": "link",
+      "targetBlank": true
     }
   ],
   "panels": [

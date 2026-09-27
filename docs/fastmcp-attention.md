@@ -28,6 +28,36 @@ github notifications ──► watch-fastmcp (*/5) ──► github.<reason> eve
 - `brief ready -> discord` is the only automation that sends fastmcp activity
   to a person.
 
+## Observability
+
+[FastMCP triage in Logfire](https://logfire-us.pydantic.dev/waow/zig-prefect-server/dashboards/fastmcp-triage)
+shows run outcomes, duration, candidate/triaged/skipped/failed/blocked counts,
+draft PR links, Claude session IDs, plan usage at admission, and estimated cost.
+Grafana's executive overview and GitHub intelligence dashboards link there.
+The dashboard definition lives in `deploy/logfire/fastmcp-triage.json`.
+
+`fastmcp-triage` sends structured records to the existing `zig-prefect-server`
+project using `logfire-server-write-token`, resolved by the existing secrets
+plugin. It does not export prompts, source, agent responses, or exception text.
+Per-thread Prefect artifacts remain the full diagnosis and resume receipt.
+
+Run outcomes distinguish `completed`, `noop`, `deferred`, `degraded`, and
+`failed`. Publishing blocks now also finish the Prefect run as `Degraded`.
+The unfinished table includes active runs and runs killed before a finish
+record, within the selected time range. Check the linked Prefect run before
+treating an unfinished entry as a fault. An asleep laptop has no telemetry;
+worker availability and queued runs remain visible in Prefect.
+
+Cost is Claude Code's API-equivalent estimate on the Max subscription, not an
+additional billed charge. Totals include successful agent results even if
+publishing then fails, but cannot recover usage from a process killed before
+returning its result. Historical runs before this instrumentation remain in
+Prefect and are not backfilled as current telemetry.
+
+Verification without running Claude or publishing:
+`just prefect deployment run fastmcp-triage/fastmcp-triage --param usage_threshold=0 --param publish_prs=false --watch`.
+This exercises the real laptop worker, secret resolution, and the Deferred path.
+
 ## what "seen" means
 
 `fastmcp_briefed_threads` (a Prefect Variable) maps thread_id → updated_at for

@@ -1,0 +1,163 @@
+{
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "fastmcp-triage",
+    "project": "zig-prefect-server"
+  },
+  "spec": {
+    "display": {
+      "name": "FastMCP triage",
+      "description": "Claude Code on laptop-pool. Cost is Claude's API-equivalent estimate on a Max subscription, not a billed charge. Telemetry begins with the observability deployment; older runs remain in Prefect. Unfinished includes running and interrupted jobs, within the selected time range."
+    },
+    "duration": "24h",
+    "refreshInterval": "1m",
+    "variables": [],
+    "panels": {
+      "outcomes": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Run outcomes"
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT attributes->>'status' AS outcome, count(*) AS runs FROM records WHERE service_name = 'fastmcp-triage' AND message = 'fastmcp triage finished' GROUP BY outcome"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "runs": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Recent runs"
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT start_timestamp, attributes->>'status' AS outcome, attributes->>'publish_prs' AS publishing, attributes->>'error_type' AS error, (attributes->>'duration_seconds')::double AS seconds, (attributes->>'candidates')::bigint AS candidates, (attributes->>'triaged')::bigint AS triaged, (attributes->>'skipped')::bigint AS skipped, (attributes->>'failed')::bigint AS failed, (attributes->>'blocked')::bigint AS blocked, (attributes->>'prs')::bigint AS prs, (attributes->>'cost_usd')::double AS estimated_cost_usd, attributes->>'usage' AS plan_usage, attributes->>'run_url' AS run FROM records WHERE service_name = 'fastmcp-triage' AND message = 'fastmcp triage finished' ORDER BY start_timestamp DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "threads": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Thread outcomes"
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT start_timestamp, attributes->>'number' AS thread, attributes->>'outcome' AS outcome, attributes->>'publish_prs' AS publishing, (attributes->>'duration_seconds')::double AS seconds, (attributes->>'cost_usd')::double AS estimated_cost_usd, attributes->>'reason' AS skip_reason, attributes->>'action' AS agent_advice, attributes->>'pr_url' AS pull_request, attributes->>'session_id' AS claude_session, attributes->>'error_type' AS error, attributes->>'run_url' AS run FROM records WHERE service_name = 'fastmcp-triage' AND message = 'fastmcp triage thread' ORDER BY start_timestamp DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "unfinished": {
+        "kind": "Panel",
+        "spec": {
+          "display": {
+            "name": "Runs without a finish record"
+          },
+          "plugin": {
+            "kind": "Table",
+            "spec": {}
+          },
+          "queries": [
+            {
+              "kind": "NonTimeSeriesQuery",
+              "spec": {
+                "plugin": {
+                  "kind": "LogfireNonTimeSeriesQuery",
+                  "spec": {
+                    "query": "SELECT s.start_timestamp, s.attributes->>'run_url' AS run FROM records s WHERE s.service_name = 'fastmcp-triage' AND s.message = 'fastmcp triage started' AND NOT EXISTS (SELECT 1 FROM records f WHERE f.service_name = 'fastmcp-triage' AND f.message = 'fastmcp triage finished' AND f.attributes->>'run_id' = s.attributes->>'run_id') ORDER BY s.start_timestamp DESC LIMIT 100"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "layouts": [
+      {
+        "kind": "Grid",
+        "spec": {
+          "items": [
+            {
+              "x": 0,
+              "y": 0,
+              "width": 24,
+              "height": 4,
+              "content": {
+                "$ref": "#/spec/panels/outcomes"
+              }
+            },
+            {
+              "x": 0,
+              "y": 4,
+              "width": 24,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/runs"
+              }
+            },
+            {
+              "x": 0,
+              "y": 12,
+              "width": 24,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/threads"
+              }
+            },
+            {
+              "x": 0,
+              "y": 20,
+              "width": 24,
+              "height": 8,
+              "content": {
+                "$ref": "#/spec/panels/unfinished"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
