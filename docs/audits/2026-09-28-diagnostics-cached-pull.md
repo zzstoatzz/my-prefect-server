@@ -94,3 +94,21 @@ Caching remains explicitly enabled only for diagnostics. Ephemeral pods without
 persistent storage gain no cross-run hits. This pinned Unix implementation is
 not a universal replacement for every Prefect Git option; see the design scope.
 The branch still needs integration into main.
+
+## Fleet-health rollout
+
+Enabled fleet-health as the second deployment, sharing diagnostics' tested pin
+97adcf00da811b4f1c779e604a74a5c3cbd9d972 and persistent cache. The YAML override
+and updated deployment coverage assertion are committed in a3aa7a4 on the same
+branch, pushed to both remotes. Fleet-health and its Evergreen checks are
+unchanged between its previous package pin and the verified cache release.
+All 36 pull-step/deployment tests passed.
+
+Live deployment fb012d28-b91e-48f9-af2a-e55fc2ce1b4d retains its active
+3,18,33,48 * * * * schedule, parameters, entrypoint, and home-pool assignment.
+Only pull steps, matching package/source pin, and version were updated.
+
+[Verification run](https://prefect-server.waow.tech/runs/flow-run/d6051f88-7cf7-4011-bee0-62006cc5a0ea)
+completed at 17:41:32 CDT. Worker journal confirms a cache hit at the exact pin,
+12,445,115-byte bundle, and 0.228 s pull time. This demonstrates reuse across
+separate deployments. The other 34 candidate deployments remain unchanged.

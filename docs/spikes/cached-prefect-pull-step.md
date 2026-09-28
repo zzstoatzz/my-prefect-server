@@ -129,7 +129,8 @@ Diagnostics trial completion criteria:
 7. Logs distinguish hit/miss, fetched SHA, source bytes, materialization time, and
    pruning. Measure cold versus warm network activity during the diagnostics trial.
 
-Only after diagnostics succeeds should other deployments opt in. Rollback is
+Diagnostics succeeded; fleet-health is the second deployment enabled, using the same
+verified implementation pin and persistent cache. Other deployments remain unchanged. Rollback is
 removing diagnostics' custom pull override so it inherits the existing shared pull; the cache is disposable and
 no worker restart is required.
 
