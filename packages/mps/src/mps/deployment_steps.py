@@ -92,9 +92,7 @@ def _fetch(entry: Path, commit: str, repositories: list[str], timeout: float) ->
         _git(repo, timeout, "update-ref", "refs/heads/source", commit)
         _git(repo, timeout, "bundle", "create", str(bundle), "--all")
         (ready / "metadata.json").write_text(
-            json.dumps(
-                {"commit": commit, "size": bundle.stat().st_size, "sha256": _digest(bundle)}
-            )
+            json.dumps({"commit": commit, "size": bundle.stat().st_size, "sha256": _digest(bundle)})
         )
         ready.replace(entry)
 
