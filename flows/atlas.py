@@ -140,9 +140,17 @@ def build_atlas(repo_dir: Path) -> Path:
 def build_summaries(repo_dir: Path) -> Path:
     output = repo_dir / "site" / "atlas-summaries.json"
     result = subprocess.run(
-        ["uv", "run", "--script", str(repo_dir / "scripts" / "atlas_summaries.py"),
-         str(repo_dir / "site" / "atlas.json.gz")],
-        capture_output=True, text=True, timeout=3600, check=False,
+        [
+            "uv",
+            "run",
+            "--script",
+            str(repo_dir / "scripts" / "atlas_summaries.py"),
+            str(repo_dir / "site" / "atlas.json.gz"),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=3600,
+        check=False,
     )
     for line in result.stdout.splitlines():
         get_run_logger().info(line)
