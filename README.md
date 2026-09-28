@@ -77,6 +77,7 @@ just push                                 # github first (installs come from the
 | [agent-tooling.md](docs/agent-tooling.md) | the two MCP servers in `plugins/mps/` and what each can do |
 | [prompt-caching.md](docs/prompt-caching.md) | why thousands of LLM calls cost a few dollars |
 | [cost-declaration.md](docs/cost-declaration.md) | a sketch of declaring infrastructure costs on atproto |
+| [audits/](docs/audits/) | point-in-time reviews of the live deployments, with a dated status of what is still open |
 | [incidents/](docs/incidents/) | post-mortems |
 | [archive/](docs/archive/) | shipped design notes and build logs, kept for the why; none describes the present |
 

@@ -168,7 +168,10 @@ automations:
       Same trigger as the discord alert, but it starts the autofix deployment
       with the failed run's id. pi diagnoses every failure read-only; for the
       deployments in propose_for (the canaries) it also opens a gardener pull
-      with a fix. threshold/within collapses a burst of failures into one run.
+      with a fix. threshold/within collapses a burst of failures across all
+      deployments into one run; `for_each: [prefect.resource.id]` would make it
+      one run per failed flow run instead (the zig server honors for_each since
+      prefect-server c0992d4).
       autofix itself never reaches Failed, so it cannot re-trigger this.
     enabled: true
     trigger:

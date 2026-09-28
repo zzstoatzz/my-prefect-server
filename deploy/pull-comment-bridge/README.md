@@ -10,6 +10,11 @@ The hourly `watch-tangled-pulls` deployment is the safety net: it reconciles
 against each reviewer's PDS and ends `Recovered` when it finds a comment the
 bridge missed.
 
+Verified 2026-09-28 with a synthetic event for a non-gardener pull (the
+automation started `autofix-revise` about 5 s later with both parameters
+rendered; it ended `Skipped`). A real operator comment on a gardener pull has
+not been exercised yet; it costs a Pi run and publishes a round.
+
 ## state and health
 
 - cursor: `~/.local/state/pull-comment-bridge/cursor` (the last handled event's

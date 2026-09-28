@@ -29,6 +29,13 @@ The last reported presence persists until a newer report; silence does not mean
 away. Setting `apply_lighting=false` disables writes and returns the deterministic
 policy decision. No LLM is needed for this fixed policy.
 
+A failed application raises `RuntimeError("Lighting failed: ...")` from phue's
+`set_light`, and the Rich-rendered traceback truncates the bridge's actual
+response. The 2026-09 failures turned out to be bulbs switched off at the wall
+(Zigbee "communication issues"), which autofix inferred rather than the log
+showing. Logging the underlying exception's `repr`, with a regression test,
+would make the next unreachable light name itself.
+
 ## Code
 
 - `web/src/routes/api/presence/+server.ts`: authenticated JSON ingress, queuing

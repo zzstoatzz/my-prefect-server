@@ -27,6 +27,11 @@ github notifications ──► watch-fastmcp (*/5) ──► github.<reason> eve
   only when something survives.
 - `brief ready -> discord` is the only automation that sends fastmcp activity
   to a person.
+- `watch-fastmcp` is the remaining short-poll on the box (~4k runs a month).
+  `watch-tangled-pulls` moved to a persistent subscriber with an hourly
+  reconcile (`deploy/pull-comment-bridge/`). The same shape needs a push source
+  for GitHub, and the zig server has no inbound webhook route (checked
+  2026-09-28), so it needs a design choice first.
 
 ## Observability
 
