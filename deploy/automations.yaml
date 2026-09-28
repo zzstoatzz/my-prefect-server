@@ -89,6 +89,32 @@ automations:
         parameters:
           window_hours: 2
 
+  - name: fleet unhealthy -> discord
+    description: >-
+      Endpoint or Stream deep-check findings; full results live in Hub.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - fleet-health.unhealthy
+      # fleet-health and mcp-fleet-health both emit this event; until
+      # 2026-09-28 the match named only the first, so MCP findings never paged.
+      # for_each keeps one sweep's finding from swallowing the other's.
+      match:
+        prefect.resource.id:
+          - fleet-health
+          - mcp-fleet-health
+      for_each:
+        - prefect.resource.id
+      threshold: 1
+      within: 60
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "🟡 Fleet · checks need attention"
+        body: "{{ payload.summary }}"
+
   - name: brief ready -> discord
     description: >-
       The only automation that sends fastmcp activity to a human, and it sends
