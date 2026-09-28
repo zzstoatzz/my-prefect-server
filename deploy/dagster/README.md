@@ -69,6 +69,23 @@ Use `uv run --extra dagster pytest tests/test_dagster_hub.py` for failure/retry
 regressions. A deliberately broken real dbt build must leave the published export
 unchanged. Run the repository's normal checks before releasing changes.
 
+Verified on HeavyPad on 2026-09-28:
+
+- Shadow run `176bd58f-9acf-4cba-824a-b52cb362dd6f`: exact multiset equality for
+  all 13 models, the seed, 140,020 spend records, and all three exported tables.
+  Every dbt asset has observed column schema; all 13 models have column lineage.
+- Production run `dd92f563-a780-4c33-9563-5112e4736640`: all 16 assets
+  materialized, Prefect completed, and retrying the bridge reused the finished
+  run. The dbt step took 15 seconds; total runtime was about seven minutes,
+  dominated by the existing full spend-log import.
+- The HeavyPad and Hetzner hub exports have identical SHA-256 hashes after sync.
+- A failed production seed build prevented publication and downstream triggers.
+  Absolute manifest paths and disabling stale partial parses fix that failure;
+  a real seed regression reproduces the relative-path cache scenario.
+- The full Python suite passed (507 tests), followed by all seven migration
+  regressions after the final fixes. Ruff, formatting, types, deployment
+  contracts, Svelte checks, and frontend lint passed.
+
 ## Recovery
 
 A failed Dagster build leaves the last successfully exported hub database serving.
