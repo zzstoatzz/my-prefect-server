@@ -146,7 +146,9 @@ async def run(state: Path, port: int) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser = argparse.ArgumentParser(
+        description="turn revision requests on stream.waow.tech into Prefect events"
+    )
     parser.add_argument("--state", type=Path, required=True, help="cursor file")
     parser.add_argument("--port", type=int, default=HEALTH_PORT)
     args = parser.parse_args()

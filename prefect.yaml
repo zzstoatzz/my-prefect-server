@@ -965,7 +965,7 @@ deployments:
     work_pool:
       name: home-pool
       job_variables:
-        command: uv run --with /home/stoat/phi-spike-worker/releases/2153371577e4a9ef1fbd1b91a2568f265c0650cf17c89d0fbda634ca2969bafd/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
+        command: uv run --with /home/stoat/phi-spike-worker/releases/9bc32712d3dfea7736344dcb98b443523a1eb8459c022483d611519f2a4c9133/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
     schedules:
       - cron: "17 * * * *"
         active: true
