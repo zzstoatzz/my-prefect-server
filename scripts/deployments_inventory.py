@@ -124,12 +124,6 @@ def group(dep: dict) -> str:
     return tags[0]
 
 
-# Deployments on the server that no spec in this repository declares.
-REGISTERED_ELSEWHERE = {
-    "mcp-atlas": "registered by the mcp-atlas repository, which owns its schedule and code",
-}
-
-
 def load(specs: list[Path], root: Path) -> list[Deployment]:
     deps = []
     for spec in specs:
@@ -189,8 +183,6 @@ def render(deps: list[Deployment]) -> str:
             path, fn = entrypoint_source(d.entrypoint)
             lines.append(f"| `{d.name}` | {d.cadence} | {d.purpose} | [`{fn}`]({path}) |")
         lines.append("")
-    lines += ["## registered elsewhere", "", "on the server, but declared by no spec here.", ""]
-    lines += [f"- `{name}`: {where}" for name, where in REGISTERED_ELSEWHERE.items()]
     return "\n".join(lines).rstrip() + "\n"
 
 

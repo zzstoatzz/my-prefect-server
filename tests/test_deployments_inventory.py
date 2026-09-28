@@ -88,7 +88,7 @@ def test_committed_inventory_matches_prefect_yaml():
     assert inv.render(deps) == inv.OUT.read_text()
 
 
-def test_render_counts_pools_and_names_deployments_declared_elsewhere():
+def test_render_counts_pools_across_specs():
     deps = [
         inv.Deployment("a", "watch", "manual", "a", "flows/a.py:a", pool="home-pool"),
         inv.Deployment("b", "watch", "manual", "b", "flows/b.py:b", pool="home-pool"),
@@ -99,10 +99,8 @@ def test_render_counts_pools_and_names_deployments_declared_elsewhere():
     text = inv.render(deps)
     assert "3 deployments: 2 on `home-pool`, 1 on `laptop-pool`." in text
     assert "generated from `prefect.yaml` and `deploy/c.yaml`" in text
-    assert "## registered elsewhere" in text and "`mcp-atlas`" in text
 
 
 def test_every_in_repo_spec_is_inventoried():
     names = {d.name for d in inv.load(inv.SPECS, inv.ROOT)}
     assert "phone-presence" in names
-    assert not names & set(inv.REGISTERED_ELSEWHERE)

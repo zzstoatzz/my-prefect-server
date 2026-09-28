@@ -88,9 +88,3 @@ the house: phone presence and lighting
 | deployment | cadence | purpose | entrypoint |
 |---|---|---|---|
 | `phone-presence` | manual | record the phone's home/away report and, when enabled, apply the lighting preset | [`report_presence`](flows/presence_lighting.py) |
-
-## registered elsewhere
-
-on the server, but declared by no spec here.
-
-- `mcp-atlas`: registered by the mcp-atlas repository, which owns its schedule and code
