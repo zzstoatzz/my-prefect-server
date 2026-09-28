@@ -1,5 +1,28 @@
 # Heavypad restart assessment — 2026-09-28
 
+## Completed reboot
+
+At the user's request, paused home-pool and phi-sprites-spike, confirmed no
+active Prefect work, and stopped the idle Spindle runner. Rebooted remotely
+over Tailscale. The host returned at about 10:25 CDT with boot ID
+`c0bbd26b-f0a9-4d72-9753-0efe97622006` (previously
+`b540a032-55f7-461d-a830-1280fa564605`). No physical intervention was needed.
+
+- NVIDIA now reports RTX 4070 Laptop, 8188 MiB, driver 580.178.04.
+- No failed system or user units; all six application user services active.
+- Proton IMAP authenticated and answered NOOP successfully after cold boot.
+- Pull-comment bridge reconnected with the same durable cursor,
+  1790602593718883.
+- Home Cloudflare tunnel ready with four connections; local MCP endpoint
+  responds (GET returns 405, as expected for its configured transport).
+- Spindle, Tailscale, node exporter and the Prefect worker started at boot.
+- Both paused pools were resumed and reported READY.
+- Post-boot watch-fastmcp run `48314051-cbc2-4e42-b453-e892a6ec11e5`
+  completed successfully at 10:27:11 CDT.
+
+The assessment below is the pre-reboot planning record. Driver update policy
+and CUDA inference setup remain separate follow-ups.
+
 Initial read-only assessment around 08:28–08:35 America/Chicago (CDT, UTC−5).
 At the user's subsequent request, the pull-comment bridge was fixed and deployed
 at 08:41; its service restart and cursor recovery were verified. No machine
