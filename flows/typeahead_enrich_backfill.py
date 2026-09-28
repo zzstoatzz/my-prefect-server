@@ -77,10 +77,17 @@ def _turso() -> tuple[str, dict[str, str]]:
 # pipeline request occasionally waits past its read timeout while another
 # writer holds the lock. Two of ten runs (2026-08-29, -30) died on exactly one
 # such ReadTimeout inside flush_writes and threw away the rest of a 3.5 h
-# budget, while getProfiles next to it already retried. Every statement here
-# is idempotent (keyset SELECT, UPDATE ... WHERE did = ?), so a retry is safe.
+# budget, while getProfiles next to it already retried. On 2026-09-27 a run
+# died the same way on a result-level SQLITE_IOERR, which arrives inside a 200.
+# Every statement here is idempotent (keyset SELECT, UPDATE ... WHERE did = ?),
+# so resending the whole pipeline after a partial failure is safe.
 TURSO_ATTEMPTS = 4
 TURSO_BACKOFF_S = (5.0, 15.0, 45.0)
+TURSO_TRANSIENT_CODES = ("SQLITE_IOERR", "SQLITE_BUSY")
+
+
+class TursoTransientError(RuntimeError):
+    """a statement failed on storage or lock contention, not on its SQL"""
 
 
 def _tq(
@@ -91,9 +98,9 @@ def _tq(
 ) -> list[Any]:
     """run statements through one hrana pipeline request; raise on any error.
 
-    transient transport failures (timeouts, dropped connections, 5xx) are
-    retried with backoff; a statement-level turso error is not — that is a
-    bug, not weather."""
+    transient failures — timeouts, dropped connections, 5xx, and SQLITE_IOERR /
+    SQLITE_BUSY results — are retried with backoff; any other statement-level
+    turso error is not — that is a bug, not weather."""
     url, headers = _turso()
     reqs = [{"type": "execute", "stmt": s} for s in stmts] + [{"type": "close"}]
     for attempt in range(TURSO_ATTEMPTS):
@@ -102,8 +109,8 @@ def _tq(
             if r.status_code >= 500:
                 raise httpx.HTTPStatusError(f"turso {r.status_code}", request=r.request, response=r)
             r.raise_for_status()
-            break
-        except httpx.HTTPError as e:
+            return _pipeline_results(r.json()["results"])
+        except (httpx.HTTPError, TursoTransientError) as e:
             if attempt == TURSO_ATTEMPTS - 1:
                 raise
             delay = TURSO_BACKOFF_S[min(attempt, len(TURSO_BACKOFF_S) - 1)]
@@ -111,10 +118,18 @@ def _tq(
                 f"turso request failed ({e!r}), attempt {attempt + 1}/{TURSO_ATTEMPTS}; retrying in {delay:.0f}s"
             )
             sleep(delay)
+    raise AssertionError("unreachable: the last attempt returns or raises")
+
+
+def _pipeline_results(results: list[dict[str, Any]]) -> list[Any]:
     out = []
-    for res in r.json()["results"]:
+    for res in results:
         if res.get("type") == "error":
-            raise RuntimeError(f"turso: {res['error']}")
+            error = res.get("error") or {}
+            code = str(error.get("code") or "") if isinstance(error, dict) else ""
+            if code.startswith(TURSO_TRANSIENT_CODES):
+                raise TursoTransientError(f"turso: {error}")
+            raise RuntimeError(f"turso: {error}")
         if "result" in res.get("response", {}):
             out.append(res["response"]["result"])
     return out
