@@ -37,6 +37,12 @@ time. A quiet subscription does not imply a fault or justify advancing it by
 wall clock. Stream replay is bounded to 36 hours; the hourly PDS reconciliation
 remains necessary for longer outages and first-start history.
 
+The checkpoint fix was deployed on 2026-09-28 at 08:41 Chicago time. The saved
+cursor survived an actual service restart and matched the health response
+after reconnecting. A separate production Stream capture/reconnect replayed
+the identical event. PDS reconciliation found two relevant comments, both
+already handled; verification did not publish a comment or start a revision.
+
 ## install or upgrade
 
 The unit runs a staged mps wheel, the same way wheel-pinned deployments do. To
