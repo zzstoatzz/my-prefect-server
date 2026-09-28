@@ -29,12 +29,12 @@ The last reported presence persists until a newer report; silence does not mean
 away. Setting `apply_lighting=false` disables writes and returns the deterministic
 policy decision. No LLM is needed for this fixed policy.
 
-A failed application raises `RuntimeError("Lighting failed: ...")` from phue's
-`set_light`, and the Rich-rendered traceback truncates the bridge's actual
-response. The 2026-09 failures turned out to be bulbs switched off at the wall
-(Zigbee "communication issues"), which autofix inferred rather than the log
-showing. Logging the underlying exception's `repr`, with a regression test,
-would make the next unreachable light name itself.
+A bulb that rejects a command logs `Command not confirmed: <tool> <light>:
+<the bridge's own error>`, and the run fails only if readback disagrees with
+the plan. Until 2026-09-28 the bridge's text was dropped (and the older
+subprocess version surfaced only a truncated Rich traceback), so the 2026-09
+failures — bulbs switched off at the wall, Zigbee "communication issues" — were
+inferred by autofix rather than shown in the log.
 
 ## Code
 

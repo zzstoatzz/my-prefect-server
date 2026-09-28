@@ -24,8 +24,10 @@ async def apply_lighting(state: Literal["home", "away"]) -> int:
             # Readback below decides success, including possibly-applied Hue errors.
             result = await client.call_tool(tool, arguments, raise_on_error=False)
             if result.is_error:
+                detail = " ".join(getattr(c, "text", "") for c in result.content or []).strip()
                 print(
-                    f"Command not confirmed: {tool} {arguments.get('target', '')}", file=sys.stderr
+                    f"Command not confirmed: {tool} {arguments.get('target', '')}: {detail[:500]}",
+                    file=sys.stderr,
                 )
 
         async def read(tool: str) -> dict[str, Any]:

@@ -116,7 +116,7 @@ def test_stale_report_cannot_actuate_newer_presence(monkeypatch):
     )
 
 
-def test_unreachable_light_does_not_block_remaining_writes(tmp_path, monkeypatch):
+def test_unreachable_light_does_not_block_remaining_writes(tmp_path, monkeypatch, capsys):
     import asyncio
     import sys
     from types import ModuleType, SimpleNamespace
@@ -145,7 +145,12 @@ def test_unreachable_light_does_not_block_remaining_writes(tmp_path, monkeypatch
             if tool.startswith("read_"):
                 return SimpleNamespace(structured_content=lights if tool == "read_lights" else {})
             writes.append(arguments["target"])
-            return SimpleNamespace(is_error=arguments["target"] == "offline")
+            if arguments["target"] == "offline":
+                bridge_error = (
+                    'Hue bridge: device (light) is "soft off", command (on) may not have effect'
+                )
+                return SimpleNamespace(is_error=True, content=[SimpleNamespace(text=bridge_error)])
+            return SimpleNamespace(is_error=False, content=[])
 
     client_module = ModuleType("fastmcp")
     client_module.Client = Client
@@ -166,6 +171,8 @@ def test_unreachable_light_does_not_block_remaining_writes(tmp_path, monkeypatch
     with pytest.raises(ValueError, match="offline"):
         asyncio.run(apply_lighting("away"))
     assert writes == ["offline", "online"]
+    # the bridge's own words, not just "not confirmed", so the next failing bulb names its cause
+    assert "soft off" in capsys.readouterr().err
 
 
 def test_incomplete_saved_scene_is_rejected_before_execution():
