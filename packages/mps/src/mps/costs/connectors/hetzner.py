@@ -106,6 +106,7 @@ class HetznerConnector:
         self._tokens = tokens
 
     async def collect(self, period: Period) -> list[LineItem]:
+        self.unmeasured: list[str] = []
         tokens = [("explicit", t) for t in self._tokens] if self._tokens else _project_tokens()
         if not tokens:
             raise RuntimeError("no hetzner tokens provided (hetzner-tokens block or HCLOUD_TOKEN)")
@@ -119,6 +120,7 @@ class HetznerConnector:
                 volumes = await _volumes(token)
                 gb_cents = await _volume_gb_month_cents(token) if volumes else 0.0
             except httpx.HTTPError as exc:
+                self.unmeasured.append(f"project '{label}' ({exc})")
                 print(
                     f"  hetzner: project '{label}' UNMEASURED ({exc}); "
                     "its resources are omitted — check that token"

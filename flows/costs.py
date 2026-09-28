@@ -34,6 +34,7 @@ from pdsx._internal.auth import login
 from prefect import flow, task
 from prefect.artifacts import create_table_artifact
 from prefect.cache_policies import NONE
+from prefect.states import Completed
 from pydantic import BaseModel, Field
 
 COLLECTION = "io.zzstoatzz.cost.snapshot"
@@ -127,12 +128,15 @@ async def costs(config: CostsConfig | None = None):
 
     line_items: list[LineItem] = []
     failed_providers: list[str] = []
+    unmeasured: list[str] = []
     for connector in await build_connectors():
         try:
             line_items.extend(await collect_connector(connector, period))
         except Exception as exc:
             failed_providers.append(connector.name)
             print(f"  {connector.name}: UNMEASURED after retries ({type(exc).__name__}: {exc})")
+            continue
+        unmeasured += [f"{connector.name}: {gap}" for gap in getattr(connector, "unmeasured", [])]
 
     if failed_providers:
         failed = ", ".join(failed_providers)
@@ -165,9 +169,17 @@ async def costs(config: CostsConfig | None = None):
 
     if config.dry_run:
         print(json.dumps(snapshot.to_record(), indent=2))
-        return snapshot.to_record()
-
-    return await write_snapshot(snapshot)
+        result = snapshot.to_record()
+    else:
+        result = await write_snapshot(snapshot)
+    if unmeasured:
+        # the snapshot is still worth publishing, but its total is a floor
+        return Completed(
+            name="Incomplete",
+            message="costs not measured: " + "; ".join(unmeasured),
+            data=result,
+        )
+    return result
 
 
 if __name__ == "__main__":

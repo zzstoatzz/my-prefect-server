@@ -296,3 +296,49 @@ def test_hetzner_prices_volumes_at_per_gb_list(monkeypatch):
     assert archive.project == "stream"
     # auto-named volume falls back to the attached server's project
     assert by_service["volume-hel1-1234:volume"].project == "stream"
+
+
+@pytest.mark.parametrize("gap", [None, "R2 storage (not authorized for that account)"])
+def test_costs_names_the_run_incomplete_when_a_connector_reports_a_gap(monkeypatch, gap):
+    """A snapshot missing R2 or stopped-machine rootfs still publishes, but its
+    total is a floor, so the run must not read as a plain Completed."""
+    from prefect.testing.utilities import prefect_test_harness
+
+    import flows.costs as costs_flow
+
+    class Connector:
+        name = "cloudflare"
+        unmeasured = [gap] if gap else []
+
+    async def fake_build_connectors():
+        return [Connector()]
+
+    async def fake_collect(connector, period):
+        return [
+            LineItem(
+                provider="cloudflare", project="misc", service="s", amount=100, estimated=False
+            )
+        ]
+
+    wrote = []
+
+    async def fake_write_snapshot(snapshot):
+        wrote.append(snapshot)
+        return "at://record"
+
+    monkeypatch.setattr(costs_flow, "build_connectors", fake_build_connectors)
+    monkeypatch.setattr(costs_flow, "collect_connector", fake_collect)
+    monkeypatch.setattr(costs_flow, "write_snapshot", fake_write_snapshot)
+    monkeypatch.setattr(costs_flow, "configure_logfire", lambda *_: None)
+    monkeypatch.setattr(costs_flow, "create_table_artifact", lambda **_: None)
+
+    with prefect_test_harness():
+        state = asyncio.run(
+            costs_flow.costs(costs_flow.CostsConfig(dry_run=False), return_state=True)
+        )
+
+    assert len(wrote) == 1
+    if gap:
+        assert state.name == "Incomplete" and "cloudflare: R2 storage" in state.message
+    else:
+        assert state.name == "Completed"

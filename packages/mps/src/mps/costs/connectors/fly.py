@@ -186,6 +186,7 @@ class FlyConnector:
     name = PROVIDER
 
     async def collect(self, period: Period) -> list[LineItem]:
+        self.unmeasured: list[str] = []
         token = os.environ.get("FLY_API_TOKEN")
         if not token:
             raise RuntimeError("FLY_API_TOKEN not set")
@@ -270,6 +271,7 @@ class FlyConnector:
                 )
 
         if stopped_count:
+            self.unmeasured.append(f"{stopped_count} stopped machine rootfs cost(s)")
             print(
                 f"  fly: {stopped_count} stopped machine rootfs cost(s) UNMEASURED; "
                 "Machines API does not report billable rootfs bytes"

@@ -213,6 +213,7 @@ class CloudflareConnector:
     name = PROVIDER
 
     async def collect(self, period: Period) -> list[LineItem]:
+        self.unmeasured: list[str] = []
         token = os.environ.get("CLOUDFLARE_API_TOKEN")
         if not token:
             raise RuntimeError("CLOUDFLARE_API_TOKEN not set")
@@ -235,6 +236,7 @@ class CloudflareConnector:
                     _r2_line_items(await _r2_stored_bytes_by_bucket(client, account, period))
                 )
             except Exception as exc:
+                self.unmeasured.append(f"R2 storage ({exc})")
                 print(
                     f"  cloudflare: R2 storage UNMEASURED ({exc}); "
                     "add 'Account Analytics: Read' to the token to include it"
