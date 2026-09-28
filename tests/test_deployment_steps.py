@@ -149,7 +149,7 @@ def test_existing_destination_is_untouched(tmp_path, source, monkeypatch):
     assert (target / "valuable.txt").read_text() == "keep"
 
 
-def test_only_diagnostics_overrides_source_pull():
+def test_only_verified_deployments_override_source_pull():
     import yaml
 
     root = Path(__file__).resolve().parents[1]
@@ -159,8 +159,10 @@ def test_only_diagnostics_overrides_source_pull():
         for d in config["deployments"]
         if "mps.deployment_steps.cached_checkout" in json.dumps(d.get("pull"))
     ]
-    assert [d["name"] for d in using_cache] == ["diagnostics"]
-    assert using_cache[0]["schedules"] == [{"cron": "37 * * * *", "active": True}]
+    assert {d["name"]: d["schedules"] for d in using_cache} == {
+        "fleet-health": [{"cron": "3,18,33,48 * * * *", "active": True}],
+        "diagnostics": [{"cron": "37 * * * *", "active": True}],
+    }
 
 
 def test_fetch_timeout_stops_transport_children(tmp_path, monkeypatch):
