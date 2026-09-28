@@ -318,9 +318,9 @@ automations:
       match:
         prefect.resource.id: autofix.comment.*
       threshold: 1
-      # the zig server keeps one bucket per automation (for_each is ignored) and
-      # fires at most once per window, so any window would drop a second comment
-      # arriving inside it. 0 fires on every event.
+      # a reactive trigger fires at most once per window per bucket (python's
+      # design), so a window would drop a second comment arriving inside it.
+      # 0 fires on every event.
       within: 0
     actions:
       - type: run-deployment
