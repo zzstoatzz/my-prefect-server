@@ -32,7 +32,7 @@ def build_definitions(project: Path, database: Path, spend_log: Path, export: Pa
     )
     def hub_models(context: dg.AssetExecutionContext):
         dbt = context.resources.dbt
-        invocation = dbt.cli(["build"], context=context)
+        invocation = dbt.cli(["build", "--no-partial-parse"], context=context)
         try:
             yield from (
                 invocation.stream()

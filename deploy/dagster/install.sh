@@ -19,7 +19,8 @@ with dg.DagsterInstance.get() as instance:
         raise SystemExit('Wait for active Dagster runs before changing the release')
 PY
 fi
-uv run --no-sync dbt parse --project-dir analytics --profiles-dir analytics/profiles
+uv run --no-sync dbt parse --no-partial-parse \
+  --project-dir "$RELEASE_DIR/analytics" --profiles-dir "$RELEASE_DIR/analytics/profiles"
 uv run --no-sync python - <<'PY'
 import dagster as dg
 from hub_dagster.definitions import defs

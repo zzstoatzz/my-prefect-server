@@ -50,6 +50,8 @@ def test_real_dbt_build_and_metadata_release_database_before_other_assets(
     project = tmp_path / "dbt"
     (project / "models").mkdir(parents=True)
     (project / "profiles").mkdir()
+    (project / "seeds").mkdir()
+    (project / "seeds/example.csv").write_text("n\n1\n")
     (project / "dbt_project.yml").write_text(
         "name: failure_check\nversion: '1.0'\nprofile: failure_check\n"
     )
@@ -68,10 +70,11 @@ def test_real_dbt_build_and_metadata_release_database_before_other_assets(
             str(Path(sys.executable).with_name("dbt")),
             "parse",
             "--project-dir",
-            str(project),
+            project.name,
             "--profiles-dir",
             str(project / "profiles"),
         ],
+        cwd=tmp_path,
         check=True,
         capture_output=True,
     )

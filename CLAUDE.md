@@ -42,7 +42,7 @@ this file is a set of notes for us:
 - flow pods install deps via `uv run --with 'my-prefect-server @ git+https://github.com/...'` in the `command` job variable — this creates an ephemeral venv before pull steps run
 - per-deployment overrides (e.g. `--python 3.13` for dbt compat) go in `work_pool.job_variables.command`, not at the deployment root
 - requires-python is >=3.13 (not 3.14) so the transform flow can run dbt under python 3.13
-- we maintain prefect-dbt — never suggest replacing PrefectDbtOrchestrator with subprocess calls
+- the hub dbt project runs in Dagster on HeavyPad (`deploy/dagster/`); Prefect's transform flow only submits and awaits the Dagster run. Keep dbt asset execution and metadata in Dagster.
 - `analytics.duckdb` is single-writer: every RW open must hold the `analytics-duckdb-writer` global concurrency limit (limit=1) via `mps.lock.analytics_write_slot` — new write paths go through `mps.db._write_conn` or wrap the slot themselves. readers snapshot the file to `/tmp` instead of locking
 
 ## agent tooling
