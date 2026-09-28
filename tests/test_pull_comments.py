@@ -1,9 +1,12 @@
 import asyncio
 import json
+import time
 from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
-from mps import pull_comment_bridge as bridge
+import websockets
+from mps import pull_comment_bridge as bridge, pull_comments
 from mps.pull_comments import (
     PULL_PREFIX,
     REVISE_EVENT,
@@ -188,6 +191,51 @@ async def test_bridge_advances_cursor_on_irrelevant_events(tmp_path, handled):
         json.dumps(feed_event(op="delete", time_us=99)), bridge.Status(), state
     )
     assert bridge.read_cursor(state) == 99
+
+
+async def test_quiet_subscription_restarts_from_durable_cursor(monkeypatch, tmp_path):
+    state = tmp_path / "state" / "cursor"
+    before = time.time_ns() // 1000
+    initial = bridge.load_cursor(state)
+    assert before - bridge.INITIAL_LOOKBACK_S * 1_000_000 <= initial <= before
+    offline_event = json.dumps(feed_event(op="delete", time_us=initial + 1_000_000))
+    requested = []
+
+    async def handler(socket):
+        requested.append(int(parse_qs(urlsplit(socket.request.path).query)["cursor"][0]))
+        if len(requested) == 2:
+            await socket.send(offline_event)
+
+    async with websockets.serve(handler, "127.0.0.1", 0) as server:
+        port = server.sockets[0].getsockname()[1]
+        monkeypatch.setattr(pull_comments, "STREAM_URL", f"ws://127.0.0.1:{port}/subscribe")
+        await bridge.consume(bridge.Status(cursor=initial), state)
+        assert bridge.read_cursor(state) == initial
+        restarted = bridge.Status(cursor=bridge.load_cursor(state))
+        await bridge.consume(restarted, state)
+
+    assert requested == [initial, initial]
+    assert bridge.read_cursor(state) == initial + 1_000_000
+    assert restarted.cursor == initial + 1_000_000
+
+
+async def test_failed_checkpoint_keeps_reconnect_cursor(tmp_path):
+    state = tmp_path / "cursor"
+    bridge.write_cursor(state, 7)
+    state.with_suffix(".tmp").mkdir()
+    status = bridge.Status(cursor=7)
+    with pytest.raises(IsADirectoryError):
+        await bridge.handle_message(json.dumps(feed_event(op="delete", time_us=42)), status, state)
+    assert status.cursor == bridge.read_cursor(state) == 7
+
+
+@pytest.mark.parametrize("contents", ["broken", "", "0", "-1"])
+def test_corrupt_cursor_does_not_silently_jump_to_live(tmp_path, contents):
+    state = tmp_path / "cursor"
+    state.write_text(contents)
+    with pytest.raises(ValueError):
+        bridge.load_cursor(state)
+    assert state.read_text() == contents
 
 
 def test_health_goes_stale_only_after_a_sustained_disconnect():

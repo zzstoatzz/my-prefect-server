@@ -20,6 +20,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -41,6 +42,7 @@ log = logging.getLogger("pull-comment-bridge")
 HEALTH_PORT = 8791
 STALE_AFTER_S = 180
 BACKOFF_MAX_S = 60
+INITIAL_LOOKBACK_S = 300
 
 
 @dataclass
@@ -68,16 +70,36 @@ class Status:
 
 def read_cursor(path: Path) -> int | None:
     try:
-        return int(path.read_text().strip())
-    except (FileNotFoundError, ValueError):
+        cursor = int(path.read_text().strip())
+    except FileNotFoundError:
         return None
+    if cursor <= 0:
+        raise ValueError(f"Invalid cursor in {path}")
+    return cursor
 
 
 def write_cursor(path: Path, cursor: int) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(str(cursor))
+    with tmp.open("w") as file:
+        file.write(str(cursor))
+        file.flush()
+        os.fsync(file.fileno())
     tmp.replace(path)
+    directory = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
+def load_cursor(path: Path) -> int:
+    cursor = read_cursor(path)
+    if cursor is None:
+        cursor = time.time_ns() // 1000 - INITIAL_LOOKBACK_S * 1_000_000
+        write_cursor(path, cursor)
+        log.info("initialized cursor %s with %s seconds of replay", cursor, INITIAL_LOOKBACK_S)
+    return cursor
 
 
 async def deliver(comment: dict[str, str], status: Status) -> None:
@@ -97,8 +119,8 @@ async def handle_message(raw: str | bytes, status: Status, state: Path) -> None:
     if comment := relevant_comment(event):
         await deliver(comment, status)
     if time_us := event.get("time_us"):
-        status.cursor = time_us
         write_cursor(state, time_us)
+        status.cursor = time_us
 
 
 async def consume(status: Status, state: Path) -> None:
@@ -127,7 +149,7 @@ async def serve_health(status: Status, port: int) -> asyncio.Server:
 
 
 async def run(state: Path, port: int) -> None:
-    status = Status(cursor=read_cursor(state))
+    status = Status(cursor=load_cursor(state))
     server = await serve_health(status, port)
     backoff = 1
     async with server:

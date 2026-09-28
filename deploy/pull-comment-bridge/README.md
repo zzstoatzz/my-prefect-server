@@ -17,14 +17,25 @@ not been exercised yet; it costs a Pi run and publishes a round.
 
 ## state and health
 
-- cursor: `~/.local/state/pull-comment-bridge/cursor` (the last handled event's
-  `time_us`; it never advances past an undelivered comment)
+- cursor: `~/.local/state/pull-comment-bridge/cursor`. First startup durably
+  saves a timestamp five minutes in the past before connecting, even if no
+  matching event arrives. Subsequent events checkpoint `time_us` only after
+  delivery; failed writes do not advance the reconnect cursor. Corrupt cursor
+  files fail startup instead of silently skipping to live.
 - dedupe: the `autofix_handled_comments` Variable, shared with the reconcile flow
 - health: `http://127.0.0.1:8791/health` — 503 once the subscription has been down
   for 3 minutes. `fleet-health` checks it every 15 minutes, so a dead bridge pages
   through `fleet unhealthy -> discord`.
 - Prefect API credentials come from `~/.config/prod-worker/env`, like the workers.
   The stream is public; no other secret.
+
+The cursor file and containing directory are fsynced after atomic replacement.
+The unit uses an explicit home-relative state path because `%S` resolved to
+`~/.config` on heavypad's user manager. Preserve an existing cursor from that
+legacy location when upgrading; do not replace a valid cursor with the current
+time. A quiet subscription does not imply a fault or justify advancing it by
+wall clock. Stream replay is bounded to 36 hours; the hourly PDS reconciliation
+remains necessary for longer outages and first-start history.
 
 ## install or upgrade
 
