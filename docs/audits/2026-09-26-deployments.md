@@ -16,9 +16,8 @@ This was a read-only production audit. No deployment, schedule, automation, ligh
 - **Also done 2026-09-28.** Finding 3: `mcp-fleet-health` findings route to
   Discord (`deploy/automations.yaml`). Finding 4: `costs` ends
   `Completed(name="Incomplete")` and names what it could not measure. Finding
-  10: `docs/deployments.md` covers `deploy/presence.yaml` and counts pools.
-  It renders only what specs in this repo declare; `mcp-atlas` is registered by
-  its own repository, so the server, not this doc, is where to see it.
+  10 is moot: the generated `docs/deployments.md` was deleted, since
+  `prefect.yaml` and `deploy/presence.yaml` already are the inventory.
 - **Still open**, tracked as tangled issues on this repo: the retire/pause
   decisions (findings 5–7), per-run `for_each` on the failure automations,
   measuring R2 and stopped Fly rootfs, `watch-fastmcp`'s push source, and a real

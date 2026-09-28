@@ -84,13 +84,10 @@ between flow runs. Revisit when `diagnostics` shows disk free trending down.
 job variables. every push to `main` registers all of them through
 `.tangled/workflows/deploy.yml`. Git-backed jobs using MPS_PIN track the pushed
 commit; explicit legacy pins and wheel routes retain their declared versions.
-The static [validator](deployments-validation.md) runs before registration. The inventory in
-[deployments.md](deployments.md) is generated from the same file and CI fails
-if it is stale.
+The static [validator](deployments-validation.md) runs before registration.
 
 ```sh
 just check                                       # what CI runs before it deploys
-just inventory                                   # regenerate docs/deployments.md
 MPS_PIN="@$(git rev-parse HEAD)" just validate-deployments --release # check the intended pin
 # Use the same MPS_PIN with just prefect deploy for manual registration.
 just prefect deployment run 'diagnostics/diagnostics' --watch   # exercise the real worker

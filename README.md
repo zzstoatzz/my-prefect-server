@@ -31,8 +31,6 @@ prefect 3 python.
 - **prefect.yaml is the source of truth** — schedules, triggers, tags,
   parameters, and job variables live in one file. a push to `main` registers
   all of it, preserving explicit legacy pins and wheel routes.
-  [deployments.md](docs/deployments.md)
-  is generated from the same file so the inventory cannot drift.
 - **code delivery is explicit** — Git-backed runs install and check out the
   same revision; wheel-backed runs import packaged flow modules.
   [deployment validation](docs/deployments-validation.md) checks these contracts
@@ -60,7 +58,6 @@ prefect 3 python.
 uv sync                                   # workspace: flows + packages/mps
 just hooks                                # install staged deployment validation
 just check                                # ruff, ty, pytest, the hub's svelte-check and oxlint; what CI runs before deploying
-just inventory                            # regenerate docs/deployments.md after editing prefect.yaml
 just prefect flow-run ls                  # any prefect CLI command against the live server
 just prefect deployment run 'diagnostics/diagnostics' --watch   # a run on the real worker
 just push                                 # github first (installs come from there), then tangled (CI deploys)
@@ -71,7 +68,6 @@ just push                                 # github first (installs come from the
 | | |
 |---|---|
 | [operations.md](docs/operations.md) | standing up the VM and the home worker; the recipes that run the system |
-| [deployments.md](docs/deployments.md) | every deployment with its cadence and purpose, generated from `prefect.yaml` |
 | [hub.md](docs/hub.md) | the ingest → classify → transform → brief pipeline and the hub it feeds |
 | [fastmcp-attention.md](docs/fastmcp-attention.md) | when fastmcp briefs fire, what "seen" means, and the staged plan for laptop triage and operator acks |
 | [autofix.md](docs/autofix.md) | the gardener: failed run → pi diagnosis → pull → phi review → operator merge |

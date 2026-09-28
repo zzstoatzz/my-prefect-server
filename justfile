@@ -483,11 +483,6 @@ check:
     uv run ty check
     uv run pytest -q
     cd web && bun install --frozen-lockfile && bun run check && bun run lint
-    ./scripts/deployments_inventory.py --check
-
-# regenerate docs/deployments.md from prefect.yaml; `--check` is what CI runs
-inventory *args:
-    ./scripts/deployments_inventory.py {{ args }}
 
 # apply standalone automations from deploy/automations.yaml (send-notification
 # and cross-deployment triggers, which prefect.yaml cannot express)

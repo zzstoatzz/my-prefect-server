@@ -41,11 +41,6 @@ steps:
       bun run check
       bun run lint
 
-  - name: inventory is current
-    command: |
-      set -euo pipefail
-      uv run scripts/deployments_inventory.py --check
-
   # MPS_PIN pins the tracking deployments' `uv run --with ...` to this exact commit
   # (see the header comment in prefect.yaml). Without it the install falls back
   # to unpinned main and uv may serve a stale cached commit, so fail loudly
