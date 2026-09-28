@@ -31,6 +31,7 @@ from uuid import UUID
 
 from mps.blocks import secret_sync
 from mps.pi import minimal_env, run_pi, screen_prompt
+from mps.tangled import GARDENER_DID
 from prefect import flow, get_client
 from prefect.client.schemas.filters import (
     FlowRunFilter,
@@ -45,8 +46,6 @@ from prefect.runtime import flow_run as run_context
 from prefect.states import Completed, State
 
 REPO_URL = "https://github.com/zzstoatzz/my-prefect-server.git"
-# gardener.pds.zat.dev — the maintenance identity that authors autofix pulls
-GARDENER_DID = "did:plc:7vx7exykq2zfxjxxejovrymi"
 PULL_PREFIX = f"at://{GARDENER_DID}/sh.tangled.repo.pull/"
 LOG_LINES = 150
 SUMMARY_LIMIT = 240

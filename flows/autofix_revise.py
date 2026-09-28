@@ -23,6 +23,7 @@ from mps.blocks import secret_sync
 from mps.pi import minimal_env, run_pi, screen_prompt
 from mps.tangled import (
     DID as OPERATOR_DID,
+    PHI_DID,
     append_round,
     build_patch,
     comment_on_pull,
@@ -47,8 +48,6 @@ from flows.autofix import (
 from flows.pi_pr import CLONE_URL, OWNER, Repo
 
 MAX_ROUNDS = 6
-PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
-
 PROMPT = """\
 you are gardener, revising your own pull request on the operator's repo in
 response to their review comment. the working directory is a fresh clone of

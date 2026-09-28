@@ -58,6 +58,9 @@ SUPPLEMENTAL_CHECKS: list[tuple[str, str]] = [
     ("relay-eval", "https://relay-eval.waow.tech/api/latest"),
     ("jetstream.waow.tech", "https://jetstream.waow.tech/"),
     ("hub", "https://hub.waow.tech/api/costs.json"),
+    # the autofix revise path (mps.pull_comment_bridge); 503 once its stream
+    # subscription has been down past STALE_AFTER_S. localhost: both run on heavypad
+    ("pull-comment-bridge", "http://127.0.0.1:8791/health"),
 ]
 
 

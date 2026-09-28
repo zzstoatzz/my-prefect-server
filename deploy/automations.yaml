@@ -304,6 +304,32 @@ automations:
         parameters:
           pull: "{{ payload.pull }}"
 
+  - name: autofix revise requested -> autofix-revise
+    description: >-
+      A review comment on a gardener pull asks for a new round. Emitted by
+      mps.pull_comment_bridge on heavypad within seconds of the comment, and by
+      watch-tangled-pulls' hourly reconcile for anything the bridge missed.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect:
+        - autofix.revise-requested
+      match:
+        prefect.resource.id: autofix.comment.*
+      threshold: 1
+      # the zig server keeps one bucket per automation (for_each is ignored) and
+      # fires at most once per window, so any window would drop a second comment
+      # arriving inside it. 0 fires on every event.
+      within: 0
+    actions:
+      - type: run-deployment
+        source: selected
+        deployment: autofix-revise
+        parameters:
+          pull: "{{ payload.pull }}"
+          comment_uri: "{{ payload.uri }}"
+
   - name: merge awaiting approval -> discord
     description: >-
       phi approved and the tests are green; the run is suspended. The body

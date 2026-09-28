@@ -4,7 +4,10 @@ status (2026-09-01): **all three rungs are live.** rung 1 diagnoses every
 failure read-only (`flows/autofix.py`). rung 2 opens a gardener-authored
 pull, gated by the `propose_for` canary allowlist on the failure automation
 (strata-hourly, mcp-atlas). rung 3 turns the operator's pull comments into
-new rounds (`flows/watch_tangled_pulls.py`, `flows/autofix_revise.py`).
+new rounds: `mps.pull_comment_bridge` (a heavypad service, deploy/pull-comment-bridge/)
+emits `autofix.revise-requested` within seconds of a comment, an automation
+starts `flows/autofix_revise.py`, and `flows/watch_tangled_pulls.py` reconciles
+hourly for anything the bridge missed.
 
 ## approval and merge
 

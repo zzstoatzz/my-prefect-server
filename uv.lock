@@ -1916,6 +1916,7 @@ dependencies = [
     { name = "pydantic-ai-slim", extra = ["anthropic", "prefect"] },
     { name = "turbopuffer" },
     { name = "typesafe-sdk" },
+    { name = "websockets" },
 ]
 
 [package.metadata]
@@ -1932,6 +1933,7 @@ requires-dist = [
     { name = "pydantic-ai-slim", extras = ["anthropic", "prefect"] },
     { name = "turbopuffer" },
     { name = "typesafe-sdk", specifier = ">=0.7.0" },
+    { name = "websockets", specifier = ">=15" },
 ]
 
 [[package]]

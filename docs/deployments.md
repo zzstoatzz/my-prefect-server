@@ -57,7 +57,7 @@ pi as a coding agent: diagnose, propose, revise, merge
 |---|---|---|---|
 | `pi-agent` | manual | run `pi -p <prompt>` in the workspace and return its final output | [`pi_agent_local`](flows/pi_agent_local.py) |
 | `autofix` | manual | pi diagnoses a failed run and, when proposing is on for that deployment, opens a gardener pull | [`autofix`](flows/autofix.py) |
-| `watch-tangled-pulls` | `*/2 * * * *` | turn operator comments and Phi revision requests into autofix-revise runs | [`watch_tangled_pulls`](flows/watch_tangled_pulls.py) |
+| `watch-tangled-pulls` | `17 * * * *` | hourly safety net for revision requests on gardener pulls | [`watch_tangled_pulls`](flows/watch_tangled_pulls.py) |
 | `autofix-revise` | manual | revise a gardener-authored pull in response to an operator comment | [`autofix_revise`](flows/autofix_revise.py) |
 | `pi-pr` | manual | Have Gardener attempt `task` using Pi and author a Tangled pull | [`pi_pr`](flows/pi_pr.py) |
 | `merge-approved` | manual | a phi-approved gardener pull lands when the operator resumes this run | [`merge_approved`](flows/merge_approved.py) |

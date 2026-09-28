@@ -1,0 +1,17 @@
+[Unit]
+Description=Stream subscriber turning gardener pull review comments into autofix.revise-requested events
+
+[Service]
+WorkingDirectory=%h
+Environment=PREFECT_LOGGING_LEVEL=INFO
+EnvironmentFile=%h/.config/prod-worker/env
+StateDirectory=pull-comment-bridge
+ExecStart=%h/.local/bin/uv run --no-project --with %h/phi-spike-worker/releases/2153371577e4a9ef1fbd1b91a2568f265c0650cf17c89d0fbda634ca2969bafd/mps-0.1.0-py3-none-any.whl python -m mps.pull_comment_bridge --state %S/pull-comment-bridge/cursor
+Restart=on-failure
+RestartSec=10
+UMask=0077
+NoNewPrivileges=true
+MemoryMax=512M
+
+[Install]
+WantedBy=default.target

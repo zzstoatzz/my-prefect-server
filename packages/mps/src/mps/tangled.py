@@ -14,6 +14,9 @@ from pydantic import BaseModel
 PDS_BASE = "https://pds.zzstoatzz.io"
 DID = "did:plc:xbtmt2zjwlrfegqvch7fboei"
 HANDLE = "zzstoatzz.io"
+# gardener.pds.zat.dev — the maintenance identity that authors autofix pulls
+GARDENER_DID = "did:plc:7vx7exykq2zfxjxxejovrymi"
+PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
 TARGET_REPOS = ["zat", "zlay", "plyr.fm", "at-me", "pollz", "typeahead"]
 
 XRPC = f"{PDS_BASE}/xrpc/com.atproto.repo.listRecords"
