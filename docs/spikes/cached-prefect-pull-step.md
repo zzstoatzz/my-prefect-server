@@ -38,39 +38,41 @@ existing pinned uv environment
 - Cache belongs to the existing worker user at
   `/home/stoat/.cache/mps/source/`. It can be created by the pull step itself;
   no service changes, daemon, root permissions, or new credentials are required.
-- For the initial implementation, cache a source archive per commit. On a miss,
-  fetch the requested commit into temporary Git storage, verify the resolved
-  commit, create the archive, and publish it with an atomic rename. Prefer a
-  shallow fetch of the exact SHA; validate support against the real canonical
-  remote during the diagnostics trial. Any mirror fallback must fetch and verify the same SHA.
+- Cache a self-contained Git bundle per commit. On a miss, fetch the full
+  requested history and tags, verify the commit, create the bundle, and publish
+  it atomically. Any mirror fallback must fetch and verify the same SHA.
 - A hit performs no remote fetch or freshness check: a commit is immutable.
 - Use a per-repository filesystem lock for cache publication, materialization,
   and pruning. Parallel misses for the same commit must download once.
   Include bounded Git subprocess timeouts and clear failure logs.
-- Extract into the current run's temporary workspace, not a shared checkout.
-  Publish that destination only after complete extraction. Do not use writable
+- Clone the bundle into the current run's temporary workspace, not a shared checkout.
+  Publish that destination only after complete checkout. Do not use writable
   hardlinks, a shared working tree, or symlinks back into the cache.
 - Return `{"directory": <absolute run path>, "commit": <sha>, "cache_hit": <bool>}`.
   Prefect's flow loader consumes `directory` before importing the flow. A second
   built-in `set_working_directory` step is unnecessary for this contract.
-- Bound cached archives by last access: initially keep at most eight commits and
-  a 512 MiB total budget, pruning under the same lock after successful extraction.
+- Bound cached bundles by last access: initially keep at most eight commits and
+  a 512 MiB total budget, pruning under the same lock after successful checkout.
   Expired commits can be fetched again for rollback runs. An oversized single
-  artifact can serve the requesting run and be evicted after extraction.
-- Once extraction completes, the run no longer depends on the cached archive.
+  artifact can serve the requesting run and be evicted after checkout.
+- Once checkout completes, the run no longer depends on the cached bundle.
   This makes pruning safe without a custom worker lifecycle hook or leases
   lasting for the entire flow run. Temporary fetches must be cleaned on ordinary
   failures; abandoned staging directories need age-bounded cleanup under the lock.
 
-This removes repeated WAN downloads and Git history checkout work. It still
-does local extraction/copy I/O to preserve run isolation. Removing that I/O too
-would require stronger assumptions about flows never writing into their source
-tree; that is unnecessary for the bandwidth goal.
+This removes repeated WAN downloads while retaining local clone and checkout work.
+Each run owns its `.git` objects, tags, and full history, with no alternates or
+hardlinks back into the cache. The original origin URL is restored. Actual Git
+checkout preserves files marked `export-ignore` and applies checkout filters.
+Tags are captured when the pinned entry is created, not refreshed on warm hits.
 
-Source archives do not contain `.git`. Before rolling out to an existing flow,
-check whether it needs this repository's Git metadata or Git LFS/submodules.
-No tracked submodules or LFS attributes were found in the current repository.
-Flows cloning their own separate repositories are unaffected by this cache.
+Caching is explicitly enabled per deployment. Ephemeral pods without persistent
+cache storage gain no cross-run hits and should keep the ordinary pull step.
+This is a pinned Unix worker implementation, not a drop-in replacement for every
+Prefect Git option: moving branches, explicit submodule initialization, sparse
+checkout, and Windows support are outside this change. No tracked submodules or
+LFS attributes were found in this repository. LFS/filter downloads, if introduced,
+would be separate from the cached Git bundle.
 The custom step must be installed in the pinned package, not only placed in the
 repository that it is itself responsible for retrieving.
 
@@ -83,7 +85,7 @@ and execute code. Add a deployment-specific `pull` override to this entry in
 telemetry behavior. No new flow, deployment, or feature flag is needed. The shared
 top-level pull remains unchanged for other deployments.
 
-Illustrative configuration, not yet installed:
+Diagnostics configuration:
 
 ```yaml
 deployments:

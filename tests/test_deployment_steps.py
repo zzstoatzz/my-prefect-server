@@ -97,7 +97,7 @@ def test_parallel_misses_fetch_once_and_pruning_preserves_runs(tmp_path, source)
     assert sum(not result["cache_hit"] for result in results) == 1
     for i, commit in enumerate(commits[1:]):
         invoke(tmp_path, repo, commit, f"later{i}", keep=2)
-    assert len(list((tmp_path / "cache").glob("*/*/source.tar"))) == 2
+    assert len(list((tmp_path / "cache").glob("*/*/source.bundle"))) == 2
     assert not list((tmp_path / "cache").glob(f"*/{commits[0]}"))
     assert (Path(results[0]["directory"]) / "payload.txt").read_text() == "one"
     rollback = invoke(tmp_path, repo, commits[0], "rollback", keep=2)
@@ -108,13 +108,13 @@ def test_parallel_misses_fetch_once_and_pruning_preserves_runs(tmp_path, source)
 def test_corrupt_cache_is_refetched_and_byte_budget_is_bounded(tmp_path, source):
     repo, commits = source
     invoke(tmp_path, repo, commits[0], "first")
-    archive = next((tmp_path / "cache").glob("*/*/source.tar"))
+    archive = next((tmp_path / "cache").glob("*/*/source.bundle"))
     archive.write_bytes(b"broken")
     repaired = invoke(tmp_path, repo, commits[0], "repaired")
     assert repaired["cache_hit"] is False
     assert (Path(repaired["directory"]) / "payload.txt").read_text() == "one"
     evicted = invoke(tmp_path, repo, commits[1], "tiny-budget", max_bytes=1)
-    assert not list((tmp_path / "cache").glob("*/*/source.tar"))
+    assert not list((tmp_path / "cache").glob("*/*/source.bundle"))
     assert (Path(evicted["directory"]) / "payload.txt").read_text() == "two"
 
 
@@ -192,3 +192,33 @@ def test_fetch_timeout_stops_transport_children(tmp_path, monkeypatch):
     time.sleep(2.2)
     assert not survived.exists()
     assert not list((tmp_path / "cache").glob("*/staging-*"))
+
+
+def test_checkout_preserves_git_history_tags_and_export_ignored_files(tmp_path, source):
+    repo, commits = source
+
+    def git(path, *args):
+        return (
+            subprocess.check_output(["git", "-C", str(path), *args], stderr=subprocess.PIPE)
+            .decode()
+            .strip()
+        )
+
+    git(repo, "tag", "-a", "v1", commits[0], "-m", "first release")
+    (repo / ".gitattributes").write_text("payload.txt export-ignore\n")
+    git(repo, "add", ".gitattributes")
+    git(repo, "commit", "--quiet", "-m", "export attributes")
+    commit = git(repo, "rev-parse", "HEAD")
+    result = invoke(tmp_path, repo, commit, "checkout", max_bytes=1)
+    checkout = Path(result["directory"])
+    assert (checkout / "payload.txt").read_text() == "three"
+    assert git(checkout, "rev-parse", "HEAD") == commit
+    assert git(checkout, "describe") == git(repo, "describe")
+    assert git(checkout, "rev-list", "--count", "HEAD") == "4"
+    assert git(checkout, "remote", "get-url", "origin") == str(repo)
+    assert not (checkout / ".git/objects/info/alternates").exists()
+    assert not list((tmp_path / "cache").glob("*/*/source.bundle"))
+    git(checkout, "fsck", "--full")
+    git(checkout, "checkout", "--quiet", commits[0])
+    assert (checkout / "payload.txt").read_text() == "one"
+    assert git(checkout, "status", "--porcelain") == ""

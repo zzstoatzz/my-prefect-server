@@ -8,7 +8,6 @@ import re
 import shutil
 import signal
 import subprocess
-import tarfile
 import tempfile
 import time
 from contextlib import contextmanager, suppress
@@ -41,14 +40,34 @@ def _locked(path: Path, timeout: float):
 def _valid(entry: Path, commit: str) -> bool:
     try:
         metadata = json.loads((entry / "metadata.json").read_text())
-        archive = entry / "source.tar"
+        bundle = entry / "source.bundle"
         return metadata == {
             "commit": commit,
-            "size": archive.stat().st_size,
-            "sha256": _digest(archive),
+            "size": bundle.stat().st_size,
+            "sha256": _digest(bundle),
         }
     except (OSError, ValueError):
         return False
+
+
+def _git(repo: Path, timeout: float, *args: str) -> bytes:
+    with subprocess.Popen(
+        ["git", "-C", str(repo), *args],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+    ) as process:
+        try:
+            stdout, _ = process.communicate(timeout=timeout)
+        except BaseException:
+            with suppress(ProcessLookupError):
+                os.killpg(process.pid, signal.SIGKILL)
+            process.communicate()
+            raise
+        if process.returncode:
+            raise RuntimeError(f"Source cache git {args[0]} failed ({process.returncode})")
+        return stdout
 
 
 def _fetch(entry: Path, commit: str, repositories: list[str], timeout: float) -> None:
@@ -57,42 +76,24 @@ def _fetch(entry: Path, commit: str, repositories: list[str], timeout: float) ->
         repo = staging / "git"
         repo.mkdir()
 
-        def git(*args: str) -> bytes:
-            with subprocess.Popen(
-                ["git", "-C", str(repo), *args],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                start_new_session=True,
-                env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
-            ) as process:
-                try:
-                    stdout, _ = process.communicate(timeout=timeout)
-                except BaseException:
-                    with suppress(ProcessLookupError):
-                        os.killpg(process.pid, signal.SIGKILL)
-                    process.communicate()
-                    raise
-                if process.returncode:
-                    raise RuntimeError(f"Source cache git {args[0]} failed ({process.returncode})")
-                return stdout
-
-        git("init", "--bare", "--quiet")
+        _git(repo, timeout, "init", "--bare", "--quiet")
         for index, repository in enumerate(repositories):
             try:
-                git("fetch", "--quiet", "--depth=1", "--no-tags", "--", repository, commit)
+                _git(repo, timeout, "fetch", "--quiet", "--tags", "--", repository, commit)
                 break
             except (RuntimeError, subprocess.TimeoutExpired):
                 if index == len(repositories) - 1:
                     raise
-        if git("rev-parse", "FETCH_HEAD^{commit}").decode().strip() != commit:
+        if _git(repo, timeout, "rev-parse", "FETCH_HEAD^{commit}").decode().strip() != commit:
             raise ValueError("Fetched source does not match MPS_PIN")
         ready = staging / "ready"
         ready.mkdir()
-        archive = ready / "source.tar"
-        git("archive", "--format=tar", f"--output={archive}", commit)
+        bundle = ready / "source.bundle"
+        _git(repo, timeout, "update-ref", "refs/heads/source", commit)
+        _git(repo, timeout, "bundle", "create", str(bundle), "--all")
         (ready / "metadata.json").write_text(
             json.dumps(
-                {"commit": commit, "size": archive.stat().st_size, "sha256": _digest(archive)}
+                {"commit": commit, "size": bundle.stat().st_size, "sha256": _digest(bundle)}
             )
         )
         ready.replace(entry)
@@ -154,13 +155,22 @@ def cached_checkout(
                 shutil.rmtree(entry)
             repositories = [repository] + ([fallback_repository] if fallback_repository else [])
             _fetch(entry, commit, repositories, timeout)
-        archive = entry / "source.tar"
-        archive_bytes = archive.stat().st_size
+        bundle = entry / "source.bundle"
+        bundle_bytes = bundle.stat().st_size
         with tempfile.TemporaryDirectory(prefix=".source-", dir=workspace) as temporary:
             materialized = Path(temporary) / "source"
-            materialized.mkdir()
-            with tarfile.open(archive) as source:
-                source.extractall(materialized, filter="data")
+            _git(
+                workspace,
+                timeout,
+                "clone",
+                "--quiet",
+                "--no-checkout",
+                "--",
+                str(bundle),
+                str(materialized),
+            )
+            _git(materialized, timeout, "remote", "set-url", "origin", repository)
+            _git(materialized, timeout, "checkout", "--quiet", "--detach", commit)
             materialized.replace(destination)
         os.utime(entry)
         pruned = _prune(cache, keep, max_bytes)
@@ -168,7 +178,7 @@ def cached_checkout(
         "directory": str(destination),
         "commit": commit,
         "cache_hit": hit,
-        "archive_bytes": archive_bytes,
+        "bundle_bytes": bundle_bytes,
         "pruned": pruned,
         "elapsed_seconds": round(time.monotonic() - started, 3),
     }
