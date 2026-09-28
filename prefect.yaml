@@ -125,6 +125,12 @@ deployments:
   - name: diagnostics
     tags: [watch]
     entrypoint: flows/diagnostics.py:diagnostics
+    pull:
+      - mps.deployment_steps.cached_checkout:
+          repository: https://tangled.org/zzstoatzz.io/my-prefect-server.git
+          fallback_repository: https://github.com/zzstoatzz/my-prefect-server.git
+          cache_root: /home/stoat/.cache/mps/source
+          directory: my-prefect-server
     # retargeted to the home box (heavypad) via the process work pool — canary
     # proving the home worker pulls code + executes flows. revert to *k8s anytime.
     work_pool:
