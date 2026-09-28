@@ -3,7 +3,7 @@
 # requires-python = ">=3.12"
 # dependencies = ["pyyaml"]
 # ///
-"""Render docs/deployments.md from prefect.yaml.
+"""Render docs/deployments.md from the repository's deployment specs.
 
 The README used to carry the deployment list as hand-drawn ASCII, and it
 drifted every time a schedule changed. This script reads the one source of
@@ -28,7 +28,7 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-SPEC = ROOT / "prefect.yaml"
+SPECS = [ROOT / "prefect.yaml", ROOT / "deploy" / "presence.yaml"]
 OUT = ROOT / "docs" / "deployments.md"
 
 GROUPS = {
@@ -37,6 +37,7 @@ GROUPS = {
     "publish": "snapshots and indexes published for other products",
     "gardener": "pi as a coding agent: diagnose, propose, revise, merge",
     "watch": "health, traffic, and cost reporting",
+    "home": "the house: phone presence and lighting",
 }
 
 
@@ -47,6 +48,8 @@ class Deployment:
     cadence: str
     purpose: str
     entrypoint: str
+    pool: str = "home-pool"
+    spec: str = "prefect.yaml"
 
 
 class InventoryError(Exception):
@@ -121,31 +124,53 @@ def group(dep: dict) -> str:
     return tags[0]
 
 
-def load(spec: Path, root: Path) -> list[Deployment]:
-    data = yaml.safe_load(spec.read_text())
-    return [
-        Deployment(
-            name=d["name"],
-            group=group(d),
-            cadence=cadence(d),
-            purpose=purpose(d, root),
-            entrypoint=d["entrypoint"],
-        )
-        for d in data["deployments"]
-    ]
+# Deployments on the server that no spec in this repository declares.
+REGISTERED_ELSEWHERE = {
+    "mcp-atlas": "registered by the mcp-atlas repository, which owns its schedule and code",
+}
+
+
+def load(specs: list[Path], root: Path) -> list[Deployment]:
+    deps = []
+    for spec in specs:
+        data = yaml.safe_load(spec.read_text())
+        for d in data["deployments"]:
+            deps.append(
+                Deployment(
+                    name=d["name"],
+                    group=group(d),
+                    cadence=cadence(d),
+                    purpose=purpose(d, root),
+                    entrypoint=d["entrypoint"],
+                    pool=(d.get("work_pool") or {}).get("name") or "unset",
+                    spec=str(spec.relative_to(root)),
+                )
+            )
+    return deps
+
+
+def pool_summary(deps: list[Deployment]) -> str:
+    counts: dict[str, int] = {}
+    for d in deps:
+        counts[d.pool] = counts.get(d.pool, 0) + 1
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return ", ".join(f"{n} on `{pool}`" for pool, n in ordered)
 
 
 def render(deps: list[Deployment]) -> str:
+    specs = sorted({d.spec for d in deps}, key=lambda s: (s != "prefect.yaml", s))
     lines = [
         "# deployments",
         "",
-        "generated from `prefect.yaml` by `scripts/deployments_inventory.py`; "
+        "generated from "
+        + " and ".join(f"`{s}`" for s in specs)
+        + " by `scripts/deployments_inventory.py`; "
         "do not edit by hand. `just inventory` regenerates it and CI fails on drift.",
         "",
-        f"{len(deps)} deployments, all on the `home-pool` process worker. "
+        f"{len(deps)} deployments: {pool_summary(deps)}. "
         "a cadence of `after x` is an automation that fires when deployment x completes; "
         "`manual` means the deployment is started by the API, an automation outside "
-        "`prefect.yaml`, or a person.",
+        "its spec, or a person.",
         "",
     ]
     for g, blurb in GROUPS.items():
@@ -164,12 +189,14 @@ def render(deps: list[Deployment]) -> str:
             path, fn = entrypoint_source(d.entrypoint)
             lines.append(f"| `{d.name}` | {d.cadence} | {d.purpose} | [`{fn}`]({path}) |")
         lines.append("")
+    lines += ["## registered elsewhere", "", "on the server, but declared by no spec here.", ""]
+    lines += [f"- `{name}`: {where}" for name, where in REGISTERED_ELSEWHERE.items()]
     return "\n".join(lines).rstrip() + "\n"
 
 
 def main(argv: list[str]) -> int:
     check = "--check" in argv
-    text = render(load(SPEC, ROOT))
+    text = render(load(SPECS, ROOT))
     current = OUT.read_text() if OUT.exists() else ""
     if check:
         if text != current:

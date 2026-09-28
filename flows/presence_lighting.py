@@ -29,6 +29,7 @@ def store_presence(report: PresenceUpdate) -> PresenceRecord:
 
 @flow(name="report-presence", timeout_seconds=300, log_prints=True)
 def report_presence(report: PresenceUpdate, apply_lighting: bool = False) -> str:
+    """record the phone's home/away report and, when enabled, apply the lighting preset."""
     with concurrency("home-presence-writer", strict=True):
         record = store_presence(report)
         if record.value.observedAt != report.observedAt:

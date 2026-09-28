@@ -12,6 +12,7 @@ pull:
 
 deployments:
   - name: phone-presence
+    tags: [home]
     entrypoint: flows/presence_lighting.py:report_presence
     parameters:
       apply_lighting: true

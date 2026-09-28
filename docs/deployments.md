@@ -1,8 +1,8 @@
 # deployments
 
-generated from `prefect.yaml` by `scripts/deployments_inventory.py`; do not edit by hand. `just inventory` regenerates it and CI fails on drift.
+generated from `prefect.yaml` and `deploy/presence.yaml` by `scripts/deployments_inventory.py`; do not edit by hand. `just inventory` regenerates it and CI fails on drift.
 
-42 deployments, all on the `home-pool` process worker. a cadence of `after x` is an automation that fires when deployment x completes; `manual` means the deployment is started by the API, an automation outside `prefect.yaml`, or a person.
+43 deployments: 40 on `home-pool`, 2 on `phi-sprites-spike`, 1 on `laptop-pool`. a cadence of `after x` is an automation that fires when deployment x completes; `manual` means the deployment is started by the API, an automation outside its spec, or a person.
 
 ## pipeline
 
@@ -80,3 +80,17 @@ health, traffic, and cost reporting
 | `fastmcp-brief` | `0 */4 * * *` | Compose what happened in fastmcp into something worth reading | [`fastmcp_brief`](flows/fastmcp_brief.py) |
 | `fastmcp-triage` | on `hub.brief.ready` | Triage the threads recent fastmcp briefs surfaced, opening the pull requests the agent proposes | [`fastmcp_triage`](flows/fastmcp_triage.py) |
 | `strata-hourly` | `21 * * * *` | Summarise every sealed segment the worker lacks or holds at a stale checksum; returns segments ingested | [`ingest_segment_collections`](flows/strata.py) |
+
+## home
+
+the house: phone presence and lighting
+
+| deployment | cadence | purpose | entrypoint |
+|---|---|---|---|
+| `phone-presence` | manual | record the phone's home/away report and, when enabled, apply the lighting preset | [`report_presence`](flows/presence_lighting.py) |
+
+## registered elsewhere
+
+on the server, but declared by no spec here.
+
+- `mcp-atlas`: registered by the mcp-atlas repository, which owns its schedule and code
