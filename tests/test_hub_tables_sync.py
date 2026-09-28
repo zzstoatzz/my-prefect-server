@@ -1,4 +1,4 @@
-"""Enforce that flows/transform.py:HUB_TABLES covers every table the hub
+"""Enforce that packages/mps/src/mps/analytics.py:HUB_TABLES covers every table the hub
 SvelteKit server actually queries.
 
 The hub mounts a slim duckdb (hub.duckdb) built by `export_hub_db`; that file
@@ -19,8 +19,7 @@ import re
 from pathlib import Path
 
 import pytest
-
-from flows.transform import HUB_TABLES
+from mps.analytics import HUB_TABLES
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 HUB_SERVER_DIR = REPO_ROOT / "web" / "src" / "lib" / "server"
@@ -71,7 +70,7 @@ def test_hub_tables_covers_every_table_queried_by_hub_loaders() -> None:
 
     Failing this means hub.duckdb won't contain a table that a hub endpoint
     expects → 500 in prod. Fix by adding the new table to HUB_TABLES in
-    flows/transform.py (and verifying it exists in analytics.duckdb).
+    packages/mps/src/mps/analytics.py (and verifying it exists in analytics.duckdb).
     """
     queried = _tables_referenced_in_hub_loaders()
     declared = set(HUB_TABLES)
@@ -79,7 +78,7 @@ def test_hub_tables_covers_every_table_queried_by_hub_loaders() -> None:
     missing = queried - declared
     assert not missing, (
         f"hub loaders reference {sorted(missing)} but HUB_TABLES doesn't "
-        f"include them. add to flows/transform.py:HUB_TABLES so the slim "
+        f"include them. add to packages/mps/src/mps/analytics.py:HUB_TABLES so the slim "
         f"hub.duckdb contains them. (queried={sorted(queried)}, "
         f"declared={sorted(declared)})"
     )
@@ -91,7 +90,7 @@ def test_hub_tables_has_no_unused_entries() -> None:
     Soft signal — failing means hub.duckdb is bigger than it needs to be,
     or the loader using a table got removed but HUB_TABLES wasn't pruned.
     Not load-bearing for correctness; remove the unused entry from
-    flows/transform.py:HUB_TABLES.
+    packages/mps/src/mps/analytics.py:HUB_TABLES.
     """
     queried = _tables_referenced_in_hub_loaders()
     declared = set(HUB_TABLES)
@@ -99,5 +98,5 @@ def test_hub_tables_has_no_unused_entries() -> None:
     unused = declared - queried
     assert not unused, (
         f"HUB_TABLES declares {sorted(unused)} but no hub loader uses them. "
-        f"prune from flows/transform.py:HUB_TABLES to keep hub.duckdb slim."
+        f"prune from packages/mps/src/mps/analytics.py:HUB_TABLES to keep hub.duckdb slim."
     )

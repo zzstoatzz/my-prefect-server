@@ -1,0 +1,21 @@
+[Unit]
+Description=Dagster hub UI (localhost only)
+After=network-online.target
+
+[Service]
+Type=exec
+WorkingDirectory=/home/stoat/dagster-hub/current
+EnvironmentFile=/home/stoat/.config/prod-worker/env
+Environment=PATH=/home/stoat/dagster-hub/current/.venv/bin:/home/stoat/.local/bin:/usr/bin:/bin
+Environment=DAGSTER_HOME=/home/stoat/.local/share/dagster-hub
+Environment=ANALYTICS_DB_PATH=/home/stoat/prefect-analytics/analytics.duckdb
+Environment=LLM_SPEND_LOG_PATH=/home/stoat/prefect-analytics/llm-spend.jsonl
+ExecStart=/home/stoat/dagster-hub/current/.venv/bin/dagster-webserver -w deploy/dagster/workspace.yaml -h 127.0.0.1 -p 3030
+Restart=on-failure
+RestartSec=10
+MemoryHigh=1G
+MemoryMax=2G
+UMask=0077
+
+[Install]
+WantedBy=default.target

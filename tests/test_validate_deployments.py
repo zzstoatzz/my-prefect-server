@@ -29,8 +29,8 @@ def deployment(config, name):
 def test_repository_contracts(config):
     errors, unverified = check(config)
     assert errors == []
-    # four remote wheel artifacts, two home-pool wheel backports, arbitrary pull scripts
-    assert len(unverified) == 7
+    # Four remote wheels, two wheel backports, local Dagster release, arbitrary pull scripts.
+    assert len(unverified) == 8
 
 
 @pytest.mark.parametrize(

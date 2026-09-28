@@ -20,7 +20,6 @@ dependencies = [
     # dbt-core/global_project/.../function.sql to drop 'javascript' or
     # adds 'javascript' to ModelLanguage.
     "dbt-adapters<1.24",
-    "prefect-dbt>=0.6",
     "prefect>=3.7.7",
     "logfire>=4.36.0",
     "zstandard>=0.25.0",
@@ -45,12 +44,17 @@ atlas = [
     # resulting sdist build crashed phi-atlas daily from 2026-06-22.
     "numba>=0.60",
 ]
+dagster = [
+    "dagster==1.13.23",
+    "dagster-dbt==0.29.23",
+    "dagster-webserver==1.13.23",
+]
 
 [project.entry-points."prefect.plugins"]
 mps-secrets = "mps.secrets_plugin"
 
 [tool.hatch.build.targets.wheel]
-packages = ["packages/mps/src/mps"]
+packages = ["packages/mps/src/mps", "hub_dagster"]
 
 [tool.uv.sources]
 mps = { workspace = true }

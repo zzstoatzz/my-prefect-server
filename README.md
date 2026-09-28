@@ -17,6 +17,7 @@ prefect 3 python.
   ────────────────────────────             ─────────────────────────────
   home-pool process worker      ── poll ─► prefect-server (zig) + postgres
   runs home-pool flows          ◄─ runs ── + redis
+  Dagster runs hub dbt locally
   owns analytics.duckdb,
   llm-spend.jsonl               ── rsync ► hub.waow.tech + grafana (public)
 ```
@@ -51,6 +52,9 @@ prefect 3 python.
 - **the agent needs the operator to land a change** — pi diagnoses failures
   and opens pulls as gardener, phi reviews, and the merge credential stays
   behind a human Resume. [autofix.md](docs/autofix.md) is the ladder.
+
+The hub dbt models run in [Dagster on HeavyPad](deploy/dagster/README.md). Prefect
+retains ingestion/classification and a success-gated handoff to downstream flows.
 
 ## develop
 

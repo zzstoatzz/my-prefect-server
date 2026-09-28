@@ -22,7 +22,10 @@ SRC="${PREFECT_ANALYTICS_DIR:-/home/stoat/prefect-analytics}"
 DEST="${HUB_EDGE_ANALYTICS_DIR:-/var/lib/prefect-analytics}"
 KEY="${HUB_SYNC_KEY:-/home/stoat/.ssh/hub_sync_ed25519}"
 
-rsync -az -e "ssh -i $KEY -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
+exec 9>"$SRC/.hub-sync.lock"
+flock -n 9 || exit 0
+
+rsync -az --bwlimit="${HUB_SYNC_KIB_PER_SECOND:-256}" -e "ssh -i $KEY -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
   "$SRC/hub.duckdb" \
   "$SRC/llm-spend.jsonl" \
   "$EDGE:$DEST/"

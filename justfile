@@ -481,7 +481,7 @@ check:
     uv run ruff check .
     uv run ruff format --check .
     uv run ty check
-    uv run pytest -q
+    uv run --extra dagster pytest -q
     cd web && bun install --frozen-lockfile && bun run check && bun run lint
 
 # apply standalone automations from deploy/automations.yaml (send-notification

@@ -183,18 +183,17 @@ deployments:
   - name: transform
     tags: [pipeline]
     entrypoint: flows/transform.py:transform
+    path: /home/stoat/dagster-hub/current
+    pull: []
     work_pool:
       name: home-pool
       job_variables:
-        command: >-
-          uv run --python 3.13.11
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
-          prefect flow-run execute
+        command: /home/stoat/dagster-hub/current/.venv/bin/prefect flow-run execute
         env:
-          MPS_PIN: "{{ $MPS_PIN }}"
+          HUB_DAGSTER_ROOT: /home/stoat/dagster-hub/current
+          DAGSTER_HOME: /home/stoat/.local/share/dagster-hub
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
-          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
     concurrency_limit: *cancel_new
     triggers:
       - type: event

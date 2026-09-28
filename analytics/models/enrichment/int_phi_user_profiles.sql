@@ -21,7 +21,7 @@ tag_stats AS (
 top_tags AS (
     SELECT
         handle,
-        LIST(tag ORDER BY tag_count DESC)[:5] AS top_tags
+        LIST(tag ORDER BY tag_count DESC, tag ASC)[:5] AS top_tags
     FROM tag_stats
     GROUP BY handle
 ),

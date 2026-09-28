@@ -10,10 +10,9 @@ We tried (point the ingress at a hub container on heavypad over the tailnet —
 see git history for the reverted `hub-remote.yaml`). It was ~12s/load: every
 request went US-user → EU-edge → US-home and streamed a ~400KB page back over a
 DERP-relayed residential link. Render on heavypad itself was ~12ms — the cost
-was entirely the cross-Atlantic transfer of the page. The data is only ~4MB, so
-the right split is **serve at the edge, sync the data**: ~4MB crosses the
-tailnet every few minutes, off the request path, instead of ~400KB on every
-page load.
+was entirely the cross-Atlantic transfer of the page. The slim hub database is
+now about 31 MiB, versus 3 GiB for analytics. Serving at the edge keeps replication
+off the request path; rsync sends only changes between exports.
 
 ## how it works
 
@@ -24,7 +23,11 @@ page load.
   (the hostPath the hub Deployment mounts read-only).
 - `llm-spend.jsonl` is append-only so rsync transfers only new bytes; `hub.duckdb`
   changes only when `transform` runs. Most syncs move almost nothing.
-- Dashboard freshness lag is therefore ≤ ~3 min, which is fine for a cost panel.
+- Dashboard freshness lag is the cron interval plus transfer time. An overlapping
+  cron invocation skips its transfer; the next invocation catches up.
+
+The transfer is capped at 256 KiB/s (about 2 Mbit/s), configurable with
+`HUB_SYNC_KIB_PER_SECOND`. A local `flock` prevents overlapping cron transfers.
 
 ## auth
 

@@ -4,10 +4,10 @@ import json
 from pathlib import Path
 
 import duckdb
+import pytest
 from genai_prices.types import Usage
+from mps.analytics import import_spend_log
 from mps.spend import RAW_LLM_SPEND_SCHEMA, record_usage
-
-from flows.transform import import_spend_log
 
 
 def test_record_usage_appends_jsonl(tmp_path: Path) -> None:
@@ -96,7 +96,7 @@ def test_import_spend_log_materializes_raw_llm_spend(tmp_path: Path) -> None:
     }
     log_path.write_text(json.dumps(event) + "\n", encoding="utf-8")
 
-    count = import_spend_log.fn(log_path, db_path)
+    count = import_spend_log(log_path, db_path)
 
     assert count == 1
     con = duckdb.connect(str(db_path))
@@ -120,7 +120,7 @@ def test_null_cost_survives_analytics_import(tmp_path):
         usage=Usage(input_tokens=10, output_tokens=2),
     )
     db = tmp_path / "analytics.duckdb"
-    import_spend_log.fn(log, db)
+    import_spend_log(log, db)
     with duckdb.connect(str(db)) as con:
         assert con.execute("SELECT total_cost_usd FROM raw_llm_spend").fetchone() == (None,)
 
@@ -146,3 +146,19 @@ def test_remote_usage_survives_local_write_failure(monkeypatch, caplog):
     assert "llm_usage " in caplog.text
     assert "sentinel" not in caplog.text
     assert "persistence failed" in caplog.text
+
+
+def test_spend_import_rolls_back_the_batch_on_bad_row(tmp_path):
+    database = tmp_path / "analytics.duckdb"
+    with duckdb.connect(str(database)) as db:
+        db.execute(
+            RAW_LLM_SPEND_SCHEMA.replace(
+                "id VARCHAR PRIMARY KEY", "id VARCHAR PRIMARY KEY CHECK (id <> 'bad')"
+            )
+        )
+    log = tmp_path / "spend.jsonl"
+    log.write_text("\n".join(json.dumps({"id": identifier}) for identifier in ["good", "bad"]))
+    with pytest.raises(duckdb.ConstraintException):
+        import_spend_log(log, database)
+    with duckdb.connect(str(database)) as db:
+        assert db.execute("SELECT count(*) FROM raw_llm_spend").fetchone()[0] == 0

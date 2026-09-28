@@ -16,6 +16,11 @@ DuckDB allows one read-write process per file, and flows on independent schedule
 
 **phi memory** — reads phi's TurboPuffer namespaces (`phi-users-*`) to snapshot observations and interactions into DuckDB for dbt processing. persists to `raw_phi_observations` and `raw_phi_interactions`.
 
+The dbt execution layer is now [Dagster on HeavyPad](../deploy/dagster/README.md).
+The Prefect `transform` flow submits the local Dagster job and waits for its
+result, preserving the downstream event chain. Dagster records each dbt asset
+and its observed schema/column lineage.
+
 ## pipeline
 
 ```
@@ -66,7 +71,7 @@ DuckDB allows one read-write process per file, and flows on independent schedule
 | `diagnostics` | cron `*/5 * * * *` (inactive) | prints system info — canary for worker health |
 | `ingest` | cron `0 * * * *` | fetches github, tangled.org, email, bluesky likes, and phi memory concurrently, resolves liked post content, persists all to DuckDB sequentially |
 | `classify-emails` | on `ingest` completion | LLM-categorizes new inbox emails (personal/work/notification/promotional) in cached 25-email batches so scoring can down-weight promotional mail |
-| `transform` | on `classify-emails` completion | dbt build: staging → enrichment → mart. concurrency limit 1. runs under python 3.13 (dbt-core compat) |
+| `transform` | on `classify-emails` completion | hands off the full staging → enrichment → mart dbt build and atomic hub export to Dagster, waits for success; shared writer lease and one Dagster run at a time |
 | `brief` | on `transform` completion | loads top 200 scored items, sends to claude haiku 4.5 via pydantic-ai, writes `briefing.json`. cached by items content hash (skips LLM when data unchanged) |
 | `phi-memory-synthesis` | on `transform` completion | synthesizes per-user relationship summaries from phi's observations + interactions. extracts new observations from liked posts (LLM). writes summaries to TurboPuffer (`phi-users-*`). cached by observations content hash |
 | `phi-tag-maintenance` | cron `0 13 * * *` (8am CT) | tag maintenance (dedup, merge, relationship discovery) in TurboPuffer. runs 1h before phi's daily reflection |
