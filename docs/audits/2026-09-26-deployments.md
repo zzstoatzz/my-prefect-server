@@ -13,14 +13,15 @@ This was a read-only production audit. No deployment, schedule, automation, ligh
   resumed backfill ran; its 09-27 failure (a Turso `SQLITE_IOERR` result) is
   now retried. The zig server now applies bulk-delete filters, clears stale
   scheduled runs, and honors `for_each` (prefect-server CHANGELOG).
-- **Still open.** Finding 3 (`mcp-fleet-health` never reaches Discord; the
-  automation exists only on the server, so move it into
-  `deploy/automations.yaml` when widening the match). Finding 4 (costs
-  completeness). Findings 5–7 are waiting on a decision: pause `email-triage`?
-  Retire `pds-records`, `dep-bump`, `pi-pr`? Keep the Gardener chain as a set?
-  Check evergreen `site/services.json` and `docs/autofix.md` before deleting
-  any. Finding 10: `scripts/deployments_inventory.py` reads only `prefect.yaml`,
-  so `docs/deployments.md` omits `phone-presence` and `mcp-atlas`.
+- **Also done 2026-09-28.** Finding 3: `mcp-fleet-health` findings route to
+  Discord (`deploy/automations.yaml`). Finding 4: `costs` ends
+  `Completed(name="Incomplete")` and names what it could not measure. Finding
+  10: `docs/deployments.md` covers `deploy/presence.yaml`, names `mcp-atlas`,
+  and counts pools.
+- **Still open**, tracked as tangled issues on this repo: the retire/pause
+  decisions (findings 5–7), per-run `for_each` on the failure automations,
+  measuring R2 and stopped Fly rootfs, `watch-fastmcp`'s push source, and a real
+  operator-comment test of the pull-comment bridge.
 
 ## Evidence and limits
 
