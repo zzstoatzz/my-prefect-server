@@ -32,6 +32,7 @@ import os
 import shutil
 import subprocess
 import urllib.request
+from collections import deque
 from pathlib import Path
 
 from prefect import flow, get_run_logger, task
@@ -56,6 +57,13 @@ INDEXER_HOME = Path(os.environ.get("INDEXER_HOME") or (Path.home() / ".typeahead
 REPO_DIR = INDEXER_HOME / "repo"
 
 
+class ProcessExecutionError(RuntimeError):
+    def __init__(self, command: str, returncode: int, output: str):
+        self.returncode = returncode
+        self.output = output
+        super().__init__(f"{command} exited {returncode}\n{output}")
+
+
 def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
     """Run a subprocess, streaming stdout+stderr to the run logger live.
 
@@ -63,7 +71,11 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
     capture-then-dump would leave the run silent the whole time. Stream so
     progress is visible (see the typeahead 'progress indicators' lesson).
     """
-    logger = get_run_logger()
+    try:
+        logger = get_run_logger()
+    except MissingContextError:
+        logger = logging.getLogger(__name__)
+    output: deque[str] = deque(maxlen=50)
     proc = subprocess.Popen(
         cmd,
         cwd=str(cwd),
@@ -77,12 +89,13 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
         assert proc.stdout is not None
         for line in proc.stdout:
             logger.info(line.rstrip())
+            output.append(line.rstrip()[-2000:])
         code = proc.wait(timeout=timeout)
     except subprocess.TimeoutExpired:
         proc.kill()
         raise RuntimeError(f"{cmd[0]} exceeded {timeout}s timeout") from None
     if code != 0:
-        raise RuntimeError(f"{' '.join(cmd[:3])} ... exited {code}")
+        raise ProcessExecutionError(cmd[0], code, "\n".join(output))
 
 
 @task(
@@ -131,7 +144,7 @@ def build_binary(repo_dir: Path) -> Path:
     return binary
 
 
-@task
+@task(retries=3, retry_delay_seconds=[30, 120, 300])
 def run_indexer(binary: Path) -> None:
     """Run MODE=indexer: read Turso → build snapshot → publish to R2 → exit.
 

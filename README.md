@@ -42,6 +42,9 @@ prefect 3 python.
   and filterable and does not page. retries sit on every task that touches
   the network; nothing catches a transient error where the engine could have
   retried it. [prefect-patterns.md](docs/prefect-patterns.md) has the mechanism.
+  Typeahead's index-builder task retries failures after 30, 120, and 300 seconds,
+  within the flow's four-hour limit. Process errors include the last 50 output
+  lines (up to 2,000 characters each), preserving the underlying Zig error.
 - **one writer for the analytics** — `analytics.duckdb` opens read-write only
   under a global concurrency limit of one; readers snapshot the file.
 - **secrets are blocks** — runtime credentials are Prefect Secret blocks named
