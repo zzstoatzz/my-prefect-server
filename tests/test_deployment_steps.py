@@ -1,7 +1,10 @@
 import asyncio
 import json
 import os
+import shlex
 import subprocess
+import sys
+import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -158,3 +161,34 @@ def test_only_diagnostics_overrides_source_pull():
     ]
     assert [d["name"] for d in using_cache] == ["diagnostics"]
     assert using_cache[0]["schedules"] == [{"cron": "37 * * * *", "active": True}]
+
+
+def test_fetch_timeout_stops_transport_children(tmp_path, monkeypatch):
+    started = tmp_path / "transport-started"
+    survived = tmp_path / "transport-survived"
+    child = (
+        "import time; from pathlib import Path; time.sleep(2); Path("
+        + repr(str(survived))
+        + ").write_text('leaked')"
+    )
+    transport = tmp_path / "transport.py"
+    transport.write_text(
+        "import subprocess, sys, time\nfrom pathlib import Path\n"
+        + "subprocess.Popen([sys.executable, '-c', "
+        + repr(child)
+        + "])\n"
+        + "Path("
+        + repr(str(started))
+        + ").write_text('started')\n"
+        + "time.sleep(30)\n"
+    )
+    monkeypatch.setenv(
+        "GIT_SSH_COMMAND", shlex.quote(sys.executable) + " " + shlex.quote(str(transport))
+    )
+    monkeypatch.setenv("GIT_SSH_VARIANT", "ssh")
+    with pytest.raises(subprocess.TimeoutExpired):
+        invoke(tmp_path, "ssh://unused.invalid/repo", "a" * 40, "timed-out", timeout=0.5)
+    assert started.exists()
+    time.sleep(2.2)
+    assert not survived.exists()
+    assert not list((tmp_path / "cache").glob("*/staging-*"))

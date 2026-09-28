@@ -6,11 +6,12 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import tarfile
 import tempfile
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 
@@ -57,16 +58,23 @@ def _fetch(entry: Path, commit: str, repositories: list[str], timeout: float) ->
         repo.mkdir()
 
         def git(*args: str) -> bytes:
-            result = subprocess.run(
+            with subprocess.Popen(
                 ["git", "-C", str(repo), *args],
-                capture_output=True,
-                timeout=timeout,
-                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
                 env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
-            )
-            if result.returncode:
-                raise RuntimeError(f"Source cache git {args[0]} failed ({result.returncode})")
-            return result.stdout
+            ) as process:
+                try:
+                    stdout, _ = process.communicate(timeout=timeout)
+                except BaseException:
+                    with suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
+                    process.communicate()
+                    raise
+                if process.returncode:
+                    raise RuntimeError(f"Source cache git {args[0]} failed ({process.returncode})")
+                return stdout
 
         git("init", "--bare", "--quiet")
         for index, repository in enumerate(repositories):
