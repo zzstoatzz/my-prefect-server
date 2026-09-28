@@ -70,3 +70,27 @@ The implementation branch has not been merged to main. The repository's main
 CI registers all deployments, so a later deployment from unmodified main can
 replace diagnostics' live override. Merge the reviewed change before relying on
 it as a permanent rollout. Other deployments still use their existing pull steps.
+
+## Git checkout compatibility follow-up
+
+Replaced the archive with a self-contained Git bundle. Diagnostics now uses
+97adcf00da811b4f1c779e604a74a5c3cbd9d972, pushed to both remotes. Each run owns
+its Git objects, full ancestor history, and tags captured at cache creation.
+Actual checkout preserves export-ignore files; origin points to the original
+repository. No alternates or shared objects tie runs to cache retention.
+
+36 tests passed, including git describe, history traversal, clean status, and
+ancestor checkout after cache eviction. Ruff, module type checking, deployment
+contracts, and wheel build passed. On heavypad, 100 warm pulls kept descriptors
+at seven; mean 224 ms, maximum 251 ms, maximum RSS 42,564 KiB. Final-pin preflight:
+cold 2.706 s, warm 0.223 s, bundle 12,445,115 bytes.
+
+[diagnostics-9fcecc7d](https://prefect-server.waow.tech/runs/flow-run/9fcecc7d-0b7a-47b1-9d9b-aa4ef0a3f7f3)
+completed at 17:30:20 CDT. The worker journal confirms the new pin, a cache hit,
+and 0.196 s pull time. Schedules, parameters, pool, and pull configuration were
+verified unchanged.
+
+Caching remains explicitly enabled only for diagnostics. Ephemeral pods without
+persistent storage gain no cross-run hits. This pinned Unix implementation is
+not a universal replacement for every Prefect Git option; see the design scope.
+The branch still needs integration into main.
