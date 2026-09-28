@@ -13,6 +13,7 @@ Expected env vars (set by the deployment):
   - TURBOPUFFER_API_KEY  (block: tpuf-token)
   - CLOUDFLARE_API_TOKEN (block: cloudflare-api-token)
   - ANTHROPIC_API_KEY    (block: anthropic-api-key)
+  - OPENAI_API_KEY       (block: pub-search-atlas-openai-api-key)
   - TURSO_URL            (block: turso-url, optional)
   - TURSO_TOKEN          (block: turso-token, optional)
 """
@@ -132,6 +133,21 @@ def build_atlas(repo_dir: Path) -> Path:
         logger.info(line)
 
     logger.info(f"atlas.json.gz: {output.stat().st_size / 1024:.0f} KB")
+    return output
+
+
+@task(retries=0)
+def build_summaries(repo_dir: Path) -> Path:
+    output = repo_dir / "site" / "atlas-summaries.json"
+    result = subprocess.run(
+        ["uv", "run", "--script", str(repo_dir / "scripts" / "atlas_summaries.py"),
+         str(repo_dir / "site" / "atlas.json.gz")],
+        capture_output=True, text=True, timeout=3600, check=False,
+    )
+    for line in result.stdout.splitlines():
+        get_run_logger().info(line)
+    if result.returncode != 0:
+        raise RuntimeError(f"Atlas summaries exited {result.returncode}")
     return output
 
 
@@ -263,6 +279,10 @@ def rebuild_atlas():
     with tempfile.TemporaryDirectory() as tmpdir:
         repo_dir = clone_repo(Path(tmpdir) / "repo")
         build_atlas(repo_dir)
+        try:
+            build_summaries(repo_dir)
+        except Exception as exc:
+            get_run_logger().warning(f"Atlas summaries unavailable: {type(exc).__name__}")
         # facts are a garnish: a failure shouldn't block the atlas deploy —
         # the repo checkout already carries the last committed facts.json
         try:

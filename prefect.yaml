@@ -323,6 +323,7 @@ deployments:
           TURBOPUFFER_API_KEY: prefect-block://tpuf-token
           CLOUDFLARE_API_TOKEN: prefect-block://cloudflare-api-token
           ANTHROPIC_API_KEY: prefect-block://anthropic-api-key
+          OPENAI_API_KEY: prefect-block://pub-search-atlas-openai-api-key
           TURSO_URL: prefect-block://turso-url
           TURSO_TOKEN: prefect-block://turso-token
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
