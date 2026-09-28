@@ -34,10 +34,10 @@ sudo systemctl restart prefect-home-worker
 - `prefect` is pinned to the server version (3.7.2) to avoid client/server skew.
 - The unit sets `PATH` to include `~/.local/bin` because the process worker spawns
   `uv run …` for each flow run.
-- The unit file declares `MemoryHigh=12G`, `MemoryMax=18G`, `TasksMax=800`, but the
-  live box runs `systemctl set-property` drop-ins in
-  `/etc/systemd/system.control/prefect-home-worker.service.d/` that raise them
-  to 32G / 48G / 4096 (seen 2026-09-28). One of the two should be made to match.
+- The unit is cgroup-limited (`MemoryHigh=32G`, `MemoryMax=48G`, `TasksMax=4096`).
+  These were raised on the box with `systemctl set-property` (drop-ins in
+  `/etc/systemd/system.control/prefect-home-worker.service.d/`, which override
+  the unit file) and the unit was brought in line on 2026-09-28.
   `MemoryCurrent` counts page cache: 27.8 GB on 09-28 was 24.5 GB file cache and
   0.5 GB anon, not a leak. The limits and `KillMode=control-group` exist so a
   genuinely runaway service cannot consume the whole laptop. Those systemd hard

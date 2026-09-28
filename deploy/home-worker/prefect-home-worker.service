@@ -21,10 +21,10 @@ Environment=PREFECT_WORKER_WEBSERVER_PORT=8080
 ExecStart=/usr/local/bin/prefect-worker-guard --config /etc/prefect-worker-guard.env
 KillMode=control-group
 MemoryAccounting=yes
-MemoryHigh=12G
-MemoryMax=18G
+MemoryHigh=32G
+MemoryMax=48G
 MemorySwapMax=2G
-TasksMax=800
+TasksMax=4096
 Restart=always
 RestartSec=5
 StandardOutput=journal
