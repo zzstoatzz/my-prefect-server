@@ -285,7 +285,15 @@ def test_unknown_usage_defers():
 
 
 def _issue(**extra) -> dict:
-    return {"kind": "issue", "number": 5280, "assignees": [], "linked_pull_requests": [], **extra}
+    return {
+        "kind": "issue",
+        "number": 5280,
+        "author": "maintainer",
+        "author_association": "MEMBER",
+        "assignees": [],
+        "linked_pull_requests": [],
+        **extra,
+    }
 
 
 def _pr(number: int, state: str, labels: tuple[str, ...] = ()) -> dict:
@@ -308,6 +316,12 @@ def _pr(number: int, state: str, labels: tuple[str, ...] = ()) -> dict:
         # a closed PR that was simply abandoned is not a claim
         (_issue(linked_pull_requests=[_pr(9003, "CLOSED")]), False),
         ({"kind": "pull_request", "assignees": ["x"]}, False),
+        # the reporter has first claim and may not say so on the thread (#5349)
+        (_issue(author="Harsh23Kashyap", author_association="NONE"), True),
+        (_issue(author="asasemahmed", author_association="CONTRIBUTOR"), True),
+        (_issue(author="new", author_association="FIRST_TIME_CONTRIBUTOR"), True),
+        (_issue(author_association=None), True),
+        (_issue(author="marvin[bot]", author_association="NONE", author_is_bot=True), False),
     ],
 )
 def test_someone_elses_claim_skips_the_issue(context, claimed):

@@ -140,7 +140,11 @@ starts. The Discord brief is unchanged until the last stage.
 
    - Someone else's claim skips a thread before any agent runs: an assignee,
      an open PR by anyone, or a contributor PR the issue-link gate closed
-     (`missing-issue-link`). The reporter's first claim is in the prompt.
+     (`missing-issue-link`), or a reporter who isn't a maintainer. fastmcp's
+     contributing guide gives the reporter first claim and forbids comments
+     asking for it, so the claim is never visible on the thread. Leaving it to
+     the prompt let the loop open five PRs on outside contributors' reports,
+     one of them four minutes before the reporter's own (#5350 and #5351).
    - Checks: the agent runs prek in the sandbox until a run changes nothing
      and reports it (`checks_clean`). The flow re-checks the staged change
      with ruff and codespell at main's pinned versions via isolated `uvx`;
