@@ -1,5 +1,6 @@
 """Materialize pinned flow source without downloading it again for every run."""
 
+import argparse
 import fcntl
 import hashlib
 import json
@@ -147,38 +148,68 @@ def cached_checkout(
         for abandoned in cache.glob("staging-*"):
             if abandoned.is_dir():
                 shutil.rmtree(abandoned)
-        hit = _valid(entry, commit)
-        if not hit:
+        bypass = (entry / "bypass").exists()
+        hit = not bypass and _valid(entry, commit)
+        repositories = [repository] + ([fallback_repository] if fallback_repository else [])
+        if not hit and not bypass:
             if entry.exists():
                 shutil.rmtree(entry)
-            repositories = [repository] + ([fallback_repository] if fallback_repository else [])
             _fetch(entry, commit, repositories, timeout)
         bundle = entry / "source.bundle"
-        bundle_bytes = bundle.stat().st_size
+        bundle_bytes = bundle.stat().st_size if not bypass else 0
         with tempfile.TemporaryDirectory(prefix=".source-", dir=workspace) as temporary:
             materialized = Path(temporary) / "source"
-            _git(
-                workspace,
-                timeout,
-                "clone",
-                "--quiet",
-                "--no-checkout",
-                "--",
-                str(bundle),
-                str(materialized),
-            )
+            sources = repositories if bypass else [str(bundle)]
+            for index, source in enumerate(sources):
+                try:
+                    _git(
+                        workspace,
+                        timeout,
+                        "clone",
+                        "--quiet",
+                        "--no-checkout",
+                        "--",
+                        source,
+                        str(materialized),
+                    )
+                    _git(materialized, timeout, "checkout", "--quiet", "--detach", commit)
+                    break
+                except (RuntimeError, subprocess.TimeoutExpired):
+                    if materialized.exists():
+                        shutil.rmtree(materialized)
+                    if index == len(sources) - 1:
+                        raise
             _git(materialized, timeout, "remote", "set-url", "origin", repository)
-            _git(materialized, timeout, "checkout", "--quiet", "--detach", commit)
             materialized.replace(destination)
+        if bundle_bytes > max_bytes:
+            shutil.rmtree(entry)
+            entry.mkdir()
+            (entry / "bypass").touch()
         os.utime(entry)
         pruned = _prune(cache, keep, max_bytes)
     result = {
         "directory": str(destination),
         "commit": commit,
         "cache_hit": hit,
+        "cache_bypass": bypass,
         "bundle_bytes": bundle_bytes,
         "pruned": pruned,
         "elapsed_seconds": round(time.monotonic() - started, 3),
     }
     print("mps.source_cache " + json.dumps(result), flush=True)
     return result
+
+
+def main() -> None:
+    """Run the stdlib-only helper without replacing a flow's pinned package."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repository", required=True)
+    parser.add_argument("--fallback-repository")
+    parser.add_argument("--cache-root", default="~/.cache/mps/source")
+    parser.add_argument("--directory", default="my-prefect-server")
+    args = parser.parse_args()
+    cached_checkout(**vars(args))
+
+
+if __name__ == "__main__":
+    main()

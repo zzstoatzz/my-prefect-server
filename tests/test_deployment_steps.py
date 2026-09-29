@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import os
 import shlex
@@ -149,20 +150,78 @@ def test_existing_destination_is_untouched(tmp_path, source, monkeypatch):
     assert (target / "valuable.txt").read_text() == "keep"
 
 
-def test_only_verified_deployments_override_source_pull():
+def test_all_home_source_deployments_use_cache_and_preserve_legacy_pins():
     import yaml
 
     root = Path(__file__).resolve().parents[1]
     config = yaml.safe_load((root / "prefect.yaml").read_text())
-    using_cache = [
+    selected = [
         d
         for d in config["deployments"]
-        if "mps.deployment_steps.cached_checkout" in json.dumps(d.get("pull"))
+        if d["work_pool"]["name"] == "home-pool" and d.get("pull", config["pull"])
     ]
-    assert {d["name"]: d["schedules"] for d in using_cache} == {
-        "fleet-health": [{"cron": "3,18,33,48 * * * *", "active": True}],
-        "diagnostics": [{"cron": "37 * * * *", "active": True}],
+    assert len(selected) == 36
+    legacy = {
+        "pi-agent": "@8a7edeea882095cb82e53e673853a37091188ed8",
+        "autofix": "@9495d617fd5a8c7342149dcfd8aef25ade43d2fd",
+        "pi-pr": "@0b9e77c00a550cb51c5f904e2ed060d7834a3160",
     }
+    helper = root / "packages/mps/src/mps/deployment_steps.py"
+    digest = hashlib.sha256(helper.read_bytes()).hexdigest()
+    for deployment in selected:
+        if deployment["name"] in legacy:
+            assert (
+                deployment["work_pool"]["job_variables"]["env"]["MPS_PIN"]
+                == legacy[deployment["name"]]
+            )
+            script = deployment["pull"][0]["prefect.deployments.steps.run_shell_script"]["script"]
+            assert f"/{digest}/deployment_steps.py" in script
+        else:
+            assert "mps.deployment_steps.cached_checkout" in deployment["pull"][0]
+    for deployment in config["deployments"]:
+        if deployment["work_pool"]["name"] != "home-pool":
+            assert "cached_checkout" not in json.dumps(deployment.get("pull"))
+
+
+def test_oversized_bundle_bypasses_future_cache_fills(tmp_path, source, monkeypatch):
+    repo, commits = source
+    invoke(tmp_path, repo, commits[0], "first", max_bytes=1)
+    trace = tmp_path / "trace.jsonl"
+    monkeypatch.setenv("GIT_TRACE2_EVENT", str(trace))
+    result = invoke(tmp_path, repo, commits[0], "second", max_bytes=1)
+    assert result["cache_bypass"] is True
+    assert result["bundle_bytes"] == 0
+    assert (Path(result["directory"]) / "payload.txt").read_text() == "one"
+    commands = [json.loads(line).get("name") for line in trace.read_text().splitlines()]
+    assert "clone" in commands
+    assert "fetch" not in commands
+    assert "bundle" not in commands
+    assert not list((tmp_path / "cache").glob("*/*/source.bundle"))
+
+
+def test_standalone_helper_needs_no_mps_install(tmp_path, source):
+    repo, commits = source
+    script = Path(__file__).resolve().parents[1] / "packages/mps/src/mps/deployment_steps.py"
+    workspace = tmp_path / "standalone"
+    workspace.mkdir()
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-I",
+            str(script),
+            "--repository",
+            str(repo),
+            "--cache-root",
+            str(tmp_path / "cache"),
+        ],
+        cwd=workspace,
+        env={**os.environ, "MPS_PIN": "@" + commits[0]},
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert '"cache_hit": false' in result.stdout
+    assert (workspace / "my-prefect-server/payload.txt").read_text() == "one"
 
 
 def test_fetch_timeout_stops_transport_children(tmp_path, monkeypatch):

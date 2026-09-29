@@ -570,3 +570,13 @@ coding-jobs output=(env_var('HOME') / '.local/state/mps/coding-jobs') *args:
 triage-reply *text:
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
         ./scripts/triage_reply.py "$@"
+
+# Install the immutable stdlib-only source helper for legacy pinned deployments.
+install-source-cache:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source_file=packages/mps/src/mps/deployment_steps.py
+    digest=$(shasum -a 256 "$source_file" | awk '{print $1}')
+    destination="/home/stoat/.local/share/mps/source-cache/$digest"
+    scp "$source_file" "stoat@heavypad:/tmp/mps-source-cache-$digest.py"
+    ssh stoat@heavypad "test \"\$(sha256sum /tmp/mps-source-cache-$digest.py | cut -d' ' -f1)\" = '$digest' && mkdir -p '$destination' && install -m 0444 /tmp/mps-source-cache-$digest.py '$destination/deployment_steps.py' && rm /tmp/mps-source-cache-$digest.py"

@@ -35,6 +35,22 @@ pull:
       directory: my-prefect-server
 
 definitions:
+  pull_steps:
+    home: &cached_home
+      - mps.deployment_steps.cached_checkout:
+          repository: https://tangled.org/zzstoatzz.io/my-prefect-server.git
+          fallback_repository: https://github.com/zzstoatzz/my-prefect-server.git
+          cache_root: /home/stoat/.cache/mps/source
+          directory: my-prefect-server
+    legacy_home: &cached_legacy_home
+      - prefect.deployments.steps.run_shell_script:
+          stream_output: true
+          script: >-
+            uv run --no-project --python 3.13 python /home/stoat/.local/share/mps/source-cache/e492776f91b3e330adb08e18596fcb888e5ae855ff160bb4b2d9ed031a7d98ad/deployment_steps.py
+            --repository https://tangled.org/zzstoatzz.io/my-prefect-server.git
+            --fallback-repository https://github.com/zzstoatzz/my-prefect-server.git
+      - prefect.deployments.steps.set_working_directory:
+          directory: my-prefect-server
   work_pools:
     k8s: &k8s
       name: kubernetes-pool
@@ -75,14 +91,9 @@ definitions:
 
 deployments:
   - name: fleet-health
+    pull: *cached_home
     tags: [watch]
     entrypoint: flows/fleet_health.py:fleet_health
-    pull:
-      - mps.deployment_steps.cached_checkout:
-          repository: https://tangled.org/zzstoatzz.io/my-prefect-server.git
-          fallback_repository: https://github.com/zzstoatzz/my-prefect-server.git
-          cache_root: /home/stoat/.cache/mps/source
-          directory: my-prefect-server
     # curl-weight HTTP checks only (runs on the home box — no websockets or
     # firehose sampling from a residential connection). deep check for
     # stream.waow.tech (tail advance, seal cost, compaction lag), plus Evergreen's
@@ -105,6 +116,7 @@ deployments:
         active: true
 
   - name: mcp-fleet-health
+    pull: *cached_home
     tags: [watch]
     entrypoint: flows/mcp_fleet_health.py:mcp_fleet_health
     # protocol-level health for the public MCP servers in the atlas registry:
@@ -129,14 +141,9 @@ deployments:
         active: true
 
   - name: diagnostics
+    pull: *cached_home
     tags: [watch]
     entrypoint: flows/diagnostics.py:diagnostics
-    pull:
-      - mps.deployment_steps.cached_checkout:
-          repository: https://tangled.org/zzstoatzz.io/my-prefect-server.git
-          fallback_repository: https://github.com/zzstoatzz/my-prefect-server.git
-          cache_root: /home/stoat/.cache/mps/source
-          directory: my-prefect-server
     # retargeted to the home box (heavypad) via the process work pool — canary
     # proving the home worker pulls code + executes flows. revert to *k8s anytime.
     work_pool:
@@ -157,6 +164,7 @@ deployments:
         active: true
 
   - name: ingest
+    pull: *cached_home
     tags: [pipeline]
     entrypoint: flows/ingest.py:ingest
     work_pool: *home
@@ -175,6 +183,7 @@ deployments:
   # fail ingestion. sits between ingest and transform so the dbt build always
   # joins fresh categories (usually seconds — batches are cached 24h).
   - name: classify-emails
+    pull: *cached_home
     tags: [pipeline]
     entrypoint: flows/classify_emails.py:classify_emails
     work_pool: *home
@@ -220,6 +229,7 @@ deployments:
   # (`just triage-reply "..."`), and his decisions are recorded. 8:20am CT,
   # after the hourly ingest -> classify chain has run at :00.
   - name: email-triage
+    pull: *cached_home
     tags: [pipeline]
     entrypoint: flows/email_triage.py:email_triage
     work_pool: *home
@@ -229,6 +239,7 @@ deployments:
         active: true
 
   - name: brief
+    pull: *cached_home
     tags: [pipeline]
     entrypoint: flows/brief.py:brief
     work_pool: *home
@@ -244,6 +255,7 @@ deployments:
   # "compact"). chained off transform because it reads the dbt mart AND to
   # serialize DuckDB access behind the single-writer pipeline.
   - name: phi-memory-synthesis
+    pull: *cached_home
     tags: [pipeline]
     entrypoint: flows/compact.py:compact
     work_pool: *home
@@ -257,6 +269,7 @@ deployments:
 
   # phi's tag merge/relationship maintenance (formerly "morning")
   - name: phi-tag-maintenance
+    pull: *cached_home
     tags: [phi]
     entrypoint: flows/morning.py:morning
     work_pool: *home
@@ -265,6 +278,7 @@ deployments:
       - cron: "0 13 * * *"  # 8am CT daily
 
   - name: phi-atlas
+    pull: *cached_home
     tags: [phi]
     entrypoint: flows/phi_atlas.py:phi_atlas
     # 2D map of phi's mental landscape. UMAP+HDBSCAN over every PDS record
@@ -287,6 +301,7 @@ deployments:
       - cron: "0 13 * * *"  # 8am CT daily, alongside morning
 
   - name: docket
+    pull: *cached_home
     tags: [phi]
     entrypoint: flows/docket.py:docket
     # Daily promotion object — consumes the atlas, emits 5-15 candidate
@@ -304,6 +319,7 @@ deployments:
   # the pub-search leaflet map (formerly "rebuild-atlas" — renamed so it can't
   # be confused with phi-atlas, which is a different atlas entirely)
   - name: leaflet-atlas
+    pull: *cached_home
     tags: [publish]
     entrypoint: flows/atlas.py:rebuild_atlas
     # Canary for the job-variable-driven secret pattern: secrets are
@@ -345,6 +361,7 @@ deployments:
       - cron: "0 */6 * * *"  # every 6 hours
 
   - name: pds-records
+    pull: *cached_home
     tags: [publish]
     entrypoint: flows/pds_records.py:pds_records
     work_pool: *home
@@ -355,6 +372,7 @@ deployments:
         dry_run: true
 
   - name: costs
+    pull: *cached_home
     tags: [watch]
     entrypoint: flows/costs.py:costs
     # provider billing tokens injected from Secret blocks (resolved by the
@@ -398,6 +416,7 @@ deployments:
       - cron: "0 8 * * *"  # daily at 08:00 UTC
 
   - name: bufo-traffic
+    pull: *cached_home
     tags: [watch]
     entrypoint: flows/bufo_traffic.py:bufo_traffic
     # rolls find-bufo.com requests from logfire into com.find-bufo.traffic
@@ -426,6 +445,7 @@ deployments:
       - cron: "7 * * * *"  # hourly, off the hour so it never races ingest
 
   - name: typeahead-identity-hourly
+    pull: *cached_home
     tags: [publish]
     entrypoint: flows/typeahead_identity.py:typeahead_identity_hourly
     # handles for newly discovered actors (~2,900/hour arrive with handle='').
@@ -455,6 +475,7 @@ deployments:
           TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
 
   - name: typeahead-enrich-backfill
+    pull: *cached_home
     tags: [publish]
     entrypoint: flows/typeahead_enrich_backfill.py:typeahead_enrich_backfill
     # THE OWNER of typeahead's profile backlog (~6M actors at
@@ -487,6 +508,7 @@ deployments:
           TURSO_URL: prefect-block://typeahead-turso-url
           TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
   - name: typeahead-index
+    pull: *cached_home
     tags: [publish]
     entrypoint: flows/typeahead_index.py:typeahead_index
     # the typeahead snapshot builder (Zig MODE=indexer), lifted off Fly onto the
@@ -547,6 +569,7 @@ deployments:
         active: true
 
   - name: typeahead-plc-identity
+    pull: *cached_home
     tags: [publish]
     entrypoint: flows/typeahead_plc_identity.py:typeahead_plc_identity
     # Bulk DID -> (handle, pds) resolution from the PLC log, via fig's Allegedly
@@ -593,6 +616,7 @@ deployments:
         active: true
 
   - name: pub-search-snapshot
+    pull: *cached_home
     tags: [publish]
     entrypoint: flows/pub_search_snapshot.py:pub_search_snapshot
     # the pub-search replica snapshot builder (BUILDER_MODE=1), lifted off Fly
@@ -640,6 +664,7 @@ deployments:
         active: true
 
   - name: bisk-snapshot
+    pull: *cached_home
     tags: [publish]
     entrypoint: flows/bisk.py:bisk_snapshot
     # the bisk.social standings builder (https://tangled.org/zzstoatzz.io/bisk).
@@ -677,6 +702,7 @@ deployments:
         active: true
 
   - name: phi-curation
+    pull: *cached_home
     tags: [phi]
     description: phi's weekly publication-curation pass
     entrypoint: flows/phi_trigger.py:phi_trigger
@@ -703,6 +729,7 @@ deployments:
         active: true
 
   - name: phi-likes-review
+    pull: *cached_home
     tags: [phi]
     description: phi reads back her own likes for follow-ups and semble cards
     entrypoint: flows/phi_trigger.py:phi_trigger
@@ -727,6 +754,7 @@ deployments:
         active: true
 
   - name: phi-pull-review
+    pull: *cached_home
     tags: [phi]
     description: phi reviews a gardener pull and comments a VERDICT line
     entrypoint: flows/phi_trigger.py:phi_trigger
@@ -747,6 +775,7 @@ deployments:
       slot: pull-review
 
   - name: phi-editorial
+    pull: *cached_home
     tags: [phi]
     description: phi refreshes coral's editorial context from trending entities
     entrypoint: flows/phi_trigger.py:phi_trigger
@@ -771,6 +800,7 @@ deployments:
         active: true
 
   - name: phi-character-retro
+    pull: *cached_home
     tags: [phi]
     description: phi rereads her own writing and rewrites her [SELF] record
     entrypoint: flows/phi_trigger.py:phi_trigger
@@ -794,6 +824,7 @@ deployments:
         active: true
 
   - name: phi-chicken-scout
+    pull: *cached_home
     tags: [phi]
     description: mid-round chicken market scout
     entrypoint: flows/phi_trigger.py:phi_trigger
@@ -814,6 +845,7 @@ deployments:
         active: true
 
   - name: phi-chicken-precheck
+    pull: *cached_home
     tags: [phi]
     description: pre-lock chicken check, final books and last call
     entrypoint: flows/phi_trigger.py:phi_trigger
@@ -835,6 +867,7 @@ deployments:
         active: true
 
   - name: watch-fastmcp
+    pull: *cached_home
     tags: [watch]
     entrypoint: flows/watch_fastmcp.py:watch_fastmcp
     # emits github.<reason> events; notifies nobody. Conditional requests that
@@ -846,6 +879,7 @@ deployments:
         active: true
 
   - name: fastmcp-brief
+    pull: *cached_home
     tags: [watch]
     entrypoint: flows/fastmcp_brief.py:fastmcp_brief
     # Driven by the `fastmcp activity -> brief` and `fastmcp direct ask ->
@@ -919,6 +953,7 @@ deployments:
       publish_prs: true
 
   - name: pi-agent
+    pull: *cached_legacy_home
     tags: [gardener]
     entrypoint: flows/pi_agent_local.py:pi_agent_local
     # runs pi (the coding agent) non-interactively on the home box. no
@@ -946,6 +981,7 @@ deployments:
           ANTHROPIC_API_KEY: prefect-block://anthropic-api-key
 
   - name: autofix
+    pull: *cached_legacy_home
     tags: [gardener]
     description: pi diagnoses a failed run and, when proposing is on for that deployment, opens a gardener pull
     entrypoint: flows/autofix.py:autofix
@@ -998,6 +1034,7 @@ deployments:
           - /home/stoat/phi-spike-worker/releases/1553f70cb4612fe219d0e1d82232a560947a18e194eb1ee4fe0ec80aa2aa741e/mps-0.1.0-py3-none-any.whl
 
   - name: pi-pr
+    pull: *cached_legacy_home
     tags: [gardener]
     entrypoint: flows/pi_pr.py:pi_pr
     # pi (luna) proposes a change in a throwaway clone; the flow turns it into
@@ -1043,6 +1080,7 @@ deployments:
           - /home/stoat/phi-spike-worker/releases/2f167908b9ed2379eb2df6bea861eacf629716bfcd7b562832b46ce3c93a4f4e/mps-0.1.0-py3-none-any.whl
 
   - name: dep-bump
+    pull: *cached_home
     tags: [gardener]
     entrypoint: flows/dep_bump.py:dep_bump
     # the local dependabot: re-pin a released dependency across its zat.dev
@@ -1054,6 +1092,7 @@ deployments:
     work_pool: *home
 
   - name: stream-admission
+    pull: *cached_home
     tags: [gardener]
     entrypoint: flows/stream_admission.py:stream_admission
     # stream's 21-suite gate, on bare metal instead of spindle's microVM. the
@@ -1073,6 +1112,7 @@ deployments:
       collision_strategy: ENQUEUE
 
   - name: strata-hourly
+    pull: *cached_home
     tags: [watch]
     entrypoint: flows/strata.py:ingest_segment_collections
     # read the shape of the stream archive from outside: per-segment,
