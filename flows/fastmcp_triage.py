@@ -205,6 +205,8 @@ def thread_context(number: int) -> dict[str, Any]:
         "title": issue.get("title") or "",
         "state": issue.get("state"),
         "author": (issue.get("user") or {}).get("login"),
+        "author_association": issue.get("author_association"),
+        "author_is_bot": (issue.get("user") or {}).get("type") == "Bot",
         "labels": [label.get("name") for label in issue.get("labels") or []],
         "updated_at": issue.get("updated_at") or "",
         "url": issue.get("html_url"),
@@ -264,15 +266,22 @@ def triaged_version(number: int) -> str | None:
     return triaged_version_from(rows[0].get("data") if rows else None)
 
 
+MAINTAINERS = {"OWNER", "MEMBER", "COLLABORATOR"}
+
+
 def claim_reason(context: dict[str, Any]) -> str | None:
     """Why someone else already has this issue, or None if nobody does.
 
     A maintainer PR racing a contributor's is the worst outcome, so an
     assignee, any open PR by anyone, or a contributor PR held by the
-    issue-link gate all count as a claim.
+    issue-link gate all count as a claim. So does the reporter: fastmcp's
+    contributing guide gives them first claim and forbids comments asking for
+    it, so a reporter's claim is never visible on the thread.
     """
     if context.get("kind") != "issue":
         return None
+    if not context.get("author_is_bot") and context.get("author_association") not in MAINTAINERS:
+        return f"reporter {context.get('author')} has first claim"
     if context.get("assignees"):
         return f"assigned to {', '.join(context['assignees'])}"
     for pr in context.get("linked_pull_requests") or []:
