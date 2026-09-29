@@ -34,6 +34,20 @@ ssh -N -L 3030:127.0.0.1:3030 stoat@heavypad
 ssh stoat@heavypad 'systemctl --user status dagster-hub-web dagster-hub-daemon'
 ```
 
+## Python compatibility
+
+The locked dbt stack supports Python 3.13 and 3.14. dbt Core must be at least
+1.12.5; the former `dbt-adapters<1.24` workaround prevented resolving this stack
+and left Mashumaro 3.14, which fails during import on Python 3.14. The lock now
+uses dbt-adapters 1.24.5 and Mashumaro 3.17. dbt's
+[Python 3.14 support](https://github.com/dbt-labs/dbt-core/pull/12828) includes the
+required serialization changes.
+
+Use `uv run --python 3.14 --extra dagster pytest -q` for the CI runtime and
+`uv run --python 3.13 --extra dagster pytest tests/test_dagster_hub.py tests/test_dbt_runtime.py -q`
+for the production runtime. These exercise real dbt parsing, builds, failure
+propagation, and schema metadata; no serializer dependency overrides are needed.
+
 ## Release
 
 The current source checkout/release is `/home/stoat/dagster-hub/current`.
