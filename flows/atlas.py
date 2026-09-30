@@ -159,6 +159,35 @@ def build_summaries(repo_dir: Path) -> Path:
     return output
 
 
+@task(retries=2, retry_delay_seconds=5)
+def archive_atlas(repo_dir: Path) -> str:
+    storage = Path(
+        os.environ.get(
+            "PREFECT_LOCAL_STORAGE_PATH", str(Path.home() / ".local/share/prefect/storage")
+        )
+    )
+    database = storage.parent / "pub-search-atlas" / "history.sqlite3"
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "--no-project",
+            "python",
+            str(repo_dir / "scripts" / "atlas_history.py"),
+            str(database),
+            "save",
+            str(repo_dir / "site" / "atlas.json.gz"),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=True,
+    )
+    snapshot_id = result.stdout.strip()
+    get_run_logger().info("Atlas snapshot %s saved to %s", snapshot_id, database)
+    return snapshot_id
+
+
 @task(retries=1, retry_delay_seconds=30)
 def build_facts(repo_dir: Path) -> Path:
     """Regenerate site/facts.json (corpus factoids for the wrapped page).
@@ -234,6 +263,21 @@ def deploy_to_pages(site_dir: Path) -> str:
         check=True,
     )
 
+    subprocess.run(
+        [
+            str(node_bin),
+            str(site_dir / "node_modules" / ".bin" / "workbox"),
+            "generateSW",
+            "workbox-config.cjs",
+        ],
+        cwd=str(site_dir),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=True,
+    )
+
     wrangler_bin = site_dir / "node_modules" / ".bin" / "wrangler"
     result = subprocess.run(
         [
@@ -299,6 +343,7 @@ def rebuild_atlas():
             get_run_logger().warning(
                 f"build-facts failed, deploying with committed facts.json: {e}"
             )
+        archive_atlas(repo_dir)
         deploy_to_pages(repo_dir / "site")
 
 
