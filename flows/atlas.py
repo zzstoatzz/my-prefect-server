@@ -38,7 +38,7 @@ CF_PROJECT = "leaflet-search"
 # initially (single binary, no curl needed) but bun ≥1.2 on linux-x64
 # silently mangles argv when invoking node-shim scripts like wrangler's,
 # producing 0-exit no-op deploys. node has no such problem.
-NODE_VERSION = "22.11.0"
+NODE_VERSION = "22.22.2"
 _NODE_ARCH_MAP = {
     ("Linux", "x86_64"): "linux-x64",
     ("Linux", "aarch64"): "linux-arm64",
@@ -263,7 +263,7 @@ def deploy_to_pages(site_dir: Path) -> str:
         check=True,
     )
 
-    subprocess.run(
+    workbox = subprocess.run(
         [
             str(node_bin),
             str(site_dir / "node_modules" / ".bin" / "workbox"),
@@ -275,8 +275,10 @@ def deploy_to_pages(site_dir: Path) -> str:
         capture_output=True,
         text=True,
         timeout=120,
-        check=True,
+        check=False,
     )
+    if workbox.returncode != 0:
+        raise RuntimeError(f"Workbox build failed:\n{workbox.stdout}\n{workbox.stderr}")
 
     wrangler_bin = site_dir / "node_modules" / ".bin" / "wrangler"
     result = subprocess.run(
