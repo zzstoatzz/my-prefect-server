@@ -85,3 +85,8 @@ def row(id: str | int, vector: Sequence[float], **attributes: object) -> RowPara
     The widening happens here, once, instead of at every write site.
     """
     return cast(RowParam, {"id": id, "vector": list(vector), **attributes})
+
+
+def patch(id: str | int, **attributes: object) -> RowParam:
+    """Attributes to change on an existing turbopuffer row, typed as `row` is."""
+    return cast(RowParam, {"id": id, **attributes})

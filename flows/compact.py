@@ -19,7 +19,7 @@ import duckdb
 import httpx
 import turbopuffer
 from mps.blocks import secret
-from mps.phi import clean_handle, row as make_row, row_strings, row_text
+from mps.phi import clean_handle, patch as patch_row, row as make_row, row_strings, row_text
 from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 from openai import OpenAI
 from prefect import flow, get_run_logger, task
@@ -31,6 +31,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from turbopuffer.types import AttributeSchemaConfigParam
+from turbopuffer.types.custom import Filter
 
 SYSTEM_PROMPT = """\
 you synthesize relationship summaries for a bluesky bot named phi.
@@ -387,7 +388,7 @@ def load_recent_liked_posts(snap_path: str) -> dict[str, list[dict[str, str]]]:
     return dict(by_author)
 
 
-ACTIVE_OBSERVATIONS = (
+ACTIVE_OBSERVATIONS: Filter = (
     "And",
     [("kind", "Eq", "observation"), ("status", "NotEq", "superseded")],
 )
@@ -710,7 +711,7 @@ async def write_likes_observations_to_turbopuffer(
         )
         stale = [i for i in superseded_ids if i != new_id]
         if stale:
-            ns.write(patch_rows=[{"id": i, "status": "superseded"} for i in stale])
+            ns.write(patch_rows=[patch_row(i, status="superseded") for i in stale])
             superseded += len(stale)
 
     logger.info(f"likes observations: {dict(counts)}, {superseded} rows superseded")
