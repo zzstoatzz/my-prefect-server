@@ -537,6 +537,8 @@ Decide one action, and list in `targets` the numbers of the existing observation
 - NOOP: the new observation adds nothing beyond the target. discard it.
 
 Judge each existing observation on its own. One that is merely about the same topic is not a target; only target what the new observation actually restates, refines, or contradicts. If the new observation contradicts or replaces more than one, target all of them.
+Two observations about different things of the same kind (two projects, two tools, two places, two events) are both true: that is ADD, even when the wording is close. A target is replaced, so everything in it that is still true must survive in the merged content.
+Write merged content the way the observations are written: lowercase, one fact, no longer than it needs to be.
 When in doubt between ADD and NOOP, prefer NOOP. memory should be lean."""
 
 
