@@ -19,7 +19,7 @@ import duckdb
 import httpx
 import turbopuffer
 from mps.blocks import secret
-from mps.phi import clean_handle, row as make_row, row_text
+from mps.phi import clean_handle, row as make_row, row_strings, row_text
 from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
 from openai import OpenAI
 from prefect import flow, get_run_logger, task
@@ -309,8 +309,7 @@ produce 1-3 atomic observations. each should be a concrete fact (what they work 
 about, a specific project, a notable take). include 1-3 lowercase tags.
 
 for each observation, specify an action:
-- ADD: genuinely new fact not covered by existing knowledge
-- UPDATE: existing knowledge is stale or incomplete — provide the merged version
+- ADD: a fact the existing knowledge does not already state, including one that corrects it
 - NOOP: this is already known — skip
 
 if you can't say anything meaningful beyond what's already known, return empty.
@@ -325,11 +324,7 @@ class LikesObservation(BaseModel):
     author_handle: str
     content: str = Field(description="one atomic fact about this person")
     tags: list[str] = Field(description="1-3 lowercase tags")
-    action: str = Field(description="ADD, UPDATE, or NOOP")
-    supersedes_content: str | None = Field(
-        default=None,
-        description="for UPDATE: the old observation content this replaces",
-    )
+    action: str = Field(description="ADD or NOOP")
     # populated post-extraction by the orchestrator from the liked-post URIs
     # that fed the LLM call. the model itself doesn't see URIs (only text).
     source_uris: list[str] = Field(default_factory=list)
@@ -392,6 +387,12 @@ def load_recent_liked_posts(snap_path: str) -> dict[str, list[dict[str, str]]]:
     return dict(by_author)
 
 
+ACTIVE_OBSERVATIONS = (
+    "And",
+    [("kind", "Eq", "observation"), ("status", "NotEq", "superseded")],
+)
+
+
 @task
 def query_existing_knowledge(tpuf_key: str, handle: str) -> str:
     """Query TurboPuffer for existing observations about this author."""
@@ -403,7 +404,7 @@ def query_existing_knowledge(tpuf_key: str, handle: str) -> str:
         resp = ns.query(
             rank_by=("created_at", "desc"),
             top_k=10,
-            filters=("kind", "Eq", "observation"),
+            filters=ACTIVE_OBSERVATIONS,
             include_attributes=["content", "tags", "created_at"],
         )
         if not resp.rows:
@@ -522,92 +523,197 @@ USER_NAMESPACE_SCHEMA: dict[str, str | AttributeSchemaConfigParam] = {
 }
 
 
+# Same contract as the bot's observation-reconciler
+# (bot/src/bot/memory/extraction.py): both writers share phi-users-* rows, so a
+# likes-derived fact must supersede its neighbours the way an extracted one does.
+RECONCILIATION_SYSTEM_PROMPT = """\
+You reconcile a NEW observation against up to three EXISTING observations from memory, numbered nearest first.
+
+Decide one action, and list in `targets` the numbers of the existing observations it applies to:
+- ADD: the new observation contains genuinely different information from every existing one. keep them all. no targets.
+- UPDATE: the new observation refines, corrects, or supersedes the targets. return merged content and tags; that one row replaces every target.
+- DELETE: the targets are wrong, outdated, or fully redundant given the new one. the new one will be stored separately.
+- NOOP: the new observation adds nothing beyond the target. discard it.
+
+Judge each existing observation on its own. One that is merely about the same topic is not a target; only target what the new observation actually restates, refines, or contradicts. If the new observation contradicts or replaces more than one, target all of them.
+When in doubt between ADD and NOOP, prefer NOOP. memory should be lean."""
+
+
+class Reconciliation(BaseModel):
+    action: str = Field(description="one of: ADD, UPDATE, DELETE, NOOP")
+    targets: list[int] = Field(
+        default_factory=list,
+        description="numbers of the EXISTING observations the action applies to. empty for ADD.",
+    )
+    new_content: str | None = Field(
+        default=None, description="merged content when action is UPDATE"
+    )
+    new_tags: list[str] | None = Field(
+        default=None, description="merged tags when action is UPDATE"
+    )
+    reason: str = Field(default="", description="brief explanation")
+
+
+def reconciliation_prompt(existing: list[dict[str, Any]], content: str, tags: list[str]) -> str:
+    listed = "\n\n".join(
+        f"EXISTING {n}: {row['content']}\nEXISTING {n} tags: {row['tags']}"
+        for n, row in enumerate(existing, start=1)
+    )
+    return f"{listed}\n\nNEW observation: {content}\nNEW tags: {tags}"
+
+
+def plan_observation_write(
+    decision: Reconciliation,
+    existing: list[dict[str, Any]],
+    content: str,
+    tags: list[str],
+    source_uris: list[str],
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """The observation to write, if any, and the ids it supersedes."""
+    action = decision.action.upper()
+    new = {"content": content, "tags": tags, "source_uris": source_uris, "supersedes": ""}
+    if action == "NOOP":
+        return None, []
+    if action not in ("UPDATE", "DELETE"):
+        return new, []
+    targets = [
+        existing[n - 1] for n in dict.fromkeys(decision.targets) if 1 <= n <= len(existing)
+    ] or existing[:1]
+    new["supersedes"] = targets[0]["id"]
+    if action == "UPDATE":
+        new["content"] = decision.new_content or content
+        new["tags"] = decision.new_tags or tags
+        new["source_uris"] = list(
+            dict.fromkeys([uri for t in targets for uri in t["source_uris"]] + source_uris)
+        )
+    return new, [t["id"] for t in targets]
+
+
+@task(
+    retries=3,
+    retry_delay_seconds=exponential_backoff(backoff_factor=15),
+    retry_jitter_factor=1,
+)
+async def reconcile_likes_observation(
+    handle: str,
+    existing: list[dict[str, Any]],
+    content: str,
+    tags: list[str],
+    api_key: str,
+) -> Reconciliation:
+    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
+    agent = Agent[None, Reconciliation](
+        model,
+        system_prompt=RECONCILIATION_SYSTEM_PROMPT,
+        output_type=Reconciliation,
+        name="likes-reconciler",
+        model_settings=AnthropicModelSettings(anthropic_cache_instructions="5m"),
+    )
+    result = await agent.run(reconciliation_prompt(existing, content, tags))
+    record_pydantic_ai_result(
+        task_name="reconcile_likes_observation",
+        model="claude-haiku-4-5",
+        result=result,
+        metadata={"handle": handle},
+    )
+    return result.output
+
+
 @task
-def write_likes_observations_to_turbopuffer(
+async def write_likes_observations_to_turbopuffer(
     tpuf_key: str,
     openai_key: str,
+    anthropic_key: str,
     observations: list[dict[str, Any]],
 ):
-    """Embed and write likes-derived observations to TurboPuffer user namespaces."""
+    """Reconcile likes-derived observations against their neighbours and write them."""
     logger = get_run_logger()
     openai_client = OpenAI(api_key=openai_key)
     client = turbopuffer.Turbopuffer(api_key=tpuf_key, region="gcp-us-central1")
 
-    added = 0
-    updated = 0
+    def embed(text: str, handle: str) -> list[float]:
+        response = openai_client.embeddings.create(model="text-embedding-3-small", input=text)
+        record_openai_embedding_response(
+            task_name="write_likes_observations_to_turbopuffer",
+            model="text-embedding-3-small",
+            response=response,
+            item_count=1,
+            metadata={"handle": handle},
+        )
+        return response.data[0].embedding
 
+    counts: dict[str, int] = defaultdict(int)
+    superseded = 0
     for obs in observations:
-        action = obs.get("action", "NOOP").upper()
-        if action == "NOOP":
+        if obs.get("action", "NOOP").upper() == "NOOP":
             continue
 
         handle = obs["author_handle"]
         content = obs["content"]
         tags = obs.get("tags", [])
-        ns_name = f"phi-users-{clean_handle(handle)}"
-        ns = client.namespace(ns_name)
+        ns = client.namespace(f"phi-users-{clean_handle(handle)}")
+        embedding = embed(content, handle)
 
-        embedding_response = openai_client.embeddings.create(
-            model="text-embedding-3-small",
-            input=content,
+        existing: list[dict[str, Any]] = []
+        try:
+            resp = ns.query(
+                rank_by=("vector", "ANN", embedding),
+                top_k=3,
+                filters=ACTIVE_OBSERVATIONS,
+                include_attributes=True,
+            )
+            existing = [
+                {
+                    "id": row.id,
+                    "content": row_text(row, "content"),
+                    "tags": row_strings(row, "tags"),
+                    "source_uris": row_strings(row, "source_uris"),
+                }
+                for row in resp.rows or []
+            ]
+        except turbopuffer.NotFoundError:
+            pass
+
+        decision = (
+            await reconcile_likes_observation(handle, existing, content, tags, anthropic_key)
+            if existing
+            else Reconciliation(action="ADD")
         )
-        record_openai_embedding_response(
-            task_name="write_likes_observations_to_turbopuffer",
-            model="text-embedding-3-small",
-            response=embedding_response,
-            item_count=1,
-            metadata={"handle": handle, "action": action},
+        new, superseded_ids = plan_observation_write(
+            decision, existing, content, tags, list(obs.get("source_uris") or [])
         )
-        embedding = embedding_response.data[0].embedding
+        counts[decision.action.upper()] += 1
+        if new is None:
+            continue
 
-        if action == "UPDATE" and obs.get("supersedes_content"):
-            # find and delete the old observation by semantic similarity
-            try:
-                resp = ns.query(
-                    rank_by=("vector", "ANN", embedding),
-                    top_k=3,
-                    filters=("kind", "Eq", "observation"),
-                    include_attributes=["content"],
-                )
-                if resp.rows:
-                    old_content = obs["supersedes_content"].lower()
-                    for row in resp.rows:
-                        if (
-                            old_content in row_text(row, "content").lower()
-                            or row_text(row, "content").lower() in old_content
-                        ):
-                            ns.write(deletes=[row.id], distance_metric="cosine_distance")
-                            break
-            except Exception:
-                pass  # proceed with upsert even if delete fails
-
-        obs_id = _observation_id(handle, content)
+        if new["content"] != content:
+            embedding = embed(new["content"], handle)
         now = datetime.now(UTC).isoformat()
-        observation_row = make_row(
-            obs_id,
-            embedding,
-            kind="observation",
-            status="active",
-            content=content,
-            tags=tags,
-            supersedes="",
-            source_uris=list(obs.get("source_uris") or []),
-            created_at=now,
-            updated_at=now,
-        )
+        new_id = _observation_id(handle, new["content"])
         ns.write(
-            upsert_rows=[observation_row],
+            upsert_rows=[
+                make_row(
+                    new_id,
+                    embedding,
+                    kind="observation",
+                    status="active",
+                    content=new["content"],
+                    tags=new["tags"],
+                    supersedes=new["supersedes"],
+                    source_uris=new["source_uris"],
+                    created_at=now,
+                    updated_at=now,
+                )
+            ],
             distance_metric="cosine_distance",
             schema=USER_NAMESPACE_SCHEMA,
         )
+        stale = [i for i in superseded_ids if i != new_id]
+        if stale:
+            ns.write(patch_rows=[{"id": i, "status": "superseded"} for i in stale])
+            superseded += len(stale)
 
-        if action == "ADD":
-            added += 1
-        elif action == "UPDATE":
-            updated += 1
-
-    skipped = sum(1 for o in observations if o.get("action", "").upper() == "NOOP")
-    logger.info(f"likes observations: {added} added, {updated} updated, {skipped} skipped")
+    logger.info(f"likes observations: {dict(counts)}, {superseded} rows superseded")
 
 
 @flow(name="phi-memory-synthesis", log_prints=True, timeout_seconds=1800)
@@ -699,7 +805,9 @@ async def compact():
 
         actionable = [o for o in all_observations if o.get("action", "").upper() != "NOOP"]
         if actionable:
-            write_likes_observations_to_turbopuffer(tpuf_key, openai_key, actionable)
+            await write_likes_observations_to_turbopuffer(
+                tpuf_key, openai_key, anthropic_key, actionable
+            )
         logger.info(
             f"extracted {len(all_observations)} observations from liked posts "
             f"({len(actionable)} actionable)"
