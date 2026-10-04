@@ -89,8 +89,8 @@ class WorkflowRequests:
             }
         deployment_id = self._deployments[workflow]
         deployment = self._api(f"/deployments/{deployment_id}")
-        if deployment.get("work_pool_name") != "phi-sprites-spike":
-            raise ValueError("Workflow is not configured for the Sprite worker")
+        if deployment.get("work_pool_name") != "gardener-exe":
+            raise ValueError("Workflow is not configured for the exe.dev worker")
         identity = json.dumps([body["request_key"], deployment_id, parameters], sort_keys=True)
         run = self._api(
             f"/deployments/{deployment_id}/create_flow_run",

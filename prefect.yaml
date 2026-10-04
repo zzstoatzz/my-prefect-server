@@ -1027,7 +1027,7 @@ deployments:
     # revises the pull in a scratch clone; the flow appends the round and replies
     # as gardener.
     work_pool:
-      name: phi-sprites-spike
+      name: gardener-exe
       job_variables:
         timeout_seconds: 2400
         local_packages:
@@ -1073,7 +1073,7 @@ deployments:
     entrypoint: flows.test_pull_patch.test_pull_patch
     pull: []
     work_pool:
-      name: phi-sprites-spike
+      name: gardener-exe
       job_variables:
         timeout_seconds: 2400
         local_packages:

@@ -34,7 +34,7 @@ this file is a set of notes for us:
   if a `github` mirror remote is present in a checkout, push that too.
 - after server restart, re-fetch kubeconfig with `just kubeconfig`
 - **most flow execution runs on the `home-pool` *process* worker on the home box (heavypad)** — a systemd unit polling the server outbound over Tailscale (`deploy/home-worker/`). the `kubernetes-pool` bullets below describe the retained-but-unused k8s fallback path (no k8s worker runs in normal operation), and the analytics paths are hostPaths under `/home/stoat/prefect-analytics`, not a k8s PVC.
-- Git-backed flow code is pulled at runtime; selected Gardener flows instead import modules from pinned mps wheels, including on `phi-sprites-spike`. Preserve the declared loading mode: `pull: []` plus a wheel needs a dotted entrypoint unless files are explicitly supplied by the worker. See `docs/deployments-validation.md`.
+- Git-backed flow code is pulled at runtime; selected Gardener flows instead import modules from pinned mps wheels, including on `gardener-exe`. Preserve the declared loading mode: `pull: []` plus a wheel needs a dotted entrypoint unless files are explicitly supplied by the worker. See `docs/deployments-validation.md`.
 - run `just hooks` once per clone. `just validate-deployments` checks code-delivery contracts; CI repeats it before registration. Never change entrypoint syntax to satisfy documentation formatting. A passing static check does not establish artifact availability or runtime readiness.
 - worker image is `prefecthq/prefect:3-python3.14-kubernetes` (the `-kubernetes` tag matters; uv is pre-installed)
 - `PREFECT_INTEGRATIONS_KUBERNETES_OBSERVER_NAMESPACES=prefect` is what makes namespace-scoped RBAC work

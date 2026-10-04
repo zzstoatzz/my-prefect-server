@@ -47,9 +47,11 @@ port-forward. the installer and unit are in [deploy/home-worker/](../deploy/home
 `llm-spend.jsonl` to the VM every few minutes so the hub serves fresh data
 without a round trip home.
 
-`phi-sprites-spike` runs selected gardener jobs in Sprites. Its supervisor
-and local wheel artifacts live on Heavypad; see the deployment declarations
-and [validation contracts](deployments-validation.md).
+`gardener-exe` runs selected gardener jobs in exe.dev VMs, one per flow-run
+attempt. Its worker (`deploy/phi-inference/pi-exe-worker.service`) and local
+wheel artifacts live on Heavypad; see the deployment declarations and
+[validation contracts](deployments-validation.md). The `phi-sprites-spike`
+pool and its worker are still installed but carry no deployments.
 
 `kubernetes-pool` survives only as a defined fallback. its base job template
 is applied by `just storage`; no k8s worker runs in normal operation.

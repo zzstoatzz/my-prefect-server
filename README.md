@@ -25,7 +25,7 @@ prefect 3 python.
 ## design
 
 - **home computes, the edge serves** — home-pool flows run on the home box, which
-  polls outbound. selected gardener jobs run in Sprites, managed from home.
+  polls outbound. selected gardener jobs run in exe.dev VMs, managed from home.
   the VM holds the control plane and
   serves bytes. the hub reads a copy of the analytics synced every few
   minutes, so a public page never waits on a trip home.

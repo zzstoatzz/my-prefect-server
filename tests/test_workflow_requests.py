@@ -19,7 +19,7 @@ def requests():
     )
     gateway._api = Mock(
         side_effect=lambda path, payload=None: (
-            {"work_pool_name": "phi-sprites-spike"}
+            {"work_pool_name": "gardener-exe"}
             if payload is None
             else {"id": "run-id", "name": "run-name"}
         )
