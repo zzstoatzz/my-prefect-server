@@ -27,6 +27,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from mps.zig_toolchain import zig_for
 from prefect import flow, get_run_logger, task
 from prefect.tasks import exponential_backoff
 
@@ -67,17 +68,19 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
     retry_delay_seconds=exponential_backoff(backoff_factor=10),
     retry_jitter_factor=1,
 )
-def clone_repo() -> Path:
+def clone_repo(ref: str | None = None) -> Path:
     """Fresh shallow clone of pub-search (tangled, github fallback). The
     banned/kept DID lists are baked into the binary at build time, so building
-    from a fresh clone is what keeps policy current."""
+    from a fresh clone is what keeps policy current. `ref` names a branch to
+    build instead of the default one (staging runs of an unmerged change)."""
     logger = get_run_logger()
     if REPO_DIR.exists():
         shutil.rmtree(REPO_DIR)
     REPO_DIR.parent.mkdir(parents=True, exist_ok=True)
+    branch = ["--branch", ref] if ref else []
     for url in (REPO_URL, REPO_URL_FALLBACK):
         r = subprocess.run(
-            ["git", "clone", "--depth", "1", url, str(REPO_DIR)],
+            ["git", "clone", "--depth", "1", *branch, url, str(REPO_DIR)],
             capture_output=True,
             text=True,
             check=False,
@@ -91,11 +94,13 @@ def clone_repo() -> Path:
 
 @task(retries=1, retry_delay_seconds=30)
 def build_binary(repo_dir: Path) -> tuple[Path, str]:
-    """`zig build -Doptimize=ReleaseSafe` in backend/ (host toolchain — same
-    zig 0.16 install typeahead's home-indexer install.sh provides)."""
+    """`zig build -Doptimize=ReleaseSafe` in backend/, with the Zig install
+    the checkout's build.zig.zon asks for (the box default if it is absent)."""
     backend = repo_dir / "backend"
     binary = backend / "zig-out" / "bin" / "pub-search"
-    _stream(["zig", "build", "-Doptimize=ReleaseSafe"], backend, {**os.environ}, timeout=1200)
+    zig = zig_for(backend)
+    get_run_logger().info(f"building with {zig}")
+    _stream([zig, "build", "-Doptimize=ReleaseSafe"], backend, {**os.environ}, timeout=1200)
     if not binary.is_file():
         raise RuntimeError(f"build reported success but binary missing at {binary}")
     sha = subprocess.run(
@@ -141,7 +146,7 @@ def run_builder(binary: Path, version: str) -> None:
 # 6000s builder bound + room for one stall-detected retry (stall trips at
 # ~600s) without the flow timeout beheading a genuinely slow second attempt
 @flow(name="pub-search-snapshot", log_prints=True, timeout_seconds=9000)
-def pub_search_snapshot():
-    repo = clone_repo()
+def pub_search_snapshot(ref: str | None = None):
+    repo = clone_repo(ref)
     binary, version = build_binary(repo)
     run_builder(binary, version)

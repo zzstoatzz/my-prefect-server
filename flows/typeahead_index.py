@@ -35,6 +35,7 @@ import urllib.request
 from collections import deque
 from pathlib import Path
 
+from mps.zig_toolchain import zig_for
 from prefect import flow, get_run_logger, task
 from prefect.exceptions import MissingContextError
 from prefect.tasks import exponential_backoff
@@ -103,15 +104,17 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
     retry_delay_seconds=exponential_backoff(backoff_factor=10),
     retry_jitter_factor=1,
 )
-def clone_repo() -> Path:
-    """Fresh shallow clone of typeahead (tangled, github fallback)."""
+def clone_repo(ref: str | None = None) -> Path:
+    """Fresh shallow clone of typeahead (tangled, github fallback). `ref` names
+    a branch to build instead of the default one."""
     logger = get_run_logger()
     if REPO_DIR.exists():
         shutil.rmtree(REPO_DIR)
     REPO_DIR.parent.mkdir(parents=True, exist_ok=True)
+    branch = ["--branch", ref] if ref else []
     for url in (REPO_URL, REPO_URL_FALLBACK):
         r = subprocess.run(
-            ["git", "clone", "--depth", "1", url, str(REPO_DIR)],
+            ["git", "clone", "--depth", "1", *branch, url, str(REPO_DIR)],
             capture_output=True,
             text=True,
             check=False,
@@ -133,12 +136,14 @@ def build_binary(repo_dir: Path) -> Path:
     services = repo_dir / "services"
     binary = services / "zig-out" / "bin" / "typeahead-ingester"
     env = {**os.environ}
+    zig = zig_for(services)
+    get_run_logger().info(f"building with {zig}")
     try:
-        _stream(["zig", "build", "-Doptimize=ReleaseSafe"], services, env, timeout=900)
+        _stream([zig, "build", "-Doptimize=ReleaseSafe"], services, env, timeout=900)
     except RuntimeError:
         get_run_logger().warning("primary dep fetch failed; retrying via github mirrors")
         shutil.copy(services / "build.zig.zon.gh", services / "build.zig.zon")
-        _stream(["zig", "build", "-Doptimize=ReleaseSafe"], services, env, timeout=900)
+        _stream([zig, "build", "-Doptimize=ReleaseSafe"], services, env, timeout=900)
     if not binary.is_file():
         raise RuntimeError(f"build reported success but binary missing at {binary}")
     return binary
@@ -240,8 +245,8 @@ def prune_builds(build_root: str | None = None) -> int:
 
 
 @flow(name="typeahead-index", log_prints=True, timeout_seconds=14400)
-def typeahead_index():
-    repo = clone_repo()
+def typeahead_index(ref: str | None = None):
+    repo = clone_repo(ref)
     binary = build_binary(repo)
     run_indexer(binary)
     prune_builds()
