@@ -118,7 +118,11 @@ Findings that change the plan:
    supervisor is the Sprites one minus the lease, run as a systemd unit.
    `tests/exe_provider_probe.py` passed against two real VMs (create 3-5s,
    bootstrap 3-6s, cancel 0.6s, outcome survives a supervisor restart).
-   Not yet exercised: a real Prefect work pool, a real flow run, Pi inside it.
+   Prefect run `8f1db1d7-4b12-4ca3-920c-5cc9b9c00640` then reached Completed
+   on pool `gardener-exe` from a worker on the laptop: create 1.9s, bootstrap
+   4.6s, service start 7.6s, flow logged `exe-worker-ok uid=0`, artifact
+   stored, VM deleted. One run. Not yet exercised: the worker on heavypad
+   with inference grants, and Pi inside a run.
 5. Move `test-pull-patch` to the new pool, then `autofix-revise`. Sprites pool
    stays until both have run clean across more than one attempt each.
 6. Only then consider swapping the bridge for an exe.dev integration, if
