@@ -49,6 +49,7 @@ packages = ["packages/mps/src/mps", "hub_dagster"]
 [tool.uv.sources]
 mps = { workspace = true }
 prefect-sprites = { workspace = true }
+prefect-exe = { workspace = true }
 
 [tool.uv.workspace]
 members = ["packages/*"]
@@ -72,6 +73,7 @@ dev = [
     "fastmcp>=4.0.0b5",
     "umap-learn>=0.5",
     "prefect-sprites",
+    "prefect-exe",
 ]
 
 [tool.pytest.ini_options]
