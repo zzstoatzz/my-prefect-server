@@ -13,7 +13,8 @@ from mps.inference_grants import InferenceGrants
 from mps.inference_models import resolve_inference_model
 
 
-def pi_worker(*, pool: str, database: Path, inference_url: str) -> SpritesWorker:
+def grant_environment(*, database: Path, inference_url: str):
+    """Per-attempt inference grant callbacks for a worker that owns the grant store."""
     endpoint = urlsplit(inference_url)
     if endpoint.scheme != "https" or not endpoint.hostname or endpoint.username:
         raise ValueError("Inference endpoint must use HTTPS")
@@ -39,6 +40,11 @@ def pi_worker(*, pool: str, database: Path, inference_url: str) -> SpritesWorker
     async def release(attempt: str) -> None:
         grants.revoke(attempt)
 
+    return environment, release
+
+
+def pi_worker(*, pool: str, database: Path, inference_url: str) -> SpritesWorker:
+    environment, release = grant_environment(database=database, inference_url=inference_url)
     return SpritesWorker(
         work_pool_name=pool,
         name="pi-sprites-worker",
