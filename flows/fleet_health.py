@@ -31,12 +31,13 @@ The Evergreen report reader uses the package's existing httpx and pydantic depen
 import time
 import urllib.request
 from dataclasses import dataclass
+from html import escape
 
 from prefect import flow, get_run_logger, task
 from prefect.artifacts import create_markdown_artifact
 from prefect.events import emit_event
 
-from flows.evergreen_checks import check_evergreen
+from flows.evergreen_checks import ProbeAttempt, ProbeError, ServiceResult, check_evergreen
 
 TIMEOUT_S = 10
 TAIL_WINDOW_S = 20
@@ -69,6 +70,35 @@ class CheckResult:
     name: str
     healthy: bool
     detail: str
+
+
+def _report_text(text: str) -> str:
+    return escape(text).replace("|", "&#124;").replace("\n", " ").replace("\r", " ")
+
+
+def _probe_detail(status: int, error: ProbeError | None) -> str:
+    if status != 0:
+        return f"HTTP {status}"
+    if error is None:
+        return "probe transport failure (no diagnostics)"
+    return f"probe transport failure ({error.category}: {_report_text(error.message)})"
+
+
+def _attempt_detail(index: int, attempt: ProbeAttempt) -> str:
+    return f"attempt {index}: {_probe_detail(attempt.status, attempt.error)}, {attempt.ms:g} ms"
+
+
+def evergreen_result(result: ServiceResult) -> CheckResult:
+    detail = f"{_probe_detail(result.status, result.error)} ({_report_text(result.url)}); total {result.ms:g} ms"
+    if result.attempts is not None:
+        recovered = len(result.attempts) > 1 and result.ok
+        label = "recovered; " if recovered else ""
+        attempts = "; ".join(
+            _attempt_detail(index, attempt)
+            for index, attempt in enumerate(result.attempts, start=1)
+        )
+        detail += f"; {label}{result.attempt_count} attempt(s): {attempts}"
+    return CheckResult(f"{result.project}/{result.name}", result.ok, detail)
 
 
 def _get(url: str) -> tuple[int, bytes]:
@@ -226,10 +256,7 @@ def fleet_health() -> None:
     results += [f.result(raise_on_failure=False) for f in shallow_futures]
     evergreen = evergreen_future.result(raise_on_failure=False)
     if isinstance(evergreen, list):
-        results += [
-            CheckResult(f"{r.project}/{r.name}", r.ok, f"HTTP {r.status} ({r.url})")
-            for r in evergreen
-        ]
+        results += [evergreen_result(r) for r in evergreen]
         logger.info("Evergreen inventory: %d endpoints checked", len(evergreen))
     else:
         results.append(evergreen)
