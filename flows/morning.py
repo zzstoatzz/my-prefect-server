@@ -29,7 +29,7 @@ from prefect.context import TaskRunContext
 from prefect.variables import Variable
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
-from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from turbopuffer.types import AttributeSchemaConfigParam, RowParam
 
@@ -192,7 +192,7 @@ async def identify_tag_merges(
     tag_info: dict[str, dict],
     tag_embeddings: dict[str, list[float]],
     api_key: str,
-    model_name: str = "claude-sonnet-4-6",
+    model_name: str = "claude-haiku-5-5",
 ) -> list[dict[str, Any]]:
     """Give the LLM the full tag inventory and let it propose consolidations."""
     tag_lines = []
@@ -230,6 +230,7 @@ async def identify_tag_merges(
             "abbreviations, and overlapping concepts"
         ),
         output_type=MergeProposal,
+        model_settings=AnthropicModelSettings(anthropic_effort="low"),
         name="tag-merger",
         # NB: no cache_instructions — this agent is called exactly once per
         # morning run, and morning runs are 24h apart. The 5m TTL never
@@ -363,7 +364,7 @@ async def discover_tag_relationships(
     user_tag_sets: dict[str, list[str]],
     merged_aliases: set[str],
     api_key: str,
-    model_name: str = "claude-sonnet-4-6",
+    model_name: str = "claude-haiku-5-5",
 ) -> list[dict[str, Any]]:
     """Ask the LLM to identify thematic clusters, then derive pairwise edges."""
     tags = [t for t in sorted(tag_info.keys()) if t not in merged_aliases]
@@ -417,6 +418,7 @@ async def discover_tag_relationships(
             "- use the sample observations and co-occurrence data to inform your groupings"
         ),
         output_type=ClusterProposal,
+        model_settings=AnthropicModelSettings(anthropic_effort="low"),
         name="tag-clusterer",
         # NB: no cache_instructions — see tag-merger above. Single call per
         # daily run; 5m TTL can't bridge 24h, so caching is net-negative.
@@ -519,7 +521,7 @@ async def morning():
     openai_key = await secret("openai-api-key")
     anthropic_key = await secret("anthropic-api-key")
     stored_model = await Variable.aget("morning-model")
-    model_name = stored_model if isinstance(stored_model, str) else "claude-sonnet-4-6"
+    model_name = stored_model if isinstance(stored_model, str) else "claude-haiku-5-5"
     print(f"using model: {model_name}")
 
     # --- phase 1: collect and deduplicate tags ---

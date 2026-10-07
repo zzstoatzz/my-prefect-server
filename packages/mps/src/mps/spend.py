@@ -52,9 +52,22 @@ class _FlatInputPrice:
         self.total_price = self.input_price
 
 
+class _Haiku55Price:
+    def __init__(self, usage: Usage) -> None:
+        rate = Decimal("0.50" if _int(usage.input_tokens) > 100_000 else "0.10") / 1_000_000
+        read = _int(usage.cache_read_tokens)
+        write = _int(usage.cache_write_tokens)
+        uncached = max(0, _int(usage.input_tokens) - read - write)
+        self.input_price = rate * (uncached + Decimal("0.1") * read + Decimal("1.25") * write)
+        self.output_price = rate * 5 * _int(usage.output_tokens)
+        self.total_price = self.input_price + self.output_price
+
+
 def _calc_price(usage: Usage, model: str, provider: str, ts: dt.datetime) -> Any:
     """calc_price with an alias fallback. Never raises: an unknown model is
     logged with unknown cost so its tokens are still recorded."""
+    if provider == "anthropic" and model.removeprefix("anthropic:") == "claude-haiku-5-5":
+        return _Haiku55Price(usage)
     if (per_token := _FLAT_INPUT_USD_PER_TOKEN.get(provider)) is not None:
         return _FlatInputPrice(usage, per_token)
     priced_model = _PRICING_ALIASES.get(model, model)
@@ -273,6 +286,20 @@ def record_pydantic_ai_result(
     metadata: dict[str, Any] | None = None,
     log_path: str | None = None,
 ) -> None:
+    if model.removeprefix("anthropic:") == "claude-haiku-5-5":
+        from pydantic_ai.messages import ModelResponse
+
+        for response in result.new_messages():
+            if isinstance(response, ModelResponse):
+                record_usage(
+                    log_path=log_path,
+                    task_name=task_name,
+                    provider=provider,
+                    model=model,
+                    usage=_usage_from_pydantic_result(response),
+                    metadata=metadata,
+                )
+        return
     record_usage(
         log_path=log_path,
         task_name=task_name,

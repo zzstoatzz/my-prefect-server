@@ -69,7 +69,7 @@ class ByObservationsHash(CachePolicy):
         if not handle or not observations_text:
             return None
         h = hashlib.md5(observations_text.encode()).hexdigest()[:12]
-        return f"compact/{handle}/{h}"
+        return f"compact/haiku-5-5/{handle}/{h}"
 
 
 @task
@@ -191,7 +191,7 @@ async def synthesize_summary(
     bsky_profile: dict[str, str] | None = None,
 ) -> str:
     """LLM synthesis of a relationship summary. Cached by observations hash."""
-    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
+    model = AnthropicModel("claude-haiku-5-5", provider=AnthropicProvider(api_key=api_key))
     # compact iterates over top authors; the SYSTEM_PROMPT is constant across
     # the per-user loop, so caching it once and reusing on every call is the
     # biggest single lever for this flow.
@@ -199,7 +199,9 @@ async def synthesize_summary(
         model,
         system_prompt=SYSTEM_PROMPT,
         name="phi-compactor",
-        model_settings=AnthropicModelSettings(anthropic_cache_instructions="5m"),
+        model_settings=AnthropicModelSettings(
+            anthropic_cache_instructions="5m", anthropic_effort="low"
+        ),
     )
 
     profile_section = f"handle: @{handle}\n"
@@ -218,7 +220,7 @@ async def synthesize_summary(
     result = await agent.run(prompt)
     record_pydantic_ai_result(
         task_name="synthesize_summary",
-        model="claude-haiku-4-5",
+        model="claude-haiku-5-5",
         result=result,
         metadata={"handle": handle},
     )
@@ -350,7 +352,7 @@ class ByLikedPostsHash(CachePolicy):
         if not handle or not liked_posts_text:
             return None
         h = hashlib.md5(liked_posts_text.encode()).hexdigest()[:12]
-        return f"likes-obs/{handle}/{h}"
+        return f"likes-obs/haiku-5-5/{handle}/{h}"
 
 
 @task
@@ -475,13 +477,15 @@ async def extract_likes_observations(
     api_key: str,
 ) -> list[dict[str, Any]]:
     """LLM extraction of observations from liked posts. Cached by posts hash."""
-    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
+    model = AnthropicModel("claude-haiku-5-5", provider=AnthropicProvider(api_key=api_key))
     agent = Agent[None, LikesExtractionResult](
         model,
         system_prompt=LIKES_SYSTEM_PROMPT,
         output_type=LikesExtractionResult,
         name="likes-observer",
-        model_settings=AnthropicModelSettings(anthropic_cache_instructions="5m"),
+        model_settings=AnthropicModelSettings(
+            anthropic_cache_instructions="5m", anthropic_effort="low"
+        ),
     )
 
     profile_section = f"handle: @{handle}\n"
@@ -500,7 +504,7 @@ async def extract_likes_observations(
     result = await agent.run(prompt)
     record_pydantic_ai_result(
         task_name="extract_likes_observations",
-        model="claude-haiku-4-5",
+        model="claude-haiku-5-5",
         result=result,
         metadata={"handle": handle},
     )
@@ -604,18 +608,20 @@ async def reconcile_likes_observation(
     tags: list[str],
     api_key: str,
 ) -> Reconciliation:
-    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
+    model = AnthropicModel("claude-haiku-5-5", provider=AnthropicProvider(api_key=api_key))
     agent = Agent[None, Reconciliation](
         model,
         system_prompt=RECONCILIATION_SYSTEM_PROMPT,
         output_type=Reconciliation,
         name="likes-reconciler",
-        model_settings=AnthropicModelSettings(anthropic_cache_instructions="5m"),
+        model_settings=AnthropicModelSettings(
+            anthropic_cache_instructions="5m", anthropic_effort="low"
+        ),
     )
     result = await agent.run(reconciliation_prompt(existing, content, tags))
     record_pydantic_ai_result(
         task_name="reconcile_likes_observation",
-        model="claude-haiku-4-5",
+        model="claude-haiku-5-5",
         result=result,
         metadata={"handle": handle},
     )

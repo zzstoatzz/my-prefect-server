@@ -628,7 +628,7 @@ async def _label_cluster(snippets: list[str], agent: Agent[None, str]) -> str:
         result = await agent.run(CLUSTER_LABEL_PROMPT.format(contents=sample))
         record_pydantic_ai_result(
             task_name="label_cluster",
-            model="claude-haiku-4-5",
+            model="claude-haiku-5-5",
             result=result,
         )
         return result.output.strip().lower()
@@ -644,7 +644,7 @@ async def label_clusters(
     Returns (coarse_labels, fine_labels) keyed by cluster id.
     """
     logger = get_run_logger()
-    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=anthropic_key))
+    model = AnthropicModel("claude-haiku-5-5", provider=AnthropicProvider(api_key=anthropic_key))
     agent = Agent[None, str](
         model,
         system_prompt="you label semantic clusters with short, concrete themes.",
@@ -653,7 +653,9 @@ async def label_clusters(
         # minutes; identical one-line system prompt. Caching is marginal
         # in absolute dollars (tiny prompt) but free to enable. 5m TTL
         # covers the burst.
-        model_settings=AnthropicModelSettings(anthropic_cache_instructions="5m"),
+        model_settings=AnthropicModelSettings(
+            anthropic_cache_instructions="5m", anthropic_effort="low"
+        ),
     )
 
     coarse_buckets: dict[int, list[str]] = {}

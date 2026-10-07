@@ -30,7 +30,7 @@ from prefect.events import emit_event
 from prefect.variables import Variable
 from pydantic import BaseModel, Field
 
-MODEL = "claude-haiku-4-5"
+MODEL = "claude-haiku-5-5"
 
 # thread_id -> updated_at of everything already briefed. A volume trigger fires
 # whenever the window is busy, so without this the same four pull requests get
@@ -252,7 +252,9 @@ def compose(threads: list[dict[str, Any]], api_key: str) -> Brief:
         system_prompt=BRIEF_PROMPT,
         name="fastmcp-brief",
         retries=2,
-        model_settings=AnthropicModelSettings(anthropic_cache_instructions="5m"),
+        model_settings=AnthropicModelSettings(
+            anthropic_cache_instructions="5m", anthropic_effort="low"
+        ),
     )
     result = agent.run_sync("recent fastmcp threads:\n\n" + "\n".join(lines))
     record_pydantic_ai_result(

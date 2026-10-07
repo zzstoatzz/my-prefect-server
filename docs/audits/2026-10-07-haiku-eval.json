@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-07",
+  "model": "claude-haiku-5-5",
+  "shipped_roles": ["memory summaries", "likes observation extraction and reconciliation", "hub briefings", "atlas cluster labels", "FastMCP briefs", "tag merge and cluster proposals"],
+  "effort": "low",
+  "live_checks": {
+    "native_api": "passed",
+    "pydantic_ai_summary_and_usage_recording": "passed",
+    "cluster_label": "passed",
+    "briefing": "initially violated four-section prompt; passed after schema enforces exactly four sections, with grounded item IDs",
+    "tag_proposals": "merged atproto/at-protocol, kept sourdough separate"
+  },
+  "held_back": {
+    "docket": "Synthetic routine-operation rejection passed 3/3. Live atlas comparison disagreed materially with Sonnet on promotion versus rejection; retain Sonnet.",
+    "noti": "Haiku recommendation baseline: 12 calls, 24 rows, 6 dropped; Sonnet: 12 calls, 18 rows, zero dropped. Initial proposal suite passed 21 calls; repeat failed mute-by-handle in 1/3 samples. Retain Sonnet for all Noti production roles.",
+    "phi_main_and_policy": "Not changed."
+  },
+  "pricing": {
+    "source": "https://www.anthropic.com/claude/haiku",
+    "input_up_to_100k_usd_per_million": 0.1,
+    "output_up_to_100k_usd_per_million": 0.5,
+    "input_over_100k_usd_per_million": 0.5,
+    "output_over_100k_usd_per_million": 2.5,
+    "cache_write_ttl": "5m",
+    "accounting": "Each PydanticAI response is priced separately; input count includes cache tokens. Historical rows remain unchanged."
+  }
+}

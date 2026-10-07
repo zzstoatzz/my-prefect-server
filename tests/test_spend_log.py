@@ -162,3 +162,24 @@ def test_spend_import_rolls_back_the_batch_on_bad_row(tmp_path):
         import_spend_log(log, database)
     with duckdb.connect(str(database)) as db:
         assert db.execute("SELECT count(*) FROM raw_llm_spend").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(
+    ("input_tokens", "expected"),
+    [(100_000, 0.004525), (100_001, 0.0226255)],
+)
+def test_haiku55_prompt_tier_includes_cached_tokens(tmp_path, input_tokens, expected):
+    event = record_usage(
+        log_path=str(tmp_path / "spend.jsonl"),
+        task_name="tier",
+        provider="anthropic",
+        model="claude-haiku-5-5",
+        usage=Usage(
+            input_tokens=input_tokens,
+            cache_read_tokens=90_000,
+            cache_write_tokens=5_000,
+            output_tokens=5_000,
+        ),
+    )
+    assert event is not None
+    assert event["total_cost_usd"] == pytest.approx(expected)

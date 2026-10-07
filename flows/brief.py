@@ -37,7 +37,7 @@ class ByItemsContent(CachePolicy):
         if items_text is None:
             return None
         h = hashlib.md5((SYSTEM_PROMPT + items_text).encode()).hexdigest()[:12]
-        return f"briefing/{h}"
+        return f"briefing/haiku-5-5/{h}"
 
 
 SYSTEM_PROMPT = """\
@@ -55,7 +55,7 @@ lead with the most useful observation, not the most alarming one.
 
 def make_agent(api_key: str) -> PrefectAgent[None, Briefing]:
     """Build agent after API key is available (provider validates key at init)."""
-    model = AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key))
+    model = AnthropicModel("claude-haiku-5-5", provider=AnthropicProvider(api_key=api_key))
     agent = Agent[None, Briefing](
         model,
         output_type=Briefing,
@@ -64,7 +64,9 @@ def make_agent(api_key: str) -> PrefectAgent[None, Briefing]:
         # cache the constant SYSTEM_PROMPT — input cache reads are 0.1× input
         # price; net win whenever a flow run does ≥2 agent.run() calls or two
         # runs land within the 5m TTL window.
-        model_settings=AnthropicModelSettings(anthropic_cache_instructions="5m"),
+        model_settings=AnthropicModelSettings(
+            anthropic_cache_instructions="5m", anthropic_effort="low"
+        ),
     )
     return PrefectAgent(
         agent,
@@ -114,7 +116,7 @@ async def generate_briefing(items_text: str, api_key: str) -> Briefing:
     result = await prefect_agent.run(f"curate these items:\n\n{items_text}")
     record_pydantic_ai_result(
         task_name="generate_briefing",
-        model="claude-haiku-4-5",
+        model="claude-haiku-5-5",
         result=result,
         metadata={"item_count": 0 if not items_text.strip() else items_text.count(chr(10)) + 1},
     )

@@ -61,5 +61,5 @@ class Briefing(BaseModel):
             "3 PRs need review and a bug is blocking the release. tangled activity is quiet."
         ],
     )
-    sections: list[BriefingSection]
+    sections: list[BriefingSection] = Field(min_length=4, max_length=4)
     generated_at: str
