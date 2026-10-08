@@ -1,7 +1,8 @@
 FROM ubuntu:24.04 AS base
 RUN apt-get update && apt-get install --no-install-recommends -y \
-    ca-certificates curl git python3 sudo systemd systemd-sysv dbus bubblewrap socat \
+    ca-certificates curl git python3 sudo systemd systemd-sysv dbus bubblewrap socat ripgrep fd-find \
     && apt-get clean
+RUN ln -s /usr/bin/fdfind /usr/bin/fd
 RUN useradd --create-home --shell /bin/bash exedev \
     && printf 'exedev ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/exedev \
     && chmod 0440 /etc/sudoers.d/exedev

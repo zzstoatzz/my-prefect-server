@@ -1,5 +1,8 @@
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE}
+RUN apt-get update && apt-get install --no-install-recommends -y ripgrep fd-find \
+    && ln -sf /usr/bin/fdfind /usr/bin/fd \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 ARG WHEEL_SHA256
 LABEL io.waow.gardener.wheel-sha256=$WHEEL_SHA256
 ENV UV_PROJECT_ENVIRONMENT=/opt/gardener/venv UV_PYTHON_INSTALL_DIR=/opt/python \
