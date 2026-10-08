@@ -29,12 +29,13 @@ def deployment(config, name):
 def test_repository_contracts(config):
     errors, unverified = check(config)
     assert errors == []
-    # Four remote wheels, two wheel backports, local Dagster release, arbitrary pull scripts.
-    assert len(unverified) == 8
+    # Five remote wheels, two wheel backports, local Dagster release, arbitrary pull scripts.
+    assert len(unverified) == 9
 
 
 @pytest.mark.parametrize(
-    "name", ["watch-tangled-pulls", "autofix-revise", "merge-approved", "test-pull-patch"]
+    "name",
+    ["watch-tangled-pulls", "autofix-revise", "merge-approved", "test-pull-patch", "investigate"],
 )
 def test_reconciliation_regression(config, name):
     dep = deployment(config, name)

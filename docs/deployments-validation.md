@@ -66,7 +66,7 @@ recipes, inventory rendering, tests, and operator documentation.
 
 | Boundary | Finding and disposition |
 |---|---|
-| Configuration to runtime | Four wheel routes retain dotted entrypoints. Regression checks now live in the validator tests rather than the documentation renderer tests. |
+| Configuration to runtime | Five wheel routes retain dotted entrypoints. Regression checks now live in the validator tests rather than the documentation renderer tests. |
 | Package to checkout | 24 custom job mappings lacked MPS_PIN propagation. Their source checkout now receives the same declared pin as the installed package. Existing explicit legacy pins remain unchanged. |
 | Package ownership | The root distribution supplies mps helpers; the separate mps wheel additionally force-includes selected flow modules. A checkout import is insufficient evidence of wheel contents. |
 | Execution | Home process jobs and Sprite jobs coexist. README and operations now describe both and point here for the delivery contracts. |

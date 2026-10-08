@@ -48,7 +48,8 @@ port-forward. the installer and unit are in [deploy/home-worker/](../deploy/home
 without a round trip home.
 
 `gardener-exe` runs selected gardener jobs in exe.dev VMs, one per flow-run
-attempt. Its worker (`deploy/phi-inference/pi-exe-worker.service`) and local
+attempt. That includes `pi-agent/investigate`, the deployment phi's
+`request_workflow` reaches through the heavypad bridge. Its worker (`deploy/phi-inference/pi-exe-worker.service`) and local
 wheel artifacts live on Heavypad; see the deployment declarations and
 [validation contracts](deployments-validation.md). The `phi-sprites-spike`
 pool and its worker are still installed but carry no deployments.

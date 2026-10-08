@@ -1033,6 +1033,21 @@ deployments:
         local_packages:
           - /home/stoat/phi-spike-worker/releases/1553f70cb4612fe219d0e1d82232a560947a18e194eb1ee4fe0ec80aa2aa741e/mps-0.1.0-py3-none-any.whl
 
+  - name: investigate
+    tags: [gardener, phi]
+    entrypoint: flows.pi_agent.pi_agent
+    pull: []
+    # phi's `request_workflow` route: the heavypad bridge
+    # (mps.workflow_requests, deploy/phi-inference/phi-inference.service)
+    # queues this deployment by id with read-only tools. pi runs as gardener
+    # in a fresh exe.dev VM and stores its answer as a markdown artifact.
+    work_pool:
+      name: gardener-exe
+      job_variables:
+        timeout_seconds: 2400
+        local_packages:
+          - /home/stoat/phi-spike-worker/releases/aea634030ccb8c5e0096d859fe09c0a9e8d2ff267a5bf835f7ffc923a3404300/mps-0.1.0-py3-none-any.whl
+
   - name: pi-pr
     pull: *cached_legacy_home
     tags: [gardener]
