@@ -9,7 +9,7 @@ Phases 1-3: mechanical tag maintenance (dedup, relationships, storage).
 
 import hashlib
 from collections import defaultdict
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 import turbopuffer
@@ -18,7 +18,9 @@ from mps.phi import (
     TagCluster,
     TagMerge,
     TagRelationship,
+    patch as patch_row,
     row as make_row,
+    row_strings,
     row_text,
 )
 from mps.spend import record_openai_embedding_response, record_pydantic_ai_result
@@ -250,6 +252,11 @@ async def identify_tag_merges(
     return [m.model_dump() for m in result.output.merges]
 
 
+def canonical_tags(tags: list[str], alias_map: dict[str, str]) -> list[str]:
+    """Tags with aliases replaced by their canonical form, order kept, no repeats."""
+    return list(dict.fromkeys(alias_map.get(tag, tag) for tag in tags))
+
+
 @task
 def apply_tag_merges(
     tpuf_key: str,
@@ -280,63 +287,26 @@ def apply_tag_merges(
             kwargs: dict[str, Any] = {
                 "rank_by": ("vector", "ANN", [0.5] * 1536),
                 "top_k": 200,
-                "include_attributes": ["content", "tags", "created_at", "vector"],
+                "include_attributes": ["tags"],
             }
             if is_user_ns:
                 kwargs["filters"] = {"kind": ["Eq", "observation"]}
-                kwargs["include_attributes"].append("kind")
-            else:
-                kwargs["include_attributes"].append("source")
             response = ns.query(**kwargs)
         except Exception:
             continue
 
-        if not response.rows:
-            continue
-
-        rows_to_upsert: list[RowParam] = []
-        for row in response.rows:
-            old_tags = list(getattr(row, "tags", []) or [])
-            new_tags = [alias_map.get(t, t) for t in old_tags]
-            seen: set[str] = set()
-            deduped = []
-            for t in new_tags:
-                if t not in seen:
-                    seen.add(t)
-                    deduped.append(t)
-
-            if deduped != old_tags:
-                vec = getattr(row, "vector", None)
-                if not isinstance(vec, list) or not vec:
-                    continue
-                attributes: dict[str, object] = {
-                    "content": row_text(row, "content"),
-                    "tags": deduped,
-                    "created_at": row_text(row, "created_at") or datetime.now(UTC).isoformat(),
-                }
-                if is_user_ns:
-                    attributes["kind"] = "observation"
-                else:
-                    attributes["source"] = row_text(row, "source") or "tool"
-                rows_to_upsert.append(make_row(row.id, vec, **attributes))
-
-        if rows_to_upsert:
-            schema: dict[str, str | AttributeSchemaConfigParam] = {
-                "content": {"type": "string", "full_text_search": True},
-                "tags": {"type": "[]string", "filterable": True},
-                "created_at": {"type": "string"},
-            }
-            if is_user_ns:
-                schema["kind"] = {"type": "string", "filterable": True}
-            else:
-                schema["source"] = {"type": "string", "filterable": True}
-
-            ns.write(
-                upsert_rows=rows_to_upsert,
-                distance_metric="cosine_distance",
-                schema=schema,
-            )
-            updated += len(rows_to_upsert)
+        # patch, never upsert: an upsert replaces the whole row, and writing
+        # back only content/tags/created_at dropped status, supersedes and
+        # source_uris, which made superseded memories active again
+        patches = [
+            patch_row(row.id, tags=tags)
+            for row in response.rows or []
+            if (tags := canonical_tags(row_strings(row, "tags"), alias_map))
+            != row_strings(row, "tags")
+        ]
+        if patches:
+            ns.write(patch_rows=patches)
+            updated += len(patches)
 
     return updated
 
