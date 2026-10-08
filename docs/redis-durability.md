@@ -5,21 +5,25 @@ The real-client cutover rehearsal passed seeds 91 and 92 on 2026-10-08:
 with each of 16 effects once, and API p95 was 11.77/10.76 ms with zero errors.
 The original Redis storage preservation checks remain recorded below.
 
-Production staging is now applied from `cbe2f39`: the 1 GiB PVC and durable
-replica exist, replication is connected and synchronized, and AOF writes and
-rewrite status are healthy. The replica uses the exact lab image, Redis 7.4.11.
-The original primary is Redis 7.4.9. The service still selects `prefect-redis`;
-no promotion or routing change has occurred. The production server remains
-`993424a` with one API. The two-API rollout and promotion wait for the existing
-prod-quiet gate: `email-triage-4d60aed8` is paused with a live process and
-pause_reschedule=false. A concurrent transform completed. Do not cancel the
-paused run without the user's answer to the pending question.
+Production migration completed on 2026-10-08. Helm revision 29 runs tested
+`92a177b8005ed8997b8e1b270c976054092146b3` with two APIs and one services
+replica. Coordinated Redis FAILOVER promoted the synchronized durable 7.4.11
+replica, then `redis-migrate route` changed the Service selector. The old 7.4.9
+instance remains a connected replica. AOF is enabled with healthy writes and
+no delayed fsyncs observed. The default queue and home-pool are resumed.
 
-The production event canary has 64 acknowledged, delivered and persisted IDs
-in HeavyPad's `~/.local/share/prefect-chaos/results/production-events-before-rollout.json`.
-Verify those same IDs after the server rollout and Redis transition with the
-server repository's `scripts/chaos/production-events.py verify`, using the
-existing worker credential file. No new credential file was created.
+The user authorized cancelling the input-waiting email-triage run; its process
+exited and the remaining ingestion completed all 1305 records. Pool pause is
+not honored by the server scheduling endpoint; queue pause was used to drain.
+Real diagnostics runs `ff5fdcfc` and `8dad0125` completed before and after the
+Redis transition. Scheduled watch-fastmcp also completed after migration.
+
+All 64 pre-rollout canary IDs were preserved. A second SDK canary streamed
+through promotion and routing: 64 acknowledged, 64 uniquely delivered, all 64
+persisted. Records are in the server repository's `docs/chaos/2026-10-08/`.
+Post-migration node usage was 24% CPU / 54% memory; durable Redis 57m CPU /
+87 MiB RSS, each API 7m CPU / 12 MiB RSS, services 371m CPU / 53 MiB RSS.
+These are samples, not capacity guarantees. No cloud VM was added.
 
 The target is a single persistent Redis with synchronous AOF, no eviction, a
 192 MiB dataset ceiling, and a 512 MiB container ceiling for rewrite headroom.
