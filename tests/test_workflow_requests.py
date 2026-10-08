@@ -15,7 +15,7 @@ def requests():
         token="request-test-token",
         prefect_url="https://prefect.example/api",
         prefect_auth="backend:credential",
-        deployments={"investigate": "c95a7dd0-486d-4f07-b885-bd991f38cb75"},
+        deployments={"investigate": "2c0ba8f3-7adf-44f8-a96e-8214c1bd8f2f"},
     )
     gateway._api = Mock(
         side_effect=lambda path, payload=None: (

@@ -6,7 +6,7 @@ After=network.target
 WorkingDirectory=/home/stoat/phi-inference
 Environment=PYTHONPATH=/home/stoat/phi-inference/src
 EnvironmentFile=/home/stoat/.config/prod-worker/env
-ExecStart=/usr/bin/python3 -m mps.inference_service --database /home/stoat/phi-inference/state/grants.sqlite --upstream http://100.99.202.12/v1/chat/completions --workflow-deployment c95a7dd0-486d-4f07-b885-bd991f38cb75
+ExecStart=/usr/bin/python3 -m mps.inference_service --database /home/stoat/phi-inference/state/grants.sqlite --upstream http://100.99.202.12/v1/chat/completions --workflow-deployment 2c0ba8f3-7adf-44f8-a96e-8214c1bd8f2f
 Restart=on-failure
 RestartSec=5
 UMask=0077
