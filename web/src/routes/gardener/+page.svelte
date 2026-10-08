@@ -126,7 +126,7 @@
                 <div class="deployment"><a href={`https://prefect-server.waow.tech/deployments/deployment/${deployment.id}`} target="_blank" rel="noreferrer">{deployment.name}</a><span>{deployment.job_variables.image ?? 'Provider default image'}</span><span>{duration(deployment.job_variables.timeout_seconds ?? null)} budget</span></div>
             {/each}
         </section>
-        <footer>Flow state comes from Prefect. VM state comes from worker observations. Refreshes every 30 seconds while this page is visible.{#if snapshot} Showing {attempts.length} recorded attempts; {snapshot.active_attempts} have no confirmed cleanup.{/if}</footer>
+        <footer>Flow state comes from Prefect. VM state comes from worker observations. Refreshes every 30 seconds while this page is visible.{#if snapshot} Showing {attempts.length} recorded attempts; {snapshot.active_attempts} remain active or retained.{/if}</footer>
     {/if}
 </div>
 
