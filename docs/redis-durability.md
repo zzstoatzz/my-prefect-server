@@ -1,10 +1,25 @@
 # durable Redis migration
 
-The Redis storage transition has been rehearsed; application-client cutover and
-the Kubernetes procedure have not yet been exercised. Production still uses the
-volatile `prefect-redis` deployment. Do not apply the final Redis
-manifest directly to an existing installation: that would route clients to an
-empty database.
+The real-client cutover rehearsal passed seeds 91 and 92 on 2026-10-08:
+64 acknowledged events were delivered and persisted, the worker completed once
+with each of 16 effects once, and API p95 was 11.77/10.76 ms with zero errors.
+The original Redis storage preservation checks remain recorded below.
+
+Production staging is now applied from `cbe2f39`: the 1 GiB PVC and durable
+replica exist, replication is connected and synchronized, and AOF writes and
+rewrite status are healthy. The replica uses the exact lab image, Redis 7.4.11.
+The original primary is Redis 7.4.9. The service still selects `prefect-redis`;
+no promotion or routing change has occurred. The production server remains
+`993424a` with one API. The two-API rollout and promotion wait for the existing
+prod-quiet gate: `email-triage-4d60aed8` is paused with a live process and
+pause_reschedule=false. A concurrent transform completed. Do not cancel the
+paused run without the user's answer to the pending question.
+
+The production event canary has 64 acknowledged, delivered and persisted IDs
+in HeavyPad's `~/.local/share/prefect-chaos/results/production-events-before-rollout.json`.
+Verify those same IDs after the server rollout and Redis transition with the
+server repository's `scripts/chaos/production-events.py verify`, using the
+existing worker credential file. No new credential file was created.
 
 The target is a single persistent Redis with synchronous AOF, no eviction, a
 192 MiB dataset ceiling, and a 512 MiB container ceiling for rewrite headroom.
