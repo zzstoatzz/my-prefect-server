@@ -13,13 +13,16 @@ PI_ENTRYPOINT = "/opt/phi-agent/pi/node_modules/@earendil-works/pi-coding-agent/
 
 
 def aperture_models(
-    base_url: str = "http://127.0.0.1:8888/v1", *, model: str | None = None
+    base_url: str = "http://127.0.0.1:8888/v1",
+    *,
+    model: str | None = None,
+    backend: str = "aperture",
 ) -> dict:
     """Pi's public models.json contract, using the local inference bridge."""
-    selected = resolve_inference_model(model)
+    selected = resolve_inference_model(model, backend=backend)
     return {
         "providers": {
-            "aperture": {
+            backend: {
                 "baseUrl": base_url.removesuffix("/v1")
                 if selected.api == "anthropic-messages"
                 else base_url,

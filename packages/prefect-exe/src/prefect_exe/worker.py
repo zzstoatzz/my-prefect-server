@@ -79,10 +79,12 @@ class ExeWorker(BaseWorker):
         run_environment: Callable[[str, int, FlowRun], Awaitable[dict[str, str]]] | None = None,
         release_environment: Callable[[str], Awaitable[None]] | None = None,
         observations_path: Path | None = None,
+        integrations: tuple[str, ...] = (),
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self._run_environment = run_environment
+        self._integrations = integrations
         self._release_environment = release_environment
         self._observer_task = None
         self._observations = AttemptStore(observations_path) if observations_path else None
@@ -237,7 +239,14 @@ class ExeWorker(BaseWorker):
         async with ExeClient(configuration.credentials.identity_file) as client:
             try:
                 vm = await self._measure_stage(
-                    name, "create", client.create(name, tags=tags, image=configuration.image)
+                    name,
+                    "create",
+                    client.create(
+                        name,
+                        tags=tags,
+                        image=configuration.image,
+                        **({"integrations": self._integrations} if self._integrations else {}),
+                    ),
                 )
             except ExeError as creation_error:
                 # A lost response and a name conflict both arrive as a failed
@@ -428,6 +437,7 @@ class ExeWorker(BaseWorker):
             return
         if observation["phase"] != "exited":
             return
+        await self._detach_integrations(client, vm.name)
         if self._release_environment:
             await self._release_environment(vm.name)
         # Provider inspection can take long enough for orchestration to advance
@@ -481,6 +491,15 @@ class ExeWorker(BaseWorker):
         )
         await self._measure_stage(vm.name, "delete", client.destroy(vm.name))
 
+    async def _detach_integrations(self, client: ExeClient, name: str) -> None:
+        for integration in self._integrations:
+            try:
+                await client.detach(name, integration)
+            except Exception:
+                self._logger.exception(
+                    "Could not detach %s from %s; cleanup continues", integration, name
+                )
+
     async def kill_infrastructure(
         self,
         infrastructure_pid: str,
@@ -493,6 +512,7 @@ class ExeWorker(BaseWorker):
             except NotFound as exc:
                 raise InfrastructureNotFound(infrastructure_pid) from exc
             self._check_ownership(vm)
+            await self._detach_integrations(client, vm.name)
             if await provider.service_status(client, vm) is None:
                 # Cancellation can arrive while uv is still bootstrapping.
                 # Destroying the owned VM stops that installation too;

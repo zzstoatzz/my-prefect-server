@@ -44,7 +44,7 @@ def usage_row(message: dict, *, provider: str, model: str, invocation: str):
         reported = message.get("model", "")
         if isinstance(reported, str) and re.fullmatch(r"[a-zA-Z0-9_.:/-]{1,120}", reported):
             priced_model = reported
-    if provider == "aperture" and "/" in model:
+    if provider in {"aperture", "exe"} and "/" in model:
         priced_provider, priced_model = model.split("/", 1)
         if priced_model == "claude-haiku-4.5":
             priced_model = "claude-haiku-4-5"

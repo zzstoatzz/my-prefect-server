@@ -80,11 +80,17 @@ just gardener-install COMMIT               # install a committed worker release
 
 `investigate`, `autofix-revise`, and `test-pull-patch` use digest-pinned images
 from the private `gardener-registry.exe.xyz` registry. Each image preserves its
-deployment's original wheel. Job variables use `environment_mode: image` and
+deployment's flow code and locked dependencies. Job variables use `environment_mode: image` and
 empty `requirements` / `local_packages`, so jobs do not install dependencies.
 The dedicated `gardener-exe` worker on heavypad manages these VMs; it is separate
 from the `home-pool` process worker. The registry is a persistent infrastructure
-VM, outside the worker's disposable-job inventory.
+VM, outside the worker's disposable-job inventory. Each job VM receives the
+`llm` integration. Pi uses a local sandbox relay to call Exe directly: OpenAI
+Responses uses the connected ChatGPT account; Anthropic Messages uses Exe credits.
+The Exe worker no longer issues remote inference grants. Execution timeouts,
+model selection, isolated agent files/network, and cleanup remain enforced.
+Cleanup detaches model access before deleting the VM. The old gateway still
+serves Phi workflow requests and the retained Sprites path.
 See the [registry and rollback guide](deploy/gardener/REGISTRY.md) and
 [verified rollout](docs/archive/2026-10-08-gardener-images.md).
 The [startup investigation](docs/spikes/gardener-startup.md) separates image

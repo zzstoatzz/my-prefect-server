@@ -1,19 +1,21 @@
 """Trusted model choices shared by inference admission and Pi execution."""
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 
 
 @dataclass(frozen=True)
 class InferenceModel:
     name: str
-    api: Literal["openai-completions", "anthropic-messages"]
+    api: Literal["openai-completions", "openai-responses", "anthropic-messages"]
     wire_name: str
     max_output_tokens: int = 8192
 
     @property
     def path(self) -> str:
+        if self.api == "openai-responses":
+            return "/v1/responses"
         return "/v1/messages" if self.api == "anthropic-messages" else "/v1/chat/completions"
 
 
@@ -30,12 +32,19 @@ MODELS = {
 }
 
 
-def resolve_inference_model(name: str | None = None) -> InferenceModel:
+def resolve_inference_model(
+    name: str | None = None, *, backend: str = "aperture"
+) -> InferenceModel:
     """Resolve an explicit choice or the operator's configured default."""
     selected = (
         name if name is not None else os.environ.get("PHI_INFERENCE_MODEL", "openai/gpt-5.6-luna")
     )
     try:
-        return MODELS[selected]
+        model = MODELS[selected]
     except KeyError:
         raise ValueError(f"Unsupported inference model: {selected}") from None
+    if backend not in {"aperture", "exe"}:
+        raise ValueError(f"Unsupported inference backend: {backend}")
+    if backend == "exe" and model.api == "openai-completions":
+        return replace(model, api="openai-responses", wire_name=model.name.removeprefix("openai/"))
+    return model

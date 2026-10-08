@@ -40,7 +40,8 @@ def inference_bridge(
     authorization: str | None = None,
     anthropic_api_key: str | None = None,
     translate_model: bool = True,
-    max_requests: int = 32,
+    max_requests: int | None = 32,
+    backend: str = "aperture",
     max_output_tokens: int = 8192,
     agent_uid: int | None = 2000,
     listen: tuple[str, int] | None = None,
@@ -52,7 +53,7 @@ def inference_bridge(
     The socket's parent must be a trusted per-attempt directory. The caller owns
     upstream identity and budget configuration, never the sandboxed process.
     """
-    if max_requests < 1 or max_output_tokens < 1:
+    if (max_requests is not None and max_requests < 1) or max_output_tokens < 1:
         raise ValueError("Inference limits must be positive")
     if (socket_path is None) == (listen is None):
         raise ValueError("Choose one listener")
@@ -73,7 +74,7 @@ def inference_bridge(
             pass  # Never log prompts, upstream errors, or credentials.
 
         def do_POST(self):
-            if self.path not in ("/v1/chat/completions", "/v1/messages"):
+            if self.path not in ("/v1/chat/completions", "/v1/messages", "/v1/responses"):
                 return self.handle_post()
             started = time.monotonic()
             self.audit_status = None
@@ -136,7 +137,7 @@ def inference_bridge(
             ):
                 self.send_error(401)
                 return
-            if self.path not in ("/v1/chat/completions", "/v1/messages"):
+            if self.path not in ("/v1/chat/completions", "/v1/messages", "/v1/responses"):
                 self.send_error(404)
                 return
             try:
@@ -148,18 +149,32 @@ def inference_bridge(
                 body = json.loads(self.rfile.read(length))
                 if not isinstance(body, dict) or not isinstance(body.get("model"), str):
                     raise ValueError("Model is required")
-                selected = resolve_inference_model(body["model"])
+                selected = resolve_inference_model(body["model"], backend=backend)
                 if (grants is None and selected.name != model) or self.path != selected.path:
                     raise ValueError("Unauthorized model or API")
-                if not isinstance(body.get("messages"), list):
-                    raise ValueError("Messages are required")
+                input_key = "input" if selected.api == "openai-responses" else "messages"
+                if not isinstance(body.get(input_key), list):
+                    raise ValueError("Messages or input are required")
                 for key in ("max_tokens", "max_completion_tokens"):
                     if key in body:
                         value = body[key]
                         if type(value) is not int or value < 1:
                             raise ValueError("Invalid output limit")
                         body[key] = min(value, max_output_tokens, selected.max_output_tokens)
-                if "max_tokens" not in body and "max_completion_tokens" not in body:
+                if selected.api == "openai-responses":
+                    if any(
+                        not isinstance(tool, dict) or tool.get("type") != "function"
+                        for tool in body.get("tools", [])
+                    ):
+                        raise ValueError("Only agent-executed function tools are supported")
+                    body.pop("max_output_tokens", None)
+                    body.pop("max_tokens", None)
+                    body.pop("max_completion_tokens", None)
+                    body["store"] = False
+                    body["background"] = False
+                    body["stream"] = True
+                    body.setdefault("instructions", "")
+                elif "max_tokens" not in body and "max_completion_tokens" not in body:
                     limit_key = (
                         "max_tokens"
                         if selected.api == "anthropic-messages"
@@ -173,7 +188,11 @@ def inference_bridge(
                 self.send_error(403, "Inference grant unavailable")
                 return
             with lock:
-                if grants is None and counters["requests"] >= max_requests:
+                if (
+                    grants is None
+                    and max_requests is not None
+                    and counters["requests"] >= max_requests
+                ):
                     self.send_error(429, "Attempt inference limit reached")
                     return
                 counters["requests"] += 1
@@ -181,6 +200,8 @@ def inference_bridge(
             if authorization:
                 headers["Authorization"] = authorization
             endpoint = upstream
+            if backend == "exe":
+                endpoint = upstream.rstrip("/") + selected.path
             if selected.api == "anthropic-messages":
                 endpoint = upstream.removesuffix("/v1/chat/completions").rstrip("/") + selected.path
                 headers["anthropic-version"] = "2023-06-01"

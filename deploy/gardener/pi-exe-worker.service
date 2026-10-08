@@ -8,7 +8,7 @@ WorkingDirectory=/home/stoat/gardener-exe-worker/current
 Environment=PREFECT_LOGGING_LEVEL=INFO
 Environment=EXE_IDENTITY_FILE=/home/stoat/.ssh/exe_gardener_ed25519
 EnvironmentFile=/home/stoat/.config/prod-worker/env
-ExecStart=/home/stoat/gardener-exe-worker/current/venv/bin/python -m mps.exe_worker --pool gardener-exe --database /home/stoat/phi-inference/state/grants.sqlite --inference-url https://heavypad.tailb660b6.ts.net:8443/v1/chat/completions
+ExecStart=/home/stoat/gardener-exe-worker/current/venv/bin/python -m mps.exe_worker --pool gardener-exe --integration llm --observations /home/stoat/phi-inference/state/exe-observations.sqlite
 Restart=on-failure
 RestartSec=10
 TimeoutStopSec=90

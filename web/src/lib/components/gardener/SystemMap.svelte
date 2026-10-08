@@ -41,7 +41,6 @@
                     {@const isOnline = online.includes(worker)}
                     <button class="worker node" class:chosen={inspected === 'worker'} onclick={() => inspected = inspected === 'worker' ? null : 'worker'}><div class="node-top"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1"/><rect x="3" y="14" width="18" height="6" rx="1"/><path d="M7 7h1M7 17h1"/></svg><strong>exe worker</strong><span class="dot" class:offline={!isOnline}></span></div><p>{isOnline ? 'Online' : 'Heartbeat overdue'} · {worker.name}</p></button>
                 {:else}<p class="host-empty">No worker registered</p>{/each}
-                <button class="gateway" class:chosen={inspected === 'inference'} onclick={() => inspected = inspected === 'inference' ? null : 'inference'}><span class="gateway-symbol" aria-hidden="true">⇄</span><div><strong>Inference gateway</strong><span>Scoped model access for Pi</span></div></button>
             </div>
         </section>
         <div class="wire dispatch-wire" aria-hidden="true"><span>creates</span><svg viewBox="0 0 60 24"><path d="M0 12h54m-8-7 8 7-8 7"/></svg><small>one VM<br/>per attempt</small></div>
@@ -59,7 +58,8 @@
                     <button class="idle-machine" onclick={() => inspected = 'machines'}><svg viewBox="0 0 100 82" aria-hidden="true"><rect x="14" y="10" width="72" height="48" rx="7"/><path d="M35 73h30M50 58v15M37 32h26"/></svg><strong>{fresh ? 'No machines running' : 'No machines in the last report'}</strong><span>{fresh ? 'A new request creates a fresh VM here.' : 'A fresh worker report is needed to confirm this.'}</span></button>
                 {/if}
                 {#each unobserved as run}<a class="unobserved" href={workUrl(run.id)}><strong>{workTitle(run)}</strong><span>In progress · waiting for machine observations</span></a>{/each}
-                <div class="cloud-footer"><span class="small-dot"></span>Pi runs here · inference routes back to heavypad</div>
+                <button class="gateway" class:chosen={inspected === 'inference'} onclick={() => inspected = inspected === 'inference' ? null : 'inference'}><span class="gateway-symbol" aria-hidden="true">⇄</span><div><strong>Model access</strong><span>Exe integration · attached per VM</span></div></button>
+                <div class="cloud-footer"><span class="small-dot"></span>Pi runs here · model requests go through Exe</div>
             </div>
             <div class="lifecycle"><span>Create</span><span>→</span><span>Run</span><span>→</span><span>Save</span><span>→</span><span>Delete</span></div>
         </section>
@@ -81,7 +81,7 @@
         <aside class="inspector" aria-label="Selected system component"><button class="close" onclick={() => inspected = null} aria-label="Close component details">×</button>
             {#if inspected === 'queue'}<h2>Prefect owns the queue</h2><p>{model.pool.is_paused ? 'The pool is paused.' : 'The pool is accepting work.'} {queued.length} requests are waiting for a machine. {model.pool.concurrency_limit ? `Up to ${model.pool.concurrency_limit} runs can execute at once.` : 'No pool concurrency limit is configured.'}</p><div class="detail-links">{#each model.deployments as item}<a href={`https://prefect-server.waow.tech/deployments/deployment/${item.id}`} target="_blank" rel="noreferrer">{item.name} · {duration(item.job_variables.timeout_seconds ?? null)} limit ↗</a>{/each}</div>
             {:else if inspected === 'worker'}<h2>{online.length} worker{online.length === 1 ? '' : 's'} online</h2><p>The worker polls Prefect, creates a VM for each attempt, and reconciles its outcome and cleanup. Closing this page does not affect it.</p><p class="detail-meta">Last machine check: {observed ? formatDate(new Date(observed * 1000).toISOString()) : 'Not recorded'}</p>
-            {:else if inspected === 'inference'}<h2>Model access goes through heavypad</h2><p>Each attempt receives a grant restricted to one model, with an expiry and a 32-request limit. The grant is revoked when execution ends. This map shows the configured route; it does not independently probe gateway health.</p>
+            {:else if inspected === 'inference'}<h2>Model access is attached to each VM</h2><p>Pi reaches the Exe LLM integration through a local relay. OpenAI uses the connected ChatGPT account; Anthropic uses Exe credits. Provider credentials stay outside the VM. Cleanup detaches access and deletes the machine. This map shows the configured route, not a live model health check.</p>
             {:else}<h2>{model.snapshot ? model.snapshot.active_attempts : 'Unknown number of'} machines active or retained</h2><p>{fresh ? 'The latest worker report is current.' : 'These observations are delayed or unavailable.'} Each attempt gets its own exe.dev VM. The worker saves diagnostics and deletes the machine after execution.</p><p class="detail-meta">{model.deployments.some(item => item.job_variables.image) ? 'Images are configured per deployment.' : 'Current deployments use the default exe.dev image and install dependencies at startup.'}</p>{/if}
         </aside>
     {/if}

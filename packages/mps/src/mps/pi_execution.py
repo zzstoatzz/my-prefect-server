@@ -171,10 +171,21 @@ def run_isolated_pi(
         raise RuntimeError("Phi Pi execution requires the prepared Sprite runtime")
     upstream = os.environ.get("PHI_INFERENCE_URL", "")
     token = os.environ.get("PHI_INFERENCE_TOKEN", "")
+    backend = os.environ.get("PHI_INFERENCE_BACKEND", "aperture")
     endpoint = urlsplit(upstream)
-    if endpoint.scheme != "https" or not endpoint.hostname or endpoint.username or not token:
+    if endpoint.scheme != "https" or not endpoint.hostname or endpoint.username:
         raise RuntimeError("Sprite execution requires an HTTPS inference endpoint and run token")
-    selected = resolve_inference_model(model)
+    if backend == "aperture" and not token:
+        raise RuntimeError("Aperture execution requires a run token")
+    if backend == "exe" and (
+        not endpoint.hostname.endswith(".int.exe.xyz")
+        or endpoint.path not in {"", "/"}
+        or endpoint.port not in {None, 443}
+        or endpoint.query
+        or endpoint.fragment
+    ):
+        raise ValueError("Exe inference requires a personal integration HTTPS origin")
+    selected = resolve_inference_model(model, backend=backend)
     granted = os.environ.get("PHI_INFERENCE_MODEL", "openai/gpt-5.6-luna")
     if selected.name != granted:
         raise ValueError("Requested model does not match the worker inference grant")
@@ -188,7 +199,9 @@ def run_isolated_pi(
         home = root / "home"
         config = home / ".pi/agent"
         config.mkdir(parents=True)
-        (config / "models.json").write_text(json.dumps(aperture_models(model=selected.name)))
+        (config / "models.json").write_text(
+            json.dumps(aperture_models(model=selected.name, backend=backend))
+        )
         skill_args = []
         for index, source in enumerate(skills):
             source_path = Path(source)
@@ -208,9 +221,11 @@ def run_isolated_pi(
             with inference_bridge(
                 root / "inference.sock",
                 upstream=upstream,
-                authorization=f"Bearer {token}",
+                authorization=f"Bearer {token}" if backend == "aperture" else None,
                 model=selected.name,
-                translate_model=False,
+                translate_model=backend == "exe",
+                backend=backend,
+                max_requests=None if backend == "exe" else 32,
             ):
                 command = sandbox_command(
                     workspace=workspace,
@@ -227,7 +242,7 @@ def run_isolated_pi(
                         "json",
                         "--no-session",
                         "--provider",
-                        "aperture",
+                        backend,
                         "--model",
                         selected.name,
                         "--thinking",
@@ -239,7 +254,7 @@ def run_isolated_pi(
                 return run_json_process(
                     command,
                     prompt=prompt,
-                    provider="aperture",
+                    provider=backend,
                     model=selected.name,
                     timeout_seconds=timeout_seconds,
                     env={"PATH": "/usr/bin:/bin"},

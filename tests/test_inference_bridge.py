@@ -231,3 +231,37 @@ def test_grant_cannot_switch_to_another_authorized_model(bridge_dir, upstream):
         connection.close()
     assert not calls
     assert grants.usage("luna-only")["requests"] == 0
+
+
+def send(path, body, route="/v1/responses"):
+    connection = HTTPConnection("localhost")
+    connection.sock = socket.socket(socket.AF_UNIX)
+    connection.sock.connect(str(path))
+    try:
+        connection.request("POST", route, json.dumps(body), {"Authorization": "untrusted"})
+        response = connection.getresponse()
+        return response.status, response.read()
+    finally:
+        connection.close()
+
+
+def test_exe_responses_transport_and_local_policy(bridge_dir, upstream):
+    url, calls = upstream
+    path = bridge_dir / "exe.sock"
+    body = {"model": "openai/gpt-5.6-luna", "input": [], "max_output_tokens": 8192}
+    with inference_bridge(path, upstream=url, backend="exe", max_requests=None, agent_uid=None):
+        for _ in range(33):
+            assert send(path, body)[0] == 200
+        headers, forwarded = calls[-1]
+        assert "Authorization" not in headers
+        assert forwarded["model"] == "gpt-5.6-luna"
+        assert forwarded["store"] is False
+        assert forwarded["background"] is False
+        assert forwarded["stream"] is True
+        assert "max_output_tokens" not in forwarded
+        assert send(path, body | {"model": "openai/gpt-5.6-terra"})[0] == 400
+        assert send(path, body | {"tools": [{"type": "web_search"}]})[0] == 400
+        assert send(path, body, "/workflows/request")[0] == 404
+        assert send(path, body, "/v1/chat/completions")[0] == 400
+    assert len(calls) == 33
+    assert not path.exists()
