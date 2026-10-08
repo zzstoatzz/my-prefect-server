@@ -3,10 +3,12 @@
 Creates two VMs on the account behind the default SSH identity and deletes them.
 """
 
+import argparse
 import asyncio
 import sys
 import time
 import uuid
+from pathlib import Path
 
 from prefect_exe import provider
 from prefect_exe.client import ExeClient, NotFound
@@ -18,9 +20,10 @@ DETACHED = (
 )
 
 
-def config(argv: list[str]) -> dict:
+def config(argv: list[str], *, image: str | None) -> dict:
     return {
         "flow_run_id": "probe",
+        "environment_mode": "image" if image else "bootstrap",
         "argv": argv,
         "env": {"PROBE_SETTING": "explicit"},
         "cwd": "/home/exedev",
@@ -48,19 +51,20 @@ async def timed(label: str, operation):
     return result
 
 
-async def main():
+async def main(image: str | None, identity_file: Path | None):
     suffix = uuid.uuid4().hex[:8]
     names = [f"prefect-probe-{suffix}-{kind}" for kind in ("exit", "stop")]
-    async with ExeClient() as client:
+    async with ExeClient(identity_file) as client:
         try:
-            vm = await timed("create", client.create(names[0], tags=["prefect-probe"]))
+            vm = await timed("create", client.create(names[0], tags=["prefect-probe"], image=image))
             assert vm.tags == ("prefect-probe",) and vm.created_at.tzinfo is not None
             assert await provider.service_status(client, vm) is None
             assert await provider.inspect(client, vm) == {"phase": "prepared"}
             await timed(
-                "bootstrap", provider.install(client, vm, config(["python", "-c", DETACHED]))
+                "bootstrap",
+                provider.install(client, vm, config(["python", "-c", DETACHED], image=image)),
             )
-            await provider.install(client, vm, config(["python", "-c", DETACHED]))
+            await provider.install(client, vm, config(["python", "-c", DETACHED], image=image))
             await provider.start(client, vm)
             state = await timed("exit observed", wait_for(client, vm, "exited"))
             assert state["exit_code"] == 0 and state["reason"] == "process exited", state
@@ -75,9 +79,9 @@ async def main():
             assert (await provider.inspect(client, vm))["finished_at"] == state["finished_at"]
             print("exit: outcome kept; detached child stopped; restart did not replay", flush=True)
 
-            vm = await client.create(names[1], tags=["prefect-probe"])
+            vm = await client.create(names[1], tags=["prefect-probe"], image=image)
             await provider.install(
-                client, vm, config(["python", "-c", "import time; time.sleep(300)"])
+                client, vm, config(["python", "-c", "import time; time.sleep(300)"], image=image)
             )
             await provider.start(client, vm)
             await wait_for(client, vm, "running")
@@ -100,4 +104,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    sys.exit(asyncio.run(main()))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--image")
+    parser.add_argument("--identity-file", type=Path)
+    args = parser.parse_args()
+    sys.exit(asyncio.run(main(args.image, args.identity_file)))

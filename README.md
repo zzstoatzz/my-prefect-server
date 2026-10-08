@@ -56,6 +56,37 @@ prefect 3 python.
 The hub dbt models run in [Dagster on HeavyPad](deploy/dagster/README.md). Prefect
 retains ingestion/classification and a success-gated handoff to downstream flows.
 
+## gardener
+
+[gardener](https://hub.waow.tech/gardener) shows the exe worker, routed deployments,
+flow outcomes, VM cleanup, and per-stage timings. Sign in with the Prefect operator
+credential (or configure `GARDENER_VIEW_AUTH_STRING` separately). The hub queries
+with `GARDENER_API_AUTH_STRING` when configured; production uses the read-only API
+credential. No execution depends on an open page.
+
+The worker keeps bounded attempt observations in SQLite on heavypad and publishes
+one replaceable Prefect artifact. Missing or stale observations remain visible.
+Flow completion and verified VM deletion are separate outcomes.
+
+```sh
+just gardener-status                       # inspect the installed release
+just gardener-image                        # build the locked runtime image
+just gardener-probe --image REGISTRY/IMAGE  # create, exercise, and delete two VMs
+just gardener-install COMMIT               # install a committed worker release
+```
+
+The baked image is opt-in: set `environment_mode: image`, an explicit image,
+and empty `requirements` / `local_packages` in job variables after the live probe
+passes. Existing deployments retain bootstrap mode. Private registries also need
+provider-side pull authentication before their images can be used.
+
+The design borrows durable execution and detachable clients from
+[Albedo](https://tangled.org/okami.mom/albedo), and separation of orchestration from
+runtime observation from Nebula. Prefect remains the scheduler; neither an agent
+graph engine nor another dashboard database is needed. The image follows
+[uv's Docker guidance](https://docs.astral.sh/uv/guides/integration/docker/): pinned
+uv, a locked non-editable environment, and dependency layers before source.
+
 ## develop
 
 ```sh

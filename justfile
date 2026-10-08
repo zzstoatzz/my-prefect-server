@@ -580,3 +580,19 @@ install-source-cache:
     destination="/home/stoat/.local/share/mps/source-cache/$digest"
     scp "$source_file" "stoat@heavypad:/tmp/mps-source-cache-$digest.py"
     ssh stoat@heavypad "test \"\$(sha256sum /tmp/mps-source-cache-$digest.py | cut -d' ' -f1)\" = '$digest' && mkdir -p '$destination' && install -m 0444 /tmp/mps-source-cache-$digest.py '$destination/deployment_steps.py' && rm /tmp/mps-source-cache-$digest.py"
+
+# Build the baked exe.dev environment from the locked workspace.
+gardener-image image="gardener:dev":
+    docker build --platform linux/amd64 -f deploy/gardener/Dockerfile --build-arg SOURCE_REVISION=$(git rev-parse HEAD) -t '{{image}}' .
+
+# Explicit live test: creates two disposable VMs, tests exit/cancel/restart, deletes both.
+gardener-probe *args:
+    uv run python tests/exe_provider_probe.py {{args}}
+
+# Inspect the worker without displaying its environment or credentials.
+gardener-status:
+    ssh stoat@heavypad 'systemctl --user show pi-exe-worker -p ActiveState -p SubState -p ActiveEnterTimestamp -p NRestarts; cat /home/stoat/gardener-exe-worker/current/SOURCE_REVISION'
+
+# Install a committed, locked worker release when its VM inventory is empty.
+gardener-install revision="HEAD":
+    bash deploy/gardener/install-worker.sh '{{revision}}'
