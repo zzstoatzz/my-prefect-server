@@ -6,7 +6,8 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/gardener/venv UV_PYTHON_INSTALL_DIR=/opt/python 
     UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1
 WORKDIR /opt/gardener/release
 COPY pyproject.toml uv.lock mps-0.1.0-py3-none-any.whl ./
-RUN echo "$WHEEL_SHA256  mps-0.1.0-py3-none-any.whl" | sha256sum -c - \
+RUN --mount=type=cache,target=/root/.cache/uv \
+    echo "$WHEEL_SHA256  mps-0.1.0-py3-none-any.whl" | sha256sum -c - \
     && uv sync --locked --python 3.13.7 --no-dev --no-editable --reinstall-package mps
 COPY verify-wheel.py ./
 RUN python verify-wheel.py \

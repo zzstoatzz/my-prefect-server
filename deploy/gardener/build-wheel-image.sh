@@ -19,7 +19,7 @@ dependencies = ["mps", "prefect==3.7.7"]
 [tool.uv.sources]
 mps = { path = "mps-0.1.0-py3-none-any.whl" }
 TOML
-uv lock --project "$context" --python 3.13.7
+uv lock --project "$context" --python 3.13.7 --refresh-package mps
 docker build --platform linux/amd64 -f deploy/gardener/Dockerfile.wheel \
     --build-arg BASE_IMAGE="$base_image" --build-arg WHEEL_SHA256="$expected" \
     -t "$image" "$context"

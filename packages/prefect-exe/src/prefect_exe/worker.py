@@ -395,6 +395,9 @@ class ExeWorker(BaseWorker):
         try:
             flow_run = await self.client.read_flow_run(flow_id)
         except ObjectNotFound:
+            await self._detach_integrations(client, vm.name)
+            if self._release_environment:
+                await self._release_environment(vm.name)
             self._record(vm.name, phase="retained", error="Prefect run record is missing")
             self._logger.warning("VM %s has no Prefect flow record", vm.name)
             return

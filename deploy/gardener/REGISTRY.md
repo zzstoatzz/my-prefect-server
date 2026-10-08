@@ -24,7 +24,7 @@ sudo docker run -d --name gardener-registry --restart=always \
 
 ## Releases
 
-`images.json` records immutable image digests and original wheel hashes. Each
+`images.json` records immutable image digests and release wheel hashes. Each
 image installs its deployment's exact wheel, locks dependencies at build time,
 verifies installed source bytes against that wheel, and prepares agent tools.
 The Prefect runtime remains pinned to the bootstrap worker's `3.7.7` requirement.
@@ -66,3 +66,37 @@ Already-running jobs retain their submitted configuration.
 The original wheels remain at
 `/home/stoat/phi-spike-worker/releases/WHEEL_SHA/mps-0.1.0-py3-none-any.whl`.
 The worker stays on heavypad throughout this rollout.
+
+## Exe inference rollout (2026-10-08)
+
+The worker attaches `llm` to each job VM at creation. It supplies an Exe integration
+origin and model selection rather than an inference token. Pi remains inside its
+existing filesystem/network namespace and calls the trusted local relay. OpenAI
+uses streaming Responses through the connected ChatGPT account; Anthropic uses
+Messages through Exe credits. The worker detaches `llm` when execution exits or
+is cancelled, before VM deletion. Detach failures are logged; deletion still runs.
+
+The 32-request cap and remote SQLite grants are not used for Exe jobs. The local
+relay still admits only the selected model and inference API, excludes provider
+hosted tools for Responses, and strips caller authentication. The ChatGPT
+compatibility path omits `max_output_tokens` and `background` (the latter was
+explicitly rejected by the live endpoint, even when false). Execution
+timeouts remain the runtime bound; this is not a dollar budget. Catalog usage
+estimates are not actual ChatGPT subscription charges.
+
+The older gateway remains running for Phi's workflow-request endpoint and the
+Sprites fallback. Do not stop it merely because Exe inference no longer uses it.
+
+Release build contexts and the one-time wheel patch script are saved under
+`/home/stoat/gardener-images/releases/exe-inference-2026-10-08`. Flow source and
+dependency versions were preserved. The oldest test-pull-patch wheel also takes
+the existing investigate release's Pi usage reporting modules. Refresh the `mps`
+lock entry when replacing a wheel with the same version; plain `uv lock` can
+retain the previous artifact hash.
+
+Rollback snapshots for this migration are under
+`/home/stoat/gardener-images/rollbacks/exe-inference-2026-10-08`. Pause the pool,
+wait for or cancel owned jobs, restore each snapshot's job variables, and reinstall
+worker release `d0ef23a` with `just gardener-install d0ef23a`. That release still
+uses the previous image configuration and grant-based inference. Resume the pool
+and verify a job before declaring rollback complete.
