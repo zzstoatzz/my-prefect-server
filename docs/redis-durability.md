@@ -1,7 +1,8 @@
 # durable Redis migration
 
-This procedure is prepared but has not yet been rehearsed or applied. Production
-still uses the volatile `prefect-redis` deployment. Do not apply the final Redis
+The Redis storage transition has been rehearsed; application-client cutover and
+the Kubernetes procedure have not yet been exercised. Production still uses the
+volatile `prefect-redis` deployment. Do not apply the final Redis
 manifest directly to an existing installation: that would route clients to an
 empty database.
 
@@ -17,6 +18,15 @@ capacity guarantee. The chaos lab uses smaller limits with the same durability
 and eviction policy.
 
 ## staged transition
+
+The isolated rehearsal in `prefect-server/scripts/chaos/redis-migration.py`
+(commit `045efe4`) used the same Redis image and synchronous AOF policy. After
+coordinated failover and forced replacement of the new primary it verified all
+96 stream entries byte-for-byte, 13 pending IDs with owners and delivery counts,
+and a lock with its remaining expiry. The stronger repeat took 16.4 seconds,
+including a 1.5-second observed failover, and removed both containers and its
+volume. This proves storage preservation for that workload, not transparent
+reconnection of Prefect clients through a Kubernetes Service change.
 
 Rehearse with real acknowledged events and pending consumer entries first.
 Deploy and verify the tested server image through the server repository's
