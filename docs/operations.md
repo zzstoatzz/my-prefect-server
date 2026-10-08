@@ -4,6 +4,9 @@ standing the system up, and the recipes that run it day to day. every command
 is a `justfile` recipe; `just --list` is the full surface. `just` loads `.env`,
 so nothing here needs variables exported in the shell.
 
+See [chaos operations](chaos-operations.md) for the isolated fault runner,
+production replica checks, and server/instance repository ownership.
+
 ## credentials
 
 copy `.env.example` to `.env` and fill in `HCLOUD_TOKEN`, `POSTGRES_PASSWORD`,

@@ -110,22 +110,11 @@ just push                                 # github first (installs come from the
 
 ## docs
 
-| | |
-|---|---|
-| [operations.md](docs/operations.md) | standing up the VM and the home worker; the recipes that run the system |
-| [hub.md](docs/hub.md) | the ingest → classify → transform → brief pipeline and the hub it feeds |
-| [fastmcp-attention.md](docs/fastmcp-attention.md) | when fastmcp briefs fire, what "seen" means, and the staged plan for laptop triage and operator acks |
-| [autofix.md](docs/autofix.md) | the gardener: failed run → pi diagnosis → pull → phi review → operator merge |
-| [coding-jobs.md](docs/coding-jobs.md) | audit retained coding jobs, outputs, reviews, and telemetry coverage |
-| [prefect-patterns.md](docs/prefect-patterns.md) | the mechanism behind the conventions in `AGENTS.md`, with citations |
-| [agent-tooling.md](docs/agent-tooling.md) | the two MCP servers in `plugins/mps/` and what each can do |
-| [prompt-caching.md](docs/prompt-caching.md) | why thousands of LLM calls cost a few dollars |
-| [cost-declaration.md](docs/cost-declaration.md) | a sketch of declaring infrastructure costs on atproto |
-| [audits/](docs/audits/) | point-in-time reviews of the live deployments, with a dated status of what is still open |
-| [incidents/](docs/incidents/) | post-mortems |
-| [archive/](docs/archive/) | shipped design notes and build logs, kept for the why; none describes the present |
-
-[COSTS.md](COSTS.md) is the running record of what this deployment spends.
+[docs/](docs/) covers instance operations, workflows, agent tooling, incidents,
+and archived investigations. [chaos operations](docs/chaos-operations.md)
+explains ownership, the HeavyPad runner, and production verification.
+[COSTS.md](COSTS.md) records deployment spending; verify its dated assumptions
+against live usage before making cost decisions.
 
 ## license
 
