@@ -5,19 +5,19 @@
     "investigate": {
       "id": "2c0ba8f3-7adf-44f8-a96e-8214c1bd8f2f",
       "wheel_sha256": "cd176014c35ffc3da0ab2e29307f05d5bd12c69c525013beafb9bdd273ebb973",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:64ca9bc711c077a0f9911826a51d4ad39bc2c0d43a1b6234570d6ab1e55a07f6",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:9c86aed1b5df8040b1064eabd210f619f826255b918d91788486a4022df78d3c",
       "inference_backend": "exe"
     },
     "autofix-revise": {
       "id": "02d90936-9f9b-45f7-97e6-8f18539b0b7e",
       "wheel_sha256": "160907e1cfb2648638abb1886f753f090b3fb70ed87c41fa632252cb12b88774",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:a2893b46bb4df3cdd5b82aa868f995b3f7b7d312ade1ad3b1a27bf82e47e473a",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:7e021c862e2b73cbe8aab543995b33ba25927066f212680adcbe9ef175779e89",
       "inference_backend": "exe"
     },
     "test-pull-patch": {
       "id": "6f98ab00-3c0a-44ef-b35a-bda13bfb67e2",
       "wheel_sha256": "c75b01f982d89f57d5279f3813f8db1d6e9924aa74f2040dadcd3e4029ed6441",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:fa35c3ce2ab61921721dd6dd77042b93605736fd036581c6417c67f76d234422",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:cf3b12d5bc08960464f3a16ebcab221bb171cfad317ce14fc37dd13fd4a304c3",
       "inference_backend": "exe"
     }
   }

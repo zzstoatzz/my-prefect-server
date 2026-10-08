@@ -1,0 +1,119 @@
+{
+  "run": {
+    "id": "a21dbae1-34b7-4afb-ae89-33081f3f28a0",
+    "name": "investigate-a21dbae1",
+    "state": {
+      "type": "COMPLETED",
+      "name": "Completed",
+      "timestamp": "2026-10-08T19:17:22.407150Z",
+      "message": null,
+      "state_details": {
+        "deferred": null,
+        "cache_key": null,
+        "pause_key": null,
+        "retriable": null,
+        "flow_run_id": "a21dbae1-34b7-4afb-ae89-33081f3f28a0",
+        "task_run_id": null,
+        "traceparent": null,
+        "pause_timeout": null,
+        "refresh_cache": null,
+        "transition_id": "a99f815e-e1b3-4ec5-b4f6-530fb56f9507",
+        "scheduled_time": null,
+        "cache_expiration": null,
+        "pause_reschedule": false,
+        "run_input_keyset": null,
+        "child_flow_run_id": null,
+        "task_parameters_id": null,
+        "untrackable_result": false,
+        "deployment_concurrency_lease_id": null
+      }
+    },
+    "parameters": {
+      "agent": {
+        "provider": "aperture",
+        "tool_mode": "read-only"
+      },
+      "prompt": "Read-only smoke test of gardener's new exe inference. Read README.md in my-prefect-server and name two workflow entrypoints listed in prefect.yaml. Make no edits, no commits, no PRs. Report the two entrypoints (as written in prefect.yaml) and one line from README.md confirming you read it.",
+      "workspace": {
+        "repo": "my-prefect-server"
+      }
+    },
+    "infrastructure_pid": "prefect-7df0c11a-a21dbae134b74afbae8933081f3f28a0-r0",
+    "created": "2026-10-08T19:16:43.671497Z",
+    "expected_start_time": "2026-10-08T19:16:43.671104Z",
+    "start_time": "2026-10-08T19:17:07.274959Z",
+    "end_time": "2026-10-08T19:17:22.407150Z"
+  },
+  "observation": {
+    "vm": "prefect-7df0c11a-a21dbae134b74afbae8933081f3f28a0-r0",
+    "flow_run_id": "a21dbae1-34b7-4afb-ae89-33081f3f28a0",
+    "run_name": "investigate-a21dbae1",
+    "image": "gardener-registry.exe.xyz/gardener@sha256:64ca9bc711c077a0f9911826a51d4ad39bc2c0d43a1b6234570d6ab1e55a07f6",
+    "timeout_seconds": 2400,
+    "created_at": 1791487008.0,
+    "updated_at": 1791487060.6529024,
+    "phase": "deleted",
+    "exit_code": 0,
+    "reason": "process exited",
+    "error": null,
+    "stages": {
+      "create": {
+        "started_at": 1791487006.0613494,
+        "finished_at": 1791487011.023065,
+        "seconds": 4.961732322000898,
+        "outcome": "completed"
+      },
+      "bootstrap": {
+        "started_at": 1791487011.436565,
+        "finished_at": 1791487014.818535,
+        "seconds": 3.381973903044127,
+        "outcome": "completed"
+      },
+      "service_start": {
+        "started_at": 1791487015.815396,
+        "finished_at": 1791487016.7998044,
+        "seconds": 0.9844111999263987,
+        "outcome": "completed"
+      },
+      "artifact_delivery": {
+        "started_at": 1791487057.7055657,
+        "finished_at": 1791487057.9214897,
+        "seconds": 0.21592715999577194,
+        "outcome": "completed"
+      },
+      "delete": {
+        "started_at": 1791487057.9413514,
+        "finished_at": 1791487060.6526785,
+        "seconds": 2.7113313879817724,
+        "outcome": "completed"
+      }
+    }
+  },
+  "artifacts": [
+    {
+      "id": "d86a2b6d-f069-4f4a-93af-73e16b154244",
+      "created": "2026-10-08T19:17:21.715022Z",
+      "updated": "2026-10-08T19:17:21.715022Z",
+      "key": "pi-execution-usage",
+      "task_run_id": null,
+      "flow_run_id": "a21dbae1-34b7-4afb-ae89-33081f3f28a0",
+      "type": "table",
+      "data": "[{\"invocation\": \"31308def-ad42-404b-9392-49e50e274e9d\", \"provider\": \"exe\", \"model\": \"openai/gpt-5.6-luna\", \"outcome\": \"completed\", \"seconds\": 8.122, \"messages\": 4, \"usage_records\": 4, \"missing_usage\": 0, \"usage_complete\": true, \"known_estimated_cost_usd\": 0.00447, \"unpriced_records\": 0, \"billed_cost_usd\": null, \"tokens\": 20150}]",
+      "description": "Pi usage coverage and estimated inference cost; excludes infrastructure",
+      "metadata_": null
+    },
+    {
+      "id": "1ba0387a-4b79-46c9-8326-55ce93cc04dd",
+      "created": "2026-10-08T19:17:22.200699Z",
+      "updated": "2026-10-08T19:17:22.200699Z",
+      "key": "pi-agent-output",
+      "task_run_id": null,
+      "flow_run_id": "a21dbae1-34b7-4afb-ae89-33081f3f28a0",
+      "type": "markdown",
+      "data": "Read `my-prefect-server/README.md`. This line confirms it:\n\n> “a personal data pipeline and the prefect deployment that runs it.”\n\nTwo workflow entrypoints from `prefect.yaml`:\n\n- `flows/fleet_health.py:fleet_health`\n- `flows/mcp_fleet_health.py:mcp_fleet_health`\n\nNo edits, commits, or PRs were made.",
+      "description": "Gardener investigation result (Pi harness)",
+      "metadata_": null
+    }
+  ],
+  "thread_result": "https://bsky.app/profile/phi.zzstoatzz.io/post/3mxf6eudiyf2q"
+}
