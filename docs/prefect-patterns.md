@@ -1,6 +1,6 @@
 # prefect patterns
 
-Conventions in `CLAUDE.md` state the rule; this explains the mechanism, with
+Conventions in `AGENTS.md` state the rule; this explains the mechanism, with
 citations into `~/github.com/prefecthq/prefect` so the next person can check
 rather than trust.
 

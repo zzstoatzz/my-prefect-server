@@ -83,7 +83,7 @@ change that resolves the cause. add or extend a regression test when the fix
 is testable. run the test suite for what you touched (`uv run pytest <paths>`)
 before finishing.
 
-read CLAUDE.md at the repo root first and follow its conventions. when a
+read AGENTS.md at the repo root first and follow its conventions. when a
 pr-authoring skill is loaded, compose TITLE and NOTE by its prose rules; the
 flow — not you — publishes the pull (patch-based, no gh), so only
 composition guidance applies, not git/gh mechanics.

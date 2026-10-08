@@ -76,7 +76,7 @@ just push                                 # github first (installs come from the
 | [fastmcp-attention.md](docs/fastmcp-attention.md) | when fastmcp briefs fire, what "seen" means, and the staged plan for laptop triage and operator acks |
 | [autofix.md](docs/autofix.md) | the gardener: failed run → pi diagnosis → pull → phi review → operator merge |
 | [coding-jobs.md](docs/coding-jobs.md) | audit retained coding jobs, outputs, reviews, and telemetry coverage |
-| [prefect-patterns.md](docs/prefect-patterns.md) | the mechanism behind the conventions in `CLAUDE.md`, with citations |
+| [prefect-patterns.md](docs/prefect-patterns.md) | the mechanism behind the conventions in `AGENTS.md`, with citations |
 | [agent-tooling.md](docs/agent-tooling.md) | the two MCP servers in `plugins/mps/` and what each can do |
 | [prompt-caching.md](docs/prompt-caching.md) | why thousands of LLM calls cost a few dollars |
 | [cost-declaration.md](docs/cost-declaration.md) | a sketch of declaring infrastructure costs on atproto |

@@ -56,7 +56,7 @@ read, edit, run the tests for what you touch.
 
 address the latest operator comment. if it asks for a change, make it. if it
 asks a question, answer it. keep the change minimal and in the spirit of the
-existing rounds. read CLAUDE.md at the repo root and follow its conventions;
+existing rounds. read AGENTS.md at the repo root and follow its conventions;
 compose prose per the pr-body skill when loaded.
 
 your last lines must be exactly:

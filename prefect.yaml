@@ -480,7 +480,7 @@ deployments:
     entrypoint: flows/typeahead_enrich_backfill.py:typeahead_enrich_backfill
     # THE OWNER of typeahead's profile backlog (~6M actors at
     # profile_checked_at=0). The worker's hourly Cloudflare cron is sized to
-    # arrivals only and never drains history (its CLAUDE.md cron contract);
+    # arrivals only and never drains history (its AGENTS.md cron contract);
     # this is the permanent steady-state enrichment engine: time-budgeted
     # (3.5h wall clock, inside the 4h timeout guard), oldest-first off
     # idx_actors_refresh_queue, draining the historical backlog and then the

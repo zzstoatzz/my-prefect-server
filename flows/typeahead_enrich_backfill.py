@@ -5,7 +5,7 @@ New actors arrive at ~2,900/hour (~70k/day) and every one enters the
 profile_checked_at=0 queue, plus firehose profile/identity events reset
 existing actors back into it. The worker's hourly Cloudflare cron is
 arrivals-triage/moderation-freshness only, capped at 200 events/run
-(~4,800/day) by typeahead's cron contract (its CLAUDE.md) — so without this
+(~4,800/day) by typeahead's cron contract (its AGENTS.md) — so without this
 flow the queue grows ~65k/day forever. Scheduled daily; each run walks the
 queue oldest-first → app.bsky.actor.getProfiles (25 DIDs/call) → the same
 score formula and write guards the worker uses → paced turso batches.
