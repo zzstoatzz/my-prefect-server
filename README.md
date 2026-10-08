@@ -74,7 +74,7 @@ Flow completion and verified VM deletion are separate outcomes.
 ```sh
 just gardener-status                       # inspect the installed release
 just gardener-image                        # build the locked runtime image
-just gardener-probe --image REGISTRY/IMAGE  # create, exercise, and delete two VMs
+just gardener-probe --image REGISTRY/IMAGE --prepare-agent  # time startup and test two VMs
 just gardener-install COMMIT               # install a committed worker release
 ```
 
@@ -82,6 +82,8 @@ The baked image is opt-in: set `environment_mode: image`, an explicit image,
 and empty `requirements` / `local_packages` in job variables after the live probe
 passes. Existing deployments retain bootstrap mode. Private registries also need
 provider-side pull authentication before their images can be used.
+The [startup investigation](docs/spikes/gardener-startup.md) separates image
+preparation, worker placement, and job isolation, with live probe measurements.
 
 The design borrows durable execution and detachable clients from
 [Albedo](https://tangled.org/okami.mom/albedo), and separation of orchestration from
