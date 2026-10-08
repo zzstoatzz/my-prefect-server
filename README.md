@@ -58,8 +58,11 @@ retains ingestion/classification and a success-gated handoff to downstream flows
 
 ## gardener
 
-[gardener](https://hub.waow.tech/gardener) shows the exe worker, routed deployments,
-flow outcomes, VM cleanup, and per-stage timings. Sign in through the hub’s existing
+[gardener](https://hub.waow.tech/gardener) opens on a spatial execution map:
+Prefect and heavypad, current exe.dev machines, and recent outcomes. Counts show
+workers online, machines, active work, and requests needing attention. Select an
+object to inspect it; Work history opens the original request and saved answer.
+Execution timings and cleanup remain available inside each request. Sign in through the hub’s existing
 Cloudflare Access login; the origin verifies its signed application token. The hub queries
 with `GARDENER_API_AUTH_STRING` when configured; production uses the read-only API
 credential. No execution depends on an open page.

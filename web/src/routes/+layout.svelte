@@ -1,8 +1,12 @@
 <script>
 	import '../app.css';
+	import { page } from '$app/state';
 	let { children } = $props();
 </script>
 
+{#if page.url.pathname === "/gardener" || page.url.pathname.startsWith("/gardener/")}
+    {@render children()}
+{:else}
 <div class="bg-gray-950 text-gray-100 min-h-screen">
 	<header class="border-b border-gray-800/50">
 		<nav aria-label="main" class="max-w-screen-xl mx-auto flex items-center justify-between px-6 py-4">
@@ -43,3 +47,5 @@
 		{@render children()}
 	</main>
 </div>
+
+{/if}

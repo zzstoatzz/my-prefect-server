@@ -7,6 +7,7 @@ const poolId = '7c023916-feb2-477a-8bc6-58e6dda15122';
 const deploymentId = '2c0ba8f3-7adf-44f8-a96e-8214c1bd8f2f';
 const runId = '8b657b9f-35db-457a-9ec9-234f0be1e481';
 const vm = 'prefect-7df0c11a-8b657b9f35db457a9ec9234f0be1e481-r0';
+const artifactId = '7ae05733-947e-4cd8-a876-69ffff4151a6';
 const timestamp = '2026-10-08T06:58:09Z';
 
 for (const brokenObservation of [false, true]) {
@@ -28,10 +29,20 @@ for (const brokenObservation of [false, true]) {
                     response.end(JSON.stringify([{ id: deploymentId, name: 'investigate', work_pool_name: 'gardener-exe', paused: false, job_variables: {} }])); break;
                 case '/flow_runs/filter': {
                     assert.deepEqual(JSON.parse(body).flow_runs.deployment_id.any_, [deploymentId]);
-                    const run = { id: runId, name: 'investigate', deployment_id: deploymentId, state_type: 'COMPLETED', state_name: 'Completed', created: timestamp, start_time: timestamp, end_time: timestamp, infrastructure_pid: vm, run_count: 1 };
+                    const run = { id: runId, name: 'investigate', deployment_id: deploymentId, state_type: 'COMPLETED', state_name: 'Completed', created: timestamp, start_time: timestamp, end_time: timestamp, infrastructure_pid: vm, run_count: 1, parameters: { prompt: 'Investigate the worker', workspace: { repo: 'my-prefect-server' }, env: { SECRET: 'must-not-reach-browser' } } };
+                    if (JSON.parse(body).flow_runs.state) {
+                        response.end(JSON.stringify([{ ...run, id: '3481c256-1b53-4eed-adff-415c83863996', created: '2026-01-01T00:00:00Z', state_type: 'RUNNING', end_time: null, infrastructure_pid: vm.replace(runId.replaceAll('-', ''), '3481c2561b534eedadff415c83863996') }])); break;
+                    }
                     response.end(JSON.stringify([run, { ...run, infrastructure_pid: 'previous-sprites-attempt' }])); break;
                 }
                 case '/artifacts/filter':
+                    if (JSON.parse(body).artifacts.flow_run_id) {
+                        assert.deepEqual(JSON.parse(body).artifacts.flow_run_id.any_, [runId]);
+                        response.end(JSON.stringify([
+                            { id: artifactId, flow_run_id: deploymentId, key: 'pi-agent-output', type: 'markdown', data: 'unrelated-output-must-not-be-selected' },
+                            { id: artifactId, flow_run_id: runId, key: 'pi-agent-output', type: 'markdown', data: '**Verified answer** <script>alert(1)</script>' }
+                        ])); break;
+                    }
                     assert.deepEqual(JSON.parse(body).artifacts.key.any_, [`exe-worker-${poolId.replaceAll('-', '')}`]);
                     response.end(JSON.stringify([{ data: brokenObservation ? 'not-json' : JSON.stringify([{ version: 1, pool: 'gardener-exe', worker: 'pi-exe-worker', host: 'heavypad', published_at: 1, observed_at: 1, observer_error: null, active_attempts: 0, attempts: [] }]) }])); break;
                 default: response.writeHead(404).end();
@@ -42,13 +53,24 @@ for (const brokenObservation of [false, true]) {
             const address = server.address();
             assert(address && typeof address !== 'string');
             const result = await loadGardener(`http://127.0.0.1:${address.port}`, 'reader:test', fetch);
-            assert.equal(result.runs.length, 1);
+            assert.equal(result.runs.length, 2);
+            assert.equal(result.runs[1].state_type, 'RUNNING');
+            assert.equal(result.workInventoryComplete, true);
             assert.equal(result.runs[0].infrastructure_pid, vm);
             assert.equal(result.pool.concurrency_limit, 2);
             assert.equal(result.snapshot === null, brokenObservation);
             assert.equal(result.observationError !== null, brokenObservation);
-            assert.equal(paths.length, 5);
+            assert.equal(paths.length, 7);
+            assert.match(result.result?.html ?? '', /<strong>Verified answer<\/strong>/);
+            assert(!JSON.stringify(result).includes('must-not-reach-browser'));
+            assert(!JSON.stringify(result).includes('unrelated-output-must-not-be-selected'));
+            assert(!result.result?.html.includes('<script>'));
             assert(!JSON.stringify(result).includes('reader:test'));
+            const working = await loadGardener(`http://127.0.0.1:${address.port}`, 'reader:test', fetch, { filter: 'working', includeResult: false });
+            assert.equal(working.selected?.state_type, 'RUNNING');
+            assert.equal(working.result, null);
+            const unavailable = await loadGardener(`http://127.0.0.1:${address.port}`, 'reader:test', fetch, { runId: deploymentId, includeResult: false });
+            assert.equal(unavailable.selected, null);
         } finally {
             server.closeAllConnections();
             await new Promise<void>(resolve => server.close(() => resolve()));

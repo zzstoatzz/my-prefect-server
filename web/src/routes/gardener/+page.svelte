@@ -1,196 +1,142 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { invalidateAll } from '$app/navigation';
+    import { goto, invalidateAll } from '$app/navigation';
+    import { page } from '$app/state';
+    import WorkReader from '$lib/components/gardener/WorkReader.svelte';
+    import SystemMap from '$lib/components/gardener/SystemMap.svelte';
+    import { isWorking, needsAttention, repository, requestText, workStatus, workTitle, type WorkFilter } from '$lib/gardener';
     import type { PageData } from './$types';
 
     let { data }: { data: PageData } = $props();
-    let selected = $state<string | null>(null);
+    let filter = $state<WorkFilter>('all');
+    $effect(() => {
+        const value = page.url.searchParams.get('filter');
+        filter = value === 'attention' || value === 'working' || value === 'finished' ? value : 'all';
+    });
+    let search = $state('');
     let refreshing = $state(false);
+    let refreshFailed = $state(false);
     let now = $state(Date.now());
-    const time = (value: number | null) => value === null ? '—' : new Intl.DateTimeFormat('en-US', {
-        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC'
-    }).format(new Date(value * 1000));
-    const duration = (seconds: number | null) => seconds === null ? '—' : seconds < 60 ? `${seconds.toFixed(1)}s` : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
-    const label = (value: string) => value.replaceAll('_', ' ').toLowerCase();
-    const flowUrl = (id: string) => `https://prefect-server.waow.tech/runs/flow-run/${id}`;
-    const stageNames = { create: 'Create VM', bootstrap: 'Prepare environment', service_start: 'Start flow', artifact_delivery: 'Save diagnostics', delete: 'Delete VM' };
+    let zone = $state('UTC');
+    let theme = $state<'light' | 'dark'>('light');
     let model = $derived(data.gardener);
-    let snapshot = $derived(model?.snapshot);
-    let stale = $derived(!snapshot?.observed_at || now - snapshot.observed_at * 1000 > 90_000);
-    let attempts = $derived(snapshot?.attempts ?? []);
-    let active = $derived(attempts.filter(attempt => !['deleted', 'missing'].includes(attempt.phase)));
-    let attention = $derived(active.filter(attempt => attempt.error || now / 1000 - attempt.created_at > (attempt.timeout_seconds ?? 2400) + 600));
-    let chosen = $derived(attempts.find(attempt => attempt.vm === selected) ?? attempts[0]);
-    let online = $derived(model?.workers.filter(worker => worker.status === 'ONLINE' && worker.last_heartbeat_time && now - Date.parse(worker.last_heartbeat_time) < 90_000) ?? []);
-
+    let system = $derived(page.url.searchParams.get('view') !== 'work');
+    let showReader = $derived(page.url.searchParams.has('run'));
+    let attempts = $derived(model?.snapshot?.attempts ?? []);
+    let stale = $derived(!model?.snapshot?.observed_at || now - model.snapshot.observed_at * 1000 > 90_000);
+    let selected = $derived(model?.selected);
+    let attempt = $derived(attempts.find(item => item.vm === selected?.infrastructure_pid));
+    let counts = $derived({
+        all: model?.runs.length ?? 0,
+        attention: model?.runs.filter(run => needsAttention(run, attempts.find(item => item.vm === run.infrastructure_pid))).length ?? 0,
+        working: model?.runs.filter(isWorking).length ?? 0,
+        finished: model?.runs.filter(run => run.state_type === 'COMPLETED').length ?? 0
+    });
+    const filters: { value: WorkFilter; label: string }[] = [
+        { value: 'all', label: 'All work' }, { value: 'attention', label: 'Needs attention' },
+        { value: 'working', label: 'Working' }, { value: 'finished', label: 'Finished' }
+    ];
+    let runs = $derived((model?.runs ?? []).filter(run => {
+        const matches = `${requestText(run)} ${run.name} ${repository(run) ?? ''}`.toLowerCase().includes(search.toLowerCase());
+        return matches && (filter === 'all' || filter === 'attention' && needsAttention(run, attempts.find(item => item.vm === run.infrastructure_pid)) || filter === 'working' && isWorking(run) || filter === 'finished' && run.state_type === 'COMPLETED');
+    }));
+    const formatDate = (value: string) => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: zone }).format(new Date(value));
+    const formatShortDate = (value: string) => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: zone }).format(new Date(value));
     async function refresh() {
         refreshing = true;
-        try { await invalidateAll(); now = Date.now(); }
+        try { await invalidateAll(); now = Date.now(); refreshFailed = false; }
+        catch { refreshFailed = true; }
         finally { refreshing = false; }
     }
+    async function openRun(id: string) {
+        await goto(`?view=work&run=${id}`, { keepFocus: true });
+    }
+    function toggleTheme() {
+        theme = theme === 'light' ? 'dark' : 'light';
+        localStorage.setItem('gardener-theme', theme);
+    }
     onMount(() => {
-        const interval = setInterval(() => {
+        zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        theme = localStorage.getItem('gardener-theme') === 'dark' ? 'dark' : 'light';
+        const timer = setInterval(() => {
             now = Date.now();
-            if (!document.hidden && !refreshing) void refresh().catch(() => {});
+            if (!document.hidden && !refreshing) void refresh();
         }, 30_000);
-        return () => clearInterval(interval);
+        return () => clearInterval(timer);
     });
 </script>
 
-<svelte:head><title>Gardener · hub</title><meta name="robots" content="noindex,nofollow" /></svelte:head>
+<svelte:head><title>Gardener — delegated work</title><meta name="robots" content="noindex,nofollow" /></svelte:head>
 
-<div class="gardener">
-    <header class="heading">
-        <div><h1>Gardener</h1><p>Agent work, from request to a clean machine.</p></div>
-        <button class="refresh" onclick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : 'Refresh'}</button>
+<div class="gardener" class:dark={theme === 'dark'}>
+    <header class="app-header">
+        <div class="identity"><a class="brand" href="/gardener">Gardener</a><span>Execution map</span></div>
+        <div class="utilities"><a href="/">Hub</a><button onclick={toggleTheme} aria-label={theme === 'light' ? 'Switch to dark appearance' : 'Switch to light appearance'}>{theme === 'light' ? 'Dark' : 'Light'}</button><button class="refresh" onclick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : 'Refresh'}</button></div>
     </header>
-
-    {#if data.unavailable}
-        <div class="notice" role="alert"><h2>Connection unavailable</h2><p>{data.unavailable}</p></div>
-    {:else if model}
-        <div class="summary" aria-label="Worker status">
-            <span class:good={online.length > 0} class:warn={online.length === 0}>{online.length ? `${online.length} worker online` : 'No worker heartbeat'}</span>
-            <span>{model.pool.is_paused ? 'Pool paused' : 'Pool accepting work'}</span>
-            <span>{model.pool.concurrency_limit === null ? 'Concurrency not capped' : `Concurrency limit ${model.pool.concurrency_limit}`}</span>
-            <span class="timestamp">Checked {time(model.loadedAt / 1000)} UTC</span>
-        </div>
-
-        <section class="route" aria-label="How work runs">
-            <div><span class="step">01</span><h2>Request</h2><p>Phi or an automation</p></div>
-            <div><span class="step">02</span><h2>Queue</h2><p>Prefect · {model.pool.name}</p></div>
-            <div><span class="step">03</span><h2>Dispatch</h2><p>{snapshot?.host ?? 'heavypad'} · exe worker</p></div>
-            <div><span class="step">04</span><h2>Execute</h2><p>Fresh VM · isolated Pi</p></div>
-            <div><span class="step">05</span><h2>Clean up</h2><p>Save diagnostics · delete VM</p></div>
-        </section>
-
-        <div class="boundary"><span>Inference</span> Pi calls the grant gateway on heavypad. Each attempt has a model restriction, expiry, and 32-request limit.</div>
-
-        {#if model.observationError}
-            <div class="notice" role="status">{model.observationError}</div>
-        {:else if !snapshot}
-            <div class="notice" role="status">VM observations have not been published yet. Prefect runs are available below; VM cleanup is not yet observable here.</div>
-        {:else if stale || snapshot.observer_error}
-            <div class="notice" role="status"><strong>VM observations are {stale ? 'stale' : 'degraded'}.</strong> Last successful observation: {time(snapshot.observed_at)} UTC. {snapshot.observer_error ?? ''} A worker heartbeat does not establish that VM reconciliation is working.</div>
+    <nav class="views" aria-label="Gardener"><a href="/gardener" aria-current={system ? 'page' : undefined}>Overview</a><a href="?view=work" aria-current={!system ? 'page' : undefined}>Work history</a><span class="sync">{model ? `Updated ${new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: zone }).format(new Date(model.loadedAt))}` : 'Connection unavailable'}</span></nav>
+    {#if !model}
+        <main class="unavailable"><h1>Work is unavailable right now</h1><p>{data.unavailable}</p><button onclick={refresh}>Try again</button></main>
+    {:else}
+        {#if !model.workInventoryComplete || refreshFailed || model.observationError || model.snapshot?.observer_error || stale}
+            <div class="connection" role="status">{!model.workInventoryComplete ? 'The active-work limit was reached. Counts show the loaded subset; check Prefect for the full inventory.' : refreshFailed ? 'Refresh failed. You’re reading the last loaded information.' : model.observationError ? 'Machine history is unavailable. Requests and results are still readable.' : !model.snapshot ? 'Machine history has not been published yet.' : 'Machine observations are delayed. Requests and results come directly from Prefect.'}</div>
         {/if}
-
-        {#if attention.length}
-            <section class="attention"><h2>Needs attention</h2>
-                {#each attention as attempt (attempt.vm)}
-                    <button onclick={() => selected = attempt.vm}><strong>{attempt.run_name ?? attempt.vm}</strong><span>{attempt.error ?? 'VM has outlived its execution budget and cleanup grace period'}</span></button>
-                {/each}
-            </section>
-        {/if}
-
-        <section class="runs">
-            <div class="section-heading"><h2>Recent work</h2><span>{model.runs.length} runs · newest scheduled first</span></div>
-            {#if model.runs.length === 0}
-                <p class="empty">No runs for the deployments currently assigned to this pool.</p>
-            {:else}
-                <div class="run-head" aria-hidden="true"><span>Run</span><span>Flow state</span><span>VM lifecycle</span><span>Execution</span></div>
-                {#each model.runs as run (run.id)}
-                    {@const observed = attempts.find(attempt => attempt.vm === run.infrastructure_pid)}
-                    <div class="run-row">
-                        <div class="run-name"><a href={flowUrl(run.id)} target="_blank" rel="noreferrer">{run.name}</a><small>{model.deployments.find(deployment => deployment.id === run.deployment_id)?.name ?? 'Deployment unavailable'} · {time(Date.parse(run.start_time ?? run.created) / 1000)} UTC</small></div>
-                        <span class="state" class:good={run.state_type === 'COMPLETED'} class:warn={['FAILED', 'CRASHED'].includes(run.state_type ?? '')}>{label(run.state_name ?? run.state_type ?? 'unknown')}</span>
-                        <div>{#if observed}<button class="text-button" onclick={() => selected = observed.vm}>{label(observed.phase)}{observed.error ? ' · attention' : ''}</button>{:else}<span class="muted">{run.infrastructure_pid ? 'Not observed' : 'Not assigned'}</span>{/if}</div>
-                        <span class="elapsed">{run.start_time && run.end_time ? duration((Date.parse(run.end_time) - Date.parse(run.start_time)) / 1000) : run.state_type === 'RUNNING' && run.start_time ? duration((now - Date.parse(run.start_time)) / 1000) : '—'}</span>
+        {#if system}
+            <main><SystemMap {model} {now} {formatDate} /></main>
+        {:else}
+            <main class="workspace" class:reading={showReader}>
+                <section class="inbox" aria-label="Work inbox">
+                    <div class="inbox-heading"><h1>Your work</h1><p>Read what was requested, what came back, and what needs a closer look.</p></div>
+                    <div class="inbox-controls"><label for="work-search" class="sr-only">Search requests</label><input id="work-search" type="search" placeholder="Search requests or repositories" bind:value={search} />
+                        <div class="filters" aria-label="Filter work">{#each filters as item}<button aria-pressed={filter === item.value} onclick={() => goto(`?view=work&filter=${item.value}`, { noScroll: true, keepFocus: true })}>{item.label}<span>{counts[item.value]}</span></button>{/each}</div>
                     </div>
-                {/each}
-            {/if}
-        </section>
-
-        {#if chosen}
-            <section class="attempt">
-                <div class="section-heading"><h2>VM attempt</h2><span>{stale ? 'Last known state' : 'Observed state'}</span></div>
-                <label class="select-label" for="attempt">Inspect attempt</label>
-                <select id="attempt" value={chosen.vm} onchange={event => selected = event.currentTarget.value}>
-                    {#each attempts as attempt (attempt.vm)}<option value={attempt.vm}>{attempt.run_name ?? attempt.vm} — {attempt.phase}</option>{/each}
-                </select>
-                <div class="attempt-facts"><span>{chosen.vm}</span><a href={flowUrl(chosen.flow_run_id)} target="_blank" rel="noreferrer">Open flow in Prefect</a></div>
-                <div class="stages">
-                    {#each Object.entries(stageNames) as [key, title]}
-                        {@const stage = chosen.stages[key]}
-                        <div class:finished={stage?.outcome === 'completed'} class:failed={stage?.outcome === 'failed'}>
-                            <span>{title}</span><strong>{stage ? stage.outcome === 'running' ? 'In progress' : duration(stage.seconds) : 'Not recorded'}</strong>
-                            <small>{stage ? label(stage.outcome) : '—'}</small>
-                        </div>
-                    {/each}
-                </div>
-                <dl><div><dt>Image</dt><dd>{chosen.image ?? 'Provider default image'}</dd></div><div><dt>Execution budget</dt><dd>{duration(chosen.timeout_seconds)}</dd></div><div><dt>Process outcome</dt><dd>{chosen.reason ?? 'Not observed'}{chosen.exit_code !== null ? ` (exit ${chosen.exit_code})` : ''}</dd></div></dl>
-                {#if chosen.error}<p class="warn" role="status">{chosen.error}</p>{/if}
-            </section>
+                    <div class="work-list">
+                        {#each runs as run (run.id)}
+                            {@const runAttempt = attempts.find(item => item.vm === run.infrastructure_pid)}
+                            <button class="work-item" class:selected={selected?.id === run.id} aria-current={selected?.id === run.id ? 'true' : undefined} onclick={() => openRun(run.id)}>
+                                <div class="item-meta"><span class:problem={needsAttention(run, runAttempt)} class:working={isWorking(run)}>{workStatus(run)}</span><time datetime={run.created}>{formatShortDate(run.created)}</time></div>
+                                <h2>{workTitle(run)}</h2><p>{repository(run) ?? model.deployments.find(item => item.id === run.deployment_id)?.name ?? 'Workflow'}</p>
+                                {#if runAttempt && ['retained', 'missing'].includes(runAttempt.phase)}<span class="cleanup-warning">Machine needs attention</span>{/if}
+                            </button>
+                        {:else}<div class="list-empty"><h2>{model.runs.length ? 'No matching work' : 'No requests yet'}</h2><p>{model.runs.length ? 'Try another search or filter.' : 'Work delegated through the configured workflows will appear here.'}</p>{#if model.runs.length}<button onclick={() => { search = ''; filter = 'all'; }}>Clear filters</button>{/if}</div>{/each}
+                    </div>
+                    <footer class="inbox-footer">Recent requests in the exe.dev pool. <a href="/gardener">See the execution path</a></footer>
+                </section>
+                <section class="reading-pane" aria-label="Work details">
+                    <a class="back" href="?view=work">‹ All work</a>
+                    {#if selected}
+                        {#key selected.id}<WorkReader run={selected} result={model.result} resultError={model.resultError} {attempt} {stale} {formatDate} />{/key}
+                    {:else}<div class="reader-empty"><h2>Every request has a place to come back to.</h2><p>Choose a request to read its answer and inspect its execution.</p><a href="/gardener">Explore how Gardener works</a></div>{/if}
+                </section>
+            </main>
         {/if}
-
-        <section class="deployments"><div class="section-heading"><h2>Runs here</h2><span>{model.deployments.length} deployments</span></div>
-            {#each model.deployments as deployment (deployment.id)}
-                <div class="deployment"><a href={`https://prefect-server.waow.tech/deployments/deployment/${deployment.id}`} target="_blank" rel="noreferrer">{deployment.name}</a><span>{deployment.job_variables.image ?? 'Provider default image'}</span><span>{duration(deployment.job_variables.timeout_seconds ?? null)} budget</span></div>
-            {/each}
-        </section>
-        <footer>Flow state comes from Prefect. VM state comes from worker observations. Refreshes every 30 seconds while this page is visible.{#if snapshot} Showing {attempts.length} recorded attempts; {snapshot.active_attempts} remain active or retained.{/if}</footer>
     {/if}
 </div>
 
 <style>
-    .gardener { padding: 2.5rem 1.5rem 4rem; color: #e5e7eb; }
-    .heading, .section-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
-    h1 { font-size: 2rem; font-weight: 500; letter-spacing: -.04em; }
-    h2 { font-size: 1rem; font-weight: 500; }
-    .heading p { color: #9ca3af; margin-top: .35rem; }
-    button, select { font: inherit; }
-    button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid #93c5fd; outline-offset: 4px; }
-    .refresh { border: 1px solid #4b5563; border-radius: .5rem; padding: .55rem 1rem; }
-    .refresh:disabled { opacity: .6; }
-    .summary { display: flex; flex-wrap: wrap; gap: .7rem 1.5rem; font-size: .8rem; padding: 1.5rem 0; color: #aeb6c4; }
-    .timestamp { margin-left: auto; }
-    .good { color: #86cbaa; } .warn { color: #f3bc83; } .muted { color: #9ca3af; }
-    .route { display: grid; grid-template-columns: repeat(5, 1fr); border-block: 1px solid #374151; padding: 1.5rem 0; }
-    .route > div { padding: 0 1rem; border-left: 1px solid #374151; }
-    .route > div:first-child { padding-left: 0; border: 0; }
-    .step { display: block; color: #93c5fd; font-size: .75rem; margin-bottom: .6rem; }
-    .route p { font-size: .8rem; color: #aeb6c4; margin-top: .3rem; }
-    .boundary { font-size: .8rem; color: #aeb6c4; padding: 1rem 0; }
-    .boundary span { color: #d1d5db; margin-right: .6rem; }
-    .notice { border-left: 3px solid #d2a573; background: #20242b; padding: 1rem; margin: 1rem 0; font-size: .9rem; line-height: 1.6; }
-    .attention { margin: 1.5rem 0; }
-    .attention button { display: flex; flex-wrap: wrap; gap: .5rem 1rem; text-align: left; padding: .8rem 0; color: #f3bc83; }
-    .section-heading { margin: 2rem 0 1rem; }
-    .section-heading > span { font-size: .75rem; color: #9ca3af; }
-    .run-head, .run-row { display: grid; grid-template-columns: minmax(0, 2fr) 1fr 1fr .65fr; gap: 1rem; align-items: center; }
-    .run-head { font-size: .75rem; color: #9ca3af; padding-bottom: .75rem; }
-    .run-row { border-top: 1px solid #263141; padding: 1rem 0; font-size: .85rem; }
-    a, .text-button { color: #b1cff6; text-decoration: none; }
-    a:hover, .text-button:hover { text-decoration: underline; }
-    .text-button { text-align: left; }
-    .run-name { min-width: 0; overflow-wrap: anywhere; }
-    small { display: block; font-size: .75rem; color: #9ca3af; margin-top: .3rem; }
-    .elapsed { font-variant-numeric: tabular-nums; }
-    .select-label { display: block; color: #9ca3af; font-size: .8rem; margin-bottom: .5rem; }
-    select { max-width: 100%; background: #172131; color: #e5e7eb; padding: .65rem; border: 1px solid #4b5563; border-radius: .4rem; }
-    .attempt-facts { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; overflow-wrap: anywhere; margin: 1rem 0; color: #9ca3af; font-size: .75rem; }
-    .stages { display: grid; grid-template-columns: repeat(5, 1fr); gap: .75rem; }
-    .stages > div { border-top: 3px solid #374151; padding-top: .75rem; font-size: .8rem; }
-    .stages .finished { border-color: #609c81; } .stages .failed { border-color: #d2a573; }
-    .stages strong { display: block; font-size: 1.15rem; font-weight: 400; margin-top: .65rem; font-variant-numeric: tabular-nums; }
-    dl { margin-top: 1.5rem; font-size: .8rem; }
-    dl > div { display: grid; grid-template-columns: 9rem minmax(0, 1fr); padding: .35rem 0; gap: 1rem; }
-    dt { color: #9ca3af; } dd { overflow-wrap: anywhere; }
-    .deployment { display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 1rem; border-top: 1px solid #263141; padding: .8rem 0; font-size: .85rem; overflow-wrap: anywhere; }
-    .deployment span { color: #9ca3af; }
-    footer, .empty { color: #9ca3af; font-size: .8rem; line-height: 1.6; margin-top: 2rem; }
-    @media (max-width: 700px) {
-        .gardener { padding: 1.5rem 1rem 3rem; }
-        .heading { align-items: flex-start; }
-        .timestamp { margin-left: 0; flex-basis: 100%; }
-        .route { grid-template-columns: 1fr; gap: 1rem; }
-        .route > div, .route > div:first-child { border-left: 2px solid #374151; padding-left: 1rem; display: grid; grid-template-columns: 1.5rem 5.5rem 1fr; align-items: baseline; gap: .5rem; }
-        .step, .route p { margin: 0; }
-        .run-head { display: none; }
-        .run-row { grid-template-columns: 1fr 1fr auto; gap: .6rem; }
-        .run-name { grid-column: 1 / -1; }
-        .stages { grid-template-columns: repeat(2, 1fr); gap: 1rem; }
-        .deployment { grid-template-columns: 1fr auto; }
-        .deployment span:first-of-type { grid-column: 1 / -1; grid-row: 2; }
-        .section-heading { align-items: baseline; }
-        dl > div { grid-template-columns: 7rem minmax(0, 1fr); }
-    }
+    .gardener { --canvas: #eef3f7; --surface: #ffffff; --ink: #142536; --muted: #526477; --line: #ccd7e2; --wash: #f2f6fa; --blue: #205bb1; --selection: #e6effc; --green: #146749; --green-wash: #e5f3ec; --red: #a52d32; --red-wash: #fbecee; color: var(--ink); background: var(--canvas); min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 17px; }
+    .dark { --canvas: #172331; --surface: #213141; --ink: #f2f6fa; --muted: #c0cfde; --line: #4a6175; --wash: #293c4e; --blue: #a9caff; --selection: #30496a; --green: #9de2be; --green-wash: #254738; --red: #ffb6ba; --red-wash: #4b3038; }
+    .gardener :global(*:focus-visible) { outline: 3px solid var(--blue); outline-offset: 3px; }
+    .app-header { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 22px 32px; background: var(--surface); }
+    .identity { display: flex; align-items: baseline; gap: 20px; } .brand { font-size: 27px; font-weight: 700; letter-spacing: -.045em; } .identity > span { color: var(--muted); font-size: 16px; }
+    .utilities { display: flex; align-items: center; gap: 18px; font-size: 15px; } .utilities a, .utilities button { min-height: 44px; display: inline-flex; align-items: center; } .utilities a { color: var(--muted); }
+    .refresh { border: 1px solid var(--line); padding: 8px 14px; border-radius: 8px; } button:disabled { opacity: .6; }
+    .views { display: flex; gap: 30px; align-items: stretch; background: var(--surface); padding: 0 32px; border-bottom: 1px solid var(--line); }
+    .views > a { padding: 16px 2px; color: var(--muted); border-bottom: 3px solid transparent; font-weight: 600; }
+    .views > a[aria-current] { color: var(--blue); border-bottom-color: var(--blue); }
+    .sync { margin-left: auto; align-self: center; font-size: 14px; color: var(--muted); }
+    .workspace { display: grid; grid-template-columns: minmax(320px, 370px) minmax(0, 1fr); max-width: 1440px; margin: 0 auto; min-height: calc(100vh - 152px); }
+    .inbox { border-right: 1px solid var(--line); } .inbox-heading { padding: 28px 24px 20px; } h1 { font-size: 25px; font-weight: 650; letter-spacing: -.025em; } .inbox-heading p { color: var(--muted); font-size: 16px; line-height: 1.6; margin-top: 10px; }
+    .inbox-controls { padding: 0 20px 20px; } input { width: 100%; font-size: 16px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; min-height: 46px; color: var(--ink); } input::placeholder { color: var(--muted); }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; } .filters button { min-height: 40px; font-size: 14px; border: 1px solid var(--line); border-radius: 20px; padding: 8px 12px; display: flex; gap: 8px; align-items: center; background: var(--surface); }
+    .filters button span { color: var(--muted); } .filters button[aria-pressed='true'] { background: var(--ink); color: var(--surface); border-color: var(--ink); } .filters button[aria-pressed='true'] span { color: inherit; }
+    .work-item { display: block; text-align: left; width: 100%; border-top: 1px solid var(--line); padding: 22px 24px; border-left: 4px solid transparent; }
+    .work-item:hover { background: var(--wash); } .work-item.selected { background: var(--surface); border-left-color: var(--blue); }
+    .item-meta { display: flex; justify-content: space-between; gap: 12px; color: var(--green); font-size: 14px; font-weight: 600; } .item-meta time { color: var(--muted); font-weight: 400; } .item-meta .problem { color: var(--red); } .item-meta .working { color: var(--blue); }
+    .work-item h2 { font-size: 18px; line-height: 1.45; font-weight: 600; margin: 10px 0; overflow-wrap: anywhere; } .work-item p { color: var(--muted); font-size: 14px; } .cleanup-warning { display: block; color: var(--red); font-size: 14px; margin-top: 12px; }
+    .reading-pane { background: var(--surface); min-width: 0; } .back { display: none; }
+    .inbox-footer { font-size: 14px; color: var(--muted); padding: 24px; border-top: 1px solid var(--line); line-height: 1.6; } .inbox-footer a { display: block; color: var(--blue); margin-top: 8px; text-decoration: underline; text-underline-offset: 3px; }
+    .connection { padding: 14px 32px; border-bottom: 1px solid var(--line); background: var(--selection); color: var(--ink); line-height: 1.5; font-size: 16px; }
+    .list-empty, .reader-empty, .unavailable { padding: 32px 24px; } .list-empty h2, .reader-empty h2 { font-size: 22px; font-weight: 600; } .list-empty p, .reader-empty p, .unavailable p { margin: 12px 0 20px; line-height: 1.6; color: var(--muted); } .list-empty button, .reader-empty a, .unavailable button { color: var(--blue); text-decoration: underline; padding: 10px 0; }
+    @media (min-width: 1440px) { .workspace { border-left: 1px solid var(--line); border-right: 1px solid var(--line); } }
+    @media (max-width: 760px) { .app-header { padding: 16px 20px; gap: 12px; } .identity { display: block; } .brand { font-size: 25px; } .identity > span { display: block; font-size: 14px; margin-top: 2px; } .utilities { gap: 14px; } .utilities > a { display: none; } .utilities .refresh { padding: 6px 10px; } .views { padding: 0 20px; gap: 24px; } .sync { font-size: 12px; } .workspace { display: block; } .inbox { border-right: 0; } .inbox-heading { padding: 24px 20px 16px; } .work-item { padding: 22px 20px; } .reading-pane { display: none; } .reading .inbox { display: none; } .reading .reading-pane { display: block; } .back { display: block; padding: 20px 20px 0; color: var(--blue); font-weight: 600; } .connection { padding: 14px 20px; } .filters button { min-height: 44px; } }
 </style>
