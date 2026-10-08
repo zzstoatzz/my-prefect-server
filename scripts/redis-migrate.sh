@@ -23,7 +23,7 @@ case "${1:?choose prepare, promote, route, or status}" in
         test "$("${k[@]}" get service prefect-redis -o jsonpath='{.spec.selector.app}')" = "$old"
         info "$old" replication | grep -qx 'role:master'
         kubectl create --dry-run=client -f deploy/prefect-redis.yaml -o json |
-            jq '{apiVersion:"v1",kind:"List",items:[.items[] | select(.kind != "Service")]}' |
+            jq -s '{apiVersion:"v1",kind:"List",items:[.[] | if .kind == "List" then .items[] else . end | select(.kind != "Service")]}' |
             "${k[@]}" apply -f -
         "${k[@]}" rollout status "deployment/$new" --timeout=120s
         "${k[@]}" exec "deployment/$new" -- redis-cli -e REPLICAOF "$(pod_ip "$old")" 6379
