@@ -59,8 +59,8 @@ retains ingestion/classification and a success-gated handoff to downstream flows
 ## gardener
 
 [gardener](https://hub.waow.tech/gardener) shows the exe worker, routed deployments,
-flow outcomes, VM cleanup, and per-stage timings. Sign in with the Prefect operator
-credential (or configure `GARDENER_VIEW_AUTH_STRING` separately). The hub queries
+flow outcomes, VM cleanup, and per-stage timings. Sign in through the hub’s existing
+Cloudflare Access login; the origin verifies its signed application token. The hub queries
 with `GARDENER_API_AUTH_STRING` when configured; production uses the read-only API
 credential. No execution depends on an open page.
 
