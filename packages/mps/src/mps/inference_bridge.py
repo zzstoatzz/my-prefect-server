@@ -171,7 +171,7 @@ def inference_bridge(
                     body.pop("max_tokens", None)
                     body.pop("max_completion_tokens", None)
                     body["store"] = False
-                    body["background"] = False
+                    body.pop("background", None)
                     body["stream"] = True
                     body.setdefault("instructions", "")
                 elif "max_tokens" not in body and "max_completion_tokens" not in body:

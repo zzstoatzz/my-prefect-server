@@ -256,7 +256,7 @@ def test_exe_responses_transport_and_local_policy(bridge_dir, upstream):
         assert "Authorization" not in headers
         assert forwarded["model"] == "gpt-5.6-luna"
         assert forwarded["store"] is False
-        assert forwarded["background"] is False
+        assert "background" not in forwarded
         assert forwarded["stream"] is True
         assert "max_output_tokens" not in forwarded
         assert send(path, body | {"model": "openai/gpt-5.6-terra"})[0] == 400
