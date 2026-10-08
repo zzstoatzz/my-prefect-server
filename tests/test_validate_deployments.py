@@ -29,7 +29,6 @@ def deployment(config, name):
 def test_repository_contracts(config):
     errors, unverified = check(config)
     assert errors == []
-    # Five remote wheels, two wheel backports, local Dagster release, arbitrary pull scripts.
     assert len(unverified) == 9
 
 
@@ -42,7 +41,9 @@ def test_reconciliation_regression(config, name):
     module, function = dep["entrypoint"].rsplit(".", 1)
     dep["entrypoint"] = module.replace(".", "/") + ".py:" + function
     errors, _ = check(config)
-    assert any(f"{name}: wheel-only" in error for error in errors)
+    assert any(
+        f"{name}:" in error and ("wheel-only" in error or "image mode" in error) for error in errors
+    )
 
 
 def test_explicit_empty_pull_overrides_global(config):
@@ -71,11 +72,25 @@ def test_prebuilt_image_file_is_unverified_not_invalid():
 
 
 def test_missing_package_and_unshipped_module(config):
-    dep = deployment(config, "autofix-revise")
+    dep = deployment(config, "watch-tangled-pulls")
     dep["entrypoint"] = "flows.ingest.ingest"  # exists locally, absent from mps wheel
     assert any("not declared" in e for e in check(config)[0])
+    dep["work_pool"]["job_variables"]["command"] = ""
     dep["work_pool"]["job_variables"]["local_packages"] = ["/releases/other-1.whl"]
     assert any("requires the mps wheel" in e for e in check(config)[0])
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("image", "registry/app:latest"),
+        ("requirements", ["prefect"]),
+        ("local_packages", ["mps.whl"]),
+    ],
+)
+def test_image_mode_rejects_mutable_or_runtime_installed_code(config, field, value):
+    deployment(config, "investigate")["work_pool"]["job_variables"][field] = value
+    assert any("investigate: image mode" in error for error in check(config)[0])
 
 
 @pytest.mark.parametrize("pin", [None, "@main", "@" + "a" * 40])

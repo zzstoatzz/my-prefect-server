@@ -1,7 +1,8 @@
 # Gardener startup and worker placement
 
-Measured on 2026-10-08. Production still uses bootstrap mode; this investigation
-does not move the worker or change deployments.
+Initial measurements on 2026-10-08, before production moved from bootstrap to
+images. The [subsequent rollout](../archive/2026-10-08-gardener-images.md) preserves
+the worker's location and each deployment's original wheel.
 
 ## Separate the decisions
 
@@ -9,6 +10,7 @@ does not move the worker or change deployments.
 flowchart LR
     P[Prefect queue] --> W[Persistent worker]
     I[Versioned runtime image] --> V[Fresh VM per attempt]
+    Rg[Private persistent registry] --> I
     W --> V
     V --> G[Inference gateway]
     V --> R[Saved result]

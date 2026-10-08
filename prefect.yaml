@@ -1030,8 +1030,10 @@ deployments:
       name: gardener-exe
       job_variables:
         timeout_seconds: 2400
-        local_packages:
-          - /home/stoat/phi-spike-worker/releases/1553f70cb4612fe219d0e1d82232a560947a18e194eb1ee4fe0ec80aa2aa741e/mps-0.1.0-py3-none-any.whl
+        environment_mode: image
+        image: gardener-registry.exe.xyz/gardener@sha256:b4a9f0cee8f170c5d40bc30b210e5d39568e5731049e5652d29a6583399f2edf
+        requirements: []
+        local_packages: []
 
   - name: investigate
     tags: [gardener, phi]
@@ -1045,8 +1047,10 @@ deployments:
       name: gardener-exe
       job_variables:
         timeout_seconds: 2400
-        local_packages:
-          - /home/stoat/phi-spike-worker/releases/aea634030ccb8c5e0096d859fe09c0a9e8d2ff267a5bf835f7ffc923a3404300/mps-0.1.0-py3-none-any.whl
+        environment_mode: image
+        image: gardener-registry.exe.xyz/gardener@sha256:0890c908cf820e1078f95c732319f5c57cefe0c9e3683ffbd2244e9fa4398212
+        requirements: []
+        local_packages: []
 
   - name: pi-pr
     pull: *cached_legacy_home
@@ -1091,8 +1095,10 @@ deployments:
       name: gardener-exe
       job_variables:
         timeout_seconds: 2400
-        local_packages:
-          - /home/stoat/phi-spike-worker/releases/2f167908b9ed2379eb2df6bea861eacf629716bfcd7b562832b46ce3c93a4f4e/mps-0.1.0-py3-none-any.whl
+        environment_mode: image
+        image: gardener-registry.exe.xyz/gardener@sha256:4554761b9598eb67a26cb4bdf7dc7888a8841392b467a2ecdaef82856f1a2243
+        requirements: []
+        local_packages: []
 
   - name: dep-bump
     pull: *cached_home

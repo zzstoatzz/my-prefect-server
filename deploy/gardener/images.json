@@ -1,0 +1,21 @@
+{
+  "registry": "gardener-registry.exe.xyz",
+  "base": "gardener-registry.exe.xyz/gardener@sha256:8a4467eedb89c5dc0977a668727e9014908939572c0c49137a0d15b4297c787a",
+  "deployments": {
+    "investigate": {
+      "id": "2c0ba8f3-7adf-44f8-a96e-8214c1bd8f2f",
+      "wheel_sha256": "aea634030ccb8c5e0096d859fe09c0a9e8d2ff267a5bf835f7ffc923a3404300",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:0890c908cf820e1078f95c732319f5c57cefe0c9e3683ffbd2244e9fa4398212"
+    },
+    "autofix-revise": {
+      "id": "02d90936-9f9b-45f7-97e6-8f18539b0b7e",
+      "wheel_sha256": "1553f70cb4612fe219d0e1d82232a560947a18e194eb1ee4fe0ec80aa2aa741e",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:b4a9f0cee8f170c5d40bc30b210e5d39568e5731049e5652d29a6583399f2edf"
+    },
+    "test-pull-patch": {
+      "id": "6f98ab00-3c0a-44ef-b35a-bda13bfb67e2",
+      "wheel_sha256": "2f167908b9ed2379eb2df6bea861eacf629716bfcd7b562832b46ce3c93a4f4e",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:4554761b9598eb67a26cb4bdf7dc7888a8841392b467a2ecdaef82856f1a2243"
+    }
+  }
+}

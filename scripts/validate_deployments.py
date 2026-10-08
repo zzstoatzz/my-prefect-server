@@ -91,7 +91,22 @@ def validate_deployments(config: dict, *, root: Path, release_pin: str | None = 
             and not pull
             and not supplied_files
         )
-        if wheel_only:
+        if job.get("environment_mode") == "image":
+            image = job.get("image")
+            if not isinstance(image, str) or not re.fullmatch(r".+@sha256:[0-9a-f]{64}", image):
+                errors.append(f"{name}: image mode requires an immutable image digest")
+            if job.get("requirements") != [] or job.get("local_packages") != []:
+                errors.append(
+                    f"{name}: image mode requires explicit empty requirements/local_packages"
+                )
+            if pull or not MODULE.fullmatch(entry):
+                errors.append(
+                    f"{name}: image mode requires pull: [] and a dotted module entrypoint"
+                )
+            unverified.append(
+                f"{name}: image availability, installed module bytes and runtime imports"
+            )
+        elif wheel_only:
             if not MODULE.fullmatch(entry):
                 errors.append(f"{name}: wheel-only deployment requires a dotted module entrypoint")
             else:

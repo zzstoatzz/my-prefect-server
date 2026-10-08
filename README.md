@@ -78,10 +78,15 @@ just gardener-probe --image REGISTRY/IMAGE --prepare-agent  # time startup and t
 just gardener-install COMMIT               # install a committed worker release
 ```
 
-The baked image is opt-in: set `environment_mode: image`, an explicit image,
-and empty `requirements` / `local_packages` in job variables after the live probe
-passes. Existing deployments retain bootstrap mode. Private registries also need
-provider-side pull authentication before their images can be used.
+`investigate`, `autofix-revise`, and `test-pull-patch` use digest-pinned images
+from the private `gardener-registry.exe.xyz` registry. Each image preserves its
+deployment's original wheel. Job variables use `environment_mode: image` and
+empty `requirements` / `local_packages`, so jobs do not install dependencies.
+The dedicated `gardener-exe` worker on heavypad manages these VMs; it is separate
+from the `home-pool` process worker. The registry is a persistent infrastructure
+VM, outside the worker's disposable-job inventory.
+See the [registry and rollback guide](deploy/gardener/REGISTRY.md) and
+[verified rollout](docs/archive/2026-10-08-gardener-images.md).
 The [startup investigation](docs/spikes/gardener-startup.md) separates image
 preparation, worker placement, and job isolation, with live probe measurements.
 

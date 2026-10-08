@@ -585,6 +585,14 @@ install-source-cache:
 gardener-image image="gardener:dev":
     docker build --platform linux/amd64 -f deploy/gardener/Dockerfile --build-arg SOURCE_REVISION=$(git rev-parse HEAD) -t '{{image}}' .
 
+# Preserve an existing deployment wheel in a locked image; keep context for reproducible rebuilds.
+gardener-wheel-image wheel sha base image context:
+    bash deploy/gardener/build-wheel-image.sh '{{wheel}}' '{{sha}}' '{{base}}' '{{image}}' '{{context}}'
+
+# Publish through SSH to the private exe.dev registry without a registry password.
+gardener-publish image tag:
+    bash deploy/gardener/publish-image.sh '{{image}}' '{{tag}}'
+
 # Explicit live test: creates two disposable VMs, tests exit/cancel/restart, deletes both.
 gardener-probe *args:
     uv run python tests/exe_provider_probe.py {{args}}
