@@ -28,6 +28,7 @@ FROM base AS runtime
 ARG SOURCE_REVISION
 LABEL org.opencontainers.image.revision=$SOURCE_REVISION
 LABEL exe.dev/login-user=exedev
+COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
 COPY --from=builder /opt/python /opt/python
 COPY --from=builder /opt/gardener /opt/gardener
 COPY --from=builder /opt/phi-agent /opt/phi-agent
