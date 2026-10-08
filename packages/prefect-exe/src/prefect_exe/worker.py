@@ -145,7 +145,7 @@ class ExeWorker(BaseWorker):
             key = f"exe-worker-{self.work_pool.id.hex}"
             data = {
                 "version": 1,
-                "pool": self.work_pool_name,
+                "pool": self.work_pool.name,
                 "worker": self.name,
                 "host": socket.gethostname(),
                 "published_at": time.time(),
