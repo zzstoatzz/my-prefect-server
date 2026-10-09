@@ -73,7 +73,7 @@
         <div class="identity"><a class="brand" href="/gardener">Gardener</a><span>Execution map</span></div>
         <div class="utilities"><a href="/">Hub</a><button onclick={toggleTheme} aria-label={theme === 'light' ? 'Switch to dark appearance' : 'Switch to light appearance'}>{theme === 'light' ? 'Dark' : 'Light'}</button><button class="refresh" onclick={refresh} disabled={refreshing}>{refreshing ? 'Refreshing…' : 'Refresh'}</button></div>
     </header>
-    <nav class="views" aria-label="Gardener"><a href="/gardener" aria-current={system ? 'page' : undefined}>Overview</a><a href="?view=work" aria-current={!system ? 'page' : undefined}>Work history</a><span class="sync">{model ? `Updated ${new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: zone }).format(new Date(model.loadedAt))}` : 'Connection unavailable'}</span></nav>
+    <nav class="views" aria-label="Gardener"><a href="/gardener" aria-current={system ? 'page' : undefined}>Overview</a><a href="?view=work" aria-current={!system ? 'page' : undefined}>Work history</a><a href="/gardener/guide">How it works</a><span class="sync">{model ? `Updated ${new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: zone }).format(new Date(model.loadedAt))}` : 'Connection unavailable'}</span></nav>
     {#if !model}
         <main class="unavailable"><h1>Work is unavailable right now</h1><p>{data.unavailable}</p><button onclick={refresh}>Try again</button></main>
     {:else}
@@ -120,7 +120,7 @@
     .identity { display: flex; align-items: baseline; gap: 20px; } .brand { font-size: 27px; font-weight: 700; letter-spacing: -.045em; } .identity > span { color: var(--muted); font-size: 16px; }
     .utilities { display: flex; align-items: center; gap: 18px; font-size: 15px; } .utilities a, .utilities button { min-height: 44px; display: inline-flex; align-items: center; } .utilities a { color: var(--muted); }
     .refresh { border: 1px solid var(--line); padding: 8px 14px; border-radius: 8px; } button:disabled { opacity: .6; }
-    .views { display: flex; gap: 30px; align-items: stretch; background: var(--surface); padding: 0 32px; border-bottom: 1px solid var(--line); }
+    .views { display: flex; flex-wrap: wrap; gap: 30px; align-items: stretch; background: var(--surface); padding: 0 32px; border-bottom: 1px solid var(--line); }
     .views > a { padding: 16px 2px; color: var(--muted); border-bottom: 3px solid transparent; font-weight: 600; }
     .views > a[aria-current] { color: var(--blue); border-bottom-color: var(--blue); }
     .sync { margin-left: auto; align-self: center; font-size: 14px; color: var(--muted); }
