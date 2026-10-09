@@ -198,7 +198,18 @@ def autofix_revise(pull: str, comment_uri: str = "") -> State:
             thread="\n\n".join(f"[{c['created_at']}] {c['text']}" for c in thread),
             latest=latest["text"],
         )
-        screen_prompt(prompt, "full", anthropic_key)
+        screen_prompt(
+            latest["text"],
+            "full",
+            anthropic_key,
+            inputs={
+                "repo": repo,
+                "title": record.get("title", ""),
+                "body": record.get("body", ""),
+                "conversation": thread,
+                "operation": "revise proposed patch in an isolated workspace for review",
+            },
+        )
         output = run_pi(
             prompt,
             cwd=cwd,

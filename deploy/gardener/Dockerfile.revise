@@ -1,0 +1,3 @@
+FROM localhost:8000/gardener@sha256:7e021c862e2b73cbe8aab543995b33ba25927066f212680adcbe9ef175779e89
+COPY autofix_revise.py /opt/gardener/venv/lib/python3.13/site-packages/flows/autofix_revise.py
+RUN /opt/gardener/venv/bin/python -c 'import flows.autofix_revise'
