@@ -5,40 +5,45 @@
     "investigate": {
       "id": "2c0ba8f3-7adf-44f8-a96e-8214c1bd8f2f",
       "wheel_sha256": "cd176014c35ffc3da0ab2e29307f05d5bd12c69c525013beafb9bdd273ebb973",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:b1c5ccdad6d32c8869027f01b610a124716d1af4f893b39c6df72837bfd6a56f",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:7819cb19679a5b4ca35a00f2b3d7897ab540ddb7def732a8cb2884cb0f5c8e33",
       "inference_backend": "exe",
       "module_overrides": [
         {
-          "source_revision": "4c2ad819e965ac4b3134002acad108958b320371",
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/inference_models.py",
           "sha256": "f42cabe63eb0dacc9eac9e5628fdf16260eec747735a36bd62b92b5c7c3f6ce9"
         },
         {
-          "source_revision": "4c2ad819e965ac4b3134002acad108958b320371",
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/pi_execution.py",
           "sha256": "ce243e549e70856fd63cd6139245b5fdc1d45928221588967e895af8bd96b8f0"
         },
         {
-          "source_revision": "4c2ad819e965ac4b3134002acad108958b320371",
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/pi_process.py",
           "sha256": "a8e8bb26e5ca260fdc137429f4a94d9fe3a0beace95391f7759871999e62021f"
         },
         {
-          "source_revision": "4c2ad819e965ac4b3134002acad108958b320371",
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/pi_sandbox.py",
-          "sha256": "09e4c4456b8112a62dd24acd4eb6ab98c23561a2b53ff7fc46ae6a62bd1b80d4"
+          "sha256": "c82b22e0a1fe2584ea6ce23fe2883a6d18bc95b645bcacadc66b4e9d014d76ce"
         },
         {
-          "source_revision": "4c2ad819e965ac4b3134002acad108958b320371",
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/spend.py",
           "sha256": "4de41c8ebf75c2585aae04cb1cbb868b3b836268b6f73408d5f1d4350d1f25ad"
+        },
+        {
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
+          "path": "packages/mps/src/mps/inference_bridge.py",
+          "sha256": "3f60f27b729a17bb2101c53ed9707d93b54b2a0d93604d4922b55e2234c34772"
         }
       ]
     },
     "autofix-revise": {
       "id": "02d90936-9f9b-45f7-97e6-8f18539b0b7e",
       "wheel_sha256": "cd176014c35ffc3da0ab2e29307f05d5bd12c69c525013beafb9bdd273ebb973",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:8641448f23830006227d9bf00df048cdf8b5f5846cb4cd4ef2ab3c487bdd9772",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:8efb771aa145feeea0b7bdb947dae1a894226ed270ff81221f48e5b9c53505d5",
       "inference_backend": "exe",
       "flow_override": {
         "source_revision": "db1d9d03d43ed8948a8859b0ace50fab440a4da8",
@@ -52,29 +57,34 @@
           "sha256": "3fa6028c672ce5f4f0416222dc947a92179b2512b1a2a6afd811cda39ccb43c8"
         },
         {
-          "source_revision": "4c2ad819e965ac4b3134002acad108958b320371",
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/inference_models.py",
           "sha256": "f42cabe63eb0dacc9eac9e5628fdf16260eec747735a36bd62b92b5c7c3f6ce9"
         },
         {
-          "source_revision": "4c2ad819e965ac4b3134002acad108958b320371",
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/pi_execution.py",
           "sha256": "ce243e549e70856fd63cd6139245b5fdc1d45928221588967e895af8bd96b8f0"
         },
         {
-          "source_revision": "4c2ad819e965ac4b3134002acad108958b320371",
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/pi_process.py",
           "sha256": "a8e8bb26e5ca260fdc137429f4a94d9fe3a0beace95391f7759871999e62021f"
         },
         {
-          "source_revision": "4c2ad819e965ac4b3134002acad108958b320371",
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/pi_sandbox.py",
-          "sha256": "09e4c4456b8112a62dd24acd4eb6ab98c23561a2b53ff7fc46ae6a62bd1b80d4"
+          "sha256": "c82b22e0a1fe2584ea6ce23fe2883a6d18bc95b645bcacadc66b4e9d014d76ce"
         },
         {
-          "source_revision": "4c2ad819e965ac4b3134002acad108958b320371",
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/spend.py",
           "sha256": "4de41c8ebf75c2585aae04cb1cbb868b3b836268b6f73408d5f1d4350d1f25ad"
+        },
+        {
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
+          "path": "packages/mps/src/mps/inference_bridge.py",
+          "sha256": "3f60f27b729a17bb2101c53ed9707d93b54b2a0d93604d4922b55e2234c34772"
         }
       ]
     },
@@ -92,33 +102,38 @@
     "pi-pr": {
       "id": "ec0cc6dc-bed2-4b93-80ba-41c15cb2a5cb",
       "wheel_sha256": "cd176014c35ffc3da0ab2e29307f05d5bd12c69c525013beafb9bdd273ebb973",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:b1c5ccdad6d32c8869027f01b610a124716d1af4f893b39c6df72837bfd6a56f",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:7819cb19679a5b4ca35a00f2b3d7897ab540ddb7def732a8cb2884cb0f5c8e33",
       "inference_backend": "exe",
       "module_overrides": [
         {
-          "source_revision": "4c2ad819e965ac4b3134002acad108958b320371",
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/inference_models.py",
           "sha256": "f42cabe63eb0dacc9eac9e5628fdf16260eec747735a36bd62b92b5c7c3f6ce9"
         },
         {
-          "source_revision": "4c2ad819e965ac4b3134002acad108958b320371",
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/pi_execution.py",
           "sha256": "ce243e549e70856fd63cd6139245b5fdc1d45928221588967e895af8bd96b8f0"
         },
         {
-          "source_revision": "4c2ad819e965ac4b3134002acad108958b320371",
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/pi_process.py",
           "sha256": "a8e8bb26e5ca260fdc137429f4a94d9fe3a0beace95391f7759871999e62021f"
         },
         {
-          "source_revision": "4c2ad819e965ac4b3134002acad108958b320371",
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/pi_sandbox.py",
-          "sha256": "09e4c4456b8112a62dd24acd4eb6ab98c23561a2b53ff7fc46ae6a62bd1b80d4"
+          "sha256": "c82b22e0a1fe2584ea6ce23fe2883a6d18bc95b645bcacadc66b4e9d014d76ce"
         },
         {
-          "source_revision": "4c2ad819e965ac4b3134002acad108958b320371",
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/spend.py",
           "sha256": "4de41c8ebf75c2585aae04cb1cbb868b3b836268b6f73408d5f1d4350d1f25ad"
+        },
+        {
+          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
+          "path": "packages/mps/src/mps/inference_bridge.py",
+          "sha256": "3f60f27b729a17bb2101c53ed9707d93b54b2a0d93604d4922b55e2234c34772"
         }
       ]
     }
