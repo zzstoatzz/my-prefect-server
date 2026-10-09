@@ -97,3 +97,9 @@ pass before enabling compact publishing in the registered deployment.
 
 For the real converter integration test, set `TYPEAHEAD_COMPACTION_SOURCE` to
 the typeahead release checkout and run `tests/test_typeahead_compaction.py`.
+
+The local rollout integration also preserves the deployed quiet-build supervisor,
+process-group cancellation, and longer build deadlines from `d776dbd`. Conversion
+and publication use the same supervisor when `INDEX_QUIET=1`; the selected
+typeahead checkout must contain `scripts/snapshot_compaction/quiet.py`. This
+integration has not changed the registered deployment.

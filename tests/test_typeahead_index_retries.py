@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 import pytest
 from prefect import flow
@@ -59,3 +60,33 @@ def test_indexer_retries_real_process(tmp_path, monkeypatch, prefect_server, fai
     else:
         trial()
     assert (tmp_path / "attempts").read_text() == str(attempts)
+
+
+@pytest.mark.parametrize(
+    "behavior",
+    [
+        "time.sleep(30)",
+        "print('partial', end='', flush=True); time.sleep(30)",
+        "os.close(1); os.close(2); time.sleep(30)",
+    ],
+)
+def test_stream_deadline_includes_output_read(tmp_path, behavior):
+    started = time.monotonic()
+    with pytest.raises(RuntimeError, match="exceeded"):
+        _stream(
+            [sys.executable, "-c", "import os, time; " + behavior],
+            tmp_path,
+            dict(os.environ),
+            timeout=0.2,
+        )
+    assert time.monotonic() - started < 3
+
+
+def test_stream_timeout_kills_descendants(tmp_path):
+    marker = tmp_path / "survived"
+    child = f"import time; from pathlib import Path; time.sleep(1); Path({str(marker)!r}).touch()"
+    parent = f"import subprocess, sys, time; subprocess.Popen([sys.executable, '-c', {child!r}]); time.sleep(30)"
+    with pytest.raises(RuntimeError, match="exceeded"):
+        _stream([sys.executable, "-c", parent], tmp_path, dict(os.environ), timeout=0.3)
+    time.sleep(1)
+    assert not marker.exists()

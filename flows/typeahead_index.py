@@ -30,11 +30,15 @@ import json
 import logging
 import os
 import re
+import selectors
 import shutil
+import signal
 import subprocess
 import sys
+import time
 import urllib.request
 from collections import deque
+from contextlib import suppress
 from pathlib import Path
 from typing import Literal
 
@@ -80,26 +84,70 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
     except MissingContextError:
         logger = logging.getLogger(__name__)
     output: deque[str] = deque(maxlen=50)
+    deadline = time.monotonic() + timeout
     proc = subprocess.Popen(
         cmd,
         cwd=str(cwd),
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
+        start_new_session=True,
     )
+    pending = b""
+
+    def log_line(line: bytes) -> None:
+        text = line.decode("utf-8", errors="replace").rstrip()
+        logger.info(text)
+        output.append(text[-2000:])
+
     try:
         assert proc.stdout is not None
-        for line in proc.stdout:
-            logger.info(line.rstrip())
-            output.append(line.rstrip()[-2000:])
-        code = proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        raise RuntimeError(f"{cmd[0]} exceeded {timeout}s timeout") from None
+        with selectors.DefaultSelector() as selector:
+            selector.register(proc.stdout, selectors.EVENT_READ)
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(cmd, timeout)
+                for key, _ in selector.select(remaining):
+                    chunk = os.read(key.fd, 65536)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        break
+                    pending += chunk
+                    while b"\n" in pending:
+                        line, pending = pending.split(b"\n", 1)
+                        log_line(line)
+                    if len(pending) > 65536:
+                        log_line(pending)
+                        pending = b""
+            if pending:
+                log_line(pending)
+        code = proc.wait(timeout=max(0, deadline - time.monotonic()))
+    except BaseException as exc:
+        with suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGTERM)
+        with suppress(subprocess.TimeoutExpired):
+            proc.wait(timeout=10)
+        with suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait()
+        if isinstance(exc, subprocess.TimeoutExpired):
+            raise RuntimeError(f"{cmd[0]} exceeded {timeout}s timeout") from None
+        raise
+    finally:
+        if proc.stdout is not None:
+            proc.stdout.close()
     if code != 0:
         raise ProcessExecutionError(cmd[0], code, "\n".join(output))
+
+
+def quiet_command(repo: Path, command: list[str]) -> list[str]:
+    if os.environ.get("INDEX_QUIET") != "1":
+        return command
+    supervisor = repo / "scripts/snapshot_compaction/quiet.py"
+    if not supervisor.is_file():
+        raise RuntimeError("quiet supervisor missing from the selected typeahead revision")
+    return [sys.executable, str(supervisor), "--", *command]
 
 
 @task(
@@ -142,11 +190,21 @@ def build_binary(repo_dir: Path) -> Path:
     zig = zig_for(services)
     get_run_logger().info(f"building with {zig}")
     try:
-        _stream([zig, "build", "-Doptimize=ReleaseSafe"], services, env, timeout=900)
+        _stream(
+            quiet_command(repo_dir, [zig, "build", "-Doptimize=ReleaseSafe", "-j1"]),
+            services,
+            env,
+            timeout=10800,
+        )
     except RuntimeError:
         get_run_logger().warning("primary dep fetch failed; retrying via github mirrors")
         shutil.copy(services / "build.zig.zon.gh", services / "build.zig.zon")
-        _stream([zig, "build", "-Doptimize=ReleaseSafe"], services, env, timeout=900)
+        _stream(
+            quiet_command(repo_dir, [zig, "build", "-Doptimize=ReleaseSafe", "-j1"]),
+            services,
+            env,
+            timeout=10800,
+        )
     if not binary.is_file():
         raise RuntimeError(f"build reported success but binary missing at {binary}")
     return binary
@@ -186,7 +244,7 @@ def run_indexer(binary: Path, local_only: bool = False) -> Path | None:
     # so one block serves both.
     if "://" in env.get("TURSO_URL", ""):
         env["TURSO_URL"] = env["TURSO_URL"].split("://", 1)[1]
-    _stream([str(binary)], binary.parent, env, timeout=7200)
+    _stream(quiet_command(binary.parents[3], [str(binary)]), binary.parent, env, timeout=28800)
     if local_only:
         created = set(Path(build_root).glob("build-*/manifest.json")) - existing
         if len(created) != 1:
@@ -221,20 +279,23 @@ def publish_compact(repo: Path, source: Path) -> Path:
     env = dict(os.environ)
     if not output.exists():
         _stream(
-            [
-                sys.executable,
-                str(scripts / "convert.py"),
-                "--source",
-                str(source / "index.db"),
-                "--manifest",
-                str(source / "manifest.json"),
-                "--output",
-                str(output),
-                "--build-id",
-                compact_id,
-                "--object-prefix",
-                target[0] if target else "builds",
-            ],
+            quiet_command(
+                repo,
+                [
+                    sys.executable,
+                    str(scripts / "convert.py"),
+                    "--source",
+                    str(source / "index.db"),
+                    "--manifest",
+                    str(source / "manifest.json"),
+                    "--output",
+                    str(output),
+                    "--build-id",
+                    compact_id,
+                    "--object-prefix",
+                    target[0] if target else "builds",
+                ],
+            ),
             repo,
             env,
             timeout=7200,
@@ -248,18 +309,21 @@ def publish_compact(repo: Path, source: Path) -> Path:
         raise ValueError("existing compact generation does not match source")
     if target is not None:
         _stream(
-            [
-                sys.executable,
-                str(scripts / "publish.py"),
-                "--generation",
-                str(output),
-                "--legacy-database",
-                str(source / "index.db"),
-                "--legacy-manifest",
-                str(source / "manifest.json"),
-                "--pointer",
-                target[1],
-            ],
+            quiet_command(
+                repo,
+                [
+                    sys.executable,
+                    str(scripts / "publish.py"),
+                    "--generation",
+                    str(output),
+                    "--legacy-database",
+                    str(source / "index.db"),
+                    "--legacy-manifest",
+                    str(source / "manifest.json"),
+                    "--pointer",
+                    target[1],
+                ],
+            ),
             repo,
             env,
             timeout=7200,
@@ -333,7 +397,7 @@ def prune_builds(build_root: str | None = None) -> int:
     return freed
 
 
-@flow(name="typeahead-index", log_prints=True, timeout_seconds=14400)
+@flow(name="typeahead-index", log_prints=True, timeout_seconds=43200)
 def typeahead_index(
     ref: str | None = None, snapshot_format: Literal["sqlite", "compact"] = "sqlite"
 ):
