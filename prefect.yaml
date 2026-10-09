@@ -540,6 +540,7 @@ deployments:
           INDEX_R2_SECRET_ACCESS_KEY: prefect-block://index-r2-secret-access-key
           # persistent NVMe paths — process runs execute in ephemeral /tmp.
           INDEXER_HOME: /home/stoat/typeahead-index
+          INDEX_QUIET: "0"
           INDEX_BUILD_ROOT: /home/stoat/typeahead-index/build
           # publish to prod. INDEX_ALLOW_PROD arms the overwrite of latest.json.
           # (local-channel dry-run validated the full path 2026-06-18 — run e3b70e03

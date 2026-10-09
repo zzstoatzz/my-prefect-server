@@ -109,3 +109,8 @@ library. The flow supervises conversion once, passing `--unlimited-cpu` to
 disable the converter CLI's nested supervisor; `INDEX_QUIET=1` still controls
 the entire subprocess tree. The conversion format and exact-output checks are
 unchanged.
+
+The pending rollout configuration sets `INDEX_QUIET="0"` so useful build and
+conversion work can use a full core. Quiet supervision remains available via
+`INDEX_QUIET="1"`, but the previous 20% duty-cycle limit is not the rollout
+default. This configuration has not yet been registered with the scheduler.
