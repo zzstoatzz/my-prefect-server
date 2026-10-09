@@ -124,7 +124,10 @@ def import_spend_log(log_path: Path, analytics_db: Path) -> int:
                 con.execute(
                     """
                     INSERT OR REPLACE INTO raw_llm_spend
-                    SELECT * EXCLUDE (ordinal) FROM read_json(
+                    WITH batch AS MATERIALIZED (
+                        SELECT id, CAST(recorded_at AS TIMESTAMP) AS recorded_at,
+                               * EXCLUDE (id, recorded_at)
+                        FROM read_json(
                         ?, format='newline_delimited', columns={
                             id: 'VARCHAR', recorded_at: 'VARCHAR', flow_name: 'VARCHAR',
                             flow_run_id: 'VARCHAR', task_name: 'VARCHAR', provider: 'VARCHAR',
@@ -134,7 +137,8 @@ def import_spend_log(log_path: Path, analytics_db: Path) -> int:
                             input_cost_usd: 'DOUBLE', output_cost_usd: 'DOUBLE',
                             total_cost_usd: 'DOUBLE', metadata_json: 'VARCHAR', ordinal: 'BIGINT'
                         }
-                    )
+                    ))
+                    SELECT * EXCLUDE (ordinal) FROM batch
                     QUALIFY row_number() OVER (PARTITION BY id ORDER BY ordinal DESC) = 1
                     """,
                     [str(batch)],

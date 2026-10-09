@@ -211,3 +211,17 @@ def test_haiku55_prompt_tier_includes_cached_tokens(tmp_path, input_tokens, expe
     )
     assert event is not None
     assert event["total_cost_usd"] == pytest.approx(expected)
+
+
+def test_import_validates_overwritten_duplicate_timestamps(tmp_path):
+    log = tmp_path / "spend.jsonl"
+    database = tmp_path / "analytics.duckdb"
+    log.write_text(
+        json.dumps({"id": "duplicate", "recorded_at": "invalid"})
+        + "\n"
+        + json.dumps({"id": "duplicate", "recorded_at": "2026-10-09T00:00:00Z"})
+    )
+    with pytest.raises(duckdb.ConversionException):
+        import_spend_log(log, database)
+    with duckdb.connect(str(database)) as db:
+        assert db.execute("SELECT count(*) FROM raw_llm_spend").fetchone() == (0,)
