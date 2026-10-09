@@ -1,0 +1,16 @@
+{
+  "passed": true,
+  "cases": [
+    {
+      "quiet": "0",
+      "passed": true,
+      "seconds": 0.22223671292886138
+    },
+    {
+      "quiet": "1",
+      "passed": true,
+      "seconds": 11.979210635996424
+    }
+  ],
+  "scope": "Actual Linux flow conversion, identical retry, source preservation and mismatch rejection; local channel, no remote publication or full corpus build."
+}

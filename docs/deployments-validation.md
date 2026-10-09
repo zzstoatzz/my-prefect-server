@@ -114,3 +114,10 @@ The pending rollout configuration sets `INDEX_QUIET="0"` so useful build and
 conversion work can use a full core. Quiet supervision remains available via
 `INDEX_QUIET="1"`, but the previous 20% duty-cycle limit is not the rollout
 default. This configuration has not yet been registered with the scheduler.
+
+On 2026-10-09 the pending compact builder passed actual Linux conversion through
+`publish_compact.fn` with `INDEX_QUIET=0` and `1`: native output equality, identical
+retry, unchanged legacy source bytes, and rejection of an existing generation
+with a mismatched watermark. This used a synthetic fixture and local channel,
+not production publication or a complete scheduled build. See
+[typeahead-builder-host-integration.json](typeahead-builder-host-integration.json).
