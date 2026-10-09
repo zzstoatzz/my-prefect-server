@@ -20,7 +20,10 @@ def aperture_models(
 ) -> dict:
     """Pi's public models.json contract, using the local inference bridge."""
     selected = resolve_inference_model(model, backend=backend)
-    definition = {"id": selected.name, "maxTokens": selected.max_output_tokens}
+    definition: dict[str, object] = {
+        "id": selected.name,
+        "maxTokens": selected.max_output_tokens,
+    }
     if selected.wire_name == "claude-haiku-5-5":
         definition.update(reasoning=True, compat={"forceAdaptiveThinking": True})
     return {

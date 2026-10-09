@@ -58,5 +58,38 @@ Final regression additions also pass targeted subprocess tests. Haiku's output
 allowance is 16,384 tokens to leave room for adaptive reasoning and an answer;
 the selected model's allowance is passed explicitly to the local bridge.
 
-Production defaults have not changed. Final review with medium reasoning,
-immutable release, and deployment verification remain pending.
+Final review with medium reasoning completed in 44.9 seconds ($0.006928185)
+and identified a real null-generation regression. A second revision took 48.6
+seconds ($0.00725066), handled unknown generations, preserved open overlays
+during refresh, and passed 36 frontend tests plus Svelte checks. Repeated
+known-generation mismatches intentionally fail rather than display stale data.
+The failed-preview test still does not directly exercise Svelte's error branch.
+
+The first production Haiku investigation, `2fff9138-fa6b-4633-8fa7-12f1b41b1053`,
+completed with three requests, 12.955 seconds of agent execution, complete usage
+coverage, and an estimated $0.00210305. VM creation took 33.124 seconds,
+bootstrap 2.642 seconds, and service startup 0.891 seconds. The baked runtime
+required no per-job Python or dependency installation. The VM exited zero and
+was deleted; inventory contained only the persistent registry afterward.
+
+## Safety audit
+
+No personal social identity, organization linkage, billing configuration, bot
+publication, or human approval was changed. Read-only production investigation
+retained the prompt judge and sandbox. Coding trials used isolated public clones;
+the network-enabled trusted test stage ran only after inference detachment.
+Diagnostic and successful trial VMs were deleted.
+
+Audit found that the Anthropic relay did not exclude provider-hosted tools even
+though the Responses relay did. The fix rejects Anthropic hosted search/code
+tools and remote MCP declarations while preserving locally executed custom
+tools. A real socket/HTTP test verifies rejection before upstream delivery and
+the 16,384-token cap. This closes a route around agent network isolation.
+
+Automatic defaults remain Luna. Haiku is explicitly selectable and verified in
+production; switching automatic traffic to paid Exe-managed Anthropic inference
+while personal-org linkage and the requested spending cap remain unresolved is
+a separate billing decision. No claim here treats catalog estimates as invoices.
+
+Release CI initially caught narrower dictionary type inference than the local
+checker; an explicit object-valued model-definition annotation fixes that error.

@@ -155,6 +155,14 @@ def inference_bridge(
                 input_key = "input" if selected.api == "openai-responses" else "messages"
                 if not isinstance(body.get(input_key), list):
                     raise ValueError("Messages or input are required")
+                if selected.api == "anthropic-messages" and (
+                    body.get("mcp_servers")
+                    or any(
+                        not isinstance(tool, dict) or tool.get("type", "custom") != "custom"
+                        for tool in body.get("tools", [])
+                    )
+                ):
+                    raise ValueError("Only agent-executed custom tools are supported")
                 for key in ("max_tokens", "max_completion_tokens"):
                     if key in body:
                         value = body[key]
