@@ -103,3 +103,9 @@ process-group cancellation, and longer build deadlines from `d776dbd`. Conversio
 and publication use the same supervisor when `INDEX_QUIET=1`; the selected
 typeahead checkout must contain `scripts/snapshot_compaction/quiet.py`. This
 integration has not changed the registered deployment.
+
+The selected typeahead revision must also build the native compactor shared
+library. The flow supervises conversion once, passing `--unlimited-cpu` to
+disable the converter CLI's nested supervisor; `INDEX_QUIET=1` still controls
+the entire subprocess tree. The conversion format and exact-output checks are
+unchanged.

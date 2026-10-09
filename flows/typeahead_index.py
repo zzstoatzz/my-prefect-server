@@ -284,6 +284,7 @@ def publish_compact(repo: Path, source: Path) -> Path:
                 [
                     sys.executable,
                     str(scripts / "convert.py"),
+                    "--unlimited-cpu",
                     "--source",
                     str(source / "index.db"),
                     "--manifest",
