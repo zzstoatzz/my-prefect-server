@@ -1080,7 +1080,7 @@ deployments:
     work_pool:
       name: home-pool
       job_variables:
-        command: uv run --with /home/stoat/gardener-images/releases/merge-ed47e3c7/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
+        command: uv run --with /home/stoat/gardener-images/releases/merge-a8b8b04c/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
 
   - name: test-pull-patch
     tags: [gardener]

@@ -57,6 +57,7 @@ OPERATOR_CREDS_BLOCK = "operator-atproto-creds"
 OPERATOR_DID = "did:plc:xbtmt2zjwlrfegqvch7fboei"
 PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
 KNOT = "git@tangled.org:zzstoatzz.io/{repo}"
+PUBLIC_KNOT = "https://tangled.sh/zzstoatzz.io/{repo}.git"
 UI_RUN_URL = "https://prefect-server.waow.tech/runs/flow-run/{id}"
 PAUSE_KEY = "operator-merge-approval"
 APPROVAL_TIMEOUT_SECONDS = 86_400
@@ -165,7 +166,7 @@ def clone_and_apply(repo: str, patch: str, cwd: str, env: dict[str, str]) -> str
         "clone",
         "--depth",
         "50",
-        KNOT.format(repo=repo),
+        PUBLIC_KNOT.format(repo=repo),
         cwd,
         env=env,
     )
@@ -304,35 +305,41 @@ def merge_approved(pull: str, verdict_wait_seconds: int = 1800) -> State:
     resumed = _already_asked(pause_key)
     run_id = str(run_context.id)
 
-    with tempfile.TemporaryDirectory(prefix="merge-key-") as key_dir:
-        env = _ssh_env(key_dir, secret_sync("tangled-merge-ssh-key"))
-        try:
-            head = knot_head(repo, env)
-        except RuntimeError as exc:
-            return Completed(name="Blocked", message=f"merge key cannot read the knot: {exc}"[:500])
+    with tempfile.TemporaryDirectory(prefix="merge-") as cwd:
+        env = minimal_env(
+            GIT_COMMITTER_NAME="merge-approved",
+            GIT_COMMITTER_EMAIL="merge-approved@zat.dev",
+        )
+        base = clone_and_apply(repo, details["patch"], cwd, env)
+        if base is None:
+            return Completed(
+                name="Stale", message=f"round {details['rounds']} no longer applies to current main"
+            )
+        ok, tail = run_tests(repo, base, details["patch"])
+        if not ok:
+            emit_event(
+                event="merge.tests-failed",
+                resource={
+                    "prefect.resource.id": f"merge.{run_id}",
+                    "prefect.resource.name": repo,
+                },
+                payload={"title": details["title"], "pull": pull, "tail": tail[-1500:]},
+            )
+            return Completed(name="Tests-Failed", message=tail[-500:])
 
-        with tempfile.TemporaryDirectory(prefix="merge-") as cwd:
-            base = clone_and_apply(repo, details["patch"], cwd, env)
-            if base is None:
+        with tempfile.TemporaryDirectory(prefix="merge-key-") as key_dir:
+            env = _ssh_env(key_dir, secret_sync("tangled-merge-ssh-key"))
+            try:
+                head = knot_head(repo, env)
+            except RuntimeError as exc:
                 return Completed(
-                    name="Stale",
-                    message=f"round {details['rounds']} no longer applies to main@{head[:8]}",
+                    name="Blocked",
+                    message=f"tests passed; merge key cannot read the knot: {exc}"[:500],
                 )
-            ok, tail = run_tests(repo, base, details["patch"])
-            if not ok:
-                emit_event(
-                    event="merge.tests-failed",
-                    resource={
-                        "prefect.resource.id": f"merge.{run_id}",
-                        "prefect.resource.name": repo,
-                    },
-                    payload={
-                        "title": details["title"],
-                        "pull": pull,
-                        "tail": tail[-1500:],
-                    },
+            if head != base:
+                return Completed(
+                    name="Stale", message="main changed during testing; rerun required"
                 )
-                return Completed(name="Tests-Failed", message=tail[-500:])
 
             if not resumed:
                 detail_id = create_markdown_artifact(
