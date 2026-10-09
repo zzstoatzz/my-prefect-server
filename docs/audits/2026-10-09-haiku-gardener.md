@@ -86,10 +86,13 @@ tools and remote MCP declarations while preserving locally executed custom
 tools. A real socket/HTTP test verifies rejection before upstream delivery and
 the 16,384-token cap. This closes a route around agent network isolation.
 
-Automatic defaults remain Luna. Haiku is explicitly selectable and verified in
-production; switching automatic traffic to paid Exe-managed Anthropic inference
-while personal-org linkage and the requested spending cap remain unresolved is
-a separate billing decision. No claim here treats catalog estimates as invoices.
+Gardener's Exe worker defaults to Haiku 5.5 following explicit authorization to
+switch once the funding source was verified. The live personal `llm` integration
+reports Anthropic `source: managed`, enabled, with no configured provider key:
+usage draws on the Exe LLM allocation, not either Claude Console organization or
+Max API credits. Explicit model selections still override the worker default.
+The personal-org link and requested $100 cap are not configured by this change.
+No claim here treats catalog estimates as invoices.
 
 Release CI initially caught narrower dictionary type inference than the local
 checker; an explicit object-valued model-definition annotation fixes that error.
