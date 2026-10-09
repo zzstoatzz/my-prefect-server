@@ -1,0 +1,12 @@
+{
+  "rows": 157738,
+  "wall_seconds": 136.37707632302772,
+  "cpu_seconds": 9.606757187,
+  "source": "/home/stoat/dagster-hub/releases/20261008-bulk-spend/packages/mps/src/mps/analytics.py",
+  "cpus": [
+    16
+  ],
+  "writer_lease": "analytics-duckdb-writer",
+  "supervision": "20% CPU duty cycle with thermal pauses",
+  "services": "dagster-hub-web and dagster-hub-daemon active"
+}

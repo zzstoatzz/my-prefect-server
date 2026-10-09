@@ -129,3 +129,12 @@ output column matched in both directions. The complete 157,710-event log importe
 in 5.040 CPU seconds (25.802 seconds elapsed under a 20% CPU duty cycle). These
 are importer measurements, not full Dagster job timings. See
 [evidence](evidence/bulk-spend.json) and `bench_spend.py` for reproduction.
+
+Live release `/home/stoat/dagster-hub/releases/20261008-bulk-spend` was activated
+after the previous Dagster run and Prefect handoff completed. Both services were
+verified active and the daemon's actual affinity was CPU 16. A direct invocation
+of the deployed importer against the production database, holding the existing
+writer lease, processed 157,738 events in 9.607 CPU seconds. Wall time was 136.377
+seconds under the quiet supervisor because other host workloads caused repeated
+thermal pauses. This verified the installed importer and real database replay,
+not a complete new Dagster job. See [live evidence](evidence/live-spend.json).

@@ -141,7 +141,8 @@ just push                                 # github first (installs come from the
 [MIT](LICENSE)
 
 Typeahead subprocess deadlines cover output streaming and process exit. A timeout
-or cancellation terminates the whole subprocess group, including descendants.
+or cancellation terminates the whole subprocess group, including descendants,
+allowing up to ten seconds for supervisor cleanup before a final kill.
 
 The scheduled typeahead build selects `codex/native-compaction` and enables its
 Linux quiet supervisor for compilation and indexing: one efficiency core, 20%
