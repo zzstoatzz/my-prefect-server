@@ -10,9 +10,14 @@
     },
     "autofix-revise": {
       "id": "02d90936-9f9b-45f7-97e6-8f18539b0b7e",
-      "wheel_sha256": "160907e1cfb2648638abb1886f753f090b3fb70ed87c41fa632252cb12b88774",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:7e021c862e2b73cbe8aab543995b33ba25927066f212680adcbe9ef175779e89",
-      "inference_backend": "exe"
+      "wheel_sha256": "cd176014c35ffc3da0ab2e29307f05d5bd12c69c525013beafb9bdd273ebb973",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:b7e35e44ad114889af514db7189f75ab56b6510bbf91b97c6adb8a60106ed2f3",
+      "inference_backend": "exe",
+      "flow_override": {
+        "source_revision": "db1d9d03d43ed8948a8859b0ace50fab440a4da8",
+        "path": "flows/autofix_revise.py",
+        "sha256": "1da5bf03f0d06d54dee73601a7fd392d231e5702640172f3520e1fbaf69ac9ff"
+      }
     },
     "test-pull-patch": {
       "id": "6f98ab00-3c0a-44ef-b35a-bda13bfb67e2",
