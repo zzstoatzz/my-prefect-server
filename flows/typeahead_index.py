@@ -123,6 +123,10 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
         code = proc.wait(timeout=max(0, deadline - time.monotonic()))
     except BaseException as exc:
         with suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGTERM)
+        with suppress(subprocess.TimeoutExpired):
+            proc.wait(timeout=10)
+        with suppress(ProcessLookupError):
             os.killpg(proc.pid, signal.SIGKILL)
         proc.wait()
         if isinstance(exc, subprocess.TimeoutExpired):
