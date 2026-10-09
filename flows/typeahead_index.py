@@ -33,6 +33,7 @@ import selectors
 import shutil
 import signal
 import subprocess
+import sys
 import time
 import urllib.request
 from collections import deque
@@ -134,6 +135,15 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
         raise ProcessExecutionError(cmd[0], code, "\n".join(output))
 
 
+def quiet_command(repo: Path, command: list[str]) -> list[str]:
+    if os.environ.get("INDEX_QUIET") != "1":
+        return command
+    supervisor = repo / "scripts/snapshot_compaction/quiet.py"
+    if not supervisor.is_file():
+        raise RuntimeError("quiet supervisor missing from the selected typeahead revision")
+    return [sys.executable, str(supervisor), "--", *command]
+
+
 @task(
     retries=2,
     retry_delay_seconds=exponential_backoff(backoff_factor=10),
@@ -174,11 +184,21 @@ def build_binary(repo_dir: Path) -> Path:
     zig = zig_for(services)
     get_run_logger().info(f"building with {zig}")
     try:
-        _stream([zig, "build", "-Doptimize=ReleaseSafe"], services, env, timeout=900)
+        _stream(
+            quiet_command(repo_dir, [zig, "build", "-Doptimize=ReleaseSafe", "-j1"]),
+            services,
+            env,
+            timeout=10800,
+        )
     except RuntimeError:
         get_run_logger().warning("primary dep fetch failed; retrying via github mirrors")
         shutil.copy(services / "build.zig.zon.gh", services / "build.zig.zon")
-        _stream([zig, "build", "-Doptimize=ReleaseSafe"], services, env, timeout=900)
+        _stream(
+            quiet_command(repo_dir, [zig, "build", "-Doptimize=ReleaseSafe", "-j1"]),
+            services,
+            env,
+            timeout=10800,
+        )
     if not binary.is_file():
         raise RuntimeError(f"build reported success but binary missing at {binary}")
     return binary
@@ -213,7 +233,7 @@ def run_indexer(binary: Path) -> None:
     # so one block serves both.
     if "://" in env.get("TURSO_URL", ""):
         env["TURSO_URL"] = env["TURSO_URL"].split("://", 1)[1]
-    _stream([str(binary)], binary.parent, env, timeout=7200)
+    _stream(quiet_command(binary.parents[3], [str(binary)]), binary.parent, env, timeout=28800)
 
 
 # builds the flow leaves on disk after a successful publish. The published
@@ -279,7 +299,7 @@ def prune_builds(build_root: str | None = None) -> int:
     return freed
 
 
-@flow(name="typeahead-index", log_prints=True, timeout_seconds=14400)
+@flow(name="typeahead-index", log_prints=True, timeout_seconds=43200)
 def typeahead_index(ref: str | None = None):
     repo = clone_repo(ref)
     binary = build_binary(repo)

@@ -510,6 +510,8 @@ deployments:
   - name: typeahead-index
     pull: *cached_home
     tags: [publish]
+    parameters:
+      ref: codex/native-compaction
     entrypoint: flows/typeahead_index.py:typeahead_index
     # the typeahead snapshot builder (Zig MODE=indexer), lifted off Fly onto the
     # home box. Pure batch: reads Turso → builds prefix index on the NVMe →
@@ -539,6 +541,7 @@ deployments:
           INDEX_R2_ACCESS_KEY_ID: prefect-block://index-r2-access-key-id
           INDEX_R2_SECRET_ACCESS_KEY: prefect-block://index-r2-secret-access-key
           # persistent NVMe paths — process runs execute in ephemeral /tmp.
+          INDEX_QUIET: "1"
           INDEXER_HOME: /home/stoat/typeahead-index
           INDEX_BUILD_ROOT: /home/stoat/typeahead-index/build
           # publish to prod. INDEX_ALLOW_PROD arms the overwrite of latest.json.

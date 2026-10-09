@@ -142,3 +142,9 @@ just push                                 # github first (installs come from the
 
 Typeahead subprocess deadlines cover output streaming and process exit. A timeout
 or cancellation terminates the whole subprocess group, including descendants.
+
+The scheduled typeahead build selects `codex/native-compaction` and enables its
+Linux quiet supervisor for compilation and indexing: one efficiency core, 20%
+CPU duty cycle, and temperature-based pauses. The native compactor is built with
+the binary. Compact snapshot publication waits for the separate serving-release
+qualification; this change preserves the existing production snapshot format.
