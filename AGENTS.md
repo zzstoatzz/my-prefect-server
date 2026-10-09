@@ -55,8 +55,9 @@ Cloud-vs-ours confusion: `docs/agent-tooling.md`.
 
 ## costs
 
-`COSTS.md` figures are mostly wrong today — prefix-match the service name, and
-prefer declared ownership over inferred. background: the "known-wrong state" section of `COSTS.md`.
+Cost ownership is declared in `mps.costs.projects.RESOURCE_DECLARATIONS`; unknown
+resources stay unattributed and conflicting claims fail. Repository cost queries
+strip component suffixes before matching and report missing lines as null.
 
 ## running flows ad hoc
 

@@ -15,13 +15,15 @@ current monthly cost for this repo from the daily snapshot (collected by
 curl -s https://hub.waow.tech/api/costs.json | jq '{
   as_of: .generatedAt,
   this_repo_monthly_usd: (
-    [ .lineItems[] | select(.service as $s | ["prefect-server"] | index($s)) ]
-    | (map(.amount) | add // 0) / 100
+    [ .lineItems[] | select((.service | split(":" )[0]) as $s | ["prefect-server"] | index($s)) ]
+    | if length == 0 then null else (map(.amount) | add) / 100 end
   ),
-  lines: [ .lineItems[] | select(.service as $s | ["prefect-server"] | index($s))
+  lines: [ .lineItems[] | select((.service | split(":" )[0]) as $s | ["prefect-server"] | index($s))
            | {service, provider, usd: (.amount/100), estimated} ]
 }'
 ```
+
+`null` means no matching provider lines were found; it does not mean free.
 
 Or open the costs panel at https://hub.waow.tech and group **by project**.
 
@@ -29,23 +31,17 @@ Services attributed to this repo: `prefect-server`. If that list is
 wrong, fix the mapping in `my-prefect-server`
 (`packages/mps/src/mps/costs/projects.py`) rather than editing numbers here.
 
-## known-wrong state and where attribution is going
+## attribution
 
-- the `COSTS.md` snippet in each repo fetches a live figure from
-  `https://hub.waow.tech/api/costs.json`. **as of 2026-08-13 most of those
-  figures are wrong**: 7 of 10 repos report `$0` because the snippets
-  exact-match a `service` name (`leaflet-search-backend`) while fly and
-  cloudflare line items gained component suffixes
-  (`leaflet-search-backend:compute`) on 2026-06-17. prefix-match to get the
-  real number until the generator is fixed.
-- attribution currently infers project ownership from resource-name substrings
-  in `packages/mps/src/mps/costs/projects.py`. that is the wrong model and is
-  being replaced: **each project should declare what it owns**. resource names
-  outlive renames (`pub-search`'s fly apps are still `leaflet-search-*`) and
-  collide (bare `relay` vs plyr's `relay-api`), so inference silently
-  mis-attributes and nothing fails loudly. the collector's job is to reconcile
-  declarations and report conflicts + orphans; ~20 live services are claimed
-  by no repo today. the protocol sketch is [docs/cost-declaration.md](docs/cost-declaration.md).
+Resource ownership is explicit in `packages/mps/src/mps/costs/projects.py`.
+Unknown names remain `unattributed`; conflicting declarations fail validation.
+The collector no longer assigns ownership from substrings. Update declarations
+when adding or renaming resources. Component lines such as `:compute` and
+`:volumes` retain their resource's ownership.
+
+Repository cost queries match the resource portion before the component suffix.
+Missing matches return `null`, not a misleading zero. The prior exact-match
+examples omitted component costs; the affected examples were corrected October 9.
 
 ## how we might bring this down
 - biggest line is usually `prefect-server` — check its utilization and right-size before anything else.

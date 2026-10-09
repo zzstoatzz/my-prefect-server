@@ -8,12 +8,11 @@ import asyncio
 import datetime as dt
 
 import pytest
-from mps.costs.projects import UNATTRIBUTED, project_for
+from mps.costs.projects import UNATTRIBUTED, project_for, resource_owners
 from mps.costs.types import LineItem, Period, Snapshot
 
 
-def test_project_mapping_longest_match_wins():
-    # specific name beats the generic "plyr" substring
+def test_declared_resource_ownership():
     assert project_for("plyr-transcoder") == "plyr.fm"
     assert project_for("plyr") == "plyr.fm"
     assert project_for("audio-prod") == "plyr.fm"
@@ -342,3 +341,12 @@ def test_costs_names_the_run_incomplete_when_a_connector_reports_a_gap(monkeypat
         assert state.name == "Incomplete" and "cloudflare: R2 storage" in state.message
     else:
         assert state.name == "Completed"
+
+
+def test_cost_ownership_does_not_guess_from_similar_names():
+    assert project_for("unrelated-plyr-tool") == UNATTRIBUTED
+    assert project_for("relay-unclaimed") == UNATTRIBUTED
+    assert project_for("typeahead-search:volumes") == "typeahead"
+    assert project_for("TYPEAHEAD-SEARCH") == "typeahead"
+    with pytest.raises(ValueError, match="conflicting cost ownership"):
+        resource_owners({"first": ("server",), "second": ("SERVER",)})
