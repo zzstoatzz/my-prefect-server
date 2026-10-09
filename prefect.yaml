@@ -282,7 +282,8 @@ deployments:
     tags: [phi]
     entrypoint: flows/phi_atlas.py:phi_atlas
     # 2D map of phi's mental landscape. UMAP+HDBSCAN over every PDS record
-    # and TurboPuffer row phi owns. ML deps (numpy/scipy/umap-learn/hdbscan)
+    # and eligible TurboPuffer memory row. Replaced rows, expired summaries
+    # and the known smoke-test fixture stay in storage, outside this projection. ML deps (numpy/scipy/umap-learn/hdbscan)
     # live in the [atlas] extra so other flows' pods don't pull them.
     work_pool:
       name: home-pool
@@ -304,7 +305,7 @@ deployments:
     pull: *cached_home
     tags: [phi]
     entrypoint: flows/docket.py:docket
-    # Daily promotion object — consumes the atlas, emits 5-15 candidate
+    # Daily optional investigations — consumes the atlas, emits 0-10 candidate
     # work items. Event-triggered on phi-atlas completion so the docket
     # exactly tracks the atlas it was derived from. No separate cron.
     work_pool: *home

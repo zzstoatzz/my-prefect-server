@@ -30,7 +30,7 @@ import gzip
 import hashlib
 import json
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -108,6 +108,9 @@ class AtlasPoint(BaseModel):
     refs: dict[str, Any] = Field(default_factory=dict)
     tags: list[str] = Field(default_factory=list)
     created_at: str = ""
+    updated_at: str = ""
+    memory_status: str = ""
+    supersedes: str = ""
     # intermediate state; pydantic v2 PrivateAttrs — excluded by model_dump
     _content: str = ""
     _vector: list[float] | None = None
@@ -267,6 +270,22 @@ def _memory_rows(namespace):
             return
 
 
+def memory_exclusion(namespace: str, row: Any, now: datetime) -> str | None:
+    if namespace == "phi-users-smoke_test_example":
+        return "test fixture"
+    if getattr(row, "status", "") in {"superseded", "retired"}:
+        return "replaced or retired"
+    if getattr(row, "kind", "") == "summary":
+        try:
+            written = datetime.fromisoformat(getattr(row, "created_at", "") or "")
+            written = written.replace(tzinfo=written.tzinfo or UTC)
+        except (ValueError, TypeError):
+            return "undated summary"
+        if now - written > timedelta(days=7):
+            return "expired summary"
+    return None
+
+
 @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
 def fetch_tpuf_points(tpuf_key: str) -> list[AtlasPoint]:
     """Read every memory page, retaining existing vectors and evidence refs.
@@ -277,12 +296,18 @@ def fetch_tpuf_points(tpuf_key: str) -> list[AtlasPoint]:
     """
     logger = get_run_logger()
     points: list[AtlasPoint] = []
+    excluded: collections.Counter[str] = collections.Counter()
+    now = datetime.now(UTC)
     with turbopuffer.Turbopuffer(api_key=tpuf_key, region="gcp-us-central1") as client:
         ns_ids = [ns.id for ns in client.namespaces(prefix=USER_NS_PREFIX)]
         logger.info(f"found {len(ns_ids)} phi-users-* namespaces")
         for ns_id in [*ns_ids, EPISODIC_NS]:
             episodic = ns_id == EPISODIC_NS
             for row in _memory_rows(client.namespace(ns_id)):
+                reason = memory_exclusion(ns_id, row, now)
+                if reason:
+                    excluded[reason] += 1
+                    continue
                 kind = "episodic" if episodic else getattr(row, "kind", "")
                 if kind not in {"observation", "summary", "interaction", "episodic"}:
                     continue
@@ -302,6 +327,9 @@ def fetch_tpuf_points(tpuf_key: str) -> list[AtlasPoint]:
                     label=content[:200],
                     tags=getattr(row, "tags", []) or [],
                     created_at=getattr(row, "created_at", "") or "",
+                    updated_at=getattr(row, "updated_at", "") or "",
+                    memory_status=getattr(row, "status", "") or "unspecified",
+                    supersedes=getattr(row, "supersedes", "") or "",
                     refs=refs,
                 )
                 point._content = content
@@ -309,6 +337,7 @@ def fetch_tpuf_points(tpuf_key: str) -> list[AtlasPoint]:
                 if vec:
                     point._vector = list(vec)
                 points.append(point)
+    logger.info(f"excluded from projection (source rows retained): {dict(excluded)}")
     n_with_vec = sum(1 for p in points if p._vector is not None)
     logger.info(f"fetched {len(points)} points from turbopuffer ({n_with_vec} with vectors reused)")
     return points
@@ -356,7 +385,11 @@ def fetch_pds_points() -> list[AtlasPoint]:
                 id=pid,
                 kind=kind,
                 label=label,
-                created_at=value.get("createdAt", "") or value.get("publishedAt", "") or "",
+                created_at=value.get("createdAt")
+                or value.get("publishedAt")
+                or value.get("created_at")
+                or "",
+                updated_at=value.get("updatedAt") or value.get("updated_at") or "",
                 refs={"at_uri": uri, "cid": r.get("cid", ""), "collection": collection},
             )
             point._content = embed_text
