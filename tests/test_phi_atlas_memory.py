@@ -1,5 +1,6 @@
 """Atlas extraction must cover later namespaces and rows beyond ANN's cap."""
 
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -107,3 +108,42 @@ async def test_flow_uses_retrying_task_entrypoint(monkeypatch):
         await atlas.phi_atlas.fn(dry_run=True)
     fetch.assert_called_once_with("test")
     fetch.fn.assert_not_called()
+
+
+def test_projection_excludes_replaced_rows_but_keeps_old_active_corrections():
+    now = datetime(2026, 10, 9, tzinfo=UTC)
+    cases = [
+        (
+            SimpleNamespace(
+                kind="episodic", status="active", created_at="2026-01-01", tags=["correction"]
+            ),
+            None,
+        ),
+        (SimpleNamespace(kind="observation", status="superseded"), "replaced or retired"),
+        (SimpleNamespace(kind="episodic", status="retired"), "replaced or retired"),
+        (SimpleNamespace(kind="interaction", created_at="2025-01-01"), None),
+        (SimpleNamespace(kind="summary", created_at="2026-06-17"), "expired summary"),
+        (SimpleNamespace(kind="summary", created_at="2026-10-02T00:00:00Z"), None),
+        (SimpleNamespace(kind="summary", created_at="bad"), "undated summary"),
+    ]
+    for memory, reason in cases:
+        assert atlas.memory_exclusion("phi-users-person_test", memory, now) == reason
+    assert (
+        atlas.memory_exclusion("phi-users-smoke_test_example", cases[0][0], now) == "test fixture"
+    )
+
+
+def test_projection_keeps_current_revision_identity_and_history_reference(monkeypatch):
+    old = row(1, status="superseded")
+    current = row(2, status="active", supersedes=old.id, updated_at="2026-10-08T00:00:00Z")
+    namespaces = {
+        "phi-users-alice_test": Namespace([old, current]),
+        atlas.EPISODIC_NS: Namespace([]),
+    }
+    install(monkeypatch, namespaces)
+    points = atlas.fetch_tpuf_points.fn("test")
+    assert [p.refs["tpuf_id"] for p in points] == [current.id]
+    assert points[0].supersedes == old.id
+    assert points[0].memory_status == "active"
+    assert points[0].updated_at == current.updated_at
+    assert namespaces["phi-users-alice_test"].rows == [old, current]

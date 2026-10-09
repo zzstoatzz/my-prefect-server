@@ -343,6 +343,8 @@ def _extract_pressure_pool_impl(atlas: dict[str, Any]) -> list[dict[str, Any]]:
 
     by_fine: dict[int, list[dict[str, Any]]] = {}
     for p in points:
+        if p.get("memory_status") in {"superseded", "retired"}:
+            continue
         if p.get("promotion_status") != "raw":
             continue
         cf = p.get("cluster_fine")
