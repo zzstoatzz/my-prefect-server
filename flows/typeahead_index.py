@@ -29,11 +29,14 @@ Expected env (set by the deployment):
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
+import sys
 import urllib.request
 from collections import deque
 from pathlib import Path
+from typing import Literal
 
 from mps.zig_toolchain import zig_for
 from prefect import flow, get_run_logger, task
@@ -150,7 +153,7 @@ def build_binary(repo_dir: Path) -> Path:
 
 
 @task(retries=3, retry_delay_seconds=[30, 120, 300])
-def run_indexer(binary: Path) -> None:
+def run_indexer(binary: Path, local_only: bool = False) -> Path | None:
     """Run MODE=indexer: read Turso → build snapshot → publish to R2 → exit.
 
     Channel/arming come from the inherited env (INDEX_CHANNEL, INDEX_ALLOW_PROD).
@@ -163,6 +166,11 @@ def run_indexer(binary: Path) -> None:
     channel = os.environ.get("INDEX_CHANNEL", "local")
     logger.info(f"MODE=indexer channel={channel} build_root={build_root}")
     env = {**os.environ, "MODE": "indexer", "INDEX_BUILD_ROOT": build_root}
+    existing = set(Path(build_root).glob("build-*/manifest.json")) if local_only else set()
+    if local_only:
+        if env.get("INDEX_PUBLISH_ONLY"):
+            raise ValueError("compact source build cannot use INDEX_PUBLISH_ONLY")
+        env["INDEX_CHANNEL"] = "local"
     # tell the binary where rclone is (it shells out for the R2 upload). Resolve
     # the absolute path here rather than relying on the binary PATH-searching —
     # install.sh puts rclone under ~/.local/bin, not the /usr/local/bin the Fly
@@ -179,6 +187,84 @@ def run_indexer(binary: Path) -> None:
     if "://" in env.get("TURSO_URL", ""):
         env["TURSO_URL"] = env["TURSO_URL"].split("://", 1)[1]
     _stream([str(binary)], binary.parent, env, timeout=7200)
+    if local_only:
+        created = set(Path(build_root).glob("build-*/manifest.json")) - existing
+        if len(created) != 1:
+            raise RuntimeError("expected exactly one completed legacy source build")
+        return created.pop().parent
+    return None
+
+
+def compact_target() -> tuple[str, str] | None:
+    channel = os.environ.get("INDEX_CHANNEL", "local")
+    if channel == "local":
+        return None
+    if channel == "prod":
+        if os.environ.get("INDEX_ALLOW_PROD") != "1":
+            raise ValueError("production publication is not armed")
+        return "builds", "latest.json"
+    if channel == "staging":
+        name = os.environ.get("INDEX_STAGING_NAME", "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
+            raise ValueError("staging requires a safe INDEX_STAGING_NAME")
+        return f"staging/{name}", f"staging/{name}/latest.json"
+    raise ValueError("unknown INDEX_CHANNEL")
+
+
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
+def publish_compact(repo: Path, source: Path) -> Path:
+    target = compact_target()
+    legacy = json.loads((source / "manifest.json").read_text())
+    compact_id = legacy["active_build"] + "-px05"
+    output = source.parent / f"build-{compact_id}"
+    scripts = repo / "scripts/snapshot_compaction"
+    env = dict(os.environ)
+    if not output.exists():
+        _stream(
+            [
+                sys.executable,
+                str(scripts / "convert.py"),
+                "--source",
+                str(source / "index.db"),
+                "--manifest",
+                str(source / "manifest.json"),
+                "--output",
+                str(output),
+                "--build-id",
+                compact_id,
+                "--object-prefix",
+                target[0] if target else "builds",
+            ],
+            repo,
+            env,
+            timeout=7200,
+        )
+    candidate = json.loads((output / "manifest.json").read_text())
+    if (
+        candidate["active_build"] != compact_id
+        or candidate["legacy_twin"]["build_id"] != legacy["active_build"]
+        or candidate["source_watermark"] != legacy["source_watermark"]
+    ):
+        raise ValueError("existing compact generation does not match source")
+    if target is not None:
+        _stream(
+            [
+                sys.executable,
+                str(scripts / "publish.py"),
+                "--generation",
+                str(output),
+                "--legacy-database",
+                str(source / "index.db"),
+                "--legacy-manifest",
+                str(source / "manifest.json"),
+                "--pointer",
+                target[1],
+            ],
+            repo,
+            env,
+            timeout=7200,
+        )
+    return output
 
 
 # builds the flow leaves on disk after a successful publish. The published
@@ -211,7 +297,10 @@ def builds_to_prune(
     if serving is None:
         return []
     ordered = sorted(build_dirs, key=lambda p: p.name, reverse=True)
-    return [p for p in ordered[keep:] if p.name != f"build-{serving}"]
+    protected = {f"build-{serving}"}
+    if serving.endswith("-px05"):
+        protected.add(f"build-{serving.removesuffix('-px05')}")
+    return [p for p in ordered[keep:] if p.name not in protected]
 
 
 @task
@@ -245,8 +334,15 @@ def prune_builds(build_root: str | None = None) -> int:
 
 
 @flow(name="typeahead-index", log_prints=True, timeout_seconds=14400)
-def typeahead_index(ref: str | None = None):
+def typeahead_index(
+    ref: str | None = None, snapshot_format: Literal["sqlite", "compact"] = "sqlite"
+):
     repo = clone_repo(ref)
     binary = build_binary(repo)
-    run_indexer(binary)
+    if snapshot_format == "compact":
+        compact_target()
+        source = run_indexer(binary, local_only=True)
+        publish_compact(repo, source)
+    else:
+        run_indexer(binary)
     prune_builds()

@@ -80,3 +80,20 @@ General entrypoint/storage preflight may belong in Prefect. This repository owns
 its mps wheel layout, Heavypad paths, Sprite package declarations and revision
 binding. Keep these policies here; an upstream validator should allow legitimate
 image and worker-path deployments.
+
+## Typeahead compact snapshots — local implementation, 2026-10-08
+
+The typeahead flow accepts `snapshot_format="compact"`; its default remains
+`"sqlite"`. Compact mode runs the existing Zig builder with local publication,
+then invokes the typeahead repository's converter and verified paired publisher
+in a separate retryable task. It retains the serving compact generation's
+legacy source during local cleanup. Production still uses the legacy mode.
+
+The typeahead release must include `scripts/snapshot_compaction` before opting
+into this parameter. The existing channel and production-arming variables
+remain authoritative. No schedules or deployment parameters have been changed.
+Release performance, recovery, staged cutover, and scheduled-cycle gates must
+pass before enabling compact publishing in the registered deployment.
+
+For the real converter integration test, set `TYPEAHEAD_COMPACTION_SOURCE` to
+the typeahead release checkout and run `tests/test_typeahead_compaction.py`.
