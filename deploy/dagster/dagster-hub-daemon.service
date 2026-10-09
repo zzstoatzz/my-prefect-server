@@ -17,7 +17,8 @@ KillMode=mixed
 TimeoutStopSec=1600
 MemoryHigh=4G
 MemoryMax=8G
-CPUQuota=400%
+CPUAffinity=16
+Nice=10
 TasksMax=512
 UMask=0077
 

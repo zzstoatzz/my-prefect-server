@@ -3,6 +3,7 @@ import json
 import logging
 import os
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from mps.spend import RAW_LLM_SPEND_SCHEMA
 
@@ -57,6 +58,7 @@ def import_spend_log(log_path: Path, analytics_db: Path) -> int:
     logger = logging.getLogger(__name__)
     con = duckdb.connect(str(analytics_db))
     try:
+        con.execute("SET threads = 1")
         con.execute(RAW_LLM_SPEND_SCHEMA)
         if not log_path.exists():
             logger.info(f"no LLM spend log found at {log_path}")
@@ -108,12 +110,36 @@ def import_spend_log(log_path: Path, analytics_db: Path) -> int:
             )
 
         if rows:
-            con.begin()
-            con.executemany(
-                "INSERT OR REPLACE INTO raw_llm_spend VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                rows,
-            )
-            con.commit()
+            columns = [
+                column[0]
+                for column in con.execute("SELECT * FROM raw_llm_spend LIMIT 0").description
+            ]
+            with TemporaryDirectory(prefix="mps-spend-") as directory:
+                batch = Path(directory) / "batch.jsonl"
+                with batch.open("w", encoding="utf-8") as fp:
+                    for ordinal, row in enumerate(rows):
+                        json.dump(dict(zip(columns, row, strict=True)) | {"ordinal": ordinal}, fp)
+                        fp.write("\n")
+                con.begin()
+                con.execute(
+                    """
+                    INSERT OR REPLACE INTO raw_llm_spend
+                    SELECT * EXCLUDE (ordinal) FROM read_json(
+                        ?, format='newline_delimited', columns={
+                            id: 'VARCHAR', recorded_at: 'VARCHAR', flow_name: 'VARCHAR',
+                            flow_run_id: 'VARCHAR', task_name: 'VARCHAR', provider: 'VARCHAR',
+                            model: 'VARCHAR', request_count: 'INTEGER', input_tokens: 'INTEGER',
+                            cache_write_tokens: 'INTEGER', cache_read_tokens: 'INTEGER',
+                            output_tokens: 'INTEGER', total_tokens: 'INTEGER',
+                            input_cost_usd: 'DOUBLE', output_cost_usd: 'DOUBLE',
+                            total_cost_usd: 'DOUBLE', metadata_json: 'VARCHAR', ordinal: 'BIGINT'
+                        }
+                    )
+                    QUALIFY row_number() OVER (PARTITION BY id ORDER BY ordinal DESC) = 1
+                    """,
+                    [str(batch)],
+                )
+                con.commit()
         logger.info(f"materialized {len(rows)} LLM spend events from {log_path}")
         return len(rows)
     finally:

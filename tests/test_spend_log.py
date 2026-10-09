@@ -164,6 +164,34 @@ def test_spend_import_rolls_back_the_batch_on_bad_row(tmp_path):
         assert db.execute("SELECT count(*) FROM raw_llm_spend").fetchone()[0] == 0
 
 
+def test_bulk_spend_import_last_duplicate_wins_and_replay_is_idempotent(tmp_path):
+    log = tmp_path / "spend.jsonl"
+    database = tmp_path / "analytics.duckdb"
+    events = [
+        {"id": "duplicate", "input_tokens": 1, "total_cost_usd": 0.25},
+        {"id": "other", "input_tokens": 2},
+        {"id": "duplicate", "input_tokens": 3, "metadata": {"text": "東京"}},
+    ]
+    log.write_text("\n".join(json.dumps(event) for event in events))
+    assert import_spend_log(log, database) == 3
+    assert import_spend_log(log, database) == 3
+    with duckdb.connect(str(database)) as db:
+        assert db.execute(
+            "SELECT id, input_tokens, total_cost_usd FROM raw_llm_spend ORDER BY id"
+        ).fetchall() == [("duplicate", 3, None), ("other", 2, None)]
+        metadata = db.execute(
+            "SELECT metadata_json FROM raw_llm_spend WHERE id = 'duplicate'"
+        ).fetchone()[0]
+        assert json.loads(metadata) == {"text": "東京"}
+    log.write_text(json.dumps({"id": "duplicate", "input_tokens": 4}))
+    assert import_spend_log(log, database) == 1
+    with duckdb.connect(str(database)) as db:
+        assert db.execute("SELECT id, input_tokens FROM raw_llm_spend ORDER BY id").fetchall() == [
+            ("duplicate", 4),
+            ("other", 2),
+        ]
+
+
 @pytest.mark.parametrize(
     ("input_tokens", "expected"),
     [(100_000, 0.004525), (100_001, 0.0226255)],

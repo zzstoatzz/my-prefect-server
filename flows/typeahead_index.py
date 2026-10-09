@@ -29,10 +29,14 @@ Expected env (set by the deployment):
 import json
 import logging
 import os
+import selectors
 import shutil
+import signal
 import subprocess
+import time
 import urllib.request
 from collections import deque
+from contextlib import suppress
 from pathlib import Path
 
 from mps.zig_toolchain import zig_for
@@ -77,24 +81,55 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
     except MissingContextError:
         logger = logging.getLogger(__name__)
     output: deque[str] = deque(maxlen=50)
+    deadline = time.monotonic() + timeout
     proc = subprocess.Popen(
         cmd,
         cwd=str(cwd),
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
+        start_new_session=True,
     )
+    pending = b""
+
+    def log_line(line: bytes) -> None:
+        text = line.decode("utf-8", errors="replace").rstrip()
+        logger.info(text)
+        output.append(text[-2000:])
+
     try:
         assert proc.stdout is not None
-        for line in proc.stdout:
-            logger.info(line.rstrip())
-            output.append(line.rstrip()[-2000:])
-        code = proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        raise RuntimeError(f"{cmd[0]} exceeded {timeout}s timeout") from None
+        with selectors.DefaultSelector() as selector:
+            selector.register(proc.stdout, selectors.EVENT_READ)
+            while selector.get_map():
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(cmd, timeout)
+                for key, _ in selector.select(remaining):
+                    chunk = os.read(key.fd, 65536)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                        break
+                    pending += chunk
+                    while b"\n" in pending:
+                        line, pending = pending.split(b"\n", 1)
+                        log_line(line)
+                    if len(pending) > 65536:
+                        log_line(pending)
+                        pending = b""
+            if pending:
+                log_line(pending)
+        code = proc.wait(timeout=max(0, deadline - time.monotonic()))
+    except BaseException as exc:
+        with suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait()
+        if isinstance(exc, subprocess.TimeoutExpired):
+            raise RuntimeError(f"{cmd[0]} exceeded {timeout}s timeout") from None
+        raise
+    finally:
+        if proc.stdout is not None:
+            proc.stdout.close()
     if code != 0:
         raise ProcessExecutionError(cmd[0], code, "\n".join(output))
 

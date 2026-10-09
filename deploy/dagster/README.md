@@ -16,7 +16,12 @@ exported `hub.duckdb`.
 - User services `dagster-hub-web` and `dagster-hub-daemon`, running as `stoat`.
   The existing lingering user manager starts them on boot.
 - UI listens on `127.0.0.1:3030` only. There is no public ingress.
-- Daemon/run cgroup: `CPUQuota=400%`, `MemoryHigh=4G`, `MemoryMax=8G`.
+- Daemon/run cgroup: `MemoryHigh=4G`, `MemoryMax=8G`. The HeavyPad-specific unit
+  pins the daemon and its children to efficiency CPU 16 with `Nice=10`.
+  Recheck topology before using that unit on other hardware. The previous
+  `CPUQuota=400%` was not enforced: the user manager delegates only memory/pids,
+  so child cgroups have no CPU controller. Affinity bounds placement/concurrency,
+  not CPU duty cycle.
   Webserver: `MemoryHigh=1G`, `MemoryMax=2G`.
 - Persistent local run/event storage: `~/.local/share/dagster-hub`.
 - Dagster queue allows one run. The job uses an in-process executor so one
@@ -24,6 +29,12 @@ exported `hub.duckdb`.
   metadata queries, and export. This also serializes with existing ingest/docket
   writers. Dagster still needs the Prefect API for that shared lock.
 - Run monitoring enforces a 25-minute maximum; the handoff waits up to 28 minutes.
+- Spend-log ingestion validates the same JSONL records, then writes a private normalized batch
+  for DuckDB’s native JSON reader and one upsert instead of executing one statement per historical event.
+  Its connection uses one execution thread. Duplicate IDs are resolved after
+  SQL casts by log order, preserving last-event-wins behavior, including replay
+  against existing rows. A failed batch rolls back as a unit. Full-log scanning
+  remains deliberate; there is no checkpoint that can skip rewritten events.
 - The 3 GiB analytics file stays at home. Only the existing slim hub export and
   append-only spend log sync to Hetzner. That sync now caps transfer at 256 KiB/s
   and skips overlapping invocations. The public hub continues serving at Hetzner.
@@ -91,7 +102,7 @@ Verified on HeavyPad on 2026-09-28:
 - Production run `dd92f563-a780-4c33-9563-5112e4736640`: all 16 assets
   materialized, Prefect completed, and retrying the bridge reused the finished
   run. The dbt step took 15 seconds; total runtime was about seven minutes,
-  dominated by the existing full spend-log import.
+  dominated by the former row-at-a-time spend-log import (replaced below).
 - The HeavyPad and Hetzner hub exports have identical SHA-256 hashes after sync.
 - A failed production seed build prevented publication and downstream triggers.
   Absolute manifest paths and disabling stale partial parses fix that failure;
@@ -111,3 +122,10 @@ transform deployment's `path`, `entrypoint`, `pull_steps`, and `job_variables`,
 then stop the two Dagster services. Preserve Dagster storage and the current
 analytics database. The existing writer lease also protects overlapping old/new
 processes, but draining first is required for a clean handoff.
+
+Bulk-import verification, October 9: the same 1,100-event input required 4.871 CPU
+seconds with the reference importer and 0.070 with native JSON ingestion; every
+output column matched in both directions. The complete 157,710-event log imported
+in 5.040 CPU seconds (25.802 seconds elapsed under a 20% CPU duty cycle). These
+are importer measurements, not full Dagster job timings. See
+[evidence](evidence/bulk-spend.json) and `bench_spend.py` for reproduction.

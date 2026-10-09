@@ -55,6 +55,9 @@ prefect 3 python.
 
 The hub dbt models run in [Dagster on HeavyPad](deploy/dagster/README.md). Prefect
 retains ingestion/classification and a success-gated handoff to downstream flows.
+Spend-log imports use one bulk DuckDB statement with one execution thread;
+replayed IDs retain the last event's values. The HeavyPad daemon uses an efficiency
+core to keep background analytics off its high-boost performance cores.
 
 ## gardener
 
@@ -136,3 +139,6 @@ just push                                 # github first (installs come from the
 ## license
 
 [MIT](LICENSE)
+
+Typeahead subprocess deadlines cover output streaming and process exit. A timeout
+or cancellation terminates the whole subprocess group, including descendants.
