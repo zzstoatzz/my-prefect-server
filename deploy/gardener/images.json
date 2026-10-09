@@ -19,6 +19,12 @@
       "wheel_sha256": "c75b01f982d89f57d5279f3813f8db1d6e9924aa74f2040dadcd3e4029ed6441",
       "image": "gardener-registry.exe.xyz/gardener@sha256:cf3b12d5bc08960464f3a16ebcab221bb171cfad317ce14fc37dd13fd4a304c3",
       "inference_backend": "exe"
+    },
+    "pi-pr": {
+      "id": "ec0cc6dc-bed2-4b93-80ba-41c15cb2a5cb",
+      "wheel_sha256": "cd176014c35ffc3da0ab2e29307f05d5bd12c69c525013beafb9bdd273ebb973",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:9c86aed1b5df8040b1064eabd210f619f826255b918d91788486a4022df78d3c",
+      "inference_backend": "exe"
     }
   }
 }

@@ -1054,24 +1054,18 @@ deployments:
         local_packages: []
 
   - name: pi-pr
-    pull: *cached_legacy_home
-    tags: [gardener]
-    entrypoint: flows/pi_pr.py:pi_pr
-    # pi (luna) proposes a change in a throwaway clone; the flow turns it into
-    # a gardener-authored tangled pull and emits autofix.proposed, so phi
-    # reviews it. pi holds no credential — the flow publishes, so a hijacked
-    # prompt can only produce a bad diff. requires pi + openai-codex creds on
-    # the worker.
-    # Preserve the deployed local implementation; the new isolated flow needs
-    # a separately verified Sprite deployment before changing this route.
+    tags: [gardener, phi]
+    entrypoint: flows.pi_pr.pi_pr
+    pull: []
+    # The trusted flow publishes proposals as Gardener; Pi has no publishing credentials.
     work_pool:
-      name: home-pool
+      name: gardener-exe
       job_variables:
-        command: >-
-          uv run --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git@0b9e77c00a550cb51c5f904e2ed060d7834a3160'
-          prefect flow-run execute
-        env:
-          MPS_PIN: "@0b9e77c00a550cb51c5f904e2ed060d7834a3160"
+        timeout_seconds: 2400
+        environment_mode: image
+        image: gardener-registry.exe.xyz/gardener@sha256:9c86aed1b5df8040b1064eabd210f619f826255b918d91788486a4022df78d3c
+        requirements: []
+        local_packages: []
 
   - name: merge-approved
     tags: [gardener]

@@ -1,4 +1,6 @@
 import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import Mock
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -92,3 +94,65 @@ def test_request_endpoint_cannot_be_mounted_into_agent_namespace(requests, tmp_p
         ),
     ):
         pass
+
+
+def test_proposal_dispatch_over_http_preserves_scope_and_retry_identity(tmp_path):
+    deployment_id = "ec0cc6dc-bed2-4b93-80ba-41c15cb2a5cb"
+    submitted = []
+
+    class Backend(BaseHTTPRequestHandler):
+        def do_GET(self):
+            assert self.path == f"/deployments/{deployment_id}"
+            self.respond({"work_pool_name": "gardener-exe"})
+
+        def do_POST(self):
+            assert self.path == f"/deployments/{deployment_id}/create_flow_run"
+            submitted.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+            self.respond({"id": "proposal-run", "name": "proposal"})
+
+        def respond(self, value):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(json.dumps(value).encode())
+
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Backend)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        gateway = WorkflowRequests(
+            token="proposal-test-token",
+            prefect_url="https://prefect.example/api",
+            prefect_auth="backend:credential",
+            deployments={"propose-change": deployment_id},
+        )
+        gateway._base = f"http://127.0.0.1:{server.server_port}"
+        body = request_body(
+            workflow="propose-change", repo="bot", title="Refresh atlas", body="Keep generations aligned"
+        )
+        with inference_bridge(
+            None, upstream="http://127.0.0.1:1", listen=("127.0.0.1", 0),
+            workflow_requests=gateway, grants=InferenceGrants(tmp_path / "grants.sqlite"),
+        ) as state:
+            for _ in range(2):
+                request = Request(
+                    f"http://127.0.0.1:{state['port']}/workflows/request",
+                    data=json.dumps(body).encode(),
+                    headers={"Authorization": "Bearer proposal-test-token"},
+                )
+                with urlopen(request) as response:
+                    assert json.load(response)["flow_run_id"] == "proposal-run"
+        assert submitted[0] == submitted[1]
+        assert submitted[0]["parameters"] == {
+            "task": "Explain the failure", "repo": "bot", "title": "Refresh atlas",
+            "body": "Keep generations aligned", "requested_by": "phi",
+        }
+        with pytest.raises(ValueError, match="Unsupported workflow request fields"):
+            gateway.request({**body, "job_variables": {"command": "override"}})
+        assert len(submitted) == 2
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()

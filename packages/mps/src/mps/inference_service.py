@@ -48,9 +48,20 @@ def main():
     parser.add_argument(
         "--workflow-deployment", help="Deployment ID enabled for investigation requests"
     )
+    parser.add_argument(
+        "--proposal-deployment", help="Deployment ID enabled for change proposals"
+    )
     parser.add_argument("--workflow-token-block", default="phi-workflow-request-token")
     parser.add_argument("--anthropic-key-block", default="anthropic-api-key")
     args = parser.parse_args()
+    deployments = {
+        name: deployment
+        for name, deployment in (
+            ("investigate", args.workflow_deployment),
+            ("propose-change", args.proposal_deployment),
+        )
+        if deployment
+    }
     stopped = threading.Event()
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda *_: stopped.set())
@@ -64,9 +75,9 @@ def main():
             token_block=args.workflow_token_block,
             prefect_url=os.environ["PREFECT_API_URL"],
             prefect_auth=os.environ["PREFECT_API_AUTH_STRING"],
-            deployments={"investigate": args.workflow_deployment},
+            deployments=deployments,
         )
-        if args.workflow_deployment
+        if deployments
         else None,
     ):
         stopped.wait()
