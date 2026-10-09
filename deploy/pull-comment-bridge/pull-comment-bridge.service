@@ -6,7 +6,7 @@ WorkingDirectory=%h
 Environment=PREFECT_LOGGING_LEVEL=INFO
 EnvironmentFile=%h/.config/prod-worker/env
 StateDirectory=pull-comment-bridge
-ExecStart=%h/.local/bin/uv run --no-project --with %h/phi-spike-worker/releases/aea634030ccb8c5e0096d859fe09c0a9e8d2ff267a5bf835f7ffc923a3404300/mps-0.1.0-py3-none-any.whl python -m mps.pull_comment_bridge --state %h/.local/state/pull-comment-bridge/cursor
+ExecStart=%h/pull-comment-bridge/current/venv/bin/python -m mps.pull_comment_bridge --state %h/.local/state/pull-comment-bridge/cursor
 Restart=on-failure
 RestartSec=10
 UMask=0077

@@ -528,6 +528,7 @@ laptop-worker action="status":
         mkdir -p "$HOME/.local/state/prefect-laptop-worker"
         launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
         for _ in $(seq 1 20); do launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1 || break; sleep 0.5; done
+        install -m 0755 deploy/laptop-worker/start.sh "$HOME/.config/prefect-laptop-worker/start.sh"
         install -m 0644 deploy/laptop-worker/$label.plist "$plist"
         launchctl bootstrap "gui/$(id -u)" "$plist"
         echo "loaded $label" ;;

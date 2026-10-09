@@ -7,8 +7,7 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/sh</string>
-    <string>-c</string>
-    <string>set -a; . "$HOME/.config/prefect-laptop-worker/env"; set +a; exec uv run --refresh-package prefect --upgrade --with prefect prefect worker start --pool laptop-pool --type process --name laptop --with-healthcheck</string>
+    <string>/Users/nate/.config/prefect-laptop-worker/start.sh</string>
   </array>
   <key>EnvironmentVariables</key>
   <dict>

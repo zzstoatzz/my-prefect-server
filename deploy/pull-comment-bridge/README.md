@@ -45,19 +45,24 @@ already handled; verification did not publish a comment or start a revision.
 
 ## install or upgrade
 
-The unit runs a staged mps wheel, the same way wheel-pinned deployments do. To
-upgrade, stage a new wheel, put its sha256 in the unit's `ExecStart`, commit, and
-install the committed unit.
+The unit runs a staged mps wheel from a persistent venv under
+`~/pull-comment-bridge/releases/<sha>/venv` (`current` is a symlink, like the
+gardener worker). It used to run under `uv run --with <wheel>`, which held the
+uv cache lock for the life of the process and kept its base env in the cache's
+environments bucket, which `uv cache prune` deletes out from under a running
+process. To upgrade, stage a new wheel and run the installer with its sha256;
+it builds the venv, verifies the import, flips `current`, installs the
+committed unit, and restarts.
 
 ```sh
 uv build --package mps --wheel -o dist/
 sha=$(shasum -a 256 dist/mps-0.1.0-py3-none-any.whl | cut -d' ' -f1)
-tailscale ssh stoat@heavypad "mkdir -p ~/phi-spike-worker/releases/$sha"
-tailscale ssh stoat@heavypad "cat > ~/phi-spike-worker/releases/$sha/mps-0.1.0-py3-none-any.whl" < dist/mps-0.1.0-py3-none-any.whl
-tailscale ssh stoat@heavypad 'cat > ~/.config/systemd/user/pull-comment-bridge.service' \
-  < deploy/pull-comment-bridge/pull-comment-bridge.service
-tailscale ssh stoat@heavypad 'systemctl --user daemon-reload && systemctl --user enable --now pull-comment-bridge && systemctl --user restart pull-comment-bridge'
+ssh stoat@heavypad "mkdir -p ~/phi-spike-worker/releases/$sha"
+ssh stoat@heavypad "cat > ~/phi-spike-worker/releases/$sha/mps-0.1.0-py3-none-any.whl" < dist/mps-0.1.0-py3-none-any.whl
+bash deploy/pull-comment-bridge/install.sh "$sha"
 ```
+
+Set `HEAVYPAD_SSH=stoat@100.96.216.23` when MagicDNS is off on the laptop.
 
 ## operate
 

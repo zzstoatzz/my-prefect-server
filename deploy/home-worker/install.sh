@@ -28,6 +28,10 @@ rm -f \
 echo "==> building prefect-worker-guard"
 "$ZIG_BIN" build --build-file "$GUARD_DIR/build.zig" -Doptimize=ReleaseSafe -p /usr/local
 
+echo "==> installing prefect 3.7.2 into a persistent uv tool venv (as stoat)"
+sudo -u stoat /home/stoat/.local/bin/uv tool install --python 3.14.2 prefect==3.7.2
+test -x /home/stoat/.local/share/uv/tools/prefect/bin/prefect
+
 echo "==> installing guard config and unit"
 install -m 644 "$HERE/prefect-worker-guard.env" /etc/prefect-worker-guard.env
 install -m 644 "$HERE/prefect-home-worker.service" /etc/systemd/system/prefect-home-worker.service
