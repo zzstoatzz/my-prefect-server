@@ -11,13 +11,20 @@
     "autofix-revise": {
       "id": "02d90936-9f9b-45f7-97e6-8f18539b0b7e",
       "wheel_sha256": "cd176014c35ffc3da0ab2e29307f05d5bd12c69c525013beafb9bdd273ebb973",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:b7e35e44ad114889af514db7189f75ab56b6510bbf91b97c6adb8a60106ed2f3",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:66deb03d1469919a8f7b1d6e9a20c07254249466be221c697f82f12b6dbd449e",
       "inference_backend": "exe",
       "flow_override": {
         "source_revision": "db1d9d03d43ed8948a8859b0ace50fab440a4da8",
         "path": "flows/autofix_revise.py",
         "sha256": "1da5bf03f0d06d54dee73601a7fd392d231e5702640172f3520e1fbaf69ac9ff"
-      }
+      },
+      "module_overrides": [
+        {
+          "source_revision": "f838fa0f42e1cd96d94d5234fb9ff7f1958f7af0",
+          "path": "packages/mps/src/mps/pi.py",
+          "sha256": "3fa6028c672ce5f4f0416222dc947a92179b2512b1a2a6afd811cda39ccb43c8"
+        }
+      ]
     },
     "test-pull-patch": {
       "id": "6f98ab00-3c0a-44ef-b35a-bda13bfb67e2",

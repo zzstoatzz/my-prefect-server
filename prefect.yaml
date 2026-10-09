@@ -1032,7 +1032,7 @@ deployments:
       job_variables:
         timeout_seconds: 2400
         environment_mode: image
-        image: gardener-registry.exe.xyz/gardener@sha256:b7e35e44ad114889af514db7189f75ab56b6510bbf91b97c6adb8a60106ed2f3
+        image: gardener-registry.exe.xyz/gardener@sha256:66deb03d1469919a8f7b1d6e9a20c07254249466be221c697f82f12b6dbd449e
         requirements: []
         local_packages: []
 
@@ -1080,7 +1080,7 @@ deployments:
     work_pool:
       name: home-pool
       job_variables:
-        command: uv run --with /home/stoat/phi-spike-worker/releases/310bb2a3f4fcc35357150c88d810f6f488296ac51c2c119ba29b5e851b284902/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
+        command: uv run --with /home/stoat/gardener-images/releases/merge-ed47e3c7/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
 
   - name: test-pull-patch
     tags: [gardener]
