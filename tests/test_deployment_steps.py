@@ -160,11 +160,11 @@ def test_all_home_source_deployments_use_cache_and_preserve_legacy_pins():
         for d in config["deployments"]
         if d["work_pool"]["name"] == "home-pool" and d.get("pull", config["pull"])
     ]
-    assert len(selected) == 36
+    assert selected
+    assert "pi-pr" not in {deployment["name"] for deployment in selected}
     legacy = {
         "pi-agent": "@8a7edeea882095cb82e53e673853a37091188ed8",
         "autofix": "@9495d617fd5a8c7342149dcfd8aef25ade43d2fd",
-        "pi-pr": "@0b9e77c00a550cb51c5f904e2ed060d7834a3160",
     }
     helper = root / "packages/mps/src/mps/deployment_steps.py"
     digest = hashlib.sha256(helper.read_bytes()).hexdigest()

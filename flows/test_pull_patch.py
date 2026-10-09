@@ -1,8 +1,9 @@
-"""Run proposed repository tests inside a Sprite without merge credentials."""
+"""Run proposed repository tests inside an isolated VM without merge credentials."""
 
 import hashlib
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -21,13 +22,11 @@ def test_pull_patch(repo: Repo, base: str, patch: str) -> dict:
     if not re.fullmatch(r"[0-9a-f]{40}", base):
         raise ValueError("Tests require an exact base commit")
     if os.geteuid() != 0 or not Path("/usr/local/bin/uv").is_file():
-        raise RuntimeError("Tests require the prepared Sprite runtime")
-    subprocess.run(["apt-get", "update", "-qq"], check=True, timeout=120)
-    subprocess.run(
-        ["apt-get", "install", "-y", "--no-install-recommends", "bubblewrap"],
-        check=True,
-        timeout=180,
-    )
+        raise RuntimeError("Tests require the prepared VM runtime")
+    if shutil.which("bwrap") is None:
+        raise RuntimeError("The test image must include bubblewrap")
+    if repo == "bot" and not all(Path(f"/usr/local/bin/{tool}").is_file() for tool in ("bun", "node")):
+        raise RuntimeError("The bot test image must include Bun and Node")
     with TemporaryDirectory(prefix="patch-test-") as directory:
         root = Path(directory)
         workspace, home, tools = root / "repo", root / "home", root / "tools"
@@ -60,7 +59,8 @@ def test_pull_patch(repo: Repo, base: str, patch: str) -> dict:
         script = "/usr/local/bin/uv sync" + (" --frozen" if repo == "bot" else "")
         script += " && /usr/local/bin/uv run pytest -q"
         if repo == "bot":
-            script = "export BLUESKY_HANDLE=ci.invalid BLUESKY_PASSWORD=ci; " + script
+            script = "export PATH=/usr/local/bin:$PATH BLUESKY_HANDLE=ci.invalid BLUESKY_PASSWORD=ci; " + script
+            script += " && cd web && bun install --frozen-lockfile && bun run check && bun run test"
         command = sandbox_command(
             workspace=workspace,
             home=home,
