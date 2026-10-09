@@ -57,8 +57,7 @@ def read_pi_events(output: str) -> str:
             for part in message.get("content", [])
             if part.get("type") == "text"
         )
-        if text:
-            final = text
+        final = text if message.get("stopReason") == "stop" and text else None
     if final is None:
         raise RuntimeError("Pi returned no final text")
     return final
@@ -226,6 +225,7 @@ def run_isolated_pi(
                 translate_model=backend == "exe",
                 backend=backend,
                 max_requests=None if backend == "exe" else 32,
+                max_output_tokens=selected.max_output_tokens,
             ):
                 command = sandbox_command(
                     workspace=workspace,

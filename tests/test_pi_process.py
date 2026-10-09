@@ -65,3 +65,33 @@ def test_error_placeholder_zero_usage_is_unknown(monkeypatch):
     assert (
         usage_row(message, provider="aperture", model="openai/gpt-5.6-luna", invocation="x") is None
     )
+
+
+@pytest.mark.parametrize("reason", ["length", "toolUse", None])
+def test_unfinished_last_turn_cannot_return_earlier_text(tmp_path, monkeypatch, reason):
+    monkeypatch.setenv("LLM_SPEND_LOG_PATH", str(tmp_path / "usage.jsonl"))
+    unfinished = event()
+    unfinished["message"]["stopReason"] = reason
+    unfinished["message"]["content"] = []
+    script = f"print({json.dumps(event())!r}); print({json.dumps(unfinished)!r})"
+    with pytest.raises(RuntimeError, match="without a completed answer"):
+        run_json_process(
+            [sys.executable, "-c", script],
+            provider="anthropic",
+            model="claude-haiku-4-5",
+            timeout_seconds=2,
+        )
+    assert len((tmp_path / "usage.jsonl").read_text().splitlines()) == 2
+
+
+def test_exe_haiku_usage_is_priced(tmp_path, monkeypatch):
+    from mps.pi_process import usage_row
+
+    monkeypatch.setenv("LLM_SPEND_LOG_PATH", str(tmp_path / "usage.jsonl"))
+    row = usage_row(
+        event()["message"],
+        provider="exe",
+        model="anthropic/claude-haiku-5.5",
+        invocation="haiku-pricing",
+    )
+    assert row["total_cost_usd"] == pytest.approx(0.000007)

@@ -27,6 +27,9 @@ MODELS = {
         InferenceModel("openai/gpt-5.6-luna", "openai-completions", "openai/gpt-5.6-luna"),
         InferenceModel("openai/gpt-5.6-terra", "openai-completions", "openai/gpt-5.6-terra"),
         InferenceModel("anthropic/claude-haiku-4.5", "anthropic-messages", "claude-haiku-4-5"),
+        InferenceModel(
+            "anthropic/claude-haiku-5.5", "anthropic-messages", "claude-haiku-5-5", 16384
+        ),
         InferenceModel("anthropic/claude-sonnet-5", "anthropic-messages", "claude-sonnet-5"),
     )
 }

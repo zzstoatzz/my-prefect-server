@@ -48,6 +48,8 @@ def usage_row(message: dict, *, provider: str, model: str, invocation: str):
         priced_provider, priced_model = model.split("/", 1)
         if priced_model == "claude-haiku-4.5":
             priced_model = "claude-haiku-4-5"
+        elif priced_model == "claude-haiku-5.5":
+            priced_model = "claude-haiku-5-5"
     return record_usage(
         task_name="pi",
         provider=priced_provider,
@@ -74,6 +76,7 @@ def run_json_process(command, *, prompt=None, provider, model, timeout_seconds, 
     started = time.monotonic()
     rows, messages, missing = [], 0, 0
     final, outcome = None, "failed"
+    stop_reason = None
     logger.info(
         "pi_invocation %s", json.dumps({"id": invocation, "provider": provider, "model": model})
     )
@@ -142,6 +145,7 @@ def run_json_process(command, *, prompt=None, provider, model, timeout_seconds, 
                 if message.get("role") != "assistant":
                     continue
                 messages += 1
+                stop_reason = message.get("stopReason")
                 row = usage_row(message, provider=provider, model=model, invocation=invocation)
                 if row is None:
                     missing += 1
@@ -152,11 +156,13 @@ def run_json_process(command, *, prompt=None, provider, model, timeout_seconds, 
                 text = "".join(
                     p.get("text", "") for p in message.get("content", []) if p.get("type") == "text"
                 )
-                if text:
-                    final = text
+                final = text if stop_reason == "stop" and text else None
             process.wait(timeout=max(0.001, timeout_seconds - (time.monotonic() - started)))
             if process.returncode:
                 raise RuntimeError(f"Pi exited {process.returncode}; retained usage is partial")
+            if stop_reason != "stop":
+                reason = stop_reason if stop_reason in {"length", "toolUse"} else "unknown"
+                raise RuntimeError(f"Pi ended without a completed answer (stop reason: {reason})")
             if final is None:
                 raise RuntimeError("Pi returned no final text")
             outcome = "completed"
@@ -175,6 +181,9 @@ def run_json_process(command, *, prompt=None, provider, model, timeout_seconds, 
                 "provider": provider,
                 "model": model,
                 "outcome": outcome,
+                "stop_reason": stop_reason
+                if stop_reason in {"stop", "length", "toolUse", "error", "aborted"}
+                else "unknown",
                 "seconds": round(time.monotonic() - started, 3),
                 "messages": messages,
                 "usage_records": len(rows),
