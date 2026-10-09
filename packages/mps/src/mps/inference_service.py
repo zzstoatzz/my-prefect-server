@@ -48,9 +48,7 @@ def main():
     parser.add_argument(
         "--workflow-deployment", help="Deployment ID enabled for investigation requests"
     )
-    parser.add_argument(
-        "--proposal-deployment", help="Deployment ID enabled for change proposals"
-    )
+    parser.add_argument("--proposal-deployment", help="Deployment ID enabled for change proposals")
     parser.add_argument("--workflow-token-block", default="phi-workflow-request-token")
     parser.add_argument("--anthropic-key-block", default="anthropic-api-key")
     args = parser.parse_args()

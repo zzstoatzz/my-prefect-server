@@ -25,7 +25,9 @@ def test_pull_patch(repo: Repo, base: str, patch: str) -> dict:
         raise RuntimeError("Tests require the prepared VM runtime")
     if shutil.which("bwrap") is None:
         raise RuntimeError("The test image must include bubblewrap")
-    if repo == "bot" and not all(Path(f"/usr/local/bin/{tool}").is_file() for tool in ("bun", "node")):
+    if repo == "bot" and not all(
+        Path(f"/usr/local/bin/{tool}").is_file() for tool in ("bun", "node")
+    ):
         raise RuntimeError("The bot test image must include Bun and Node")
     with TemporaryDirectory(prefix="patch-test-") as directory:
         root = Path(directory)
@@ -59,7 +61,10 @@ def test_pull_patch(repo: Repo, base: str, patch: str) -> dict:
         script = "/usr/local/bin/uv sync" + (" --frozen" if repo == "bot" else "")
         script += " && /usr/local/bin/uv run pytest -q"
         if repo == "bot":
-            script = "export PATH=/usr/local/bin:$PATH BLUESKY_HANDLE=ci.invalid BLUESKY_PASSWORD=ci; " + script
+            script = (
+                "export PATH=/usr/local/bin:$PATH BLUESKY_HANDLE=ci.invalid BLUESKY_PASSWORD=ci; "
+                + script
+            )
             script += " && cd web && bun install --frozen-lockfile && bun run check && bun run test"
         command = sandbox_command(
             workspace=workspace,

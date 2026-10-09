@@ -34,7 +34,14 @@ def test_repository_contracts(config):
 
 @pytest.mark.parametrize(
     "name",
-    ["watch-tangled-pulls", "autofix-revise", "merge-approved", "test-pull-patch", "investigate", "pi-pr"],
+    [
+        "watch-tangled-pulls",
+        "autofix-revise",
+        "merge-approved",
+        "test-pull-patch",
+        "investigate",
+        "pi-pr",
+    ],
 )
 def test_reconciliation_regression(config, name):
     dep = deployment(config, name)

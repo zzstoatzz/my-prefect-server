@@ -130,11 +130,17 @@ def test_proposal_dispatch_over_http_preserves_scope_and_retry_identity(tmp_path
         )
         gateway._base = f"http://127.0.0.1:{server.server_port}"
         body = request_body(
-            workflow="propose-change", repo="bot", title="Refresh atlas", body="Keep generations aligned"
+            workflow="propose-change",
+            repo="bot",
+            title="Refresh atlas",
+            body="Keep generations aligned",
         )
         with inference_bridge(
-            None, upstream="http://127.0.0.1:1", listen=("127.0.0.1", 0),
-            workflow_requests=gateway, grants=InferenceGrants(tmp_path / "grants.sqlite"),
+            None,
+            upstream="http://127.0.0.1:1",
+            listen=("127.0.0.1", 0),
+            workflow_requests=gateway,
+            grants=InferenceGrants(tmp_path / "grants.sqlite"),
         ) as state:
             for _ in range(2):
                 request = Request(
@@ -146,8 +152,11 @@ def test_proposal_dispatch_over_http_preserves_scope_and_retry_identity(tmp_path
                     assert json.load(response)["flow_run_id"] == "proposal-run"
         assert submitted[0] == submitted[1]
         assert submitted[0]["parameters"] == {
-            "task": "Explain the failure", "repo": "bot", "title": "Refresh atlas",
-            "body": "Keep generations aligned", "requested_by": "phi",
+            "task": "Explain the failure",
+            "repo": "bot",
+            "title": "Refresh atlas",
+            "body": "Keep generations aligned",
+            "requested_by": "phi",
         }
         with pytest.raises(ValueError, match="Unsupported workflow request fields"):
             gateway.request({**body, "job_variables": {"command": "override"}})
