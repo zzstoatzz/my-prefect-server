@@ -17,8 +17,13 @@
     "test-pull-patch": {
       "id": "6f98ab00-3c0a-44ef-b35a-bda13bfb67e2",
       "wheel_sha256": "c75b01f982d89f57d5279f3813f8db1d6e9924aa74f2040dadcd3e4029ed6441",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:cf3b12d5bc08960464f3a16ebcab221bb171cfad317ce14fc37dd13fd4a304c3",
-      "inference_backend": "exe"
+      "image": "gardener-registry.exe.xyz/gardener@sha256:344a400255ac3bf2f7db05b3dd6614e8109074d381c4050453e8b4afa176931f",
+      "inference_backend": "exe",
+      "flow_override": {
+        "source_revision": "65d32360230e5a7f87f08dc3a9befd1b96f62ada",
+        "path": "flows/test_pull_patch.py",
+        "sha256": "ccc809db9426ce06ee90674ae24e483f8bc7de8e767a21a75660b8108c26e236"
+      }
     },
     "pi-pr": {
       "id": "ec0cc6dc-bed2-4b93-80ba-41c15cb2a5cb",

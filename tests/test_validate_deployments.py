@@ -29,12 +29,12 @@ def deployment(config, name):
 def test_repository_contracts(config):
     errors, unverified = check(config)
     assert errors == []
-    assert len(unverified) == 9
+    assert len(unverified) == 10
 
 
 @pytest.mark.parametrize(
     "name",
-    ["watch-tangled-pulls", "autofix-revise", "merge-approved", "test-pull-patch", "investigate"],
+    ["watch-tangled-pulls", "autofix-revise", "merge-approved", "test-pull-patch", "investigate", "pi-pr"],
 )
 def test_reconciliation_regression(config, name):
     dep = deployment(config, name)

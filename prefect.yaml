@@ -1091,7 +1091,7 @@ deployments:
       job_variables:
         timeout_seconds: 2400
         environment_mode: image
-        image: gardener-registry.exe.xyz/gardener@sha256:cf3b12d5bc08960464f3a16ebcab221bb171cfad317ce14fc37dd13fd4a304c3
+        image: gardener-registry.exe.xyz/gardener@sha256:344a400255ac3bf2f7db05b3dd6614e8109074d381c4050453e8b4afa176931f
         requirements: []
         local_packages: []
 
