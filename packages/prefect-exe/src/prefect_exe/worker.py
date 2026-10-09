@@ -80,11 +80,13 @@ class ExeWorker(BaseWorker):
         release_environment: Callable[[str], Awaitable[None]] | None = None,
         observations_path: Path | None = None,
         integrations: tuple[str, ...] = (),
+        run_integrations: Callable[[FlowRun], tuple[str, ...]] | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self._run_environment = run_environment
         self._integrations = integrations
+        self._run_integrations = run_integrations
         self._release_environment = release_environment
         self._observer_task = None
         self._observations = AttemptStore(observations_path) if observations_path else None
@@ -229,6 +231,11 @@ class ExeWorker(BaseWorker):
     ) -> ExeWorkerResult:
         name = f"{self.vm_prefix}{flow_run.id.hex}-r{flow_run.run_count}"
         tags = [self.ownership, f"{RUN_TAG}{flow_run.id.hex}"]
+        integrations = (
+            self._run_integrations(flow_run) if self._run_integrations else self._integrations
+        )
+        if not set(integrations).issubset(self._integrations):
+            raise ValueError("Run integrations must be configured on the worker")
         self._record(
             name,
             flow_run_id=str(flow_run.id),
@@ -245,7 +252,7 @@ class ExeWorker(BaseWorker):
                         name,
                         tags=tags,
                         image=configuration.image,
-                        **({"integrations": self._integrations} if self._integrations else {}),
+                        **({"integrations": integrations} if integrations else {}),
                     ),
                 )
             except ExeError as creation_error:

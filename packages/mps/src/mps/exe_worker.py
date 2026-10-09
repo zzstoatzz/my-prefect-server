@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import re
 from pathlib import Path
+from uuid import UUID
 
 from prefect_exe import ExeWorker
 
@@ -33,12 +34,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pool", default="gardener-exe")
     parser.add_argument("--integration", default="llm")
+    parser.add_argument("--inference-deployment", type=UUID, action="append", required=True)
     parser.add_argument("--observations", type=Path, required=True)
     args = parser.parse_args()
     worker = ExeWorker(
         work_pool_name=args.pool,
         name="pi-exe-worker",
         integrations=(args.integration,),
+        run_integrations=lambda run: (
+            (args.integration,) if run.deployment_id in args.inference_deployment else ()
+        ),
         run_environment=integration_environment(args.integration),
         observations_path=args.observations,
     )
