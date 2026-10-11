@@ -1148,9 +1148,9 @@ deployments:
           STRATA_INGEST_TOKEN: prefect-block://strata-ingest-token
           STREAM_ARCHIVE_KEY: prefect-block://stream-archive-key-strata
     schedules:
-      # Paused 2026-10-11: compaction reconciliation causes excessive D1 writes.
+      # Restored 2026-10-11 after HeavyPad checkpoint and R2 cutover verification.
       - cron: "21 * * * *"
-        active: false
+        active: true
     concurrency_limit:
       limit: 1
       collision_strategy: CANCEL_NEW
