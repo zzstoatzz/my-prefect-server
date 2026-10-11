@@ -24,6 +24,7 @@ def connect(path: Path) -> sqlite3.Connection:
         CREATE INDEX IF NOT EXISTS segment_collections_ns ON segment_collections(ns, idx);
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL, updated_at INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS published_objects (digest TEXT PRIMARY KEY, last_used INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS publication (id INTEGER PRIMARY KEY CHECK(id=1), digest TEXT NOT NULL);
     """)
     return db
 
@@ -175,7 +176,14 @@ def build(db: sqlite3.Connection) -> tuple[dict, dict[str, bytes]]:
     }, objects
 
 
+def needs_publication(db: sqlite3.Connection, manifest: dict) -> bool:
+    previous = db.execute("SELECT digest FROM publication WHERE id=1").fetchone()
+    return previous is None or previous[0] != hashlib.sha256(encoded(manifest)).hexdigest()
+
+
 def publish(db: sqlite3.Connection, manifest: dict, objects: dict[str, bytes], send) -> int:
+    if not needs_publication(db, manifest):
+        return 0
     known = {r[0] for r in db.execute("SELECT digest FROM published_objects")}
     now = int(time.time())
     uploads = 0
@@ -190,6 +198,10 @@ def publish(db: sqlite3.Connection, manifest: dict, objects: dict[str, bytes], s
         uploads += len(batch)
     send("PUT", "manifest", encoded(manifest))
     with db:
+        db.execute(
+            "INSERT INTO publication VALUES(1,?) ON CONFLICT(id) DO UPDATE SET digest=excluded.digest",
+            (hashlib.sha256(encoded(manifest)).hexdigest(),),
+        )
         db.executemany(
             """INSERT INTO published_objects VALUES (?,?)
             ON CONFLICT(digest) DO UPDATE SET last_used=excluded.last_used""",

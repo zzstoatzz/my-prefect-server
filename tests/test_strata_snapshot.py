@@ -78,4 +78,4 @@ def test_failed_publication_keeps_previous_manifest_and_retries(tmp_path):
         publish(db, manifest, objects, lambda method, path, body: successful.append((path, body)))
         == 0
     )
-    assert [p for p, _ in successful] == ["manifest"]
+    assert successful == []

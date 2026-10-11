@@ -234,6 +234,8 @@ class Strata:
 
     def publish(self) -> int:
         manifest, objects = strata_snapshot.build(self.db)
+        if not strata_snapshot.needs_publication(self.db, manifest):
+            return 0
         with tempfile.TemporaryDirectory(prefix="strata-backup-") as tmp:
             backup = Path(tmp) / "checkpoint.sqlite"
             with sqlite3.connect(backup) as target:
@@ -353,4 +355,5 @@ def restore_snapshot_checkpoint(path: Path) -> None:
             if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
                 raise ValueError("checkpoint failed integrity check")
             db.execute("DELETE FROM published_objects")
+            db.execute("DROP TABLE IF EXISTS publication")
         os.replace(restored, path)
