@@ -7,29 +7,33 @@ against getSegment, so a segment's per-collection counts cost ~1.3 KB and two
 requests instead of its ~270 MB body (docs/jss-format-v1.md in zat.dev/stream;
 measured 2026-08-29 on segment 6000).
 
-The flow is stateless and compaction-aware: each run lists every sealed
-segment (a handful of requests), compares checksums with what the worker
-already holds, and re-reads whatever is new or rewritten. Compaction rewrites
-old segments continuously, so a segment's counts legitimately change after it
-was first summarised; matching on checksum catches that. Runs on the home box;
-this is a few KB per segment, not a firehose.
-
-The archive key is rate-limited to 8 Mbps server-side; nothing here comes near
-it. Concurrency is capped so a full first walk (≈7k segments) stays polite.
+HeavyPad keeps a durable SQLite checkpoint. Each run lists sealed segments and
+reads only changed footers, then publishes content-addressed serving summaries
+to R2. Public requests never depend on HeavyPad availability. No record bodies
+are collected and no D1 writes occur. A missing checkpoint requires an explicit
+restore instead of silently crawling the archive again.
 """
 
+import fcntl
+import gzip
 import json
 import os
+import sqlite3
 import struct
+import tempfile
 import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from pathlib import Path
 
 import zstandard
 from prefect import flow, get_run_logger, task
 from prefect.artifacts import create_markdown_artifact
+from prefect.cache_policies import NO_CACHE
+
+from flows import strata_snapshot
 
 ARCHIVE_URL = "https://stream.waow.tech"
 LIST_PAGE = 500
@@ -200,28 +204,42 @@ def segment_record(seg: SegmentListing, collections: list[tuple[str, int]]) -> d
 
 
 class Strata:
-    def __init__(self, url: str, token: str):
+    def __init__(self, path: Path, url: str, token: str):
         self._url = url.rstrip("/")
         self._token = token
+        self.path = path
+        if not path.exists():
+            raise RuntimeError(
+                "Strata checkpoint missing: restore the R2 checkpoint before running; refusing an implicit full crawl"
+            )
+        self.db = strata_snapshot.connect(path)
 
     def checksums(self) -> dict[int, str]:
-        """What the worker already holds: segment index -> checksum it was summarised at."""
-        with urllib.request.urlopen(
-            request(f"{self._url}/api/checksums"), timeout=TIMEOUT_S
-        ) as resp:
-            return {int(s["idx"]): s["checksum"] for s in json.load(resp)["segments"]}
+        return {
+            r["idx"]: r["checksum"] for r in self.db.execute("SELECT idx,checksum FROM segments")
+        }
 
     def ingest(self, records: list[dict], archive_segments: int) -> None:
+        strata_snapshot.ingest(self.db, records, archive_segments)
+
+    def send(self, method: str, path: str, body: bytes) -> None:
         req = request(
-            f"{self._url}/ingest",
+            f"{self._url}/snapshot/{path}",
             headers={"Authorization": f"Bearer {self._token}", "Content-Type": "application/json"},
-            data=json.dumps({"segments": records, "archiveSegments": archive_segments}).encode(),
-            method="POST",
+            data=body,
+            method=method,
         )
-        with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
-            ingested = json.load(resp)["ingested"]
-        if ingested != len(records):
-            raise RuntimeError(f"worker ingested {ingested} of {len(records)}")
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            resp.read()
+
+    def publish(self) -> int:
+        manifest, objects = strata_snapshot.build(self.db)
+        with tempfile.TemporaryDirectory(prefix="strata-backup-") as tmp:
+            backup = Path(tmp) / "checkpoint.sqlite"
+            with sqlite3.connect(backup) as target:
+                self.db.backup(target)
+            self.send("PUT", "checkpoint", gzip.compress(backup.read_bytes(), compresslevel=3))
+        return strata_snapshot.publish(self.db, manifest, objects, self.send)
 
 
 def stale_or_new(listing: list[SegmentListing], known: dict[int, str]) -> list[SegmentListing]:
@@ -229,7 +247,13 @@ def stale_or_new(listing: list[SegmentListing], known: dict[int, str]) -> list[S
     return [s for s in listing if known.get(s.idx) != s.checksum]
 
 
-@task(retries=2, retry_delay_seconds=15, log_prints=True)
+@task(
+    retries=3,
+    retry_delay_seconds=[2, 5, 10],
+    retry_jitter_factor=1,
+    log_prints=True,
+    cache_policy=NO_CACHE,
+)
 def ingest_batch(
     archive: Archive, strata: Strata, segs: list[SegmentListing], archive_segments: int
 ) -> tuple[int, int]:
@@ -245,12 +269,10 @@ def ingest_batch(
     return len(records), len(skipped)
 
 
-@flow(name="ingest-segment-collections", log_prints=True)
-def ingest_segment_collections(max_segments: int = 2000) -> int:
+def reconcile(max_segments: int, strata_api: Strata) -> int:
     """Summarise every sealed segment the worker lacks or holds at a stale checksum; returns segments ingested."""
     log = get_run_logger()
     archive = Archive(os.environ["STREAM_ARCHIVE_KEY"])
-    strata_api = Strata(os.environ["STRATA_URL"], os.environ["STRATA_INGEST_TOKEN"])
     listing = archive.list_all()
     known = strata_api.checksums()
     todo = stale_or_new(listing, known)
@@ -275,9 +297,60 @@ def ingest_segment_collections(max_segments: int = 2000) -> int:
             skipped,
         )
 
+    strata_api.ingest([], len(listing))
+    uploaded = publish_snapshot(strata_api)
+    log.info("published snapshot: %d changed objects; no D1 writes", uploaded)
     create_markdown_artifact(
         key="strata",
         markdown=f"| sealed | held before | needed | ingested this run | skipped (mid-rewrite) |\n|---|---|---|---|---|\n| {len(listing)} | {len(known)} | {len(todo)} | {done} | {skipped} |",
         description="strata ingest progress",
     )
     return done
+
+
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1, cache_policy=NO_CACHE)
+def publish_snapshot(strata: Strata) -> int:
+    return strata.publish()
+
+
+@flow(name="ingest-segment-collections", log_prints=True)
+def ingest_segment_collections(max_segments: int = 2000, restore_checkpoint: bool = False) -> int:
+    path = Path(os.environ["STRATA_STATE_PATH"])
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.with_suffix(".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        if restore_checkpoint:
+            restore_snapshot_checkpoint(path)
+        strata = Strata(path, os.environ["STRATA_URL"], os.environ["STRATA_INGEST_TOKEN"])
+        try:
+            return reconcile(max_segments, strata)
+        finally:
+            strata.db.close()
+
+
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1, cache_policy=NO_CACHE)
+def restore_snapshot_checkpoint(path: Path) -> None:
+    if path.exists():
+        return
+    req = request(
+        os.environ["STRATA_URL"].rstrip("/") + "/snapshot/checkpoint",
+        headers={"Authorization": "Bearer " + os.environ["STRATA_INGEST_TOKEN"]},
+    )
+    with tempfile.TemporaryDirectory(dir=path.parent, prefix="restore-") as tmp:
+        restored = Path(tmp) / "checkpoint.sqlite"
+        with (
+            urllib.request.urlopen(req, timeout=120) as response,
+            gzip.GzipFile(fileobj=response) as archive,
+            restored.open("wb") as target,
+        ):
+            size = 0
+            while chunk := archive.read(1 << 20):
+                size += len(chunk)
+                if size > 512 << 20:
+                    raise ValueError("checkpoint exceeds restore limit")
+                target.write(chunk)
+        with sqlite3.connect(restored) as db:
+            if db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
+                raise ValueError("checkpoint failed integrity check")
+            db.execute("DELETE FROM published_objects")
+        os.replace(restored, path)

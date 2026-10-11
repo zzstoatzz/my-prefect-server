@@ -1131,11 +1131,8 @@ deployments:
     pull: *cached_home
     tags: [watch]
     entrypoint: flows/strata.py:ingest_segment_collections
-    # read the shape of the stream archive from outside: per-segment,
-    # per-collection counts decoded from segment footers via Range requests,
-    # pushed to the strata worker (zat.dev/strata). a few KB per segment; the
-    # first walk covers ~7k segments in a few runs (max_segments per run).
-    # the worker holds no schedule — this deployment is the only cron.
+    # Reconcile footer counts in HeavyPad SQLite; publish changed serving objects to R2.
+    # Seed or restore the checkpoint before enabling; never bootstrap by crawling implicitly.
     work_pool:
       name: home-pool
       job_variables:
@@ -1147,12 +1144,13 @@ deployments:
           MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
           STRATA_URL: https://strata.zat.dev
+          STRATA_STATE_PATH: /home/stoat/prefect-analytics/strata/checkpoint.sqlite
           STRATA_INGEST_TOKEN: prefect-block://strata-ingest-token
           STREAM_ARCHIVE_KEY: prefect-block://stream-archive-key-strata
     schedules:
-      # a segment seals about every two hours; offset from :06/:36 eval windows
+      # Paused 2026-10-11: compaction reconciliation causes excessive D1 writes.
       - cron: "21 * * * *"
-        active: true
+        active: false
     concurrency_limit:
       limit: 1
       collision_strategy: CANCEL_NEW
