@@ -47,6 +47,7 @@ def message_text(msg: email.message.Message) -> str:
                 parser = _HTMLText()
                 parser.feed(text)
                 text = " ".join(parser.parts)
+            text = re.sub(r"[\u034f\u200b-\u200f\u00ad\ufeff]", "", text)
             if text.strip():
                 return re.sub(r"\s+", " ", text).strip()
     return ""

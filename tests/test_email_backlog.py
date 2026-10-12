@@ -81,6 +81,8 @@ def test_real_imap_pagination_preserves_seen_and_requires_stable_mailbox(inbox_s
 
 def test_html_only_mail_and_attachment_exclusion():
     msg = EmailMessage()
-    msg.set_content("<style>hidden</style><p>Pay by Friday &amp; confirm.</p>", subtype="html")
+    msg.set_content(
+        "<style>hidden</style><p>\u034f \u034f Pay by Friday &amp; confirm.</p>", subtype="html"
+    )
     msg.add_attachment("not the message", filename="invoice.txt")
     assert message_text(msg) == "Pay by Friday & confirm."
