@@ -4,19 +4,14 @@
   "deployments": {
     "investigate": {
       "id": "2c0ba8f3-7adf-44f8-a96e-8214c1bd8f2f",
-      "wheel_sha256": "cd176014c35ffc3da0ab2e29307f05d5bd12c69c525013beafb9bdd273ebb973",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:7819cb19679a5b4ca35a00f2b3d7897ab540ddb7def732a8cb2884cb0f5c8e33",
+      "wheel_sha256": "d155a253dfd1b685b3e753ef24390cf720ef6795f792cb919c6ad6b272bd7b98",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:ce7109333479e37f958681e8ba30e48d842208354c4baa6f787bf92e7268bd5b",
       "inference_backend": "exe",
       "module_overrides": [
         {
           "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/inference_models.py",
           "sha256": "f42cabe63eb0dacc9eac9e5628fdf16260eec747735a36bd62b92b5c7c3f6ce9"
-        },
-        {
-          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
-          "path": "packages/mps/src/mps/pi_execution.py",
-          "sha256": "ce243e549e70856fd63cd6139245b5fdc1d45928221588967e895af8bd96b8f0"
         },
         {
           "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
@@ -38,12 +33,20 @@
           "path": "packages/mps/src/mps/inference_bridge.py",
           "sha256": "3f60f27b729a17bb2101c53ed9707d93b54b2a0d93604d4922b55e2234c34772"
         }
-      ]
+      ],
+      "skills_mcp": {
+        "change_revision": "1eea775177acc157e426d8433753f11c2077dfa9",
+        "adapter_revision": "6b3ded1c6788b1a47fb01e301de95a7801af95e0",
+        "skills_revision": "a34ed13d8711fc1befbab180ef3220dbfe5d5b9f",
+        "previous_image": "gardener-registry.exe.xyz/gardener@sha256:7819cb19679a5b4ca35a00f2b3d7897ab540ddb7def732a8cb2884cb0f5c8e33",
+        "pi_execution_sha256": "fb501bca1045f3c5c3fd95d92f7669de6aa406ff739535a1e25258af56429457",
+        "pi_skills_sha256": "013346b8f6a1fff00a0be72f3734e0a88221b374c5ccd5d621813817064ac5ba"
+      }
     },
     "autofix-revise": {
       "id": "02d90936-9f9b-45f7-97e6-8f18539b0b7e",
-      "wheel_sha256": "cd176014c35ffc3da0ab2e29307f05d5bd12c69c525013beafb9bdd273ebb973",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:8efb771aa145feeea0b7bdb947dae1a894226ed270ff81221f48e5b9c53505d5",
+      "wheel_sha256": "6f3346e5fe79ed354681d339b3c0f65795d265baab3d365190d5f02390a8d078",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:cab30e527e572f3d1cd943369cf77f738e87626156da64da2911881d76483de6",
       "inference_backend": "exe",
       "flow_override": {
         "source_revision": "db1d9d03d43ed8948a8859b0ace50fab440a4da8",
@@ -63,11 +66,6 @@
         },
         {
           "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
-          "path": "packages/mps/src/mps/pi_execution.py",
-          "sha256": "ce243e549e70856fd63cd6139245b5fdc1d45928221588967e895af8bd96b8f0"
-        },
-        {
-          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/pi_process.py",
           "sha256": "a8e8bb26e5ca260fdc137429f4a94d9fe3a0beace95391f7759871999e62021f"
         },
@@ -86,23 +84,39 @@
           "path": "packages/mps/src/mps/inference_bridge.py",
           "sha256": "3f60f27b729a17bb2101c53ed9707d93b54b2a0d93604d4922b55e2234c34772"
         }
-      ]
+      ],
+      "skills_mcp": {
+        "change_revision": "1eea775177acc157e426d8433753f11c2077dfa9",
+        "adapter_revision": "6b3ded1c6788b1a47fb01e301de95a7801af95e0",
+        "skills_revision": "a34ed13d8711fc1befbab180ef3220dbfe5d5b9f",
+        "previous_image": "gardener-registry.exe.xyz/gardener@sha256:8efb771aa145feeea0b7bdb947dae1a894226ed270ff81221f48e5b9c53505d5",
+        "pi_execution_sha256": "fb501bca1045f3c5c3fd95d92f7669de6aa406ff739535a1e25258af56429457",
+        "pi_skills_sha256": "013346b8f6a1fff00a0be72f3734e0a88221b374c5ccd5d621813817064ac5ba"
+      }
     },
     "test-pull-patch": {
       "id": "6f98ab00-3c0a-44ef-b35a-bda13bfb67e2",
-      "wheel_sha256": "c75b01f982d89f57d5279f3813f8db1d6e9924aa74f2040dadcd3e4029ed6441",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:344a400255ac3bf2f7db05b3dd6614e8109074d381c4050453e8b4afa176931f",
+      "wheel_sha256": "e9ff2b3f966218086d909fadd6983b4ce655022a2aca076902b6fb0c3eaec6cb",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:4c47744dd7c242cf25ef4e87c23ec2894c3e5029ce8c7d97c3690afbf4afe51b",
       "inference_backend": "exe",
       "flow_override": {
         "source_revision": "65d32360230e5a7f87f08dc3a9befd1b96f62ada",
         "path": "flows/test_pull_patch.py",
         "sha256": "ccc809db9426ce06ee90674ae24e483f8bc7de8e767a21a75660b8108c26e236"
+      },
+      "skills_mcp": {
+        "change_revision": "1eea775177acc157e426d8433753f11c2077dfa9",
+        "adapter_revision": "6b3ded1c6788b1a47fb01e301de95a7801af95e0",
+        "skills_revision": "a34ed13d8711fc1befbab180ef3220dbfe5d5b9f",
+        "previous_image": "gardener-registry.exe.xyz/gardener@sha256:344a400255ac3bf2f7db05b3dd6614e8109074d381c4050453e8b4afa176931f",
+        "pi_execution_sha256": "33d4125f5ea2de54594945d7b2c30c03f5a5a8409665ea9f143043054e7fdb40",
+        "pi_skills_sha256": "013346b8f6a1fff00a0be72f3734e0a88221b374c5ccd5d621813817064ac5ba"
       }
     },
     "pi-pr": {
       "id": "ec0cc6dc-bed2-4b93-80ba-41c15cb2a5cb",
-      "wheel_sha256": "cd176014c35ffc3da0ab2e29307f05d5bd12c69c525013beafb9bdd273ebb973",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:7819cb19679a5b4ca35a00f2b3d7897ab540ddb7def732a8cb2884cb0f5c8e33",
+      "wheel_sha256": "d155a253dfd1b685b3e753ef24390cf720ef6795f792cb919c6ad6b272bd7b98",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:ce7109333479e37f958681e8ba30e48d842208354c4baa6f787bf92e7268bd5b",
       "inference_backend": "exe",
       "module_overrides": [
         {
@@ -112,11 +126,6 @@
         },
         {
           "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
-          "path": "packages/mps/src/mps/pi_execution.py",
-          "sha256": "ce243e549e70856fd63cd6139245b5fdc1d45928221588967e895af8bd96b8f0"
-        },
-        {
-          "source_revision": "57bbd399d7f828fb6f0d234ce432a5beb0d21fc2",
           "path": "packages/mps/src/mps/pi_process.py",
           "sha256": "a8e8bb26e5ca260fdc137429f4a94d9fe3a0beace95391f7759871999e62021f"
         },
@@ -135,7 +144,15 @@
           "path": "packages/mps/src/mps/inference_bridge.py",
           "sha256": "3f60f27b729a17bb2101c53ed9707d93b54b2a0d93604d4922b55e2234c34772"
         }
-      ]
+      ],
+      "skills_mcp": {
+        "change_revision": "1eea775177acc157e426d8433753f11c2077dfa9",
+        "adapter_revision": "6b3ded1c6788b1a47fb01e301de95a7801af95e0",
+        "skills_revision": "a34ed13d8711fc1befbab180ef3220dbfe5d5b9f",
+        "previous_image": "gardener-registry.exe.xyz/gardener@sha256:7819cb19679a5b4ca35a00f2b3d7897ab540ddb7def732a8cb2884cb0f5c8e33",
+        "pi_execution_sha256": "fb501bca1045f3c5c3fd95d92f7669de6aa406ff739535a1e25258af56429457",
+        "pi_skills_sha256": "013346b8f6a1fff00a0be72f3734e0a88221b374c5ccd5d621813817064ac5ba"
+      }
     }
   }
 }
