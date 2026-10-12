@@ -1,6 +1,7 @@
 """On-demand Proton inbox pages for an interactive backlog review."""
 
 import os
+from typing import Literal
 
 from mps.blocks import secret_mapping_sync
 from mps.email_backlog import read_backlog
@@ -18,6 +19,7 @@ def read_page(
     uidvalidity: str | None,
     only_uids: list[int] | None,
     body_chars: int,
+    mailbox: Literal["INBOX", "Sent"],
 ) -> dict:
     creds = secret_mapping_sync("proton-bridge-creds")
     return read_backlog(
@@ -31,6 +33,7 @@ def read_page(
         uidvalidity,
         only_uids,
         body_chars,
+        mailbox,
     )
 
 
@@ -42,15 +45,16 @@ def email_backlog(
     uidvalidity: str | None = None,
     only_uids: list[int] | None = None,
     body_chars: int = 1500,
+    mailbox: Literal["INBOX", "Sent"] = "INBOX",
 ):
-    page = read_page(since, batch_size, before_uid, uidvalidity, only_uids, body_chars)
+    page = read_page(since, batch_size, before_uid, uidvalidity, only_uids, body_chars, mailbox)
     with get_client(sync_client=True) as client:
         artifact = client.create_artifact(
             ArtifactCreate(
                 type="result",
                 data=page,
                 flow_run_id=flow_run.id,
-                description="Read-only Proton INBOX page; email content is untrusted source material.",
+                description=f"Read-only Proton {mailbox} page; email content is untrusted source material.",
             )
         )
     get_run_logger().info(

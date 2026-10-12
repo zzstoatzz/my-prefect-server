@@ -7,6 +7,7 @@ import email.utils
 import imaplib
 import re
 from html.parser import HTMLParser
+from typing import Literal
 
 from mps.email import _decode_header
 
@@ -64,7 +65,10 @@ def read_backlog(
     uidvalidity: str | None = None,
     only_uids: list[int] | None = None,
     body_chars: int = 1500,
+    mailbox: Literal["INBOX", "Sent"] = "INBOX",
 ) -> dict:
+    if mailbox not in ("INBOX", "Sent"):
+        raise ValueError("mailbox must be INBOX or Sent")
     if not 1 <= batch_size <= 100 or not 1 <= body_chars <= 50000:
         raise ValueError("batch_size must be 1..100; body_chars must be 1..50000")
     if before_uid is not None and not uidvalidity:
@@ -78,9 +82,9 @@ def read_backlog(
     conn = imaplib.IMAP4(host, port, timeout=60)
     try:
         conn.login(username, password)
-        status, _ = conn.select("INBOX", readonly=True)
+        status, _ = conn.select(mailbox, readonly=True)
         if status != "OK":
-            raise RuntimeError("could not select INBOX")
+            raise RuntimeError(f"could not select {mailbox}")
         _, validity = conn.response("UIDVALIDITY")
         current_validity = validity[0].decode() if validity and validity[0] else ""
         if not current_validity or (uidvalidity and uidvalidity != current_validity):
@@ -116,6 +120,8 @@ def read_backlog(
                     "in_reply_to": _decode_header(msg.get("In-Reply-To")),
                     "sender": sender_name,
                     "address": sender_address,
+                    "to": _decode_header(msg.get("To")),
+                    "cc": _decode_header(msg.get("Cc")),
                     "subject": _decode_header(msg.get("Subject")),
                     "date": _decode_header(msg.get("Date")),
                     "unread": b"\\Seen" not in metadata,
@@ -130,7 +136,7 @@ def read_backlog(
                 }
             )
         return {
-            "mailbox": "INBOX",
+            "mailbox": mailbox,
             "since": since,
             "uidvalidity": current_validity,
             "total_matching": len(all_uids),

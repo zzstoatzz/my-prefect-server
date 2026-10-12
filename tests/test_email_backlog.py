@@ -10,6 +10,7 @@ from mps.email_backlog import message_text, read_backlog
 def inbox_server():
     commands = []
     message = EmailMessage()
+    message["To"] = "recipient@example.com"
     message["Subject"] = "Invoice due tomorrow"
     message.set_content("Please review the invoice.")
     raw = message.as_bytes()
@@ -86,3 +87,12 @@ def test_html_only_mail_and_attachment_exclusion():
     )
     msg.add_attachment("not the message", filename="invoice.txt")
     assert message_text(msg) == "Pay by Friday & confirm."
+
+
+def test_sent_mail_is_examined_read_only_and_includes_recipient(inbox_server):
+    (host, port), commands = inbox_server
+    page = read_backlog(host, port, "test", "test", None, mailbox="Sent")
+    assert page["mailbox"] == "Sent"
+    assert page["messages"][0]["to"] == "recipient@example.com"
+    assert any(" EXAMINE Sent" in command for command in commands)
+    assert all("STORE" not in c and " SELECT " not in c for c in commands)
