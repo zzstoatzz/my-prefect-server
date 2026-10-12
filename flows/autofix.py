@@ -182,7 +182,7 @@ async def prior_proposal(dep_name: str, sha: str) -> str | None:
     async with get_client() as client:
         page = await client.read_events(
             EventFilter(
-                occurred=EventOccurredFilter(since=since),
+                occurred=EventOccurredFilter.model_validate({"since": since}),
                 event=EventNameFilter(name=["autofix.proposed", "merge.merged"]),
             ),
             limit=50,
