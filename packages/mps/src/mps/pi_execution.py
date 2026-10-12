@@ -20,6 +20,13 @@ from mps.inference_bridge import inference_bridge
 from mps.inference_models import resolve_inference_model
 from mps.pi_process import run_json_process
 from mps.pi_sandbox import AGENT_UID, PI_ENTRYPOINT, aperture_models, sandbox_command
+from mps.pi_skills import (
+    ADAPTER_PACKAGE,
+    ADAPTER_REVISION,
+    SKILLS_REVISION,
+    configure_skills,
+    install_skill_server,
+)
 
 
 def read_pi_events(output: str) -> str:
@@ -69,7 +76,10 @@ def prepare_pi_runtime() -> Path:
 
     tools = Path("/opt/phi-agent")
     relay = Path(__file__).with_name("pi_relay.py")
-    revision = f"v2-node-24.18.0-pi-0.84.4-{hashlib.sha256(relay.read_bytes()).hexdigest()}"
+    revision = (
+        f"v3-node-24.18.0-pi-0.84.4-{ADAPTER_REVISION}-{SKILLS_REVISION}-"
+        f"{hashlib.sha256(relay.read_bytes()).hexdigest()}"
+    )
     with Path("/var/lib/phi-agent-install.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         marker = tools / "installed"
@@ -136,11 +146,13 @@ def prepare_pi_runtime() -> Path:
                     "--no-audit",
                     "--no-fund",
                     "@earendil-works/pi-coding-agent@0.84.4",
+                    ADAPTER_PACKAGE,
                 ],
                 env=environment,
                 check=True,
                 timeout=180,
             )
+            install_skill_server(tools, environment)
             shutil.copy2(relay, tools / "pi_relay.py")
             (tools / "pi_relay.py").chmod(0o644)
             marker.write_text(revision)
@@ -201,17 +213,7 @@ def run_isolated_pi(
         (config / "models.json").write_text(
             json.dumps(aperture_models(model=selected.name, backend=backend))
         )
-        skill_args = []
-        for index, source in enumerate(skills):
-            source_path = Path(source)
-            target = home / "skills" / str(index)
-            target.parent.mkdir(exist_ok=True)
-            if source_path.is_dir():
-                shutil.copytree(source_path, target, symlinks=True)
-            else:
-                target = target.with_suffix(".md")
-                shutil.copy2(source_path, target, follow_symlinks=False)
-            skill_args += ["--skill", f"/home/agent/skills/{target.name}"]
+        configure_skills(home, skills)
         for path in tree_paths(home):
             os.chown(path, AGENT_UID, AGENT_UID, follow_symlinks=False)
         try:
@@ -248,7 +250,6 @@ def run_isolated_pi(
                         "--thinking",
                         thinking,
                         *tool_args,
-                        *skill_args,
                     ],
                 )
                 return run_json_process(
