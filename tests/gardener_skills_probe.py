@@ -52,7 +52,8 @@ def probe(sources: list[str], expected: set[str]):
         assert reply["success"], reply
         skills = [item for item in reply["data"]["commands"] if item["source"] == "skill"]
         assert {item["name"] for item in skills} == expected, skills
-        assert "/remote-skills/" in output, output
+        if expected:
+            assert "/remote-skills/" in output, output
         for skill in skills:
             path = skill["sourceInfo"]["path"]
             local = home / Path(path).relative_to("/home/agent")
@@ -72,6 +73,8 @@ def main():
         (root / "references/details.md").write_text("Selected supporting material.\n")
         probe([str(root)], {"skill:selected-skill"})
         probe([str(skill)], {"skill:selected-skill"})
+        (root / "references/outside.md").symlink_to("/etc/passwd")
+        probe([str(root)], set())
 
 
 if __name__ == "__main__":

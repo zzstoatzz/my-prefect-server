@@ -22,9 +22,9 @@ Run `tests/gardener_skills_probe.py` as root in a prepared Linux runtime to veri
 Pi's actual RPC catalog inside the unchanged sandbox. It checks both expected
 skills and MCP snapshot provenance without making an inference call.
 
-Deployment image digests and live validation evidence are recorded below when
-published. The worker and unrelated flow code should retain their existing versions;
-release wheels must preserve each deployment's existing flow and module overrides.
+Deployment image digests and live validation evidence are recorded below. The
+worker and unrelated flow code retain their existing versions. The trusted local
+`pi_local.py` path is unchanged; this rollout covers the isolated Gardener path.
 
 ## Verified rollout
 
@@ -40,15 +40,26 @@ were checked against the resulting wheels.
 The sandbox probe passed nine cases across the three images: packaged profile,
 selected directory, and selected individual file. Pi 0.84.4 returned the expected
 skill names with `remote-skills` provenance, and verified files were readable.
+A further real sandbox check rejected a skill containing a symlink to `/etc/passwd`.
 The normal execution entrypoint, event and process tests passed (18 tests),
 as did Ruff and static deployment-contract validation.
 
-Production run `e742b7d1-088a-4613-b714-73c8333fdce6` completed a read-only review
-on the production worker using the new image, with seven model responses and
-successful read/find/grep calls. Its review confirmed the unchanged sandbox.
+Production canary `68dce61d-3e6c-4ad4-9c58-273f76272f9e` completed a read-only
+review using `gardener-history`. The model cited the MCP snapshot's `SKILL.md`
+and followed its history-check instructions. Execution took 37 seconds and five
+model responses. The worker observation artifact confirms it ran image
+`ce7109333479e37f958681e8ba30e48d842208354c4baa6f787bf92e7268bd5b`.
+
+Earlier runs stored a per-run `job_variables.image` override in the API but the
+worker actually used the deployment's old image. Those runs are not evidence of
+the new runtime. We temporarily reverted the deployment changes while checking
+this discrepancy. The new image passed both RPC and print-mode context probes;
+then a canary created after changing the deployment itself confirmed real skill
+use. Verify the worker's recorded image, not just the flow-run request.
+
 An earlier synthetic catalog-inspection prompt was rejected by the existing
 prompt judge; the judge was not modified. A full-tool review paused for human
-approval and was cancelled; the successful review used read-only tools.
+approval and was cancelled. The successful canary used read-only tools.
 
 The four live deployment image settings were patched individually and read back:
 `investigate`, `pi-pr`, `autofix-revise`, and `test-pull-patch`. No worker release,
