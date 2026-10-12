@@ -486,13 +486,14 @@ check:
 
 # apply standalone automations from deploy/automations.yaml (send-notification
 # and cross-deployment triggers, which prefect.yaml cannot express)
+[positional-arguments]
 automations *args:
     #!/usr/bin/env bash
     set -euo pipefail
     : "${DOMAIN:?set DOMAIN}"
     : "${AUTH_STRING:?set AUTH_STRING}"
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
-        ./scripts/apply_automations.py {{ args }}
+        ./scripts/apply_automations.py "$@"
 
 autofix-policy-check *args:
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
