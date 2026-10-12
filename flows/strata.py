@@ -222,6 +222,9 @@ class Strata:
     def ingest(self, records: list[dict], archive_segments: int) -> None:
         strata_snapshot.ingest(self.db, records, archive_segments)
 
+    def quarantine(self) -> list[int]:
+        return strata_snapshot.quarantine_bad_counts(self.db)
+
     def send(self, method: str, path: str, body: bytes) -> None:
         req = request(
             f"{self._url}/snapshot/{path}",
@@ -276,6 +279,13 @@ def reconcile(max_segments: int, strata_api: Strata) -> int:
     log = get_run_logger()
     archive = Archive(os.environ["STREAM_ARCHIVE_KEY"])
     listing = archive.list_all()
+    quarantined = strata_api.quarantine()
+    if quarantined:
+        log.warning(
+            "forgot %d segment(s) holding non-integer counts; re-reading them: %s",
+            len(quarantined),
+            quarantined[:20],
+        )
     known = strata_api.checksums()
     todo = stale_or_new(listing, known)
     log.info(

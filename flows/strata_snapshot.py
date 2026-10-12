@@ -18,6 +18,8 @@ def connect(path: Path) -> sqlite3.Connection:
           checksum TEXT NOT NULL, event_count INTEGER NOT NULL, block_count INTEGER NOT NULL,
           min_seq INTEGER NOT NULL, max_seq INTEGER NOT NULL, min_witnessed_at INTEGER NOT NULL,
           max_witnessed_at INTEGER NOT NULL, ingested_at INTEGER NOT NULL);
+        -- the live checkpoint predates this definition and orders its columns
+        -- (idx, nsid, count, ns); every write names its columns for that reason.
         CREATE TABLE IF NOT EXISTS segment_collections (
           idx INTEGER NOT NULL, nsid TEXT NOT NULL, ns TEXT NOT NULL, count INTEGER NOT NULL,
           PRIMARY KEY (idx, nsid));
@@ -67,7 +69,7 @@ def ingest(db: sqlite3.Connection, records: list[dict], archive_segments: int) -
             for nsid, count in current.items():
                 if previous.get(nsid) != count:
                     db.execute(
-                        """INSERT INTO segment_collections VALUES (?,?,?,?)
+                        """INSERT INTO segment_collections (idx,nsid,ns,count) VALUES (?,?,?,?)
                         ON CONFLICT(idx,nsid) DO UPDATE SET count=excluded.count""",
                         (s["idx"], nsid, ".".join(nsid.split(".")[:2]), count),
                     )
@@ -80,6 +82,26 @@ def ingest(db: sqlite3.Connection, records: list[dict], archive_segments: int) -
 
 def encoded(value: object) -> bytes:
     return json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode()
+
+
+def quarantine_bad_counts(db: sqlite3.Connection) -> list[int]:
+    """drop every segment holding a non-integer count so reconcile re-reads it.
+
+    a positional insert into the live table swapped ns and count; the true
+    counts are only in the archive, so the segment is forgotten rather than
+    patched. returns the forgotten idx values, empty when the table is clean.
+    """
+    bad = [
+        r[0]
+        for r in db.execute(
+            "SELECT DISTINCT idx FROM segment_collections WHERE typeof(count)!='integer' ORDER BY idx"
+        )
+    ]
+    with db:
+        for idx in bad:
+            db.execute("DELETE FROM segment_collections WHERE idx=?", (idx,))
+            db.execute("DELETE FROM segments WHERE idx=?", (idx,))
+    return bad
 
 
 def build(db: sqlite3.Connection) -> tuple[dict, dict[str, bytes]]:

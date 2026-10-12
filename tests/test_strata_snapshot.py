@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from flows.strata_snapshot import build, connect, encoded, ingest, publish
+from flows.strata_snapshot import build, connect, encoded, ingest, publish, quarantine_bad_counts
 
 
 def record(checksum="a", counts=None):
@@ -79,3 +79,49 @@ def test_failed_publication_keeps_previous_manifest_and_retries(tmp_path):
         == 0
     )
     assert successful == []
+
+
+def test_ingest_names_columns_so_legacy_column_order_keeps_counts(tmp_path):
+    path = tmp_path / "strata.sqlite"
+    legacy = sqlite3.connect(path)
+    legacy.executescript(
+        """CREATE TABLE segment_collections (
+          idx INTEGER NOT NULL, nsid TEXT NOT NULL, count INTEGER NOT NULL, ns TEXT,
+          PRIMARY KEY (idx, nsid));"""
+    )
+    legacy.close()
+    db = connect(path)
+    ingest(db, [record()], 1)
+    rows = [
+        tuple(r)
+        for r in db.execute(
+            "SELECT nsid,ns,count,typeof(count) FROM segment_collections ORDER BY nsid"
+        )
+    ]
+    assert rows == [
+        ("app.bsky.feed.post", "app.bsky", 5, "integer"),
+        ("fm.teal.track", "fm.teal", 3, "integer"),
+    ]
+    ingest(db, [record("b", {"fm.teal.track": 9, "app.bsky.feed.post": 5})], 1)
+    assert (
+        db.execute("SELECT count FROM segment_collections WHERE nsid='fm.teal.track'").fetchone()[0]
+        == 9
+    )
+
+
+def test_quarantine_forgets_segments_with_text_counts(tmp_path):
+    db = connect(tmp_path / "strata.sqlite")
+    ingest(db, [record()], 1)
+    other = record()
+    other["idx"] = 6
+    ingest(db, [other], 2)
+    db.execute(
+        "UPDATE segment_collections SET count='app.bsky' WHERE idx=5 AND nsid='app.bsky.feed.post'"
+    )
+    db.commit()
+    assert quarantine_bad_counts(db) == [5]
+    assert [r[0] for r in db.execute("SELECT idx FROM segments")] == [6]
+    assert [r[0] for r in db.execute("SELECT DISTINCT idx FROM segment_collections")] == [6]
+    assert quarantine_bad_counts(db) == []
+    manifest, _objects = build(db)
+    assert manifest["version"] == 1
