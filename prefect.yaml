@@ -993,10 +993,10 @@ deployments:
     work_pool:
       name: home-pool
       job_variables:
-        command: uv run --with /home/stoat/phi-spike-worker/releases/25bd5b770b441afe93cb8790f47d745f06c9380cb74831e6efefe45bac3e388d/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
+        command: uv run --with /home/stoat/phi-spike-worker/releases/fa7c24404538ae3f5af3d54d8aaafc7680dda5eb10cac9d03677c4cc78605887/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
         env:
           # the wheel and the pin come from the same commit; its provenance.json names it.
-          MPS_PIN: "@54f9d986b2c1c21e6a39dfcde3b525b9e06fe710"
+          MPS_PIN: "@0d1447bbca010a564319da99e71f025edf5eb334"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
