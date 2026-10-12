@@ -24,7 +24,7 @@ import os
 import subprocess
 import traceback
 from contextlib import suppress
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import UUID
@@ -41,6 +41,7 @@ from prefect.client.schemas.filters import (
 )
 from prefect.client.schemas.sorting import LogSort
 from prefect.events import emit_event
+from prefect.events.filters import EventFilter, EventNameFilter, EventOccurredFilter
 from prefect.exceptions import ObjectNotFound
 from prefect.runtime import flow_run as run_context
 from prefect.states import Completed, State
@@ -49,6 +50,7 @@ REPO_URL = "https://github.com/zzstoatzz/my-prefect-server.git"
 PULL_PREFIX = f"at://{GARDENER_DID}/sh.tangled.repo.pull/"
 LOG_LINES = 150
 SUMMARY_LIMIT = 240
+PROPOSAL_WINDOW = timedelta(days=7)
 
 PROMPT = """\
 you are gardener (gardener.pds.zat.dev), using the Pi harness to diagnose a failed prefect flow run for the operator of this repo.
@@ -154,6 +156,42 @@ async def gather(flow_run_id: UUID) -> dict[str, Any]:
         "logs": list(reversed(logs)),
         "failed_tasks": failed_tasks,
     }
+
+
+def match_proposal(events: list[Any], dep_name: str, sha: str) -> str | None:
+    """the pull url of an earlier proposal for this deployment at this sha, unless
+    a later merge.merged names that pull."""
+    merged = {e.payload.get("pull") for e in events if e.event == "merge.merged" and e.payload}
+    for e in sorted(events, key=lambda e: e.occurred, reverse=True):
+        p = e.payload or {}
+        if (
+            e.event == "autofix.proposed"
+            and p.get("deployment") == dep_name
+            and p.get("sha") == sha
+            and p.get("pull") not in merged
+        ):
+            return p.get("pr_url") or p.get("pull")
+    return None
+
+
+async def prior_proposal(dep_name: str, sha: str) -> str | None:
+    """one gardener pull per (deployment, sha): a second failure on the same
+    revision points at the pull that is already open instead of opening another."""
+    since = datetime.now(UTC) - PROPOSAL_WINDOW
+    events: list[Any] = []
+    async with get_client() as client:
+        page = await client.read_events(
+            EventFilter(
+                occurred=EventOccurredFilter(since=since),
+                event=EventNameFilter(name=["autofix.proposed", "merge.merged"]),
+            ),
+            limit=50,
+        )
+        events.extend(page.events)
+        while page.next_page:
+            page = await client.read_events_page(str(page.next_page))
+            events.extend(page.events)
+    return match_proposal(events, dep_name, sha)
 
 
 def ui_url(kind: str, id_: UUID) -> str:
@@ -358,6 +396,9 @@ def autofix(
         )
         if not propose:
             return Completed(name="Diagnosed", message=summary)
+        if existing := asyncio.run(prior_proposal(dep_name, sha)):
+            print(f"not proposing again: {existing} is open for {dep_name} at {sha}")
+            return Completed(name="Diagnosed", message=f"{summary}\nopen pull: {existing}")
 
         result = propose_fix(diagnosis, brief, anthropic_key, dep_name)
         if "url" not in result:
@@ -371,6 +412,7 @@ def autofix(
             },
             payload={
                 "deployment": dep_name,
+                "sha": sha,
                 "summary": summary,
                 "title": result["title"],
                 "pull": result["uri"],

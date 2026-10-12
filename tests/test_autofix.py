@@ -263,3 +263,43 @@ def test_propose_for_allowlist_turns_proposing_on(monkeypatch):
         state = autofix.autofix(uuid4(), propose_for=["strata-hourly"], return_state=True)
     assert state.name == "Diagnosed"
     assert proposed == ["strata-hourly"]
+
+
+def test_match_proposal_points_at_open_pull_for_same_sha():
+    def ev(event, occurred, **payload):
+        return SimpleNamespace(event=event, occurred=occurred, payload=payload)
+
+    events = [
+        ev("autofix.proposed", 1, deployment="strata-hourly", sha="abc", pull="p1", pr_url="u1"),
+        ev("autofix.proposed", 2, deployment="strata-hourly", sha="abc", pull="p2", pr_url="u2"),
+        ev("autofix.proposed", 3, deployment="ingest", sha="abc", pull="p3", pr_url="u3"),
+    ]
+    assert autofix.match_proposal(events, "strata-hourly", "abc") == "u2"
+    assert autofix.match_proposal(events, "strata-hourly", "def") is None
+    assert autofix.match_proposal(events, "ingest", "abc") == "u3"
+    events.append(ev("merge.merged", 4, pull="p2"))
+    assert autofix.match_proposal(events, "strata-hourly", "abc") == "u1"
+    assert autofix.match_proposal([], "strata-hourly", "abc") is None
+
+
+def test_second_failure_on_same_sha_does_not_open_another_pull(monkeypatch):
+    async def fake(_):
+        return ctx("strata-hourly")
+
+    async def already_open(dep_name, sha):
+        assert (dep_name, sha) == ("strata-hourly", "abc")
+        return "https://tangled.org/x/pulls/9"
+
+    monkeypatch.setattr(autofix, "gather", fake)
+    monkeypatch.setattr(autofix, "checkout_as_of", lambda cwd, when: "abc")
+    monkeypatch.setattr(autofix, "run_pi", lambda *a, **k: "SUMMARY: x\nbody")
+    monkeypatch.setattr(autofix, "screen_prompt", lambda *a, **k: None)
+    monkeypatch.setattr(autofix, "secret_sync", lambda name: "k")
+    monkeypatch.setattr(autofix, "prior_proposal", already_open)
+    monkeypatch.setattr(
+        autofix, "propose_fix", lambda *a, **k: (_ for _ in ()).throw(AssertionError)
+    )
+    with prefect_test_harness():
+        state = autofix.autofix(uuid4(), propose_for=["strata-hourly"], return_state=True)
+    assert state.name == "Diagnosed"
+    assert "https://tangled.org/x/pulls/9" in state.message
