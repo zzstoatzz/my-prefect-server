@@ -164,7 +164,7 @@ def test_all_home_source_deployments_use_cache_and_preserve_legacy_pins():
     assert "pi-pr" not in {deployment["name"] for deployment in selected}
     legacy = {
         "pi-agent": "@8a7edeea882095cb82e53e673853a37091188ed8",
-        "autofix": "@0d1447bbca010a564319da99e71f025edf5eb334",
+        "autofix": "@c2ca58577c8d67f35f320970913667acc1863479",
     }
     helper = root / "packages/mps/src/mps/deployment_steps.py"
     digest = hashlib.sha256(helper.read_bytes()).hexdigest()

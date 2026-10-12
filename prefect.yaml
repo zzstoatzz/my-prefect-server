@@ -973,7 +973,7 @@ deployments:
       job_variables:
         command: uv run --with /home/stoat/phi-spike-worker/releases/e72933ca8b33154b42bbb7d6d88059e3dcb934dddb439e16388252728a27d27b/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
         env:
-          MPS_PIN: "@8a7edeea882095cb82e53e673853a37091188ed8"
+          MPS_PIN: "@c2ca58577c8d67f35f320970913667acc1863479"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
@@ -993,10 +993,10 @@ deployments:
     work_pool:
       name: home-pool
       job_variables:
-        command: uv run --with /home/stoat/phi-spike-worker/releases/fa7c24404538ae3f5af3d54d8aaafc7680dda5eb10cac9d03677c4cc78605887/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
+        command: uv run --with /home/stoat/phi-spike-worker/releases/371b7aaea5e32129e136d7e8743de002ce118606da87fa9c298e7a52118cb84a/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
         env:
-          # the wheel and the pin come from the same commit; its provenance.json names it.
-          MPS_PIN: "@0d1447bbca010a564319da99e71f025edf5eb334"
+          # the wheel is frozen at 9495d61 (pre-Sprite mps); the flow pin may move, see flows/autofix.py.
+          MPS_PIN: "@c2ca58577c8d67f35f320970913667acc1863479"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
