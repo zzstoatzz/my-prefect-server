@@ -194,10 +194,8 @@ automations:
       Same trigger as the discord alert, but it starts the autofix deployment
       with the failed run's id. pi diagnoses every failure read-only; for the
       deployments in propose_for (the canaries) it also opens a gardener pull
-      with a fix. threshold/within collapses a burst of failures across all
-      deployments into one run; `for_each: [prefect.resource.id]` would make it
-      one run per failed flow run instead (the zig server honors for_each since
-      prefect-server c0992d4).
+      with a fix. Each failed run gets an attempt; autofix deduplicates matching
+      failures for the same deployment and revision for 24 hours.
       autofix itself never reaches Failed, so it cannot re-trigger this.
     enabled: true
     trigger:
@@ -209,6 +207,7 @@ automations:
         - prefect.flow-run.TimedOut
       threshold: 1
       within: 600
+      for_each: [prefect.resource.id]
     actions:
       - type: run-deployment
         source: selected
@@ -242,16 +241,20 @@ automations:
   - name: autofix diagnosed -> discord
     description: >-
       One line: pi's read-only verdict on a failed run, linking the failed run
-      and the autofix run whose logs hold the full diagnosis. autofix.py holds
-      no webhook credential.
+      and the autofix run whose logs hold the full diagnosis. Blocked screening
+      and execution errors use the same reporting path. autofix.py holds no
+      webhook credential.
     enabled: true
     trigger:
       type: event
       posture: Reactive
       expect:
         - autofix.diagnosed
+        - autofix.blocked
+        - autofix.error
       threshold: 1
       within: 60
+      for_each: [prefect.resource.id, autofix.outcome]
     actions:
       - type: send-notification
         block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944

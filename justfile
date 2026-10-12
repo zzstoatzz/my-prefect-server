@@ -494,6 +494,10 @@ automations *args:
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
         ./scripts/apply_automations.py {{ args }}
 
+autofix-policy-check *args:
+    PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
+        uv run python -m scripts.check_autofix_policy {{ args }}
+
 # heavypad, the home-pool worker box: what is installed, whether it matches
 # what the deployments expect, and whether pi can still reach Luna. ten
 # seconds over tailscale ssh; run it before blaming a flow. no values from the

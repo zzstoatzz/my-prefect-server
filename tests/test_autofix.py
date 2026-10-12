@@ -35,6 +35,7 @@ class FakeRun:
 @pytest.fixture(autouse=True)
 def no_skill_clones(monkeypatch):
     monkeypatch.setattr(autofix, "fetch_skills", lambda workdir: [])
+    monkeypatch.setattr(autofix, "prior_attempt", AsyncMock(return_value=None))
 
 
 def ctx(dep_name):
@@ -435,3 +436,19 @@ def test_autofix_events_name_the_failed_run_without_claiming_to_be_it() -> None:
             "prefect.resource.role": "about",
         }
     ]
+
+
+def test_incident_identity_ignores_request_ids_but_preserves_cause_and_revision():
+    evidence = ctx("classify-emails")
+    evidence["run"].deployment_id = uuid4()
+    evidence["deployment"].job_variables = {"env": {"MPS_PIN": "@abc"}}
+    evidence["run"].state.message = "TypeSafeAPIError: 402 no credits (request_id=req_one)"
+    first = autofix.incident_key(evidence)
+    evidence["run"].id = uuid4()
+    evidence["run"].state.message = "TypeSafeAPIError: 402 no credits (request_id=req_two)"
+    assert autofix.incident_key(evidence) == first
+    evidence["deployment"].job_variables["env"]["MPS_PIN"] = "@def"
+    assert autofix.incident_key(evidence) != first
+    evidence["deployment"].job_variables["env"]["MPS_PIN"] = "@abc"
+    evidence["run"].state.message = "TypeSafeAPIError: 500 unavailable"
+    assert autofix.incident_key(evidence) != first

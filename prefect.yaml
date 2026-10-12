@@ -983,6 +983,9 @@ deployments:
 
   - name: autofix
     pull: *cached_legacy_home
+    concurrency_limit: 1
+    concurrency_options:
+      collision_strategy: ENQUEUE
     tags: [gardener]
     description: pi diagnoses a failed run and, when proposing is on for that deployment, opens a gardener pull
     entrypoint: flows/autofix.py:autofix
