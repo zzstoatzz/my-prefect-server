@@ -993,10 +993,10 @@ deployments:
     work_pool:
       name: home-pool
       job_variables:
-        command: uv run --with /home/stoat/phi-spike-worker/releases/371b7aaea5e32129e136d7e8743de002ce118606da87fa9c298e7a52118cb84a/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
+        command: uv run --with /home/stoat/phi-spike-worker/releases/25bd5b770b441afe93cb8790f47d745f06c9380cb74831e6efefe45bac3e388d/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
         env:
-          # Preserve the live home-worker implementation until its Sprite migration.
-          MPS_PIN: "@9495d617fd5a8c7342149dcfd8aef25ade43d2fd"
+          # the wheel and the pin come from the same commit; its provenance.json names it.
+          MPS_PIN: "@54f9d986b2c1c21e6a39dfcde3b525b9e06fe710"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
