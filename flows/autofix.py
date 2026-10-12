@@ -29,9 +29,9 @@ from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import UUID
 
+from mps import tangled
 from mps.blocks import secret_sync
 from mps.pi import minimal_env, run_pi, screen_prompt
-from mps.tangled import GARDENER_DID, PHI_DID, pull_patch, review_verdict
 from prefect import flow, get_client
 from prefect.client.schemas.filters import (
     FlowRunFilter,
@@ -47,6 +47,11 @@ from prefect.runtime import flow_run as run_context
 from prefect.states import Completed, State
 
 REPO_URL = "https://github.com/zzstoatzz/my-prefect-server.git"
+# home-pool runs this flow on the mps wheel frozen before the Sprite migration
+# (the autofix command in prefect.yaml); that wheel predates these names and
+# review_verdict's round arguments, so both are resolved at runtime.
+GARDENER_DID = getattr(tangled, "GARDENER_DID", "did:plc:7vx7exykq2zfxjxxejovrymi")
+PHI_DID = getattr(tangled, "PHI_DID", "did:plc:65sucjiel52gefhcdcypynsr")
 PULL_PREFIX = f"at://{GARDENER_DID}/sh.tangled.repo.pull/"
 LOG_LINES = 150
 SUMMARY_LIMIT = 240
@@ -271,9 +276,15 @@ def describe_proposals(events: list[Any], dep_name: str, verdict_of) -> str:
 
 
 def phi_verdict(pull_uri: str) -> tuple[int, str, str]:
-    info = pull_patch(pull_uri)
-    rounds = int(info.get("rounds") or 1)
-    found = review_verdict(pull_uri, PHI_DID, round_index=rounds - 1, expected_cid=info["cid"])
+    info = tangled.pull_patch(pull_uri)
+    rounds = info.get("rounds") or 1
+    rounds = len(rounds) if isinstance(rounds, list) else int(rounds)
+    try:
+        found = tangled.review_verdict(
+            pull_uri, PHI_DID, round_index=rounds - 1, expected_cid=info["cid"]
+        )
+    except (TypeError, KeyError):
+        found = tangled.review_verdict(pull_uri, PHI_DID)
     if not found:
         return rounds, "pending", "no verdict on the latest round yet"
     return rounds, found["verdict"], found["text"]
