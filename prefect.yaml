@@ -973,7 +973,7 @@ deployments:
       job_variables:
         command: uv run --with /home/stoat/phi-spike-worker/releases/e72933ca8b33154b42bbb7d6d88059e3dcb934dddb439e16388252728a27d27b/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
         env:
-          MPS_PIN: "@c2ca58577c8d67f35f320970913667acc1863479"
+          MPS_PIN: "@8a7edeea882095cb82e53e673853a37091188ed8"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb

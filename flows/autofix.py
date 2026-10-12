@@ -284,7 +284,8 @@ def phi_verdict(pull_uri: str) -> tuple[int, str, str]:
             pull_uri, PHI_DID, round_index=rounds - 1, expected_cid=info["cid"]
         )
     except (TypeError, KeyError):
-        found = tangled.review_verdict(pull_uri, PHI_DID)
+        legacy_verdict: Any = tangled.review_verdict
+        found = legacy_verdict(pull_uri, PHI_DID)
     if not found:
         return rounds, "pending", "no verdict on the latest round yet"
     return rounds, found["verdict"], found["text"]
