@@ -30,7 +30,7 @@ def configure_skills(home: Path, sources: list[str]) -> None:
     for index, source in enumerate(sources):
         source_path = Path(source)
         target = home / "skill-sources" / str(index)
-        target.parent.mkdir(exist_ok=True)
+        target.parent.mkdir(parents=True, exist_ok=True)
         if source_path.is_dir():
             shutil.copytree(source_path, target, symlinks=True)
         else:
