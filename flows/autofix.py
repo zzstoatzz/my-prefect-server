@@ -74,12 +74,10 @@ then, under 200 words:
 do not speculate about credentials or environment variables beyond what the
 logs show.
 
-the brief ends with what has happened since: commits main gained after this
-run's revision, and gardener pulls already open for this deployment with
-phi's verdict on each. if a later commit already addresses the failure, say
-so in SUMMARY and end with `FIXED-ON-MAIN: <commit>`; no pull will be opened.
-if phi rejected an earlier proposal, do not propose the same change again:
-address her objection or explain why it cannot be addressed.
+the gardener-history skill is loaded; `.gardener/context.md` in the working
+directory holds what happened since this run's revision. read it first and
+follow the skill; `FIXED-ON-MAIN: <commit>` as your last line means no pull
+will be opened.
 
 === failed run ===
 {brief}
@@ -94,7 +92,9 @@ change that resolves the cause. add or extend a regression test when the fix
 is testable. run the test suite for what you touched (`uv run pytest <paths>`)
 before finishing.
 
-read AGENTS.md at the repo root first and follow its conventions. when a
+read AGENTS.md at the repo root first and follow its conventions. the
+gardener-history skill is loaded and `.gardener/context.md` holds what has
+already landed or been proposed; follow it before changing anything. when a
 pr-authoring skill is loaded, compose TITLE and NOTE by its prose rules; the
 flow — not you — publishes the pull (patch-based, no gh), so only
 composition guidance applies, not git/gh mechanics.
@@ -123,7 +123,9 @@ PR_OWNER = "zzstoatzz.io"
 # ambient worker credentials.
 SKILL_SOURCES: dict[str, tuple[str, str]] = {
     "pr-body": ("https://tangled.sh/zzstoatzz.io/skills.git", "pr-body"),
+    "gardener-history": ("https://tangled.sh/zzstoatzz.io/skills.git", "gardener-history"),
 }
+CONTEXT_FILE = ".gardener/context.md"
 
 
 def fetch_skills(workdir: str) -> list[str]:
@@ -316,6 +318,16 @@ def since_section(cwd: str, sha: str, dep_name: str) -> str:
     return f"commits on main since this run's revision ({sha[:7]}):\n{commits}\n\n{prior_work(dep_name)}"
 
 
+def write_context(cwd: str, text: str) -> str:
+    """drop the since-section into the clone where the gardener-history skill
+    tells pi to look; pi has no network, so the flow carries these facts in."""
+    path = os.path.join(cwd, CONTEXT_FILE)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write("# what happened since\n\n" + text + "\n")
+    return path
+
+
 def trailers(output: str, keys: tuple[str, ...]) -> dict[str, str]:
     """parse KEY: blocks from the end of pi's output.
 
@@ -368,7 +380,9 @@ def render(ctx: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def propose_fix(diagnosis: str, brief: str, anthropic_key: str, dep_name: str) -> dict[str, str]:
+def propose_fix(
+    diagnosis: str, brief: str, anthropic_key: str, dep_name: str, since: str = ""
+) -> dict[str, str]:
     """second pi round: full tools in a clone of main; the flow publishes the patch."""
     from mps.tangled import build_patch, create_pull
 
@@ -384,6 +398,7 @@ def propose_fix(diagnosis: str, brief: str, anthropic_key: str, dep_name: str) -
             env=minimal_env(),
         )
         skills = fetch_skills(workdir)
+        write_context(cwd, since or f"(no record of prior work for {dep_name})")
         base = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             cwd=cwd,
@@ -449,7 +464,9 @@ def autofix(
         prompt = PROMPT.format(brief=brief)
         screen_prompt(prompt, "read-only", anthropic_key)
 
-        with TemporaryDirectory(prefix="autofix-") as cwd:
+        with TemporaryDirectory(prefix="autofix-") as workdir:
+            cwd = os.path.join(workdir, "repo")
+            skills = fetch_skills(workdir)
             failed_run = ctx["run"]
             when = (
                 failed_run.start_time
@@ -460,13 +477,14 @@ def autofix(
             print(f"diagnosing against {sha}")
             since = since_section(cwd, sha, dep_name)
             print(since)
-            brief += "\n\n" + since
+            write_context(cwd, since)
             diagnosis = run_pi(
                 prompt,
                 cwd=cwd,
                 provider="aperture",
                 thinking="medium",
                 tool_mode="read-only",
+                skills=skills,
             ).strip()
 
         summary, _ = split_summary(diagnosis)
@@ -494,7 +512,7 @@ def autofix(
             print(f"not proposing again: {existing} is open for {dep_name} at {sha}")
             return Completed(name="Diagnosed", message=f"{summary}\nopen pull: {existing}")
 
-        result = propose_fix(diagnosis, brief, anthropic_key, dep_name)
+        result = propose_fix(diagnosis, brief, anthropic_key, dep_name, since)
         if "url" not in result:
             print(f"no proposal: {result.get('reason')}")
             return Completed(name="Diagnosed", message=summary)

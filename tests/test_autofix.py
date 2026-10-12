@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -29,6 +30,11 @@ class FakeRun:
         self.parameters = {}
         self.start_time = self.end_time = None
         self.created = datetime(2026, 9, 9, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def no_skill_clones(monkeypatch):
+    monkeypatch.setattr(autofix, "fetch_skills", lambda workdir: [])
 
 
 def ctx(dep_name):
@@ -241,7 +247,7 @@ def test_propose_for_allowlist_turns_proposing_on(monkeypatch):
     monkeypatch.setattr(autofix, "screen_prompt", lambda *a, **k: None)
     monkeypatch.setattr(autofix, "secret_sync", lambda name: "k")
 
-    def fake_propose(diagnosis, brief, key, dep_name):
+    def fake_propose(diagnosis, brief, key, dep_name, since=""):
         proposed.append(dep_name)
         return {
             "title": "t",
@@ -389,3 +395,32 @@ def test_fixed_on_main_diagnosis_skips_the_fix_round(monkeypatch):
         state = autofix.autofix(uuid4(), propose_for=["strata-hourly"], return_state=True)
     assert state.name == "Diagnosed"
     assert "fixed on main: 992475c" in state.message
+
+
+def test_diagnosis_round_gets_the_context_file_and_the_skill(monkeypatch, tmp_path):
+    seen = {}
+
+    async def fake(_):
+        return ctx("strata-hourly")
+
+    def fake_pi(prompt, *, cwd, skills=None, **kw):
+        seen["context"] = Path(cwd, autofix.CONTEXT_FILE).read_text()
+        seen["skills"] = skills
+        return "SUMMARY: x\nbody"
+
+    monkeypatch.setattr(autofix, "gather", fake)
+    monkeypatch.setattr(
+        autofix, "fetch_skills", lambda workdir: [f"{workdir}/skill-gardener-history"]
+    )
+    monkeypatch.setattr(autofix, "checkout_as_of", lambda cwd, when: "abc")
+    monkeypatch.setattr(
+        autofix, "since_section", lambda cwd, sha, dep: f"commits since {sha}: none\nprior: none"
+    )
+    monkeypatch.setattr(autofix, "run_pi", fake_pi)
+    monkeypatch.setattr(autofix, "screen_prompt", lambda *a, **k: None)
+    monkeypatch.setattr(autofix, "secret_sync", lambda name: "k")
+    with prefect_test_harness():
+        state = autofix.autofix(uuid4(), return_state=True)
+    assert state.name == "Diagnosed"
+    assert "commits since abc: none" in seen["context"]
+    assert seen["skills"] and seen["skills"][0].endswith("skill-gardener-history")
