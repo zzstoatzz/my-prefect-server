@@ -450,6 +450,19 @@ def propose_fix(
     return {"title": title, **pull}
 
 
+def about_run(flow_run_id: UUID, name: str) -> list[dict[str, str]]:
+    """the failed run as a related resource, so anything listing events for that
+    run (prefect-ios shows them as follow-ups) finds what autofix said about it.
+    the role is not `flow-run`: that one is the run emitting the event."""
+    return [
+        {
+            "prefect.resource.id": f"prefect.flow-run.{flow_run_id}",
+            "prefect.resource.name": name,
+            "prefect.resource.role": "about",
+        }
+    ]
+
+
 @flow(name="autofix", log_prints=True, timeout_seconds=2400)
 def autofix(
     flow_run_id: UUID,
@@ -507,6 +520,7 @@ def autofix(
                 "prefect.resource.id": f"autofix.{flow_run_id}",
                 "prefect.resource.name": f"{dep_name} / {ctx['run'].name}",
             },
+            related=about_run(flow_run_id, ctx["run"].name),
             payload={
                 "deployment": dep_name,
                 "sha": sha,
@@ -534,6 +548,7 @@ def autofix(
                 "prefect.resource.id": f"autofix.{flow_run_id}",
                 "prefect.resource.name": f"{dep_name} / {ctx['run'].name}",
             },
+            related=about_run(flow_run_id, ctx["run"].name),
             payload={
                 "deployment": dep_name,
                 "sha": sha,

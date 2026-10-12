@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -424,3 +424,14 @@ def test_diagnosis_round_gets_the_context_file_and_the_skill(monkeypatch, tmp_pa
     assert state.name == "Diagnosed"
     assert "commits since abc: none" in seen["context"]
     assert seen["skills"] and seen["skills"][0].endswith("skill-gardener-history")
+
+
+def test_autofix_events_name_the_failed_run_without_claiming_to_be_it() -> None:
+    run_id = UUID("11111111-1111-4111-8111-111111111111")
+    assert autofix.about_run(run_id, "strata-hourly-9") == [
+        {
+            "prefect.resource.id": f"prefect.flow-run.{run_id}",
+            "prefect.resource.name": "strata-hourly-9",
+            "prefect.resource.role": "about",
+        }
+    ]
