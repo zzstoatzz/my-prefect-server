@@ -303,3 +303,89 @@ def test_second_failure_on_same_sha_does_not_open_another_pull(monkeypatch):
         state = autofix.autofix(uuid4(), propose_for=["strata-hourly"], return_state=True)
     assert state.name == "Diagnosed"
     assert "https://tangled.org/x/pulls/9" in state.message
+
+
+def test_recent_changes_lists_commits_main_gained_after_revision(tmp_path):
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = {
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@x",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@x",
+        "PATH": "/usr/bin:/bin",
+    }
+
+    def git(*args):
+        return subprocess.run(
+            ["git", *args], cwd=repo, check=True, capture_output=True, text=True, env=env
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    (repo / "a").write_text("1")
+    git("add", "a")
+    git("commit", "-q", "-m", "first")
+    first = git("rev-parse", "HEAD")
+    (repo / "a").write_text("2")
+    git("commit", "-q", "-am", "strata: fix the swap")
+    git("checkout", "-q", first)
+    out = autofix.recent_changes(str(repo), first)
+    assert "strata: fix the swap" in out and "first" not in out
+    assert autofix.recent_changes(str(repo), git("rev-parse", "main")) == "none"
+
+
+def test_describe_proposals_shows_each_pull_with_phi_verdict():
+    def ev(occurred, **payload):
+        return SimpleNamespace(event="autofix.proposed", occurred=occurred, payload=payload)
+
+    events = [
+        ev(1, deployment="strata-hourly", pull="p1", pr_url="u1", title="cast it", sha="abc1234"),
+        ev(2, deployment="strata-hourly", pull="p1", pr_url="u1", title="cast it", sha="abc1234"),
+        ev(3, deployment="ingest", pull="p9", pr_url="u9", title="other"),
+    ]
+    verdicts = {"p1": (2, "request-changes", "VERDICT: request-changes\n\nhides the corruption")}
+    text = autofix.describe_proposals(events, "strata-hourly", lambda uri: verdicts[uri])
+    assert text.count("cast it") == 1
+    assert (
+        "round 2, sha abc1234" in text
+        and "phi: request-changes: VERDICT: request-changes hides the corruption" in text
+    )
+    assert "other" not in text
+    assert autofix.describe_proposals(events, "brief", lambda uri: verdicts[uri]) == "  none"
+
+    def broken(uri):
+        raise RuntimeError("pds down")
+
+    assert "verdict unavailable: pds down" in autofix.describe_proposals(
+        events, "strata-hourly", broken
+    )
+
+
+def test_fixed_on_main_diagnosis_skips_the_fix_round(monkeypatch):
+    async def fake(_):
+        return ctx("strata-hourly")
+
+    monkeypatch.setattr(autofix, "gather", fake)
+    monkeypatch.setattr(autofix, "checkout_as_of", lambda cwd, when: "abc")
+    monkeypatch.setattr(
+        autofix, "recent_changes", lambda cwd, sha: "9925475 2026-10-12 strata: name insert columns"
+    )
+    monkeypatch.setattr(
+        autofix,
+        "prior_work",
+        lambda dep: "prior gardener proposals for strata-hourly (last 7 days):\n  none",
+    )
+    monkeypatch.setattr(
+        autofix, "run_pi", lambda *a, **k: "SUMMARY: landed in 992475c\nFIXED-ON-MAIN: 992475c"
+    )
+    monkeypatch.setattr(autofix, "screen_prompt", lambda *a, **k: None)
+    monkeypatch.setattr(autofix, "secret_sync", lambda name: "k")
+    monkeypatch.setattr(
+        autofix, "propose_fix", lambda *a, **k: (_ for _ in ()).throw(AssertionError)
+    )
+    with prefect_test_harness():
+        state = autofix.autofix(uuid4(), propose_for=["strata-hourly"], return_state=True)
+    assert state.name == "Diagnosed"
+    assert "fixed on main: 992475c" in state.message

@@ -31,7 +31,7 @@ from uuid import UUID
 
 from mps.blocks import secret_sync
 from mps.pi import minimal_env, run_pi, screen_prompt
-from mps.tangled import GARDENER_DID
+from mps.tangled import GARDENER_DID, PHI_DID, pull_patch, review_verdict
 from prefect import flow, get_client
 from prefect.client.schemas.filters import (
     FlowRunFilter,
@@ -51,6 +51,8 @@ PULL_PREFIX = f"at://{GARDENER_DID}/sh.tangled.repo.pull/"
 LOG_LINES = 150
 SUMMARY_LIMIT = 240
 PROPOSAL_WINDOW = timedelta(days=7)
+RECENT_COMMITS = 30
+VERDICT_EXCERPT = 400
 
 PROMPT = """\
 you are gardener (gardener.pds.zat.dev), using the Pi harness to diagnose a failed prefect flow run for the operator of this repo.
@@ -71,6 +73,13 @@ then, under 200 words:
 
 do not speculate about credentials or environment variables beyond what the
 logs show.
+
+the brief ends with what has happened since: commits main gained after this
+run's revision, and gardener pulls already open for this deployment with
+phi's verdict on each. if a later commit already addresses the failure, say
+so in SUMMARY and end with `FIXED-ON-MAIN: <commit>`; no pull will be opened.
+if phi rejected an earlier proposal, do not propose the same change again:
+address her objection or explain why it cannot be addressed.
 
 === failed run ===
 {brief}
@@ -177,21 +186,7 @@ def match_proposal(events: list[Any], dep_name: str, sha: str) -> str | None:
 async def prior_proposal(dep_name: str, sha: str) -> str | None:
     """one gardener pull per (deployment, sha): a second failure on the same
     revision points at the pull that is already open instead of opening another."""
-    since = datetime.now(UTC) - PROPOSAL_WINDOW
-    events: list[Any] = []
-    async with get_client() as client:
-        page = await client.read_events(
-            EventFilter(
-                occurred=EventOccurredFilter.model_validate({"since": since}),
-                event=EventNameFilter(name=["autofix.proposed", "merge.merged"]),
-            ),
-            limit=50,
-        )
-        events.extend(page.events)
-        while page.next_page:
-            page = await client.read_events_page(str(page.next_page))
-            events.extend(page.events)
-    return match_proposal(events, dep_name, sha)
+    return match_proposal(await proposal_events(), dep_name, sha)
 
 
 def ui_url(kind: str, id_: UUID) -> str:
@@ -226,6 +221,99 @@ def checkout_as_of(cwd: str, when) -> str:
         env=env,
     )
     return sha
+
+
+def recent_changes(cwd: str, sha: str) -> str:
+    """commits main gained after the run's revision, newest first. the clone's
+    main is as of the clone, so this is what pi's checkout cannot see."""
+    env = minimal_env()
+    log = subprocess.run(
+        [
+            "git",
+            "log",
+            "--format=%h %ad %s",
+            "--date=short",
+            "-n",
+            str(RECENT_COMMITS),
+            f"{sha}..main",
+        ],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).stdout.strip()
+    return log or "none"
+
+
+def describe_proposals(events: list[Any], dep_name: str, verdict_of) -> str:
+    """one line per gardener pull proposed for this deployment, newest round first,
+    with phi's latest verdict; `verdict_of(pull_uri)` returns (round, verdict, text)."""
+    latest: dict[str, Any] = {}
+    for e in sorted(events, key=lambda e: e.occurred):
+        p = e.payload or {}
+        if e.event == "autofix.proposed" and p.get("deployment") == dep_name and p.get("pull"):
+            latest[p["pull"]] = p
+    lines = []
+    for uri, p in reversed(list(latest.items())):
+        try:
+            rounds, verdict, text = verdict_of(uri)
+        except Exception as exc:  # the PDS read is best effort; the pull still gets listed
+            rounds, verdict, text = "?", "unknown", f"(verdict unavailable: {exc})"
+        excerpt = " ".join(text.split())[:VERDICT_EXCERPT]
+        lines.append(
+            f"  - {p.get('title', '')} — {p.get('pr_url') or uri} (round {rounds}, sha {str(p.get('sha', ''))[:7] or '?'})"
+            f"\n    phi: {verdict}: {excerpt}"
+        )
+    return "\n".join(lines) or "  none"
+
+
+def phi_verdict(pull_uri: str) -> tuple[int, str, str]:
+    info = pull_patch(pull_uri)
+    rounds = int(info.get("rounds") or 1)
+    found = review_verdict(pull_uri, PHI_DID, round_index=rounds - 1, expected_cid=info["cid"])
+    if not found:
+        return rounds, "pending", "no verdict on the latest round yet"
+    return rounds, found["verdict"], found["text"]
+
+
+async def proposal_events() -> list[Any]:
+    since = datetime.now(UTC) - PROPOSAL_WINDOW
+    events: list[Any] = []
+    async with get_client() as client:
+        page = await client.read_events(
+            EventFilter(
+                occurred=EventOccurredFilter.model_validate({"since": since}),
+                event=EventNameFilter(name=["autofix.proposed", "merge.merged"]),
+            ),
+            limit=50,
+        )
+        events.extend(page.events)
+        while page.next_page:
+            page = await client.read_events_page(str(page.next_page))
+            events.extend(page.events)
+    return events
+
+
+def prior_work(dep_name: str) -> str:
+    try:
+        events = asyncio.run(proposal_events())
+    except Exception as exc:
+        return f"prior gardener proposals for {dep_name}: unavailable ({exc})"
+    return (
+        f"prior gardener proposals for {dep_name} (last {PROPOSAL_WINDOW.days} days):\n"
+        + describe_proposals(events, dep_name, phi_verdict)
+    )
+
+
+def since_section(cwd: str, sha: str, dep_name: str) -> str:
+    """the 'what happened since' part of the brief; a lookup failure degrades
+    the section, never the diagnosis."""
+    try:
+        commits = recent_changes(cwd, sha)
+    except Exception as exc:
+        commits = f"unavailable ({exc})"
+    return f"commits on main since this run's revision ({sha[:7]}):\n{commits}\n\n{prior_work(dep_name)}"
 
 
 def trailers(output: str, keys: tuple[str, ...]) -> dict[str, str]:
@@ -370,6 +458,9 @@ def autofix(
             )
             sha = checkout_as_of(cwd, when)
             print(f"diagnosing against {sha}")
+            since = since_section(cwd, sha, dep_name)
+            print(since)
+            brief += "\n\n" + since
             diagnosis = run_pi(
                 prompt,
                 cwd=cwd,
@@ -396,6 +487,9 @@ def autofix(
         )
         if not propose:
             return Completed(name="Diagnosed", message=summary)
+        if fixed := trailers(diagnosis, ("FIXED-ON-MAIN",)).get("FIXED-ON-MAIN"):
+            print(f"not proposing: already fixed on main ({fixed})")
+            return Completed(name="Diagnosed", message=f"{summary}\nfixed on main: {fixed}")
         if existing := asyncio.run(prior_proposal(dep_name, sha)):
             print(f"not proposing again: {existing} is open for {dep_name} at {sha}")
             return Completed(name="Diagnosed", message=f"{summary}\nopen pull: {existing}")
