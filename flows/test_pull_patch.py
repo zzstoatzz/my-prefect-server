@@ -17,6 +17,21 @@ from prefect.artifacts import create_table_artifact
 from flows.pi_pr import CLONE_URL, OWNER, Repo
 
 
+def test_script(repo: str) -> str:
+    """the repo's own test invocation, as its CI runs it."""
+    if repo == "bot":
+        return (
+            "export PATH=/usr/local/bin:$PATH BLUESKY_HANDLE=ci.invalid BLUESKY_PASSWORD=ci; "
+            "/usr/local/bin/uv sync --frozen && /usr/local/bin/uv run pytest -q"
+            " && cd web && bun install --frozen-lockfile && bun run check && bun run test"
+        )
+    if repo == "my-prefect-server":
+        # .tangled/workflows/deploy.yml runs the suite with the dagster extra;
+        # tests/test_dagster_hub.py does not import without it.
+        return "/usr/local/bin/uv sync --extra dagster && /usr/local/bin/uv run --extra dagster pytest -q"
+    return "/usr/local/bin/uv sync && /usr/local/bin/uv run pytest -q"
+
+
 @flow(name="test-pull-patch", log_prints=True, timeout_seconds=2400)
 def test_pull_patch(repo: Repo, base: str, patch: str) -> dict:
     if not re.fullmatch(r"[0-9a-f]{40}", base):
@@ -58,14 +73,7 @@ def test_pull_patch(repo: Repo, base: str, patch: str) -> dict:
         for path in [*tree_paths(workspace), home]:
             os.chown(path, AGENT_UID, AGENT_UID, follow_symlinks=False)
         # No inference socket, orchestration environment, or merge key is mounted.
-        script = "/usr/local/bin/uv sync" + (" --frozen" if repo == "bot" else "")
-        script += " && /usr/local/bin/uv run pytest -q"
-        if repo == "bot":
-            script = (
-                "export PATH=/usr/local/bin:$PATH BLUESKY_HANDLE=ci.invalid BLUESKY_PASSWORD=ci; "
-                + script
-            )
-            script += " && cd web && bun install --frozen-lockfile && bun run check && bun run test"
+        script = test_script(repo)
         command = sandbox_command(
             workspace=workspace,
             home=home,

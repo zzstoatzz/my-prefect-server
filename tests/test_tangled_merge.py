@@ -144,3 +144,14 @@ def test_verdict_requires_matching_cid_in_same_round(monkeypatch):
     monkeypatch.setattr(tangled, "resolve_pds", lambda did: "https://pds.test")
     monkeypatch.setattr(httpx, "get", lambda url, **kw: _resp(url, json={"records": records}))
     assert review_verdict(PULL, "did:plc:reviewer", round_index=0, expected_cid="reviewed") is None
+
+
+def test_merge_gate_runs_each_repo_suite_as_its_ci_does():
+    from flows.test_pull_patch import test_script
+
+    assert test_script("my-prefect-server") == (
+        "/usr/local/bin/uv sync --extra dagster && /usr/local/bin/uv run --extra dagster pytest -q"
+    )
+    assert test_script("bot").startswith("export PATH=/usr/local/bin:$PATH")
+    assert "--frozen" in test_script("bot")
+    assert test_script("other") == "/usr/local/bin/uv sync && /usr/local/bin/uv run pytest -q"
