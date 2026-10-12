@@ -3,13 +3,14 @@ import threading
 from email.message import EmailMessage
 
 import pytest
-from mps.email_backlog import message_text, read_backlog
+from mps.email_backlog import mark_reviewed_read, message_text, read_backlog
 
 
 @pytest.fixture
 def inbox_server():
     commands = []
     message = EmailMessage()
+    message["Message-ID"] = "<test@example.com>"
     message["To"] = "recipient@example.com"
     message["Subject"] = "Invoice due tomorrow"
     message.set_content("Please review the invoice.")
@@ -24,16 +25,20 @@ def inbox_server():
                 tag, command, *args = text.split()
                 if command == "CAPABILITY":
                     self.wfile.write(b"* CAPABILITY IMAP4rev1\r\n")
-                elif command == "EXAMINE":
+                elif command in ("EXAMINE", "SELECT"):
                     self.wfile.write(b"* 3 EXISTS\r\n* OK [UIDVALIDITY 42] stable\r\n")
                 elif command == "UID" and args[0] == "SEARCH":
-                    self.wfile.write(b"* SEARCH 11 20 35\r\n")
+                    self.wfile.write(
+                        b"* SEARCH\r\n" if args[1] == "UID" else b"* SEARCH 11 20 35\r\n"
+                    )
                 elif command == "UID" and args[0] == "FETCH":
                     self.wfile.write(
                         f"* 1 FETCH (UID {args[1]} BODY[] {{{len(raw)}}}\r\n".encode()
                         + raw
                         + b" FLAGS (\\Seen))\r\n"
                     )
+                elif command == "UID" and args[0] == "STORE":
+                    pass
                 elif command == "LOGOUT":
                     self.wfile.write(b"* BYE done\r\n")
                     self.wfile.write(f"{tag} OK logout\r\n".encode())
@@ -94,5 +99,40 @@ def test_sent_mail_is_examined_read_only_and_includes_recipient(inbox_server):
     page = read_backlog(host, port, "test", "test", None, mailbox="Sent")
     assert page["mailbox"] == "Sent"
     assert page["messages"][0]["to"] == "recipient@example.com"
-    assert any(" EXAMINE Sent" in command for command in commands)
+    assert any(' EXAMINE "Sent"' in command for command in commands)
     assert all("STORE" not in c and " SELECT " not in c for c in commands)
+
+
+def test_all_mail_unread_uses_peek(inbox_server):
+    (host, port), commands = inbox_server
+    page = read_backlog(host, port, "test", "test", None, mailbox="All Mail", unread_only=True)
+    assert page["unread_only"]
+    assert any(' EXAMINE "All Mail"' in c for c in commands)
+    assert any("UID SEARCH ALL UNSEEN" in c for c in commands)
+    assert not any(" STORE " in c for c in commands)
+
+
+def test_mark_read_validates_all_identities_before_any_mutation(inbox_server):
+    (host, port), commands = inbox_server
+    with pytest.raises(ValueError, match="identity changed"):
+        mark_reviewed_read(
+            host,
+            port,
+            "test",
+            "test",
+            "All Mail",
+            "42",
+            {"11": "<test@example.com>", "20": "<wrong>"},
+        )
+    assert not any(" STORE " in c for c in commands)
+    with pytest.raises(ValueError, match="UIDVALIDITY changed"):
+        mark_reviewed_read(
+            host, port, "test", "test", "All Mail", "old", {"11": "<test@example.com>"}
+        )
+    assert not any(" STORE " in c for c in commands)
+    result = mark_reviewed_read(
+        host, port, "test", "test", "All Mail", "42", {"11": "<test@example.com>"}
+    )
+    assert result["marked_read"] == ["11"]
+    assert any(r"UID STORE 11 +FLAGS.SILENT (\Seen)" in c for c in commands)
+    assert any("UID SEARCH UID 11 UNSEEN" in c for c in commands)

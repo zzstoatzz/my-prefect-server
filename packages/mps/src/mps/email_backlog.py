@@ -7,7 +7,6 @@ import email.utils
 import imaplib
 import re
 from html.parser import HTMLParser
-from typing import Literal
 
 from mps.email import _decode_header
 
@@ -65,10 +64,11 @@ def read_backlog(
     uidvalidity: str | None = None,
     only_uids: list[int] | None = None,
     body_chars: int = 1500,
-    mailbox: Literal["INBOX", "Sent"] = "INBOX",
+    mailbox: str = "INBOX",
+    unread_only: bool = False,
 ) -> dict:
-    if mailbox not in ("INBOX", "Sent"):
-        raise ValueError("mailbox must be INBOX or Sent")
+    if mailbox not in ("INBOX", "Sent", "All Mail", "Archive", "Spam", "Trash"):
+        raise ValueError("unsupported mailbox")
     if not 1 <= batch_size <= 100 or not 1 <= body_chars <= 50000:
         raise ValueError("batch_size must be 1..100; body_chars must be 1..50000")
     if before_uid is not None and not uidvalidity:
@@ -82,13 +82,15 @@ def read_backlog(
     conn = imaplib.IMAP4(host, port, timeout=60)
     try:
         conn.login(username, password)
-        status, _ = conn.select(mailbox, readonly=True)
+        status, _ = conn.select(f'"{mailbox}"', readonly=True)
         if status != "OK":
             raise RuntimeError(f"could not select {mailbox}")
         _, validity = conn.response("UIDVALIDITY")
         current_validity = validity[0].decode() if validity and validity[0] else ""
         if not current_validity or (uidvalidity and uidvalidity != current_validity):
             raise ValueError("mailbox UIDVALIDITY missing or changed; restart review")
+        if unread_only:
+            criterion += " UNSEEN"
         status, data = conn.uid("SEARCH", criterion)
         if status != "OK":
             raise RuntimeError("inbox search failed")
@@ -138,12 +140,51 @@ def read_backlog(
         return {
             "mailbox": mailbox,
             "since": since,
+            "unread_only": unread_only,
             "uidvalidity": current_validity,
             "total_matching": len(all_uids),
             "remaining": max(0, len(selected) - len(page)),
             "next_before_uid": page[-1] if len(selected) > len(page) else None,
             "messages": messages,
         }
+    finally:
+        with contextlib.suppress(Exception):
+            conn.logout()
+
+
+def mark_reviewed_read(host, port, username, password, mailbox, uidvalidity, reviewed):
+    if mailbox not in ("INBOX", "Sent", "All Mail", "Archive", "Spam", "Trash"):
+        raise ValueError("unsupported mailbox")
+    if not uidvalidity or not reviewed or len(reviewed) > 100:
+        raise ValueError("requires UIDVALIDITY and 1..100 reviewed messages")
+    if any(not str(uid).isdigit() or int(uid) < 1 or not mid for uid, mid in reviewed.items()):
+        raise ValueError("requires positive UIDs and exact Message-IDs")
+    conn = imaplib.IMAP4(host, port, timeout=60)
+    try:
+        conn.login(username, password)
+        status, _ = conn.select(f'"{mailbox}"', readonly=False)
+        if status != "OK":
+            raise RuntimeError("could not select mailbox")
+        _, validity = conn.response("UIDVALIDITY")
+        current = validity[0].decode() if validity and validity[0] else ""
+        if current != uidvalidity:
+            raise ValueError("mailbox UIDVALIDITY changed; restart review")
+        for uid, expected in reviewed.items():
+            status, data = conn.uid("FETCH", str(uid), "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+            chunks = [part for part in data if isinstance(part, tuple)]
+            if status != "OK" or len(chunks) != 1:
+                raise ValueError(f"reviewed UID {uid} missing")
+            msg = email.message_from_bytes(chunks[0][1])
+            if _decode_header(msg.get("Message-ID")) != expected:
+                raise ValueError(f"reviewed UID {uid} identity changed")
+        uid_set = ",".join(str(uid) for uid in reviewed)
+        status, _ = conn.uid("STORE", uid_set, "+FLAGS.SILENT", r"(\Seen)")
+        if status != "OK":
+            raise RuntimeError("mark read failed")
+        status, data = conn.uid("SEARCH", "UID", uid_set, "UNSEEN")
+        if status != "OK" or data[0].strip():
+            raise RuntimeError("mark read verification failed")
+        return {"mailbox": mailbox, "uidvalidity": current, "marked_read": list(reviewed)}
     finally:
         with contextlib.suppress(Exception):
             conn.logout()

@@ -1,10 +1,9 @@
 """On-demand Proton inbox pages for an interactive backlog review."""
 
 import os
-from typing import Literal
 
 from mps.blocks import secret_mapping_sync
-from mps.email_backlog import read_backlog
+from mps.email_backlog import mark_reviewed_read, read_backlog
 from prefect import flow, get_run_logger, task
 from prefect.client.orchestration import get_client
 from prefect.client.schemas.actions import ArtifactCreate
@@ -19,7 +18,8 @@ def read_page(
     uidvalidity: str | None,
     only_uids: list[int] | None,
     body_chars: int,
-    mailbox: Literal["INBOX", "Sent"],
+    mailbox: str,
+    unread_only: bool,
 ) -> dict:
     creds = secret_mapping_sync("proton-bridge-creds")
     return read_backlog(
@@ -34,6 +34,21 @@ def read_page(
         only_uids,
         body_chars,
         mailbox,
+        unread_only,
+    )
+
+
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1, persist_result=False)
+def apply_review(mailbox: str, uidvalidity: str, reviewed: dict[str, str]):
+    creds = secret_mapping_sync("proton-bridge-creds")
+    return mark_reviewed_read(
+        os.environ.get("PROTON_BRIDGE_HOST", "127.0.0.1"),
+        int(os.environ.get("PROTON_BRIDGE_PORT", "1143")),
+        creds["username"],
+        creds["password"],
+        mailbox,
+        uidvalidity,
+        reviewed,
     )
 
 
@@ -45,9 +60,17 @@ def email_backlog(
     uidvalidity: str | None = None,
     only_uids: list[int] | None = None,
     body_chars: int = 1500,
-    mailbox: Literal["INBOX", "Sent"] = "INBOX",
+    mailbox: str = "INBOX",
+    unread_only: bool = False,
+    mark_read: dict[str, str] | None = None,
 ):
-    page = read_page(since, batch_size, before_uid, uidvalidity, only_uids, body_chars, mailbox)
+    if mark_read is not None:
+        if not uidvalidity:
+            raise ValueError("mark_read requires reviewed mailbox UIDVALIDITY")
+        return apply_review(mailbox, uidvalidity, mark_read)
+    page = read_page(
+        since, batch_size, before_uid, uidvalidity, only_uids, body_chars, mailbox, unread_only
+    )
     with get_client(sync_client=True) as client:
         artifact = client.create_artifact(
             ArtifactCreate(
