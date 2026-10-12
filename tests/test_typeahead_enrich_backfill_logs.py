@@ -12,6 +12,7 @@ from flows import typeahead_enrich_backfill as backfill
 from flows.typeahead_enrich_backfill import (
     _fmt_counts,
     _fmt_duration,
+    _fmt_progress,
     _fmt_queue_head,
     _fmt_remaining,
 )
@@ -41,16 +42,27 @@ def test_counts_omit_hidden_when_none_were_hidden():
 
 
 def test_remaining_is_the_budget_when_no_limit_is_set():
-    assert _fmt_remaining(1500, None, 48.0, 11100) == "3h05m of budget left"
+    assert _fmt_remaining(1500, None, 48.0, 11100) == "3h05m left"
+
+
+def test_progress_fits_two_rows_of_a_phone_width_log_view():
+    now = 1789924132 + 21 * 86400 + 3 * 3600
+    line = _fmt_progress(1500, 8, 1, 9.4, 1789924132, now)
+    assert line == "1,500 actors at 9/s (8 not found, 1 hidden), queue 21d03h behind"
+    assert len(f"{line}, 3h05m left") <= 80
+    assert (
+        _fmt_progress(500, 0, 0, 9.4, 1789924132, now) == "500 actors at 9/s, queue 21d03h behind"
+    )
+    assert _fmt_progress(0, 0, 0, 0.0, 0, now) == "0 actors at 0/s"
 
 
 def test_remaining_is_the_limit_when_it_lands_inside_the_budget():
-    assert _fmt_remaining(2500, 10000, 50.0, 11100) == "25% of limit 10,000, ~2m30s left"
+    assert _fmt_remaining(2500, 10000, 50.0, 11100) == "25% of 10,000, ~2m30s left"
 
 
 def test_remaining_falls_back_to_the_budget_when_the_limit_is_out_of_reach():
-    assert _fmt_remaining(2500, 10_000_000, 50.0, 11100) == "3h05m of budget left"
-    assert _fmt_remaining(0, 100, 0.0, 600) == "10m00s of budget left"
+    assert _fmt_remaining(2500, 10_000_000, 50.0, 11100) == "3h05m left"
+    assert _fmt_remaining(0, 100, 0.0, 600) == "10m00s left"
 
 
 class QueueClient:
@@ -116,8 +128,8 @@ def test_a_run_logs_a_start_line_progress_and_a_one_line_summary(monkeypatch, ca
         lines[0]
         == "dry run over the whole queue, oldest first, at 1e+06 DIDs/s with a 3h30m budget"
     )
-    assert lines[1].startswith(f"{counts} at ")
-    assert lines[1].endswith(f"/s, {head}, 3h30m of budget left")
+    assert lines[1].startswith("3 actors at ")
+    assert lines[1].endswith("/s (1 not found, 1 hidden), queue 1h00m behind, 3h30m left")
     assert lines[2].startswith(f"dry run finished in 0s (queue drained): {counts} at ")
     assert lines[2].endswith(f"/s overall, {head}")
     assert lines[3].startswith("samples:\na.test: score=")

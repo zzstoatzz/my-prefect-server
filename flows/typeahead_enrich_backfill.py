@@ -234,6 +234,20 @@ def _fmt_queue_head(updated_at: int, now: float) -> str:
     return f"queue head {at} ({_fmt_duration(now - updated_at)} behind now)"
 
 
+def _fmt_progress(
+    processed: int, not_found: int, hidden: int, rate: float, updated_at: int, now: float
+) -> str:
+    """sized for a phone-width log view: found is implied, zero counts are
+    dropped, and the queue head is only its lag (the summary carries the date)."""
+    misses = [f"{n:,} {what}" for n, what in ((not_found, "not found"), (hidden, "hidden")) if n]
+    line = f"{processed:,} actors at {rate:.0f}/s"
+    if misses:
+        line += f" ({', '.join(misses)})"
+    if updated_at > 0:
+        line += f", queue {_fmt_duration(now - updated_at)} behind"
+    return line
+
+
 def _fmt_counts(processed: int, found: int, not_found: int, hidden: int) -> str:
     parts = [f"{found:,} found", f"{not_found:,} not found"]
     if hidden:
@@ -247,8 +261,8 @@ def _fmt_remaining(processed: int, limit: int | None, rate: float, budget_left: 
     if limit is not None and rate > 0:
         eta = (limit - processed) / rate
         if eta <= budget_left:
-            return f"{processed / limit:.0%} of limit {limit:,}, ~{_fmt_duration(eta)} left"
-    return f"{_fmt_duration(budget_left)} of budget left"
+            return f"{processed / limit:.0%} of {limit:,}, ~{_fmt_duration(eta)} left"
+    return f"{_fmt_duration(budget_left)} left"
 
 
 @flow(name="typeahead-enrich-backfill", log_prints=True, timeout_seconds=14400)
@@ -466,10 +480,8 @@ def typeahead_enrich_backfill(
         if now - last_log >= PROGRESS_EVERY_S:
             rate = (processed - last_log_processed) / (now - last_log)
             logger.info(
-                "%s at %.0f/s, %s, %s",
-                _fmt_counts(processed, found, not_found, hidden_set),
-                rate,
-                _fmt_queue_head(cur_updated, time.time()),
+                "%s, %s",
+                _fmt_progress(processed, not_found, hidden_set, rate, cur_updated, time.time()),
                 _fmt_remaining(processed, limit, rate, deadline - now),
             )
             last_log, last_log_processed = now, processed
