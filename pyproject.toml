@@ -39,6 +39,11 @@ dagster = [
     "dagster-dbt==0.29.23",
     "dagster-webserver==1.13.23",
 ]
+inbox = [
+    "fastmcp>=4.0,<5",
+    "google-auth>=2",
+    "requests>=2",
+]
 
 [project.entry-points."prefect.plugins"]
 mps-secrets = "mps.secrets_plugin"
