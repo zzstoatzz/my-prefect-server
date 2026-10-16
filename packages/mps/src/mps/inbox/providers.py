@@ -10,12 +10,56 @@ import imaplib
 import json
 import os
 import re
+from html.parser import HTMLParser
 from pathlib import Path
 
 import httpx
 
 from mps.email import _decode_header, _extract_text
 from mps.inbox.store import Message
+
+
+class MailText(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.hidden = 0
+        self.parts = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style", "head"):
+            self.hidden += 1
+        elif not self.hidden and tag in ("p", "div", "br", "tr", "li", "h1", "h2"):
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style", "head"):
+            self.hidden = max(0, self.hidden - 1)
+        elif not self.hidden and tag in ("p", "div", "tr", "li"):
+            self.parts.append("\n")
+
+    def handle_data(self, data):
+        if not self.hidden:
+            self.parts.append(data)
+
+    def text(self):
+        return "\n".join(line.strip() for line in "".join(self.parts).splitlines() if line.strip())
+
+
+def body_text(msg):
+    plain = _extract_text(msg)
+    if plain.strip().lower() not in ("", "no text available"):
+        return plain
+    for part in msg.walk():
+        if (
+            part.get_content_type() == "text/html"
+            and part.get_content_disposition() != "attachment"
+        ):
+            payload = part.get_payload(decode=True)
+            if isinstance(payload, bytes):
+                parser = MailText()
+                parser.feed(payload.decode(part.get_content_charset() or "utf-8", errors="replace"))
+                return parser.text()
+    return plain
 
 
 class Gmail:
@@ -71,7 +115,7 @@ class Gmail:
                         message_id=str(msg.get("Message-ID", "")),
                         sender=_decode_header(msg.get("From")),
                         subject=_decode_header(msg.get("Subject")),
-                        body=_extract_text(msg)[:50000],
+                        body=body_text(msg)[:50000],
                         received_at=datetime.datetime.fromtimestamp(
                             int(data["internalDate"]) / 1000, datetime.UTC
                         ).isoformat(),
@@ -158,7 +202,7 @@ class Proton:
                         message_id=str(msg.get("Message-ID", "")),
                         sender=_decode_header(msg.get("From")),
                         subject=_decode_header(msg.get("Subject")),
-                        body=_extract_text(msg)[:50000],
+                        body=body_text(msg)[:50000],
                         received_at=received.astimezone(datetime.UTC).isoformat(),
                         unread=b"\\Seen" not in metadata,
                         url="https://mail.proton.me/u/0/inbox",
@@ -174,7 +218,7 @@ class Proton:
             if expected != validity or account != message.account or not uid.isdigit():
                 raise ValueError("Proton mailbox identity changed; refresh before acting")
             if action == "ignore":
-                capabilities = {c.upper() for c in conn.capabilities}
+                capabilities = set(b" ".join(self.check(conn.capability())).upper().split())
                 if b"MOVE" not in capabilities:
                     raise ValueError("Proton Bridge does not support safe archive moves")
                 self.check(conn.uid("MOVE", uid, "Archive"))

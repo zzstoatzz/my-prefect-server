@@ -42,6 +42,7 @@ dagster = [
 inbox = [
     "fastmcp>=4.0,<5",
     "google-auth>=2",
+    "google-auth-oauthlib>=1.2",
     "requests>=2",
 ]
 

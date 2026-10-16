@@ -1297,6 +1297,19 @@ wheels = [
 ]
 
 [[package]]
+name = "google-auth-oauthlib"
+version = "1.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "google-auth" },
+    { name = "requests-oauthlib" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c4/40/1d7901e454831247e377ef3f642cb857cc0e82ec4d2380b7a148a48f20d1/google_auth_oauthlib-1.5.0.tar.gz", hash = "sha256:b351107c7dd9017f426cbb0272ea1bc04f469020fd18f4443c7d40362e0b1510", size = 23926, upload-time = "2026-09-29T19:25:56.699Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/5a/bb/b5cc0757ad2f8068e7eb7180c37f82eb488627624c1b1214aa47ddbc032c/google_auth_oauthlib-1.5.0-py3-none-any.whl", hash = "sha256:71625fdea21c6c03217eb9ff13741c3096e6d257ebca0ad084dbd6e9f4aa4ef4", size = 20348, upload-time = "2026-09-29T19:25:31.842Z" },
+]
+
+[[package]]
 name = "googleapis-common-protos"
 version = "1.75.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2434,6 +2447,7 @@ dagster = [
 inbox = [
     { name = "fastmcp" },
     { name = "google-auth" },
+    { name = "google-auth-oauthlib" },
     { name = "requests" },
 ]
 lighting = [
@@ -2467,6 +2481,7 @@ requires-dist = [
     { name = "fastmcp", marker = "extra == 'inbox'", specifier = ">=4.0,<5" },
     { name = "fastmcp", marker = "extra == 'lighting'", specifier = "==4.0.3" },
     { name = "google-auth", marker = "extra == 'inbox'", specifier = ">=2" },
+    { name = "google-auth-oauthlib", marker = "extra == 'inbox'", specifier = ">=1.2" },
     { name = "hdbscan", marker = "extra == 'atlas'", specifier = ">=0.8" },
     { name = "logfire", specifier = ">=4.36.0" },
     { name = "mps", editable = "packages/mps" },

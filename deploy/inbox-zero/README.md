@@ -32,6 +32,14 @@ Install `inbox-zero.service` as a user unit after placing the checkout at
 never replace an existing handler or enable Funnel for private mail. Persistent
 state and credentials remain outside releases. Back up SQLite with its backup API.
 
+For Gmail, enable the Gmail API in your own Google Cloud project and download a
+desktop OAuth client JSON. Run `uv run --extra inbox python
+deploy/inbox-zero/connect_gmail.py /path/to/client.json` on a machine with a browser.
+Authorize the intended mailbox, securely transfer the resulting
+`~/.config/inbox-zero/gmail.json` to the service host, set
+`INBOX_GMAIL_CREDENTIALS`, and restart the service. Keep both files outside Git.
+An imported connector snapshot does not authorize live sync or mailbox writes.
+
 The MCP endpoint is `/mcp`, supporting the same access key as a Bearer token.
 `review_inbox` returns the queue and an MCP App resource; `decide_email` applies
 explicit owner decisions. The server is private to the tailnet; cloud ChatGPT
@@ -65,3 +73,9 @@ Also run Ruff, type checks, deployment validation, a real HTTP/MCP read, and bro
 checks at phone and desktop sizes. Provider writes need separately authorized
 throwaway messages; the local persistence tests do not establish live Gmail/Proton
 mutation success.
+
+Live Proton verification used one temporary message appended through Bridge:
+read, unread, and archive were checked against server state, then the test message
+was moved to Trash. Authenticated IMAP capabilities must be queried after login;
+Bridge's initial capability list omits MOVE. Gmail writes still require a
+separate authorization and live test.

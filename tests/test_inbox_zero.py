@@ -130,3 +130,17 @@ def test_untrusted_message_text_stays_data(store):
     store.ingest("gmail", item.account, [item], complete=True)
     assert store.queue()["items"][0]["body"] == item.body
     assert store.queue()["remaining"] == 1
+
+
+def test_html_only_mail_becomes_text_without_loading_external_content():
+    from email.message import EmailMessage
+
+    from mps.inbox.providers import body_text
+
+    mail = EmailMessage()
+    mail.set_content("No Text Available")
+    mail.add_alternative(
+        '<html><head><style>hidden css</style></head><body><p>Invoice &amp; deadline</p><script>steal()</script><img src="https://tracker.example/open"><p>Pay Friday</p></body></html>',
+        subtype="html",
+    )
+    assert body_text(mail) == "Invoice & deadline\nPay Friday"
