@@ -30,8 +30,9 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.providers.anthropic import AnthropicProvider
-from turbopuffer.types import AttributeSchemaConfigParam
-from turbopuffer.types.custom import Filter
+from turbopuffer.lib.namespace import Namespace
+from turbopuffer.types import AttributeSchemaConfigParam, Row
+from turbopuffer.types.custom import Filter, RankBy
 
 SYSTEM_PROMPT = """\
 you synthesize relationship summaries for a bluesky bot named phi.
@@ -396,30 +397,42 @@ ACTIVE_OBSERVATIONS: Filter = (
 )
 
 
-@task
+def query_active_observations(ns: Namespace, *, rank_by: RankBy, top_k: int) -> list[Row]:
+    try:
+        schema = ns.metadata().schema_
+        if "kind" not in schema:
+            return []
+        filters: Filter = (
+            ACTIVE_OBSERVATIONS if "status" in schema else ("kind", "Eq", "observation")
+        )
+        return (
+            ns.query(
+                rank_by=rank_by,
+                top_k=top_k,
+                filters=filters,
+                include_attributes=True,
+            ).rows
+            or []
+        )
+    except turbopuffer.NotFoundError:
+        return []
+
+
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
 def query_existing_knowledge(tpuf_key: str, handle: str) -> str:
     """Query TurboPuffer for existing observations about this author."""
     client = turbopuffer.Turbopuffer(api_key=tpuf_key, region="gcp-us-central1")
     ns_name = f"phi-users-{clean_handle(handle)}"
     ns = client.namespace(ns_name)
-
-    try:
-        resp = ns.query(
-            rank_by=("created_at", "desc"),
-            top_k=10,
-            filters=ACTIVE_OBSERVATIONS,
-            include_attributes=["content", "tags", "created_at"],
-        )
-        if not resp.rows:
-            return "no prior knowledge"
-        lines = []
-        for row in resp.rows:
-            tags = getattr(row, "tags", []) or []
-            tag_str = f" [{', '.join(tags)}]" if tags else ""
-            lines.append(f"- {row.content}{tag_str}")
-        return "\n".join(lines)
-    except Exception:
+    rows = query_active_observations(ns, rank_by=("created_at", "desc"), top_k=10)
+    if not rows:
         return "no prior knowledge"
+    lines = []
+    for row in rows:
+        tags = row_strings(row, "tags")
+        tag_str = f" [{', '.join(tags)}]" if tags else ""
+        lines.append(f"- {row_text(row, 'content')}{tag_str}")
+    return "\n".join(lines)
 
 
 @task
@@ -663,25 +676,15 @@ async def write_likes_observations_to_turbopuffer(
         ns = client.namespace(f"phi-users-{clean_handle(handle)}")
         embedding = embed(content, handle)
 
-        existing: list[dict[str, Any]] = []
-        try:
-            resp = ns.query(
-                rank_by=("vector", "ANN", embedding),
-                top_k=3,
-                filters=ACTIVE_OBSERVATIONS,
-                include_attributes=True,
-            )
-            existing = [
-                {
-                    "id": row.id,
-                    "content": row_text(row, "content"),
-                    "tags": row_strings(row, "tags"),
-                    "source_uris": row_strings(row, "source_uris"),
-                }
-                for row in resp.rows or []
-            ]
-        except turbopuffer.NotFoundError:
-            pass
+        existing = [
+            {
+                "id": row.id,
+                "content": row_text(row, "content"),
+                "tags": row_strings(row, "tags"),
+                "source_uris": row_strings(row, "source_uris"),
+            }
+            for row in query_active_observations(ns, rank_by=("vector", "ANN", embedding), top_k=3)
+        ]
 
         decision = (
             await reconcile_likes_observation(handle, existing, content, tags, anthropic_key)
