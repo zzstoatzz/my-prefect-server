@@ -879,6 +879,20 @@ deployments:
       - cron: "*/5 * * * *"
         active: true
 
+  - name: fastmcp-backlog
+    pull: *cached_home
+    tags: [watch]
+    entrypoint: flows/fastmcp_backlog.py:fastmcp_backlog
+    # appends open issue/PR counts, bucketed by age, to
+    # /home/stoat/prefect-analytics/fastmcp-backlog.jsonl (beside
+    # ANALYTICS_DB_PATH). read with `just fastmcp-backlog`. ~6 GitHub API
+    # calls a run.
+    work_pool: *home
+    concurrency_limit: *cancel_new
+    schedules:
+      - cron: "*/30 * * * *"
+        active: true
+
   - name: fastmcp-brief
     pull: *cached_home
     tags: [watch]

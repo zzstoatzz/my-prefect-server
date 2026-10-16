@@ -499,6 +499,18 @@ autofix-policy-check *args:
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
         uv run python -m scripts.check_autofix_policy {{ args }}
 
+# last N fastmcp backlog snapshots (flows/fastmcp_backlog.py), oldest first
+fastmcp-backlog n="24":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    {
+        echo "at source issues <7d 7-30d 30-90d >90d unlabeled awaiting prs draft bot"
+        ssh -o ConnectTimeout=10 -o BatchMode=yes stoat@heavypad 'tail -n {{ n }} /home/stoat/prefect-analytics/fastmcp-backlog.jsonl' \
+            | jq -r '[.at[:16], .source, .issues.open, .issues.lt_7d, .issues.d7_30, .issues.d30_90, .issues.gt_90d,
+                      (.issues.unlabeled // "-"), (.issues.awaiting_reporter // "-"),
+                      .prs.open, (.prs.draft // "-"), (.prs.bot // "-")] | @tsv'
+    } | column -t
+
 # heavypad, the home-pool worker box: what is installed, whether it matches
 # what the deployments expect, and whether pi can still reach Luna. ten
 # seconds over tailscale ssh; run it before blaming a flow. no values from the

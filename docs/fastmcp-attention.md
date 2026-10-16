@@ -69,6 +69,21 @@ Verification without running Claude or publishing:
 `just prefect deployment run fastmcp-triage/fastmcp-triage --param usage_threshold=0 --param publish_prs=false --watch`.
 This exercises the real laptop worker, secret resolution, and the Deferred path.
 
+## backlog series
+
+`fastmcp-backlog` (every 30 min, home pool) appends one row of open issue and
+PR counts to `/home/stoat/prefect-analytics/fastmcp-backlog.jsonl`: totals, age
+buckets (`lt_7d`, `d7_30`, `d30_90`, `gt_90d`), unlabeled, awaiting reporter
+(`needs more info` / `needs MRE`), and for PRs draft and bot-authored. Rows with
+`source: "backfill"` are daily reconstructions from created_at/closed_at and
+carry only totals and age buckets. Row shape: `mps.github_backlog`.
+
+- `just fastmcp-backlog 48` prints the last 48 rows.
+- the `fastmcp-backlog` table artifact holds the latest counts, one version per
+  run, through the Prefect API.
+- `duckdb -c "select * from read_json('fastmcp-backlog.jsonl')"` on a copy for
+  anything bigger.
+
 ## what "seen" means
 
 `fastmcp_briefed_threads` (a Prefect Variable) maps thread_id → updated_at for
