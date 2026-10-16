@@ -71,7 +71,7 @@ the previously incompatible write path, not only an empty or skipped run.
 
 The mitigation addresses the observed failure, not the entire memory write contract.
 
-- **High: invalid model targets can supersede unrelated memory.**
+- **High at the mitigation revision: invalid model targets could supersede unrelated memory.**
   `plan_observation_write` falls back to `existing[:1]` when an UPDATE or DELETE
   names no valid targets. Calling the real function with either `targets=[]` or
   `targets=[99]` and one unrelated neighbour selects that neighbour for replacement.
@@ -106,3 +106,34 @@ still does not establish compatibility with production schemas.
 The root failure was introducing a read-before-write dependency without accounting
 for historical schemas, then validating model semantics instead of the storage
 boundary. More retries would not have repaired the deterministic HTTP 400.
+
+## Replacement target validation follow-up
+
+`plan_observation_write` now rejects UPDATE and DELETE decisions with no targets
+or with any target outside the supplied candidate set. Mixed valid and invalid
+lists are rejected as a whole. Target values must be integers without coercion
+from booleans, strings, or floats. Valid duplicate targets are deduplicated while
+preserving the model's order; the planner never invents a replacement target.
+Unknown actions also raise instead of silently becoming ADD.
+
+The writer invokes the planner before its observation upsert and supersede patch.
+Invalid decisions therefore raise before either memory mutation for that
+observation. They are not converted into successful NOOPs or automatically retried
+as a whole batch. Previously processed observations in the batch remain committed;
+atomic replacement and per-observation replay remain separate follow-ups.
+
+Regression tests call the actual planner and Pydantic validation directly,
+without a model or database. A separate direct check confirmed omitted targets
+are rejected for both actions. Coverage includes empty, zero, negative, out-of-range,
+and mixed targets; an empty candidate set; coercion attempts; valid non-nearest
+and multiple targets; duplicate targets; and preservation of input evidence after
+rejection. The old test that expected nearest-neighbour fallback was removed.
+This enforces target validity, not factual correctness: a model can still explicitly
+select the wrong valid observation, which requires separate semantic evaluation.
+
+The separate bot repository also retains `return picked or list(existing[:1])`
+in `src/bot/memory/extraction.py:reconciliation_targets` on inspected main
+`ce0dac4`. Its `_reconcile_observation` calls that helper before replacement.
+The Prefect fix does not change or deploy that independent writer; removing its
+fallback is a separate necessary fix before claiming this protection across all
+Phi memory writers.

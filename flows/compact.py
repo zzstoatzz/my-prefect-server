@@ -26,7 +26,7 @@ from prefect import flow, get_run_logger, task
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 from prefect.tasks import exponential_backoff
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.providers.anthropic import AnthropicProvider
@@ -561,9 +561,9 @@ When in doubt between ADD and NOOP, prefer NOOP. memory should be lean."""
 
 class Reconciliation(BaseModel):
     action: str = Field(description="one of: ADD, UPDATE, DELETE, NOOP")
-    targets: list[int] = Field(
+    targets: list[StrictInt] = Field(
         default_factory=list,
-        description="numbers of the EXISTING observations the action applies to. empty for ADD.",
+        description="numbers of the EXISTING observations. UPDATE and DELETE require at least one valid target; empty for ADD.",
     )
     new_content: str | None = Field(
         default=None, description="merged content when action is UPDATE"
@@ -594,11 +594,17 @@ def plan_observation_write(
     new = {"content": content, "tags": tags, "source_uris": source_uris, "supersedes": ""}
     if action == "NOOP":
         return None, []
-    if action not in ("UPDATE", "DELETE"):
+    if action == "ADD":
         return new, []
-    targets = [
-        existing[n - 1] for n in dict.fromkeys(decision.targets) if 1 <= n <= len(existing)
-    ] or existing[:1]
+    if action not in ("UPDATE", "DELETE"):
+        raise ValueError(f"Unsupported reconciliation action: {decision.action!r}")
+    if not decision.targets:
+        raise ValueError(f"{action} requires at least one explicit observation target")
+    if any(n < 1 or n > len(existing) for n in decision.targets):
+        raise ValueError(
+            f"{action} targets {decision.targets!r} must all reference observations 1..{len(existing)}"
+        )
+    targets = [existing[n - 1] for n in dict.fromkeys(decision.targets)]
     new["supersedes"] = targets[0]["id"]
     if action == "UPDATE":
         new["content"] = decision.new_content or content

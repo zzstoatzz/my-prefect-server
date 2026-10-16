@@ -5,6 +5,11 @@ distance 0.25, and 276 of them were two rows this flow had written. It added
 facts without looking at their vector neighbours and hard-deleted on UPDATE.
 """
 
+from copy import deepcopy
+
+import pytest
+from pydantic import ValidationError
+
 from flows.compact import (
     ACTIVE_OBSERVATIONS,
     Reconciliation,
@@ -68,6 +73,40 @@ def test_delete_supersedes_a_farther_neighbour_and_keeps_its_own_sources():
     }
 
 
-def test_targets_that_were_never_offered_fall_back_to_the_nearest():
-    _, superseded = plan(Reconciliation(action="DELETE", targets=[7, 0]))
-    assert superseded == ["a"]
+@pytest.mark.parametrize("action", ["UPDATE", "DELETE", "update", "delete"])
+@pytest.mark.parametrize("targets", [[], [0], [-1], [4], [99], [1, 99], [0, 2]])
+def test_replacement_rejects_invalid_targets_without_mutating_evidence(action, targets):
+    existing = deepcopy(EXISTING)
+    with pytest.raises(ValueError, match=r"requires at least one|must all reference"):
+        plan_observation_write(
+            Reconciliation(action=action, targets=targets),
+            existing,
+            "new fact",
+            ["t"],
+            ["at://new"],
+        )
+    assert existing == EXISTING
+
+
+@pytest.mark.parametrize("action", ["UPDATE", "DELETE"])
+def test_replacement_cannot_target_an_empty_candidate_set(action):
+    with pytest.raises(ValueError, match="must all reference"):
+        plan_observation_write(Reconciliation(action=action, targets=[1]), [], "fact", [], [])
+
+
+@pytest.mark.parametrize("target", [True, False, "1", 1.0, 1.5])
+def test_target_numbers_are_not_coerced(target):
+    with pytest.raises(ValidationError):
+        Reconciliation.model_validate({"action": "DELETE", "targets": [target]})
+
+
+@pytest.mark.parametrize("action", ["UPDATE", "DELETE"])
+def test_valid_duplicate_targets_preserve_order_and_never_select_an_unnamed_row(action):
+    new, superseded = plan(Reconciliation(action=action, targets=[3, 2, 3]))
+    assert superseded == ["c", "b"]
+    assert new is not None and new["supersedes"] == "c"
+
+
+def test_unknown_action_is_rejected_instead_of_becoming_an_add():
+    with pytest.raises(ValueError, match="Unsupported reconciliation action"):
+        plan(Reconciliation(action="REPLACE", targets=[1]))
