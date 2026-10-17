@@ -72,9 +72,9 @@ A freeze stays latched in `state.json` and requires operator review. Before
 resuming, stop the watchdog, remove the unit from `pause_units` (explicitly opting
 it out), restart the watchdog, then `systemctl --user thaw NAME`. A SIGSTOP-paused
 process also needs SIGCONT; thaw alone does not undo the manual DeepSeek pause.
-Do not delete the accounting state to resume work. A unit already in `paused`
-remains latched; clear that entry only while the monitor is stopped and after its
-old hourly samples have expired if re-arming the same unit.
+Do not delete the accounting state to resume work. Thawing a registered unit while its hourly budget is still exceeded makes the
+watchdog freeze it again. The `paused` map records the last enforcement; it does
+not exempt future runs of that unit.
 
 ## Verification
 
@@ -84,3 +84,12 @@ windows, monthly reset, peer exclusion, durable HTTP retry and singleton locking
 checks the production parser excludes it, and freezes a disposable systemd unit
 using lowered test-only thresholds. It stops that test unit in `finally`.
 No large Internet download is required for verification.
+
+Verified on heavypad: controlled loopback transfers crossed a 64 KiB test budget,
+froze the disposable cgroup, did not duplicate enforcement while frozen, and
+froze it again after an intentional thaw. Production peer filtering excluded
+that traffic. Test event `dcb7856b-35fb-40e0-86b3-8ec0856b89c2` reached Prefect;
+`bandwidth warning -> discord` recorded action execution
+`2145f9b8-9794-43cc-8dc6-16a6d8a4693e`. Its labeled test evidence also arrived
+in Logfire. A production service restart retained accounting state and left the
+three manually paused DeepSeek processes stopped.

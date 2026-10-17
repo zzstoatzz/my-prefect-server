@@ -61,6 +61,12 @@ try:
     assert [a["unit"] for a in actions] == [unit], actions
     watchdog.enforce(state, actions, time.time())
     assert unit in state["paused"]
+    event_count = len(state["outbox"])
+    watchdog.enforce(state, actions, time.time())
+    assert len(state["outbox"]) == event_count
+    subprocess.run(["systemctl", "--user", "thaw", unit], check=True)
+    watchdog.enforce(state, actions, time.time())
+    assert len(state["outbox"]) == event_count + 1
     production = watchdog.collect()[0]
     assert not any(value["group"].endswith("/" + unit) for value in production.values())
     with tempfile.TemporaryDirectory() as directory:
@@ -68,6 +74,31 @@ try:
         watchdog.save(path, state)
         reloaded = json.loads(path.read_text())
         assert unit in reloaded["paused"]
+    if "--publish" in sys.argv:
+        import httpx
+        import logfire
+
+        base = os.environ["PREFECT_API_URL"].rstrip("/")
+        auth = httpx.BasicAuth(*os.environ["PREFECT_API_AUTH_STRING"].split(":", 1))
+        with httpx.Client(auth=auth, timeout=5) as client:
+            response = client.get(
+                f"{base}/block_types/slug/secret/block_documents/name/logfire-server-write-token",
+                params={"include_secrets": "true"},
+            )
+            response.raise_for_status()
+            logfire.configure(
+                token=response.json()["data"]["value"],
+                service_name="bandwidth-watchdog",
+                console=False,
+            )
+            item = state["outbox"][-1]
+            item["payload"]["summary"] = (
+                f"TEST PASSED: bandwidth watchdog froze disposable service after {actions[0]['bytes']} loopback bytes at lowered test thresholds. No real overage; no operator action needed. DeepSeek remains paused."
+            )
+            item["payload"]["test"] = True
+            state["outbox"] = [item]
+            watchdog.flush(state, client, base)
+            print(json.dumps({"published_test_event": item["id"]}))
     print(
         json.dumps(
             {

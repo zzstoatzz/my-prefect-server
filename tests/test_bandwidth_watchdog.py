@@ -145,3 +145,19 @@ def test_duplicate_monitor_lock(tmp_path):
         )
         assert result.returncode != 0
         assert b"BlockingIOError" in result.stderr
+
+
+def test_sampling_gap_does_not_assign_historical_bytes_to_current_window():
+    state = {}
+    advance(state, sockets(100), {}, "boot", 1800000000, CONFIG)
+    actions = advance(state, sockets(1000000), {}, "boot", 1800000100, CONFIG)
+    assert actions == []
+    assert state["month_tcp_bytes"] == 0
+    assert state["outbox"] == []
+
+
+def test_finished_transfer_does_not_freeze_an_inactive_unit():
+    state = {}
+    advance(state, sockets(0), {}, "boot", 1800000000, CONFIG)
+    assert advance(state, sockets(400), {}, "boot", 1800000005, CONFIG)
+    assert advance(state, {}, {}, "boot", 1800000010, CONFIG) == []

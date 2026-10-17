@@ -161,11 +161,10 @@ def advance(
             alerts.append(event(kind, {**summary, "summary": summary_text}, now))
     state["summary"] = summary
     actions = []
+    state.setdefault("paused", {})
     for unit in config["pause_units"]:
         group = f"/user.slice/user-{os.getuid()}.slice/user@{os.getuid()}.service/app.slice/{unit}"
-        if totals.get(group, 0) >= config["pause_bytes_1h"] and unit not in state.setdefault(
-            "paused", {}
-        ):
+        if group in groups and totals.get(group, 0) >= config["pause_bytes_1h"]:
             actions.append({"unit": unit, "bytes": totals[group]})
     state.setdefault("outbox", []).extend(alerts)
     return actions
@@ -183,6 +182,15 @@ def save(path: Path, state: dict) -> None:
 def enforce(state: dict, actions: list[dict], now: float) -> None:
     for action in actions:
         unit = action["unit"]
+        current = subprocess.run(
+            ["systemctl", "--user", "show", unit, "--property=FreezerState", "--value"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=True,
+        )
+        if current.stdout.strip() == "frozen" and unit in state["paused"]:
+            continue
         result = subprocess.run(
             ["systemctl", "--user", "freeze", unit],
             capture_output=True,
