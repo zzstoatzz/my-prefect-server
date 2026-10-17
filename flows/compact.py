@@ -55,8 +55,12 @@ never assume gender from a name or handle.
 """
 
 
-class ByObservationsHash(CachePolicy):
-    """Cache compact result by handle + observations content hash."""
+class BySummaryInputs(CachePolicy):
+    """Cache a summary until its observations, interactions, or profile change.
+
+    stats_text is left out: its recency score moves every hourly run and would
+    resynthesize every user each time.
+    """
 
     def compute_key(
         self,
@@ -69,8 +73,17 @@ class ByObservationsHash(CachePolicy):
         observations_text = inputs.get("observations_text")
         if not handle or not observations_text:
             return None
-        h = hashlib.md5(observations_text.encode()).hexdigest()[:12]
-        return f"compact/haiku-5-5/{handle}/{h}"
+        profile = inputs.get("bsky_profile") or {}
+        material = "\x1f".join(
+            (
+                observations_text,
+                inputs.get("interactions_text") or "",
+                profile.get("display_name") or "",
+                profile.get("bio") or "",
+            )
+        )
+        h = hashlib.md5(material.encode()).hexdigest()[:12]
+        return f"compact/haiku-5-5/v2/{handle}/{h}"
 
 
 @task
@@ -175,8 +188,8 @@ def _format_stats(profile: dict[str, Any]) -> str:
 
 
 @task(
-    cache_policy=ByObservationsHash(),
-    cache_expiration=timedelta(hours=4),
+    cache_policy=BySummaryInputs(),
+    cache_expiration=timedelta(days=7),
     persist_result=True,
     result_serializer="json",
     retries=3,
@@ -191,7 +204,7 @@ async def synthesize_summary(
     api_key: str,
     bsky_profile: dict[str, str] | None = None,
 ) -> str:
-    """LLM synthesis of a relationship summary. Cached by observations hash."""
+    """LLM synthesis of a relationship summary. Cached by its inputs."""
     model = AnthropicModel("claude-haiku-5-5", provider=AnthropicProvider(api_key=api_key))
     # compact iterates over top authors; the SYSTEM_PROMPT is constant across
     # the per-user loop, so caching it once and reusing on every call is the

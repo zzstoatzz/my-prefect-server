@@ -504,7 +504,7 @@ class ByClusterContentHash(CachePolicy):
     cluster's evidence + anchors don't change AND the rubric hasn't changed,
     the candidate doesn't need to be regenerated. Including RUBRIC_HASH in
     the key means any rubric edit naturally invalidates all cached results
-    — no manual cache clear needed. Mirrors flows/compact.py:ByObservationsHash.
+    — no manual cache clear needed. Mirrors flows/compact.py:BySummaryInputs.
     """
 
     def compute_key(
