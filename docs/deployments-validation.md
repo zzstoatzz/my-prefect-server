@@ -98,7 +98,7 @@ pass before enabling compact publishing in the registered deployment.
 For the real converter integration test, set `TYPEAHEAD_COMPACTION_SOURCE` to
 the typeahead release checkout and run `tests/test_typeahead_compaction.py`.
 
-The local rollout integration also preserves the deployed quiet-build supervisor,
+The local rollout integration also preserves the historical quiet-build supervisor,
 process-group cancellation, and longer build deadlines from `d776dbd`. Conversion
 and publication use the same supervisor when `INDEX_QUIET=1`; the selected
 typeahead checkout must contain `scripts/snapshot_compaction/quiet.py`. This
@@ -121,3 +121,12 @@ retry, unchanged legacy source bytes, and rejection of an existing generation
 with a mismatched watermark. This used a synthetic fixture and local channel,
 not production publication or a complete scheduled build. See
 [typeahead-builder-host-integration.json](typeahead-builder-host-integration.json).
+
+On 2026-10-17, `codex/typeahead-compaction` incorporated current main through
+`523b0fe`, preserving the memory-synthesis change and current deployment loading
+configuration. All 16 typeahead converter/pruning/retry tests passed, including
+the real native converter; static deployment validation reported zero errors.
+These are local checks, not evidence of scheduled production publication. The
+registered typeahead deployment still has empty parameters and does not set
+`INDEX_QUIET`; its active cron is `0 9 */3 * *`. Deployment registration and
+compact publication remain gated on the serving cutover.

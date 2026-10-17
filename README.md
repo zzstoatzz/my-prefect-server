@@ -136,3 +136,8 @@ just push                                 # github first (installs come from the
 ## license
 
 [MIT](LICENSE)
+
+Typeahead compact publication is prepared on an isolated branch and remains
+unshipped as of 2026-10-17. Its parameter defaults to SQLite; see the
+[deployment validation notes](docs/deployments-validation.md#typeahead-compact-snapshots--local-implementation-2026-10-08)
+for integration evidence and rollout gates.
