@@ -153,3 +153,13 @@ container image pull returned a missing Content-Length error. Registration used
 the repository CLI against the verified live server after local checks passed;
 no CI success is claimed. The scheduled publication, admission, and cleanup
 remain outstanding in the typeahead cutover runbook.
+
+## CI execution environment
+
+The deployment workflow uses Spindle's NixOS microVM engine with explicit Nix
+packages. The check and registration steps retain the same validation gates.
+On October 17, Docker on HeavyPad rejected the Nixery registry manifest because
+its HEAD response omitted Content-Length. A direct pull reproduced the failure;
+GET returned a valid manifest. The microVM engine provisions dependencies through
+Nix and avoids this failing OCI registry path. Verification requires a completed
+CI run through registration, not merely successful VM creation.

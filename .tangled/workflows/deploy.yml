@@ -2,24 +2,17 @@ when:
   - event: ["push"]
     branch: main
 
-engine: nixery
+engine: microvm
+image: nixos
 
 dependencies:
-  nixpkgs:
-    - uv
-    - python314
-    - bun
-    # ruff and ty ship as standalone binaries on PyPI, built against the
-    # manylinux loader path, which the nixery image does not have. the nix
-    # packages run; the wheels fail to spawn.
-    - ruff
-    - ty
-    # duckdb, numpy, and friends are wheels linked against libstdc++ and
-    # libgomp, which only gcc's lib output provides in this image
-    - stdenv.cc.cc.lib
-    # git: the deploy pins the package install to the commit being deployed,
-    # which means reading HEAD out of the workspace checkout
-    - git
+  - uv
+  - python314
+  - bun
+  - ruff
+  - ty
+  - stdenv.cc.cc.lib
+  - git
 
 environment:
   PREFECT_API_URL: "https://prefect-server.waow.tech/api"

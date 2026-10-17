@@ -145,3 +145,7 @@ the scheduled publication itself remains to be verified. The flow
 function still defaults to SQLite for callers without deployment parameters; see the
 [deployment validation notes](docs/deployments-validation.md#typeahead-compact-snapshots--local-implementation-2026-10-08)
 for integration evidence and rollout gates.
+
+CI runs the full check and deployment registration workflow in a Spindle NixOS
+microVM. See [deployment validation](docs/deployments-validation.md#ci-execution-environment)
+for the execution environment and required gates.
