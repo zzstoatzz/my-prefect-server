@@ -142,3 +142,14 @@ secret-block references, loading mode, and other deployments remain unchanged.
 Registration and the next scheduled build still require verification. The serving
 replacement remains pinned to its protected checkpoint until the root compact
 publication is verified and admitted; the old backend remains available for rollback.
+
+Registration was verified on October 17 at 19:44 UTC with package pin `e9c62cd`,
+compact format, the qualified source tag, `INDEX_QUIET=0`, unchanged cron, and
+concurrency 1 / CANCEL_NEW. The scheduler replaced the old queued runs; the next
+run at October 19 09:00 UTC contains the compact parameters. The complete local
+check passed 742 tests (3 skipped), lint, formatting, type checks, and web checks.
+Tangled CI and one explicit retry failed before executing checks because the
+container image pull returned a missing Content-Length error. Registration used
+the repository CLI against the verified live server after local checks passed;
+no CI success is claimed. The scheduled publication, admission, and cleanup
+remain outstanding in the typeahead cutover runbook.

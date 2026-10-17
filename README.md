@@ -140,7 +140,8 @@ just push                                 # github first (installs come from the
 
 Typeahead compact publication configuration selects the qualified
 `compact-candidate-cc2d5a1` source tag after the October 17 serving cutover.
-Registration and the next scheduled publication remain to be verified. The flow
+The registered deployment and October 19 queued run select compact format;
+the scheduled publication itself remains to be verified. The flow
 function still defaults to SQLite for callers without deployment parameters; see the
 [deployment validation notes](docs/deployments-validation.md#typeahead-compact-snapshots--local-implementation-2026-10-08)
 for integration evidence and rollout gates.
