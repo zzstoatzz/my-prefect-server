@@ -622,3 +622,7 @@ gardener-status:
 # Install a committed, locked worker release when its VM inventory is empty.
 gardener-install revision="HEAD":
     bash deploy/gardener/install-worker.sh '{{revision}}'
+
+# Deploy the committed bandwidth monitor without network dependency downloads.
+deploy-bandwidth-watchdog:
+    ./scripts/deploy_bandwidth_watchdog.sh
