@@ -1,3 +1,5 @@
+import os
+
 from mps.pull_comments import PULL_PREFIX
 from prefect.testing.utilities import prefect_test_harness
 
@@ -41,7 +43,7 @@ def test_new_round_patch_is_self_contained(tmp_path):
         "GIT_AUTHOR_EMAIL": "t@t",
         "GIT_COMMITTER_NAME": "t",
         "GIT_COMMITTER_EMAIL": "t@t",
-        "PATH": "/usr/bin:/bin:/opt/homebrew/bin",
+        "PATH": os.environ["PATH"],
     }
 
     def git(*args, cwd):

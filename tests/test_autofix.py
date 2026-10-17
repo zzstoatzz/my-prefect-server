@@ -1,3 +1,4 @@
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -158,7 +159,7 @@ def test_checkout_as_of_picks_commit_before_run(tmp_path, monkeypatch):
         "GIT_AUTHOR_EMAIL": "t@t",
         "GIT_COMMITTER_NAME": "t",
         "GIT_COMMITTER_EMAIL": "t@t",
-        "PATH": "/usr/bin:/bin:/opt/homebrew/bin",
+        "PATH": os.environ["PATH"],
     }
     shas = []
     for i, date in enumerate(["2026-01-01T00:00:00Z", "2026-01-03T00:00:00Z"]):
@@ -322,7 +323,7 @@ def test_recent_changes_lists_commits_main_gained_after_revision(tmp_path):
         "GIT_AUTHOR_EMAIL": "t@x",
         "GIT_COMMITTER_NAME": "t",
         "GIT_COMMITTER_EMAIL": "t@x",
-        "PATH": "/usr/bin:/bin",
+        "PATH": os.environ["PATH"],
     }
 
     def git(*args):
