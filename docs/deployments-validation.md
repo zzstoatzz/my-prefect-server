@@ -123,8 +123,10 @@ not production publication or a complete scheduled build. See
 [typeahead-builder-host-integration.json](typeahead-builder-host-integration.json).
 
 On 2026-10-17, `codex/typeahead-compaction` incorporated current main through
-`523b0fe`, preserving the memory-synthesis change and current deployment loading
-configuration. All 16 typeahead converter/pruning/retry tests passed, including
+`2e743f3`, preserving the deployed memory-synthesis, inbox, Redis, and bandwidth
+work and current deployment loading configuration. All 16 typeahead
+converter/pruning/retry tests passed (15 in the suite, then the explicitly enabled
+converter case), including
 the real native converter; static deployment validation reported zero errors.
 These are local checks, not evidence of scheduled production publication. The
 registered typeahead deployment still has empty parameters and does not set
