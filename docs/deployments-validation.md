@@ -132,3 +132,13 @@ These are local checks, not evidence of scheduled production publication. The
 registered typeahead deployment still has empty parameters and does not set
 `INDEX_QUIET`; its active cron is `0 9 */3 * *`. Deployment registration and
 compact publication remain gated on the serving cutover.
+
+On October 17 the compact serving cutover passed production freshness, alias, and
+full smoke checks. Nate accepted the documented warm and legacy-control performance
+exceptions after the matched reload gate passed. The source configuration now
+selects `snapshot_format: compact` and immutable source tag
+`compact-candidate-cc2d5a1` for `typeahead-index`; the cron, concurrency policy,
+secret-block references, loading mode, and other deployments remain unchanged.
+Registration and the next scheduled build still require verification. The serving
+replacement remains pinned to its protected checkpoint until the root compact
+publication is verified and admitted; the old backend remains available for rollback.

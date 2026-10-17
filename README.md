@@ -138,7 +138,9 @@ just push                                 # github first (installs come from the
 
 [MIT](LICENSE)
 
-Typeahead compact publication is prepared on an isolated branch and remains
-unshipped as of 2026-10-17. Its parameter defaults to SQLite; see the
+Typeahead compact publication configuration selects the qualified
+`compact-candidate-cc2d5a1` source tag after the October 17 serving cutover.
+Registration and the next scheduled publication remain to be verified. The flow
+function still defaults to SQLite for callers without deployment parameters; see the
 [deployment validation notes](docs/deployments-validation.md#typeahead-compact-snapshots--local-implementation-2026-10-08)
 for integration evidence and rollout gates.

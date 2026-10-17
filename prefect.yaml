@@ -521,6 +521,9 @@ deployments:
     pull: *cached_home
     tags: [publish]
     entrypoint: flows/typeahead_index.py:typeahead_index
+    parameters:
+      ref: compact-candidate-cc2d5a1
+      snapshot_format: compact
     # the typeahead snapshot builder (Zig MODE=indexer), lifted off Fly onto the
     # home box. Pure batch: reads Turso → builds prefix index on the NVMe →
     # uploads to R2 → exits; App B promotes it. No SLA — a late/failed run just

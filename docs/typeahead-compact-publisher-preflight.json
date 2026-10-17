@@ -1,0 +1,19 @@
+{
+  "checked_at": "2026-10-17",
+  "command": "TYPEAHEAD_COMPACTION_SOURCE=<qualified checkout> just check",
+  "python": {
+    "passed": 742,
+    "skipped": 3,
+    "warnings": 9
+  },
+  "lint": "passed",
+  "format": "passed",
+  "types": "passed",
+  "web_check": "passed; zero errors or warnings",
+  "web_lint": "passed",
+  "typeahead_tag": "compact-candidate-cc2d5a1",
+  "tag_commit": "cc2d5a1439793c050ac20404f97edbb20df6113e",
+  "source_access": "Tangled HTTPS tag resolved on HeavyPad",
+  "source_fallback": "Configured GitHub repository returned not found; not counted as redundant access",
+  "scope": "Pre-registration checks; does not prove scheduled publication"
+}

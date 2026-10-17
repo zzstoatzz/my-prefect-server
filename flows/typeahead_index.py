@@ -407,6 +407,8 @@ def typeahead_index(
     if snapshot_format == "compact":
         compact_target()
         source = run_indexer(binary, local_only=True)
+        if source is None:
+            raise RuntimeError("local index build did not return a source generation")
         publish_compact(repo, source)
     else:
         run_indexer(binary)
