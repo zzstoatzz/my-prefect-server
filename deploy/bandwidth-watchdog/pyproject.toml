@@ -1,0 +1,5 @@
+[project]
+name = "bandwidth-watchdog-runtime"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = ["httpx==0.28.1", "logfire==5.1.1"]

@@ -1,0 +1,15 @@
+[Unit]
+Description=Internet transfer budgets and Prefect bandwidth events
+
+[Service]
+WorkingDirectory=%h
+EnvironmentFile=%h/.config/prod-worker/env
+ExecStart=%h/bandwidth-watchdog/current/.venv/bin/python %h/bandwidth-watchdog/current/watchdog.py --config %h/.config/bandwidth-watchdog/config.json --state %h/.local/state/bandwidth-watchdog/state.json
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+MemoryMax=256M
+
+[Install]
+WantedBy=default.target
