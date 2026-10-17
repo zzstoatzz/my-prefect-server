@@ -32,11 +32,11 @@ steps:
       ulimit -n 8192
       for lib in /nix/store/*-gcc-*-lib/lib; do export LD_LIBRARY_PATH="$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; done
       uv run scripts/validate_deployments.py
-      uv sync --extra dagster
+      uv sync --extra dagster --extra inbox
       ruff check .
       ruff format --check .
       ty check
-      uv run --extra dagster pytest -q -x
+      uv run --extra dagster --extra inbox pytest -q -x
       cd web
       bun install --frozen-lockfile
       bun run check
