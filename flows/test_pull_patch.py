@@ -1,8 +1,9 @@
-"""Run proposed repository tests inside a Sprite without merge credentials."""
+"""Run proposed repository tests inside an isolated VM without merge credentials."""
 
 import hashlib
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -16,18 +17,33 @@ from prefect.artifacts import create_table_artifact
 from flows.pi_pr import CLONE_URL, OWNER, Repo
 
 
+def test_script(repo: str) -> str:
+    """the repo's own test invocation, as its CI runs it."""
+    if repo == "bot":
+        return (
+            "export PATH=/usr/local/bin:$PATH BLUESKY_HANDLE=ci.invalid BLUESKY_PASSWORD=ci; "
+            "/usr/local/bin/uv sync --frozen && /usr/local/bin/uv run pytest -q"
+            " && cd web && bun install --frozen-lockfile && bun run check && bun run test"
+        )
+    if repo == "my-prefect-server":
+        # .tangled/workflows/deploy.yml runs the suite with the dagster extra;
+        # tests/test_dagster_hub.py does not import without it.
+        return "/usr/local/bin/uv sync --extra dagster && /usr/local/bin/uv run --extra dagster pytest -q"
+    return "/usr/local/bin/uv sync && /usr/local/bin/uv run pytest -q"
+
+
 @flow(name="test-pull-patch", log_prints=True, timeout_seconds=2400)
 def test_pull_patch(repo: Repo, base: str, patch: str) -> dict:
     if not re.fullmatch(r"[0-9a-f]{40}", base):
         raise ValueError("Tests require an exact base commit")
     if os.geteuid() != 0 or not Path("/usr/local/bin/uv").is_file():
-        raise RuntimeError("Tests require the prepared Sprite runtime")
-    subprocess.run(["apt-get", "update", "-qq"], check=True, timeout=120)
-    subprocess.run(
-        ["apt-get", "install", "-y", "--no-install-recommends", "bubblewrap"],
-        check=True,
-        timeout=180,
-    )
+        raise RuntimeError("Tests require the prepared VM runtime")
+    if shutil.which("bwrap") is None:
+        raise RuntimeError("The test image must include bubblewrap")
+    if repo == "bot" and not all(
+        Path(f"/usr/local/bin/{tool}").is_file() for tool in ("bun", "node")
+    ):
+        raise RuntimeError("The bot test image must include Bun and Node")
     with TemporaryDirectory(prefix="patch-test-") as directory:
         root = Path(directory)
         workspace, home, tools = root / "repo", root / "home", root / "tools"
@@ -57,10 +73,7 @@ def test_pull_patch(repo: Repo, base: str, patch: str) -> dict:
         for path in [*tree_paths(workspace), home]:
             os.chown(path, AGENT_UID, AGENT_UID, follow_symlinks=False)
         # No inference socket, orchestration environment, or merge key is mounted.
-        script = "/usr/local/bin/uv sync" + (" --frozen" if repo == "bot" else "")
-        script += " && /usr/local/bin/uv run pytest -q"
-        if repo == "bot":
-            script = "export BLUESKY_HANDLE=ci.invalid BLUESKY_PASSWORD=ci; " + script
+        script = test_script(repo)
         command = sandbox_command(
             workspace=workspace,
             home=home,

@@ -54,7 +54,7 @@ import math
 import os
 import time
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -209,6 +209,62 @@ def _avatar_cid(avatar_url: str) -> str:
     return tail.split("@", 1)[0]
 
 
+PROGRESS_EVERY_S = 60.0
+
+
+def _fmt_duration(seconds: float) -> str:
+    s = max(0, round(seconds))
+    if s < 60:
+        return f"{s}s"
+    if s < 3600:
+        return f"{s // 60}m{s % 60:02d}s"
+    if s < 86400:
+        return f"{s // 3600}h{s % 3600 // 60:02d}m"
+    return f"{s // 86400}d{s % 86400 // 3600:02d}h"
+
+
+def _fmt_queue_head(updated_at: int, now: float) -> str:
+    """the keyset cursor as a position in time: the queue is ordered by
+    updated_at, so the newest row a run has reached says how far the walk is
+    from the present, which is the only progress measure that needs no COUNT
+    over a multi-million-row queue."""
+    if updated_at <= 0:
+        return "queue head not reached"
+    at = datetime.fromtimestamp(updated_at, UTC).strftime("%Y-%m-%d %H:%MZ")
+    return f"queue head {at} ({_fmt_duration(now - updated_at)} behind now)"
+
+
+def _fmt_progress(
+    processed: int, not_found: int, hidden: int, rate: float, updated_at: int, now: float
+) -> str:
+    """sized for a phone-width log view: found is implied, zero counts are
+    dropped, and the queue head is only its lag (the summary carries the date)."""
+    misses = [f"{n:,} {what}" for n, what in ((not_found, "not found"), (hidden, "hidden")) if n]
+    line = f"{processed:,} actors at {rate:.0f}/s"
+    if misses:
+        line += f" ({', '.join(misses)})"
+    if updated_at > 0:
+        line += f", queue {_fmt_duration(now - updated_at)} behind"
+    return line
+
+
+def _fmt_counts(processed: int, found: int, not_found: int, hidden: int) -> str:
+    parts = [f"{found:,} found", f"{not_found:,} not found"]
+    if hidden:
+        parts.append(f"{hidden:,} hidden")
+    return f"{processed:,} actors ({', '.join(parts)})"
+
+
+def _fmt_remaining(processed: int, limit: int | None, rate: float, budget_left: float) -> str:
+    """what bounds the run: the count cap when one is set and will be reached
+    inside the budget at the current rate, otherwise the time budget."""
+    if limit is not None and rate > 0:
+        eta = (limit - processed) / rate
+        if eta <= budget_left:
+            return f"{processed / limit:.0%} of {limit:,}, ~{_fmt_duration(eta)} left"
+    return f"{_fmt_duration(budget_left)} left"
+
+
 @flow(name="typeahead-enrich-backfill", log_prints=True, timeout_seconds=14400)
 def typeahead_enrich_backfill(
     limit: int | None = 100,
@@ -252,19 +308,39 @@ def typeahead_enrich_backfill(
     call_interval = GETPROFILES_MAX / max(dids_per_second, 0.1)
     deadline = time.monotonic() + budget_seconds
     budget_spent = False
+    drained = False
+    started = last_log = time.monotonic()
+    last_log_processed = 0
+    yielded_s = 0.0
+
+    logger.info(
+        "%s %s, oldest first, at %g DIDs/s with a %s budget",
+        "dry run over" if dry_run else "enriching",
+        "the whole queue" if limit is None else f"up to {limit:,} actors",
+        dids_per_second,
+        _fmt_duration(budget_seconds),
+    )
 
     def flush_writes() -> bool:
-        nonlocal pending_writes, budget_spent
+        nonlocal pending_writes, budget_spent, yielded_s
         while pending_writes:
             # Check before each write: appview pacing alone does not protect
             # the shared writer. Unwritten rows remain in the durable queue.
+            yield_started = None
             while not _ingestion_ready(http, time.time()):
+                if yield_started is None:
+                    yield_started = time.monotonic()
+                    logger.info("ingestion is busy or stale; pausing writes until it recovers")
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
+                    yielded_s += time.monotonic() - yield_started
                     budget_spent = True
                     return False
-                logger.info("yielding bulk enrichment to ingestion")
                 time.sleep(min(30, remaining))
+            if yield_started is not None:
+                waited = time.monotonic() - yield_started
+                yielded_s += waited
+                logger.info("ingestion recovered after %s; resuming writes", _fmt_duration(waited))
             if time.monotonic() >= deadline:
                 budget_spent = True
                 return False
@@ -292,7 +368,7 @@ def typeahead_enrich_backfill(
             ],
         )[0].get("rows", [])
         if not page:
-            logger.info("queue drained at updated_at=%s rowid=%s", cur_updated, cur_rowid)
+            drained = True
             break
         rows = [(int(r[0]["value"]), r[1]["value"]) for r in page]
         cur_updated, cur_rowid = int(page[-1][2]["value"]), rows[-1][0]
@@ -400,25 +476,45 @@ def typeahead_enrich_backfill(
             if elapsed < call_interval:
                 time.sleep(call_interval - elapsed)
 
-        logger.info(
-            "progress: processed=%d found=%d not_found=%d hidden=%d cursor=(%d,%d)",
-            processed,
-            found,
-            not_found,
-            hidden_set,
-            cur_updated,
-            cur_rowid,
-        )
+        now = time.monotonic()
+        if now - last_log >= PROGRESS_EVERY_S:
+            rate = (processed - last_log_processed) / (now - last_log)
+            logger.info(
+                "%s, %s",
+                _fmt_progress(processed, not_found, hidden_set, rate, cur_updated, time.time()),
+                _fmt_remaining(processed, limit, rate, deadline - now),
+            )
+            last_log, last_log_processed = now, processed
 
     if not dry_run and not budget_spent:
         flush_writes()
 
+    elapsed_s = time.monotonic() - started
     if budget_spent:
-        logger.info("budget of %.0fs spent; stopping with queue remaining", budget_seconds)
+        stopped = "budget spent with queue remaining"
+    elif drained:
+        stopped = "queue drained"
+    else:
+        stopped = "limit reached"
+    logger.info(
+        "%s in %s (%s): %s at %.0f/s overall, %s%s",
+        "dry run finished" if dry_run else "finished",
+        _fmt_duration(elapsed_s),
+        stopped,
+        _fmt_counts(processed, found, not_found, hidden_set),
+        processed / elapsed_s if elapsed_s > 0 else 0.0,
+        _fmt_queue_head(cur_updated, time.time()),
+        f", {_fmt_duration(yielded_s)} paused for ingestion" if yielded_s else "",
+    )
+    if dry_run and samples:
+        logger.info("samples:\n%s", "\n".join(samples))
 
     summary = {
         "dry_run": dry_run,
         "budget_spent": budget_spent,
+        "drained": drained,
+        "elapsed_seconds": round(elapsed_s),
+        "yielded_seconds": round(yielded_s),
         "processed": processed,
         "found": found,
         "not_found": not_found,
@@ -426,7 +522,6 @@ def typeahead_enrich_backfill(
         "queue_cursor": {"updated_at": cur_updated, "rowid": cur_rowid},
         "samples": samples,
     }
-    logger.info("done: %s", json.dumps(summary, indent=2))
     return summary
 
 

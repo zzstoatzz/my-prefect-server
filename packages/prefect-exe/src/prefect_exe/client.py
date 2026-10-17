@@ -122,10 +122,19 @@ class ExeClient:
                 return vm
         raise NotFound(name)
 
-    async def create(self, name: str, *, tags: list[str], image: str | None = None) -> VM:
+    async def create(
+        self,
+        name: str,
+        *,
+        tags: list[str],
+        image: str | None = None,
+        integrations: tuple[str, ...] = (),
+    ) -> VM:
         command = f"new --name={name} --tag={','.join(tags)} --no-email --json"
         if image:
             command += f" --image={shlex.quote(image)}"
+        for integration in integrations:
+            command += f" --integration={shlex.quote(integration)}"
         await self._ssh(CONTROL_HOST, command, timeout=120)
         return await self.get(name)
 
@@ -137,6 +146,11 @@ class ExeClient:
         except NotFound:
             return
         raise ExeError(0, f"VM {name} still exists after deletion")
+
+    async def detach(self, name: str, integration: str) -> None:
+        await self._ssh(
+            CONTROL_HOST, f"integrations detach {shlex.quote(integration)} vm:{shlex.quote(name)}"
+        )
 
     async def run(
         self, vm: VM, command: str, *, stdin: bytes | None = None, timeout: float = 60

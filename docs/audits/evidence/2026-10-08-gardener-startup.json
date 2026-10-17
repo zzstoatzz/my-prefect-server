@@ -1,0 +1,18 @@
+{
+  "date": "2026-10-08",
+  "image": "gardener-registry.exe.xyz/gardener@sha256:64ca9bc711c077a0f9911826a51d4ad39bc2c0d43a1b6234570d6ab1e55a07f6",
+  "stages": {
+    "create": 2.992,
+    "bootstrap": 2.793,
+    "repeat_bootstrap": 0.783,
+    "prepared_agent_tools": 1.639,
+    "service_start": 0.757
+  },
+  "bootstrap": {
+    "image_verify": 1.6734065229999997
+  },
+  "disk": "317M\t/root/.cache/uv\n465M\t/opt/gardener/venv\n123M\t/opt/python\n349M\t/opt/phi-agent\n/opt/python/cpython-3.13.7-linux-x86_64-gnu/bin/python3.13\n",
+  "runtime_seconds": 0.059519052505493164,
+  "missing_prefect_record_detach": "403",
+  "deleted": true
+}

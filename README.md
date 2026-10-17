@@ -56,6 +56,53 @@ prefect 3 python.
 The hub dbt models run in [Dagster on HeavyPad](deploy/dagster/README.md). Prefect
 retains ingestion/classification and a success-gated handoff to downstream flows.
 
+## gardener
+
+[gardener](https://hub.waow.tech/gardener) opens on a spatial execution map:
+Prefect and heavypad, current exe.dev machines, and recent outcomes. Counts show
+workers online, machines, active work, and requests needing attention. Select an
+object to inspect it; Work history opens the original request and saved answer.
+Execution timings and cleanup remain available inside each request. Sign in through the hub’s existing
+Cloudflare Access login; the origin verifies its signed application token. The hub queries
+with `GARDENER_API_AUTH_STRING` when configured; production uses the read-only API
+credential. No execution depends on an open page.
+
+The worker keeps bounded attempt observations in SQLite on heavypad and publishes
+one replaceable Prefect artifact. Missing or stale observations remain visible.
+Flow completion and verified VM deletion are separate outcomes.
+
+```sh
+just gardener-status                       # inspect the installed release
+just gardener-image                        # build the locked runtime image
+just gardener-probe --image REGISTRY/IMAGE --prepare-agent  # time startup and test two VMs
+just gardener-install COMMIT               # install a committed worker release
+```
+
+`investigate`, `autofix-revise`, and `test-pull-patch` use digest-pinned images
+from the private `gardener-registry.exe.xyz` registry. Each image preserves its
+deployment's flow code and locked dependencies. Job variables use `environment_mode: image` and
+empty `requirements` / `local_packages`, so jobs do not install dependencies.
+The dedicated `gardener-exe` worker on heavypad manages these VMs; it is separate
+from the `home-pool` process worker. The registry is a persistent infrastructure
+VM, outside the worker's disposable-job inventory. Each job VM receives the
+`llm` integration. Pi uses a local sandbox relay to call Exe directly: OpenAI
+Responses uses the connected ChatGPT account; Anthropic Messages uses Exe credits.
+The Exe worker no longer issues remote inference grants. Execution timeouts,
+model selection, isolated agent files/network, and cleanup remain enforced.
+Cleanup detaches model access before deleting the VM. The old gateway still
+serves Phi workflow requests and the retained Sprites path.
+See the [registry and rollback guide](deploy/gardener/REGISTRY.md) and
+[verified rollout](docs/archive/2026-10-08-gardener-images.md).
+The [startup investigation](docs/spikes/gardener-startup.md) separates image
+preparation, worker placement, and job isolation, with live probe measurements.
+
+The design borrows durable execution and detachable clients from
+[Albedo](https://tangled.org/okami.mom/albedo), and separation of orchestration from
+runtime observation from Nebula. Prefect remains the scheduler; neither an agent
+graph engine nor another dashboard database is needed. The image follows
+[uv's Docker guidance](https://docs.astral.sh/uv/guides/integration/docker/): pinned
+uv, a locked non-editable environment, and dependency layers before source.
+
 ## develop
 
 ```sh

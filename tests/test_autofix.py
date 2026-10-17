@@ -1,7 +1,8 @@
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -29,6 +30,12 @@ class FakeRun:
         self.parameters = {}
         self.start_time = self.end_time = None
         self.created = datetime(2026, 9, 9, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def no_skill_clones(monkeypatch):
+    monkeypatch.setattr(autofix, "fetch_skills", lambda workdir: [])
+    monkeypatch.setattr(autofix, "prior_attempt", AsyncMock(return_value=None))
 
 
 def ctx(dep_name):
@@ -241,7 +248,7 @@ def test_propose_for_allowlist_turns_proposing_on(monkeypatch):
     monkeypatch.setattr(autofix, "screen_prompt", lambda *a, **k: None)
     monkeypatch.setattr(autofix, "secret_sync", lambda name: "k")
 
-    def fake_propose(diagnosis, brief, key, dep_name):
+    def fake_propose(diagnosis, brief, key, dep_name, since=""):
         proposed.append(dep_name)
         return {
             "title": "t",
@@ -263,3 +270,185 @@ def test_propose_for_allowlist_turns_proposing_on(monkeypatch):
         state = autofix.autofix(uuid4(), propose_for=["strata-hourly"], return_state=True)
     assert state.name == "Diagnosed"
     assert proposed == ["strata-hourly"]
+
+
+def test_match_proposal_points_at_open_pull_for_same_sha():
+    def ev(event, occurred, **payload):
+        return SimpleNamespace(event=event, occurred=occurred, payload=payload)
+
+    events = [
+        ev("autofix.proposed", 1, deployment="strata-hourly", sha="abc", pull="p1", pr_url="u1"),
+        ev("autofix.proposed", 2, deployment="strata-hourly", sha="abc", pull="p2", pr_url="u2"),
+        ev("autofix.proposed", 3, deployment="ingest", sha="abc", pull="p3", pr_url="u3"),
+    ]
+    assert autofix.match_proposal(events, "strata-hourly", "abc") == "u2"
+    assert autofix.match_proposal(events, "strata-hourly", "def") is None
+    assert autofix.match_proposal(events, "ingest", "abc") == "u3"
+    events.append(ev("merge.merged", 4, pull="p2"))
+    assert autofix.match_proposal(events, "strata-hourly", "abc") == "u1"
+    assert autofix.match_proposal([], "strata-hourly", "abc") is None
+
+
+def test_second_failure_on_same_sha_does_not_open_another_pull(monkeypatch):
+    async def fake(_):
+        return ctx("strata-hourly")
+
+    async def already_open(dep_name, sha):
+        assert (dep_name, sha) == ("strata-hourly", "abc")
+        return "https://tangled.org/x/pulls/9"
+
+    monkeypatch.setattr(autofix, "gather", fake)
+    monkeypatch.setattr(autofix, "checkout_as_of", lambda cwd, when: "abc")
+    monkeypatch.setattr(autofix, "run_pi", lambda *a, **k: "SUMMARY: x\nbody")
+    monkeypatch.setattr(autofix, "screen_prompt", lambda *a, **k: None)
+    monkeypatch.setattr(autofix, "secret_sync", lambda name: "k")
+    monkeypatch.setattr(autofix, "prior_proposal", already_open)
+    monkeypatch.setattr(
+        autofix, "propose_fix", lambda *a, **k: (_ for _ in ()).throw(AssertionError)
+    )
+    with prefect_test_harness():
+        state = autofix.autofix(uuid4(), propose_for=["strata-hourly"], return_state=True)
+    assert state.name == "Diagnosed"
+    assert "https://tangled.org/x/pulls/9" in state.message
+
+
+def test_recent_changes_lists_commits_main_gained_after_revision(tmp_path):
+    import subprocess
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = {
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@x",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@x",
+        "PATH": "/usr/bin:/bin",
+    }
+
+    def git(*args):
+        return subprocess.run(
+            ["git", *args], cwd=repo, check=True, capture_output=True, text=True, env=env
+        ).stdout.strip()
+
+    git("init", "-q", "-b", "main")
+    (repo / "a").write_text("1")
+    git("add", "a")
+    git("commit", "-q", "-m", "first")
+    first = git("rev-parse", "HEAD")
+    (repo / "a").write_text("2")
+    git("commit", "-q", "-am", "strata: fix the swap")
+    git("checkout", "-q", first)
+    out = autofix.recent_changes(str(repo), first)
+    assert "strata: fix the swap" in out and "first" not in out
+    assert autofix.recent_changes(str(repo), git("rev-parse", "main")) == "none"
+
+
+def test_describe_proposals_shows_each_pull_with_phi_verdict():
+    def ev(occurred, **payload):
+        return SimpleNamespace(event="autofix.proposed", occurred=occurred, payload=payload)
+
+    events = [
+        ev(1, deployment="strata-hourly", pull="p1", pr_url="u1", title="cast it", sha="abc1234"),
+        ev(2, deployment="strata-hourly", pull="p1", pr_url="u1", title="cast it", sha="abc1234"),
+        ev(3, deployment="ingest", pull="p9", pr_url="u9", title="other"),
+    ]
+    verdicts = {"p1": (2, "request-changes", "VERDICT: request-changes\n\nhides the corruption")}
+    text = autofix.describe_proposals(events, "strata-hourly", lambda uri: verdicts[uri])
+    assert text.count("cast it") == 1
+    assert (
+        "round 2, sha abc1234" in text
+        and "phi: request-changes: VERDICT: request-changes hides the corruption" in text
+    )
+    assert "other" not in text
+    assert autofix.describe_proposals(events, "brief", lambda uri: verdicts[uri]) == "  none"
+
+    def broken(uri):
+        raise RuntimeError("pds down")
+
+    assert "verdict unavailable: pds down" in autofix.describe_proposals(
+        events, "strata-hourly", broken
+    )
+
+
+def test_fixed_on_main_diagnosis_skips_the_fix_round(monkeypatch):
+    async def fake(_):
+        return ctx("strata-hourly")
+
+    monkeypatch.setattr(autofix, "gather", fake)
+    monkeypatch.setattr(autofix, "checkout_as_of", lambda cwd, when: "abc")
+    monkeypatch.setattr(
+        autofix, "recent_changes", lambda cwd, sha: "9925475 2026-10-12 strata: name insert columns"
+    )
+    monkeypatch.setattr(
+        autofix,
+        "prior_work",
+        lambda dep: "prior gardener proposals for strata-hourly (last 7 days):\n  none",
+    )
+    monkeypatch.setattr(
+        autofix, "run_pi", lambda *a, **k: "SUMMARY: landed in 992475c\nFIXED-ON-MAIN: 992475c"
+    )
+    monkeypatch.setattr(autofix, "screen_prompt", lambda *a, **k: None)
+    monkeypatch.setattr(autofix, "secret_sync", lambda name: "k")
+    monkeypatch.setattr(
+        autofix, "propose_fix", lambda *a, **k: (_ for _ in ()).throw(AssertionError)
+    )
+    with prefect_test_harness():
+        state = autofix.autofix(uuid4(), propose_for=["strata-hourly"], return_state=True)
+    assert state.name == "Diagnosed"
+    assert "fixed on main: 992475c" in state.message
+
+
+def test_diagnosis_round_gets_the_context_file_and_the_skill(monkeypatch, tmp_path):
+    seen = {}
+
+    async def fake(_):
+        return ctx("strata-hourly")
+
+    def fake_pi(prompt, *, cwd, skills=None, **kw):
+        seen["context"] = Path(cwd, autofix.CONTEXT_FILE).read_text()
+        seen["skills"] = skills
+        return "SUMMARY: x\nbody"
+
+    monkeypatch.setattr(autofix, "gather", fake)
+    monkeypatch.setattr(
+        autofix, "fetch_skills", lambda workdir: [f"{workdir}/skill-gardener-history"]
+    )
+    monkeypatch.setattr(autofix, "checkout_as_of", lambda cwd, when: "abc")
+    monkeypatch.setattr(
+        autofix, "since_section", lambda cwd, sha, dep: f"commits since {sha}: none\nprior: none"
+    )
+    monkeypatch.setattr(autofix, "run_pi", fake_pi)
+    monkeypatch.setattr(autofix, "screen_prompt", lambda *a, **k: None)
+    monkeypatch.setattr(autofix, "secret_sync", lambda name: "k")
+    with prefect_test_harness():
+        state = autofix.autofix(uuid4(), return_state=True)
+    assert state.name == "Diagnosed"
+    assert "commits since abc: none" in seen["context"]
+    assert seen["skills"] and seen["skills"][0].endswith("skill-gardener-history")
+
+
+def test_autofix_events_name_the_failed_run_without_claiming_to_be_it() -> None:
+    run_id = UUID("11111111-1111-4111-8111-111111111111")
+    assert autofix.about_run(run_id, "strata-hourly-9") == [
+        {
+            "prefect.resource.id": f"prefect.flow-run.{run_id}",
+            "prefect.resource.name": "strata-hourly-9",
+            "prefect.resource.role": "about",
+        }
+    ]
+
+
+def test_incident_identity_ignores_request_ids_but_preserves_cause_and_revision():
+    evidence = ctx("classify-emails")
+    evidence["run"].deployment_id = uuid4()
+    evidence["deployment"].job_variables = {"env": {"MPS_PIN": "@abc"}}
+    evidence["run"].state.message = "TypeSafeAPIError: 402 no credits (request_id=req_one)"
+    first = autofix.incident_key(evidence)
+    evidence["run"].id = uuid4()
+    evidence["run"].state.message = "TypeSafeAPIError: 402 no credits (request_id=req_two)"
+    assert autofix.incident_key(evidence) == first
+    evidence["deployment"].job_variables["env"]["MPS_PIN"] = "@def"
+    assert autofix.incident_key(evidence) != first
+    evidence["deployment"].job_variables["env"]["MPS_PIN"] = "@abc"
+    evidence["run"].state.message = "TypeSafeAPIError: 500 unavailable"
+    assert autofix.incident_key(evidence) != first

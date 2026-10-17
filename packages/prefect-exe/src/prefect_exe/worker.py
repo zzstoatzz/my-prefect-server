@@ -5,14 +5,17 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import shlex
+import socket
 import time
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from pathlib import Path
+from typing import Literal
 from uuid import UUID
 
 import anyio
-from prefect.client.schemas.actions import ArtifactCreate
-from prefect.client.schemas.filters import FlowRunFilter, WorkPoolFilter
+from prefect.client.schemas.actions import ArtifactCreate, ArtifactUpdate
+from prefect.client.schemas.filters import ArtifactFilter, FlowRunFilter, WorkPoolFilter
 from prefect.client.schemas.objects import FlowRun
 from prefect.exceptions import (
     Abort,
@@ -23,11 +26,12 @@ from prefect.exceptions import (
 from prefect.states import Crashed
 from prefect.utilities.engine import propose_state
 from prefect.workers.base import BaseJobConfiguration, BaseWorker, BaseWorkerResult
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from . import provider
 from .client import VM, ExeClient, ExeError, NotFound
 from .credentials import ExeCredentials
+from .observations import Attempt, AttemptStore, Stage
 
 RUN_TAG = "flow-run-"
 
@@ -46,6 +50,17 @@ class ExeJobConfiguration(BaseJobConfiguration):
         default=None, description="Container image for the VM; unset uses exe.dev's default."
     )
     working_dir: str = "/home/exedev"
+    environment_mode: Literal["bootstrap", "image"] = "bootstrap"
+
+    @model_validator(mode="after")
+    def validate_image_environment(self):
+        if self.environment_mode == "image" and (
+            not self.image or self.local_packages or self.requirements
+        ):
+            raise ValueError(
+                "Image environments require an image and empty requirements/local_packages"
+            )
+        return self
 
 
 class ExeWorkerResult(BaseWorkerResult):
@@ -63,21 +78,125 @@ class ExeWorker(BaseWorker):
         *args,
         run_environment: Callable[[str, int, FlowRun], Awaitable[dict[str, str]]] | None = None,
         release_environment: Callable[[str], Awaitable[None]] | None = None,
+        observations_path: Path | None = None,
+        integrations: tuple[str, ...] = (),
+        run_integrations: Callable[[FlowRun], tuple[str, ...]] | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self._run_environment = run_environment
+        self._integrations = integrations
+        self._run_integrations = run_integrations
         self._release_environment = release_environment
         self._observer_task = None
+        self._observations = AttemptStore(observations_path) if observations_path else None
+        self._observation_artifact = None
+        self._last_publication = 0.0
+        self._observed_at = None
+        self._observer_error = None
+
+    def _record(self, vm_name: str, **changes) -> None:
+        if self._observations is None:
+            return
+        try:
+            attempt = self._observations.read(vm_name)
+            if attempt is None:
+                now = time.time()
+                attempt = Attempt(
+                    vm=vm_name,
+                    flow_run_id=changes.pop("flow_run_id"),
+                    created_at=changes.pop("created_at", now),
+                    updated_at=now,
+                )
+            for key, value in changes.items():
+                setattr(attempt, key, value)
+            attempt.updated_at = time.time()
+            self._observations.save(attempt)
+        except Exception:
+            self._logger.exception("Could not persist VM observation for %s", vm_name)
+
+    def _record_stage(self, vm_name: str, stage: str, value: Stage) -> None:
+        if self._observations is None or stage == "inspect":
+            return
+        try:
+            attempt = self._observations.read(vm_name)
+            if attempt is None:
+                return
+            attempt.stages[stage] = value
+            attempt.updated_at = time.time()
+            if value.outcome == "failed":
+                attempt.phase = "retained"
+                attempt.error = f"{stage} failed; observer will reconcile"
+            elif stage == "delete" and value.outcome == "completed":
+                attempt.phase = "deleted"
+                attempt.error = None
+            elif value.outcome == "running":
+                phase = {
+                    "create": "creating",
+                    "bootstrap": "bootstrapping",
+                    "service_start": "starting",
+                }
+                if stage in phase:
+                    attempt.phase = phase[stage]
+            self._observations.save(attempt)
+        except Exception:
+            self._logger.exception("Could not persist VM stage for %s", vm_name)
+
+    async def _publish_observations(self) -> None:
+        if self._observations is None or time.monotonic() - self._last_publication < 30:
+            return
+        try:
+            key = f"exe-worker-{self.work_pool.id.hex}"
+            data = {
+                "version": 1,
+                "pool": self.work_pool.name,
+                "worker": self.name,
+                "host": socket.gethostname(),
+                "published_at": time.time(),
+                "observed_at": self._observed_at,
+                "observer_error": self._observer_error,
+                **self._observations.snapshot(),
+            }
+            if self._observation_artifact is None:
+                artifacts = await self.client.read_artifacts(
+                    artifact_filter=ArtifactFilter(key={"any_": [key]}), limit=1
+                )
+                if artifacts:
+                    self._observation_artifact = artifacts[0].id
+            if self._observation_artifact is None:
+                artifact = await self.client.create_artifact(
+                    ArtifactCreate(
+                        key=key,
+                        type="table",
+                        data=[data],
+                        description="exe.dev worker observations",
+                    )
+                )
+                self._observation_artifact = artifact.id
+            else:
+                await self.client.update_artifact(
+                    self._observation_artifact, ArtifactUpdate(data=[data])
+                )
+            self._last_publication = time.monotonic()
+        except ObjectNotFound:
+            self._observation_artifact = None
+        except Exception:
+            self._logger.exception("Could not publish worker observations; execution continues")
 
     async def _measure_stage(self, vm_name: str, stage: str, operation):
         started = time.monotonic()
+        record = Stage(started_at=time.time())
+        self._record_stage(vm_name, stage, record)
         outcome = "failed"
         try:
             result = await operation
             outcome = "completed"
             return result
         finally:
+            record.finished_at = time.time()
+            record.seconds = time.monotonic() - started
+            record.outcome = outcome
+            self._record_stage(vm_name, stage, record)
             self._logger.info(
                 "VM stage vm=%s stage=%s outcome=%s seconds=%.6f",
                 vm_name,
@@ -112,10 +231,29 @@ class ExeWorker(BaseWorker):
     ) -> ExeWorkerResult:
         name = f"{self.vm_prefix}{flow_run.id.hex}-r{flow_run.run_count}"
         tags = [self.ownership, f"{RUN_TAG}{flow_run.id.hex}"]
+        integrations = (
+            self._run_integrations(flow_run) if self._run_integrations else self._integrations
+        )
+        if not set(integrations).issubset(self._integrations):
+            raise ValueError("Run integrations must be configured on the worker")
+        self._record(
+            name,
+            flow_run_id=str(flow_run.id),
+            run_name=flow_run.name,
+            image=configuration.image,
+            timeout_seconds=configuration.timeout_seconds,
+        )
         async with ExeClient(configuration.credentials.identity_file) as client:
             try:
                 vm = await self._measure_stage(
-                    name, "create", client.create(name, tags=tags, image=configuration.image)
+                    name,
+                    "create",
+                    client.create(
+                        name,
+                        tags=tags,
+                        image=configuration.image,
+                        **({"integrations": integrations} if integrations else {}),
+                    ),
                 )
             except ExeError as creation_error:
                 # A lost response and a name conflict both arrive as a failed
@@ -137,6 +275,7 @@ class ExeWorker(BaseWorker):
                 "cwd": configuration.working_dir,
                 "timeout_seconds": configuration.timeout_seconds,
                 "requirements": configuration.requirements,
+                "environment_mode": configuration.environment_mode,
                 "runtime_bin": f"{provider.DIRECTORY}/venv/bin",
                 "cgroup": "/sys/fs/cgroup/prefect-flow",
             }
@@ -173,15 +312,29 @@ class ExeWorker(BaseWorker):
                     client=self.client,
                 )
                 await self.observe_pool(configuration)
-            except Exception:
+                self._observed_at = time.time()
+                self._observer_error = None
+            except Exception as exc:
+                self._observer_error = type(exc).__name__
                 self._logger.exception(
                     "exe.dev observation failed; retaining infrastructure for next check"
                 )
+            await self._publish_observations()
             await anyio.sleep(10)
 
     async def observe_pool(self, configuration: ExeJobConfiguration) -> None:
         async with ExeClient(configuration.credentials.identity_file) as client:
+            inventory_started = time.time()
             vms = await client.list(self.vm_prefix)
+            if self._observations is not None:
+                try:
+                    self._observations.reconcile_inventory(
+                        {vm.name for vm in vms}, inventory_started
+                    )
+                except Exception:
+                    self._logger.exception(
+                        "Could not reconcile observation history; execution continues"
+                    )
             semaphore = asyncio.Semaphore(8)
 
             async def reconcile_one(vm: VM):
@@ -198,7 +351,8 @@ class ExeWorker(BaseWorker):
                         await self.reconcile(client, vm, flow_id)
                     except NotFound:
                         return
-                    except Exception:
+                    except Exception as exc:
+                        self._record(vm.name, phase="retained", error=type(exc).__name__)
                         self._logger.exception("Could not reconcile VM %s; will retry", vm.name)
 
             await asyncio.gather(*(reconcile_one(vm) for vm in vms))
@@ -220,6 +374,9 @@ class ExeWorker(BaseWorker):
                 try:
                     await client.get(pid)
                 except NotFound:
+                    self._record(
+                        pid, flow_run_id=str(run.id), phase="missing", error="VM no longer exists"
+                    )
                     if self._release_environment:
                         await self._release_environment(pid)
                     current = await self.client.read_flow_run(run.id)
@@ -241,15 +398,29 @@ class ExeWorker(BaseWorker):
 
     async def reconcile(self, client: ExeClient, vm: VM, flow_id: UUID) -> None:
         self._check_ownership(vm, flow_id)
+        self._record(vm.name, flow_run_id=str(flow_id), created_at=vm.created_at.timestamp())
         try:
             flow_run = await self.client.read_flow_run(flow_id)
         except ObjectNotFound:
+            await self._detach_integrations(client, vm.name)
+            if self._release_environment:
+                await self._release_environment(vm.name)
+            self._record(vm.name, phase="retained", error="Prefect run record is missing")
             self._logger.warning("VM %s has no Prefect flow record", vm.name)
             return
         state = flow_run.state
         if state is None:
             return
         observation = await self._measure_stage(vm.name, "inspect", provider.inspect(client, vm))
+        self._record(vm.name, run_name=flow_run.name)
+        if observation["phase"] in {"running", "exited"}:
+            self._record(
+                vm.name,
+                phase=observation["phase"],
+                exit_code=observation.get("exit_code"),
+                reason=observation.get("reason"),
+                error=None,
+            )
         if observation["phase"] == "prepared":
             age = time.time() - vm.created_at.timestamp()
             # Allow the bounded (300s) environment installation to finish before
@@ -276,6 +447,7 @@ class ExeWorker(BaseWorker):
             return
         if observation["phase"] != "exited":
             return
+        await self._detach_integrations(client, vm.name)
         if self._release_environment:
             await self._release_environment(vm.name)
         # Provider inspection can take long enough for orchestration to advance
@@ -329,6 +501,15 @@ class ExeWorker(BaseWorker):
         )
         await self._measure_stage(vm.name, "delete", client.destroy(vm.name))
 
+    async def _detach_integrations(self, client: ExeClient, name: str) -> None:
+        for integration in self._integrations:
+            try:
+                await client.detach(name, integration)
+            except Exception:
+                self._logger.exception(
+                    "Could not detach %s from %s; cleanup continues", integration, name
+                )
+
     async def kill_infrastructure(
         self,
         infrastructure_pid: str,
@@ -341,6 +522,7 @@ class ExeWorker(BaseWorker):
             except NotFound as exc:
                 raise InfrastructureNotFound(infrastructure_pid) from exc
             self._check_ownership(vm)
+            await self._detach_integrations(client, vm.name)
             if await provider.service_status(client, vm) is None:
                 # Cancellation can arrive while uv is still bootstrapping.
                 # Destroying the owned VM stops that installation too;

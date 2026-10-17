@@ -13,6 +13,11 @@ collision strategy) when it is not. See
 just laptop-worker install
 ```
 
+The plist runs `~/.config/prefect-laptop-worker/start.sh`, which installs
+`prefect` into a persistent `uv tool` venv and then execs that binary. The
+worker used to run under `uv run --with prefect`, which held the uv cache lock
+for as long as the worker lived, so `uv cache prune` on the laptop timed out.
+
 Prereqs:
 - `uv` at `~/.local/bin/uv`
 - `~/.config/prefect-laptop-worker/env` (mode 0600), rendered by the secrets

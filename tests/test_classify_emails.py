@@ -7,6 +7,8 @@ priced per input token.
 """
 
 import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
@@ -116,3 +118,41 @@ def test_typesafe_usage_is_priced_per_input_token(tmp_path: Path):
     assert event["input_cost_usd"] == pytest.approx(0.042)
     assert event["output_cost_usd"] == 0
     assert event["total_cost_usd"] == pytest.approx(0.042)
+
+
+@pytest.mark.parametrize(("status", "expected_requests"), [(402, 1), (400, 4)])
+def test_classification_retry_policy_against_http_server(monkeypatch, status, expected_requests):
+    from prefect.testing.utilities import prefect_test_harness
+
+    from flows.classify_emails import classify_email_batch
+
+    requests = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            requests.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+            body = json.dumps({"message": "provider unavailable"}).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        monkeypatch.setenv("TYPESAFE_BASE_URL", f"http://127.0.0.1:{server.server_port}")
+        monkeypatch.delenv("PREFECT_API_URL", raising=False)
+        try:
+            with prefect_test_harness():
+                state = classify_email_batch.with_options(
+                    retry_delay_seconds=0, persist_result=False, cache_policy=None
+                )(BATCH, "test-local-only", return_state=True)
+            assert state.is_failed()
+            assert len(requests) == expected_requests
+        finally:
+            server.shutdown()
+            thread.join()

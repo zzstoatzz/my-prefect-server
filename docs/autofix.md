@@ -1,5 +1,30 @@
 # autofix: failed flow run → pi → PR
 
+## October 12 operational update
+
+Autofix still proposes only for `strata-hourly` and `mcp-atlas`. Email failures
+are diagnosis-only. Its frozen home-worker wheel supplies the Pi runner; the
+flow-source pin supplies `flows/autofix_policy.py`, so screening updates do not
+require switching that runner to the isolated execution implementation.
+
+Screening receives a trusted operation separately from untrusted failure
+evidence. The verdict lists prohibited actions rather than combining a boolean
+with an independently generated explanation. `autofix.blocked` and
+`autofix.error` events carry the failure stage and links to both runs and use
+the diagnosis notification automation. Exceptions remain `Completed/Degraded`
+to avoid recursively triggering autofix.
+
+Matching deployment, source revision, state, and error text reuse an earlier
+attempt for 24 hours. TypeSafe request IDs are normalized; distinct errors and
+new code revisions remain separate. Autofix is serialized to avoid concurrent
+duplicate diagnoses, and `force=true` explicitly bypasses the reuse check.
+Each failure gets its own trigger bucket, so unrelated failures cannot consume
+one another's automation window. Classification keeps billing failures visible
+but does not retry HTTP 402.
+
+`just autofix-policy-check` exercises the real policy model against allowed
+diagnostics and prohibited actions; it uses the existing Anthropic Secret block.
+
 status (2026-09-01): **all three rungs are live.** rung 1 diagnoses every
 failure read-only (`flows/autofix.py`). rung 2 opens a gardener-authored
 pull, gated by the `propose_for` canary allowlist on the failure automation

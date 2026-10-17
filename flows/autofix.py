@@ -20,18 +20,21 @@ in Completed(name="Degraded").
 
 import argparse
 import asyncio
+import hashlib
+import json
 import os
+import re
 import subprocess
 import traceback
 from contextlib import suppress
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from tempfile import TemporaryDirectory
 from typing import Any
 from uuid import UUID
 
+from mps import tangled
 from mps.blocks import secret_sync
-from mps.pi import minimal_env, run_pi, screen_prompt
-from mps.tangled import GARDENER_DID
+from mps.pi import minimal_env, run_pi
 from prefect import flow, get_client
 from prefect.client.schemas.filters import (
     FlowRunFilter,
@@ -41,14 +44,26 @@ from prefect.client.schemas.filters import (
 )
 from prefect.client.schemas.sorting import LogSort
 from prefect.events import emit_event
+from prefect.events.filters import EventFilter, EventNameFilter, EventOccurredFilter
 from prefect.exceptions import ObjectNotFound
 from prefect.runtime import flow_run as run_context
 from prefect.states import Completed, State
 
+from flows.autofix_policy import ScreeningRejected, screen_prompt
+
 REPO_URL = "https://github.com/zzstoatzz/my-prefect-server.git"
+# home-pool runs this flow on the mps wheel frozen before the Sprite migration
+# (the autofix command in prefect.yaml); that wheel predates these names and
+# review_verdict's round arguments, so both are resolved at runtime.
+GARDENER_DID = getattr(tangled, "GARDENER_DID", "did:plc:7vx7exykq2zfxjxxejovrymi")
+PHI_DID = getattr(tangled, "PHI_DID", "did:plc:65sucjiel52gefhcdcypynsr")
 PULL_PREFIX = f"at://{GARDENER_DID}/sh.tangled.repo.pull/"
 LOG_LINES = 150
 SUMMARY_LIMIT = 240
+PROPOSAL_WINDOW = timedelta(days=7)
+RECENT_COMMITS = 30
+VERDICT_EXCERPT = 400
+ATTEMPT_EVENTS = ["autofix.diagnosed", "autofix.blocked", "autofix.error"]
 
 PROMPT = """\
 you are gardener (gardener.pds.zat.dev), using the Pi harness to diagnose a failed prefect flow run for the operator of this repo.
@@ -70,6 +85,11 @@ then, under 200 words:
 do not speculate about credentials or environment variables beyond what the
 logs show.
 
+the gardener-history skill is loaded; `.gardener/context.md` in the working
+directory holds what happened since this run's revision. read it first and
+follow the skill; `FIXED-ON-MAIN: <commit>` as your last line means no pull
+will be opened.
+
 === failed run ===
 {brief}
 """
@@ -83,7 +103,9 @@ change that resolves the cause. add or extend a regression test when the fix
 is testable. run the test suite for what you touched (`uv run pytest <paths>`)
 before finishing.
 
-read AGENTS.md at the repo root first and follow its conventions. when a
+read AGENTS.md at the repo root first and follow its conventions. the
+gardener-history skill is loaded and `.gardener/context.md` holds what has
+already landed or been proposed; follow it before changing anything. when a
 pr-authoring skill is loaded, compose TITLE and NOTE by its prose rules; the
 flow — not you — publishes the pull (patch-based, no gh), so only
 composition guidance applies, not git/gh mechanics.
@@ -112,7 +134,9 @@ PR_OWNER = "zzstoatzz.io"
 # ambient worker credentials.
 SKILL_SOURCES: dict[str, tuple[str, str]] = {
     "pr-body": ("https://tangled.sh/zzstoatzz.io/skills.git", "pr-body"),
+    "gardener-history": ("https://tangled.sh/zzstoatzz.io/skills.git", "gardener-history"),
 }
+CONTEXT_FILE = ".gardener/context.md"
 
 
 def fetch_skills(workdir: str) -> list[str]:
@@ -156,6 +180,62 @@ async def gather(flow_run_id: UUID) -> dict[str, Any]:
     }
 
 
+def match_proposal(events: list[Any], dep_name: str, sha: str) -> str | None:
+    """the pull url of an earlier proposal for this deployment at this sha, unless
+    a later merge.merged names that pull."""
+    merged = {e.payload.get("pull") for e in events if e.event == "merge.merged" and e.payload}
+    for e in sorted(events, key=lambda e: e.occurred, reverse=True):
+        p = e.payload or {}
+        if (
+            e.event == "autofix.proposed"
+            and p.get("deployment") == dep_name
+            and p.get("sha") == sha
+            and p.get("pull") not in merged
+        ):
+            return p.get("pr_url") or p.get("pull")
+    return None
+
+
+async def prior_proposal(dep_name: str, sha: str) -> str | None:
+    """one gardener pull per (deployment, sha): a second failure on the same
+    revision points at the pull that is already open instead of opening another."""
+    return match_proposal(await proposal_events(), dep_name, sha)
+
+
+def incident_key(ctx: dict[str, Any]) -> str:
+    run, deployment = ctx["run"], ctx["deployment"]
+    message = run.state.message if run.state else ""
+    message = re.sub(r"\breq_[a-zA-Z0-9]+\b", "<request-id>", message or "")
+    identity = {
+        "deployment": str(getattr(run, "deployment_id", None) or run.id),
+        "version": getattr(run, "flow_version", None),
+        "code": getattr(deployment, "job_variables", {}).get("env", {}).get("MPS_PIN"),
+        "state": run.state.name if run.state else None,
+        "message": message,
+    }
+    return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+
+
+async def prior_attempt(key: str) -> str | None:
+    since = datetime.now(UTC) - timedelta(hours=24)
+    async with get_client() as client:
+        page = await client.read_events(
+            EventFilter(
+                occurred=EventOccurredFilter.model_validate({"since": since}),
+                event=EventNameFilter(name=ATTEMPT_EVENTS),
+            ),
+            limit=50,
+        )
+        while True:
+            for event in page.events:
+                payload = event.payload or {}
+                if payload.get("incident_key") == key and payload.get("autofix_url"):
+                    return payload["autofix_url"]
+            if not page.next_page:
+                return None
+            page = await client.read_events_page(str(page.next_page))
+
+
 def ui_url(kind: str, id_: UUID) -> str:
     base = os.environ.get("PREFECT_API_URL", "").removesuffix("/api")
     return f"{base}/{kind}/{kind[:-1]}/{id_}"
@@ -188,6 +268,116 @@ def checkout_as_of(cwd: str, when) -> str:
         env=env,
     )
     return sha
+
+
+def recent_changes(cwd: str, sha: str) -> str:
+    """commits main gained after the run's revision, newest first. the clone's
+    main is as of the clone, so this is what pi's checkout cannot see."""
+    env = minimal_env()
+    log = subprocess.run(
+        [
+            "git",
+            "log",
+            "--format=%h %ad %s",
+            "--date=short",
+            "-n",
+            str(RECENT_COMMITS),
+            f"{sha}..main",
+        ],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).stdout.strip()
+    return log or "none"
+
+
+def describe_proposals(events: list[Any], dep_name: str, verdict_of) -> str:
+    """one line per gardener pull proposed for this deployment, newest round first,
+    with phi's latest verdict; `verdict_of(pull_uri)` returns (round, verdict, text)."""
+    latest: dict[str, Any] = {}
+    for e in sorted(events, key=lambda e: e.occurred):
+        p = e.payload or {}
+        if e.event == "autofix.proposed" and p.get("deployment") == dep_name and p.get("pull"):
+            latest[p["pull"]] = p
+    lines = []
+    for uri, p in reversed(list(latest.items())):
+        try:
+            rounds, verdict, text = verdict_of(uri)
+        except Exception as exc:  # the PDS read is best effort; the pull still gets listed
+            rounds, verdict, text = "?", "unknown", f"(verdict unavailable: {exc})"
+        excerpt = " ".join(text.split())[:VERDICT_EXCERPT]
+        lines.append(
+            f"  - {p.get('title', '')} — {p.get('pr_url') or uri} (round {rounds}, sha {str(p.get('sha', ''))[:7] or '?'})"
+            f"\n    phi: {verdict}: {excerpt}"
+        )
+    return "\n".join(lines) or "  none"
+
+
+def phi_verdict(pull_uri: str) -> tuple[int, str, str]:
+    info = tangled.pull_patch(pull_uri)
+    rounds = info.get("rounds") or 1
+    rounds = len(rounds) if isinstance(rounds, list) else int(rounds)
+    try:
+        found = tangled.review_verdict(
+            pull_uri, PHI_DID, round_index=rounds - 1, expected_cid=info["cid"]
+        )
+    except (TypeError, KeyError):
+        legacy_verdict: Any = tangled.review_verdict
+        found = legacy_verdict(pull_uri, PHI_DID)
+    if not found:
+        return rounds, "pending", "no verdict on the latest round yet"
+    return rounds, found["verdict"], found["text"]
+
+
+async def proposal_events() -> list[Any]:
+    since = datetime.now(UTC) - PROPOSAL_WINDOW
+    events: list[Any] = []
+    async with get_client() as client:
+        page = await client.read_events(
+            EventFilter(
+                occurred=EventOccurredFilter.model_validate({"since": since}),
+                event=EventNameFilter(name=["autofix.proposed", "merge.merged"]),
+            ),
+            limit=50,
+        )
+        events.extend(page.events)
+        while page.next_page:
+            page = await client.read_events_page(str(page.next_page))
+            events.extend(page.events)
+    return events
+
+
+def prior_work(dep_name: str) -> str:
+    try:
+        events = asyncio.run(proposal_events())
+    except Exception as exc:
+        return f"prior gardener proposals for {dep_name}: unavailable ({exc})"
+    return (
+        f"prior gardener proposals for {dep_name} (last {PROPOSAL_WINDOW.days} days):\n"
+        + describe_proposals(events, dep_name, phi_verdict)
+    )
+
+
+def since_section(cwd: str, sha: str, dep_name: str) -> str:
+    """the 'what happened since' part of the brief; a lookup failure degrades
+    the section, never the diagnosis."""
+    try:
+        commits = recent_changes(cwd, sha)
+    except Exception as exc:
+        commits = f"unavailable ({exc})"
+    return f"commits on main since this run's revision ({sha[:7]}):\n{commits}\n\n{prior_work(dep_name)}"
+
+
+def write_context(cwd: str, text: str) -> str:
+    """drop the since-section into the clone where the gardener-history skill
+    tells pi to look; pi has no network, so the flow carries these facts in."""
+    path = os.path.join(cwd, CONTEXT_FILE)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write("# what happened since\n\n" + text + "\n")
+    return path
 
 
 def trailers(output: str, keys: tuple[str, ...]) -> dict[str, str]:
@@ -242,12 +432,14 @@ def render(ctx: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def propose_fix(diagnosis: str, brief: str, anthropic_key: str, dep_name: str) -> dict[str, str]:
+def propose_fix(
+    diagnosis: str, brief: str, anthropic_key: str, dep_name: str, since: str = ""
+) -> dict[str, str]:
     """second pi round: full tools in a clone of main; the flow publishes the patch."""
     from mps.tangled import build_patch, create_pull
 
     prompt = FIX_PROMPT.format(diagnosis=diagnosis, brief=brief)
-    screen_prompt(prompt, "full", anthropic_key)
+    screen_prompt(json.dumps({"diagnosis": diagnosis, "brief": brief}), "full", anthropic_key)
     with TemporaryDirectory(prefix="autofix-fix-") as workdir:
         cwd = os.path.join(workdir, "repo")
         subprocess.run(
@@ -258,6 +450,7 @@ def propose_fix(diagnosis: str, brief: str, anthropic_key: str, dep_name: str) -
             env=minimal_env(),
         )
         skills = fetch_skills(workdir)
+        write_context(cwd, since or f"(no record of prior work for {dep_name})")
         base = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             cwd=cwd,
@@ -297,33 +490,63 @@ def propose_fix(diagnosis: str, brief: str, anthropic_key: str, dep_name: str) -
     return {"title": title, **pull}
 
 
+def about_run(flow_run_id: UUID, name: str) -> list[dict[str, str]]:
+    """the failed run as a related resource, so anything listing events for that
+    run (prefect-ios shows them as follow-ups) finds what autofix said about it.
+    the role is not `flow-run`: that one is the run emitting the event."""
+    return [
+        {
+            "prefect.resource.id": f"prefect.flow-run.{flow_run_id}",
+            "prefect.resource.name": name,
+            "prefect.resource.role": "about",
+        }
+    ]
+
+
 @flow(name="autofix", log_prints=True, timeout_seconds=2400)
 def autofix(
     flow_run_id: UUID,
     dry_run: bool = False,
     propose: bool = False,
     propose_for: list[str] | None = None,
+    force: bool = False,
 ) -> State:
     """diagnose a failed run; open a pull for it when `propose` is on, or when
     the failed deployment is named in `propose_for` (the canary allowlist the
     automation carries while proposing is still earning trust)."""
+    dep_name, key = "unknown", ""
+    failed_name = str(flow_run_id)
+    stage = "gather"
     try:
         ctx = asyncio.run(gather(flow_run_id))
         dep_name = ctx["deployment"].name if ctx["deployment"] else "ad-hoc"
         if dep_name == "autofix":
             return Completed(name="Skipped", message="not diagnosing my own failures")
         propose = propose or dep_name in (propose_for or [])
+        failed_name = ctx["run"].name
+        key = incident_key(ctx)
 
         brief = render(ctx)
         print(brief)
         if dry_run:
             return Completed(name="DryRun", message="brief rendered, pi not run")
 
+        if not force:
+            stage = "deduplicate"
+            if previous := asyncio.run(prior_attempt(key)):
+                return Completed(
+                    name="Duplicate", message=f"Same failure already handled: {previous}"
+                )
+
+        stage = "screen"
         anthropic_key = secret_sync("anthropic-api-key")
         prompt = PROMPT.format(brief=brief)
-        screen_prompt(prompt, "read-only", anthropic_key)
+        screen_prompt(brief, "read-only", anthropic_key)
 
-        with TemporaryDirectory(prefix="autofix-") as cwd:
+        stage = "diagnose"
+        with TemporaryDirectory(prefix="autofix-") as workdir:
+            cwd = os.path.join(workdir, "repo")
+            skills = fetch_skills(workdir)
             failed_run = ctx["run"]
             when = (
                 failed_run.start_time
@@ -332,12 +555,16 @@ def autofix(
             )
             sha = checkout_as_of(cwd, when)
             print(f"diagnosing against {sha}")
+            since = since_section(cwd, sha, dep_name)
+            print(since)
+            write_context(cwd, since)
             diagnosis = run_pi(
                 prompt,
                 cwd=cwd,
                 provider="aperture",
                 thinking="medium",
                 tool_mode="read-only",
+                skills=skills,
             ).strip()
 
         summary, _ = split_summary(diagnosis)
@@ -347,9 +574,12 @@ def autofix(
             resource={
                 "prefect.resource.id": f"autofix.{flow_run_id}",
                 "prefect.resource.name": f"{dep_name} / {ctx['run'].name}",
+                "autofix.outcome": "diagnosed",
             },
+            related=about_run(flow_run_id, ctx["run"].name),
             payload={
                 "deployment": dep_name,
+                "incident_key": key,
                 "sha": sha,
                 "summary": summary,
                 "failed_run_url": ui_url("flow-runs", flow_run_id),
@@ -358,8 +588,15 @@ def autofix(
         )
         if not propose:
             return Completed(name="Diagnosed", message=summary)
+        if fixed := trailers(diagnosis, ("FIXED-ON-MAIN",)).get("FIXED-ON-MAIN"):
+            print(f"not proposing: already fixed on main ({fixed})")
+            return Completed(name="Diagnosed", message=f"{summary}\nfixed on main: {fixed}")
+        if existing := asyncio.run(prior_proposal(dep_name, sha)):
+            print(f"not proposing again: {existing} is open for {dep_name} at {sha}")
+            return Completed(name="Diagnosed", message=f"{summary}\nopen pull: {existing}")
 
-        result = propose_fix(diagnosis, brief, anthropic_key, dep_name)
+        stage = "propose"
+        result = propose_fix(diagnosis, brief, anthropic_key, dep_name, since)
         if "url" not in result:
             print(f"no proposal: {result.get('reason')}")
             return Completed(name="Diagnosed", message=summary)
@@ -369,8 +606,10 @@ def autofix(
                 "prefect.resource.id": f"autofix.{flow_run_id}",
                 "prefect.resource.name": f"{dep_name} / {ctx['run'].name}",
             },
+            related=about_run(flow_run_id, ctx["run"].name),
             payload={
                 "deployment": dep_name,
+                "sha": sha,
                 "summary": summary,
                 "title": result["title"],
                 "pull": result["uri"],
@@ -379,9 +618,33 @@ def autofix(
             },
         )
         return Completed(name="Proposed", message=f"{result['title']} — {result['url']}")
-    except Exception:
+    except Exception as exc:
         err = traceback.format_exc()
         print(err)
+        blocked = isinstance(exc, ScreeningRejected)
+        summary = f"Autofix {'blocked' if blocked else 'errored'} during {stage}: {exc}"[
+            :SUMMARY_LIMIT
+        ]
+        try:
+            emit_event(
+                event="autofix.blocked" if blocked else "autofix.error",
+                resource={
+                    "prefect.resource.id": f"autofix.{flow_run_id}",
+                    "prefect.resource.name": f"{dep_name} / {failed_name}",
+                    "autofix.outcome": "blocked" if blocked else "error",
+                },
+                related=about_run(flow_run_id, failed_name),
+                payload={
+                    "deployment": dep_name,
+                    "incident_key": key,
+                    "stage": stage,
+                    "summary": summary,
+                    "failed_run_url": ui_url("flow-runs", flow_run_id),
+                    "autofix_url": ui_url("flow-runs", run_context.id) if run_context.id else "",
+                },
+            )
+        except Exception:
+            print(f"Could not emit autofix outcome:\n{traceback.format_exc()}")
         return Completed(name="Degraded", message=err[-500:])
 
 
@@ -390,5 +653,6 @@ if __name__ == "__main__":
     parser.add_argument("flow_run_id", type=UUID)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--propose", action="store_true")
+    parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
-    autofix(args.flow_run_id, dry_run=args.dry_run, propose=args.propose)
+    autofix(args.flow_run_id, dry_run=args.dry_run, propose=args.propose, force=args.force)

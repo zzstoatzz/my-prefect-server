@@ -486,13 +486,30 @@ check:
 
 # apply standalone automations from deploy/automations.yaml (send-notification
 # and cross-deployment triggers, which prefect.yaml cannot express)
+[positional-arguments]
 automations *args:
     #!/usr/bin/env bash
     set -euo pipefail
     : "${DOMAIN:?set DOMAIN}"
     : "${AUTH_STRING:?set AUTH_STRING}"
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
-        ./scripts/apply_automations.py {{ args }}
+        ./scripts/apply_automations.py "$@"
+
+autofix-policy-check *args:
+    PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
+        uv run python -m scripts.check_autofix_policy {{ args }}
+
+# last N fastmcp backlog snapshots (flows/fastmcp_backlog.py), oldest first
+fastmcp-backlog n="24":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    {
+        echo "at source issues <7d 7-30d 30-90d >90d unlabeled awaiting prs draft bot"
+        ssh -o ConnectTimeout=10 -o BatchMode=yes stoat@heavypad 'tail -n {{ n }} /home/stoat/prefect-analytics/fastmcp-backlog.jsonl' \
+            | jq -r '[.at[:16], .source, .issues.open, .issues.lt_7d, .issues.d7_30, .issues.d30_90, .issues.gt_90d,
+                      (.issues.unlabeled // "-"), (.issues.awaiting_reporter // "-"),
+                      .prs.open, (.prs.draft // "-"), (.prs.bot // "-")] | @tsv'
+    } | column -t
 
 # heavypad, the home-pool worker box: what is installed, whether it matches
 # what the deployments expect, and whether pi can still reach Luna. ten
@@ -528,6 +545,7 @@ laptop-worker action="status":
         mkdir -p "$HOME/.local/state/prefect-laptop-worker"
         launchctl bootout "gui/$(id -u)/$label" 2>/dev/null || true
         for _ in $(seq 1 20); do launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1 || break; sleep 0.5; done
+        install -m 0755 deploy/laptop-worker/start.sh "$HOME/.config/prefect-laptop-worker/start.sh"
         install -m 0644 deploy/laptop-worker/$label.plist "$plist"
         launchctl bootstrap "gui/$(id -u)" "$plist"
         echo "loaded $label" ;;
@@ -580,3 +598,27 @@ install-source-cache:
     destination="/home/stoat/.local/share/mps/source-cache/$digest"
     scp "$source_file" "stoat@heavypad:/tmp/mps-source-cache-$digest.py"
     ssh stoat@heavypad "test \"\$(sha256sum /tmp/mps-source-cache-$digest.py | cut -d' ' -f1)\" = '$digest' && mkdir -p '$destination' && install -m 0444 /tmp/mps-source-cache-$digest.py '$destination/deployment_steps.py' && rm /tmp/mps-source-cache-$digest.py"
+
+# Build the baked exe.dev environment from the locked workspace.
+gardener-image image="gardener:dev":
+    docker build --platform linux/amd64 -f deploy/gardener/Dockerfile --build-arg SOURCE_REVISION=$(git rev-parse HEAD) -t '{{image}}' .
+
+# Preserve an existing deployment wheel in a locked image; keep context for reproducible rebuilds.
+gardener-wheel-image wheel sha base image context:
+    bash deploy/gardener/build-wheel-image.sh '{{wheel}}' '{{sha}}' '{{base}}' '{{image}}' '{{context}}'
+
+# Publish through SSH to the private exe.dev registry without a registry password.
+gardener-publish image tag:
+    bash deploy/gardener/publish-image.sh '{{image}}' '{{tag}}'
+
+# Explicit live test: creates two disposable VMs, tests exit/cancel/restart, deletes both.
+gardener-probe *args:
+    uv run python tests/exe_provider_probe.py {{args}}
+
+# Inspect the worker without displaying its environment or credentials.
+gardener-status:
+    ssh stoat@heavypad 'systemctl --user show pi-exe-worker -p ActiveState -p SubState -p ActiveEnterTimestamp -p NRestarts; cat /home/stoat/gardener-exe-worker/current/SOURCE_REVISION'
+
+# Install a committed, locked worker release when its VM inventory is empty.
+gardener-install revision="HEAD":
+    bash deploy/gardener/install-worker.sh '{{revision}}'

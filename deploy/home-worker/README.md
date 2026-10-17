@@ -32,6 +32,12 @@ sudo systemctl restart prefect-home-worker
   babysits the real `prefect worker start ...` command in
   `/etc/prefect-worker-guard.env`.
 - `prefect` is pinned to the server version (3.7.2) to avoid client/server skew.
+  It lives in a persistent `uv tool` venv (`~/.local/share/uv/tools/prefect`),
+  and the guard execs that binary directly. It used to run under
+  `uv run --with prefect==3.7.2`, which held the uv cache lock for the life of
+  the worker (so `uv cache prune` needed `--force`) and kept its base env in
+  the cache's environments bucket, which prune deletes out from under a running
+  process.
 - The unit sets `PATH` to include `~/.local/bin` because the process worker spawns
   `uv run …` for each flow run.
 - The unit is cgroup-limited (`MemoryHigh=32G`, `MemoryMax=48G`, `TasksMax=4096`).

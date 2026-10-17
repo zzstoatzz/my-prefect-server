@@ -451,3 +451,15 @@ def test_cache_key_none_when_no_ctx():
     cache policy returns None (Prefect interprets that as no cache)."""
     policy = ByClusterContentHash()
     assert policy.compute_key(None, {}, {}) is None  # type: ignore[arg-type]
+
+
+def test_replaced_evidence_cannot_supply_candidate_density():
+    points = [
+        {
+            **_point(pid=f"old-{i}", kind="observation", promotion_status="raw", cluster_fine=1),
+            "memory_status": "superseded",
+        }
+        for i in range(MIN_CLUSTER_DENSITY)
+    ]
+    points.append(_point(pid="current", kind="observation", promotion_status="raw", cluster_fine=1))
+    assert _extract_pressure_pool_impl(_atlas(points)) == []

@@ -21,7 +21,7 @@
 
 image:
   repository: atcr.io/zzstoatzz.io/prefect-server
-  tag: "3487a1e96c9313df17befd4c744da25d0946e464"
+  tag: "993424a75aa8b2e46d3bff11dd6c81885ff9fb4d"
   pullPolicy: IfNotPresent
   pullSecrets:
     - atcr-creds

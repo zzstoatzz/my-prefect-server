@@ -26,12 +26,13 @@ from prefect import flow, get_run_logger, task
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 from prefect.tasks import exponential_backoff
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StrictInt
 from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.providers.anthropic import AnthropicProvider
-from turbopuffer.types import AttributeSchemaConfigParam
-from turbopuffer.types.custom import Filter
+from turbopuffer.lib.namespace import Namespace
+from turbopuffer.types import AttributeSchemaConfigParam, Row
+from turbopuffer.types.custom import Filter, RankBy
 
 SYSTEM_PROMPT = """\
 you synthesize relationship summaries for a bluesky bot named phi.
@@ -54,8 +55,12 @@ never assume gender from a name or handle.
 """
 
 
-class ByObservationsHash(CachePolicy):
-    """Cache compact result by handle + observations content hash."""
+class BySummaryInputs(CachePolicy):
+    """Cache a summary until its observations, interactions, or profile change.
+
+    stats_text is left out: its recency score moves every hourly run and would
+    resynthesize every user each time.
+    """
 
     def compute_key(
         self,
@@ -68,8 +73,17 @@ class ByObservationsHash(CachePolicy):
         observations_text = inputs.get("observations_text")
         if not handle or not observations_text:
             return None
-        h = hashlib.md5(observations_text.encode()).hexdigest()[:12]
-        return f"compact/haiku-5-5/{handle}/{h}"
+        profile = inputs.get("bsky_profile") or {}
+        material = "\x1f".join(
+            (
+                observations_text,
+                inputs.get("interactions_text") or "",
+                profile.get("display_name") or "",
+                profile.get("bio") or "",
+            )
+        )
+        h = hashlib.md5(material.encode()).hexdigest()[:12]
+        return f"compact/haiku-5-5/v2/{handle}/{h}"
 
 
 @task
@@ -174,8 +188,8 @@ def _format_stats(profile: dict[str, Any]) -> str:
 
 
 @task(
-    cache_policy=ByObservationsHash(),
-    cache_expiration=timedelta(hours=4),
+    cache_policy=BySummaryInputs(),
+    cache_expiration=timedelta(days=7),
     persist_result=True,
     result_serializer="json",
     retries=3,
@@ -190,7 +204,7 @@ async def synthesize_summary(
     api_key: str,
     bsky_profile: dict[str, str] | None = None,
 ) -> str:
-    """LLM synthesis of a relationship summary. Cached by observations hash."""
+    """LLM synthesis of a relationship summary. Cached by its inputs."""
     model = AnthropicModel("claude-haiku-5-5", provider=AnthropicProvider(api_key=api_key))
     # compact iterates over top authors; the SYSTEM_PROMPT is constant across
     # the per-user loop, so caching it once and reusing on every call is the
@@ -396,30 +410,42 @@ ACTIVE_OBSERVATIONS: Filter = (
 )
 
 
-@task
+def query_active_observations(ns: Namespace, *, rank_by: RankBy, top_k: int) -> list[Row]:
+    try:
+        schema = ns.metadata().schema_
+        if "kind" not in schema:
+            return []
+        filters: Filter = (
+            ACTIVE_OBSERVATIONS if "status" in schema else ("kind", "Eq", "observation")
+        )
+        return (
+            ns.query(
+                rank_by=rank_by,
+                top_k=top_k,
+                filters=filters,
+                include_attributes=True,
+            ).rows
+            or []
+        )
+    except turbopuffer.NotFoundError:
+        return []
+
+
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
 def query_existing_knowledge(tpuf_key: str, handle: str) -> str:
     """Query TurboPuffer for existing observations about this author."""
     client = turbopuffer.Turbopuffer(api_key=tpuf_key, region="gcp-us-central1")
     ns_name = f"phi-users-{clean_handle(handle)}"
     ns = client.namespace(ns_name)
-
-    try:
-        resp = ns.query(
-            rank_by=("created_at", "desc"),
-            top_k=10,
-            filters=ACTIVE_OBSERVATIONS,
-            include_attributes=["content", "tags", "created_at"],
-        )
-        if not resp.rows:
-            return "no prior knowledge"
-        lines = []
-        for row in resp.rows:
-            tags = getattr(row, "tags", []) or []
-            tag_str = f" [{', '.join(tags)}]" if tags else ""
-            lines.append(f"- {row.content}{tag_str}")
-        return "\n".join(lines)
-    except Exception:
+    rows = query_active_observations(ns, rank_by=("created_at", "desc"), top_k=10)
+    if not rows:
         return "no prior knowledge"
+    lines = []
+    for row in rows:
+        tags = row_strings(row, "tags")
+        tag_str = f" [{', '.join(tags)}]" if tags else ""
+        lines.append(f"- {row_text(row, 'content')}{tag_str}")
+    return "\n".join(lines)
 
 
 @task
@@ -548,9 +574,9 @@ When in doubt between ADD and NOOP, prefer NOOP. memory should be lean."""
 
 class Reconciliation(BaseModel):
     action: str = Field(description="one of: ADD, UPDATE, DELETE, NOOP")
-    targets: list[int] = Field(
+    targets: list[StrictInt] = Field(
         default_factory=list,
-        description="numbers of the EXISTING observations the action applies to. empty for ADD.",
+        description="numbers of the EXISTING observations. UPDATE and DELETE require at least one valid target; empty for ADD.",
     )
     new_content: str | None = Field(
         default=None, description="merged content when action is UPDATE"
@@ -581,11 +607,17 @@ def plan_observation_write(
     new = {"content": content, "tags": tags, "source_uris": source_uris, "supersedes": ""}
     if action == "NOOP":
         return None, []
-    if action not in ("UPDATE", "DELETE"):
+    if action == "ADD":
         return new, []
-    targets = [
-        existing[n - 1] for n in dict.fromkeys(decision.targets) if 1 <= n <= len(existing)
-    ] or existing[:1]
+    if action not in ("UPDATE", "DELETE"):
+        raise ValueError(f"Unsupported reconciliation action: {decision.action!r}")
+    if not decision.targets:
+        raise ValueError(f"{action} requires at least one explicit observation target")
+    if any(n < 1 or n > len(existing) for n in decision.targets):
+        raise ValueError(
+            f"{action} targets {decision.targets!r} must all reference observations 1..{len(existing)}"
+        )
+    targets = [existing[n - 1] for n in dict.fromkeys(decision.targets)]
     new["supersedes"] = targets[0]["id"]
     if action == "UPDATE":
         new["content"] = decision.new_content or content
@@ -663,25 +695,15 @@ async def write_likes_observations_to_turbopuffer(
         ns = client.namespace(f"phi-users-{clean_handle(handle)}")
         embedding = embed(content, handle)
 
-        existing: list[dict[str, Any]] = []
-        try:
-            resp = ns.query(
-                rank_by=("vector", "ANN", embedding),
-                top_k=3,
-                filters=ACTIVE_OBSERVATIONS,
-                include_attributes=True,
-            )
-            existing = [
-                {
-                    "id": row.id,
-                    "content": row_text(row, "content"),
-                    "tags": row_strings(row, "tags"),
-                    "source_uris": row_strings(row, "source_uris"),
-                }
-                for row in resp.rows or []
-            ]
-        except turbopuffer.NotFoundError:
-            pass
+        existing = [
+            {
+                "id": row.id,
+                "content": row_text(row, "content"),
+                "tags": row_strings(row, "tags"),
+                "source_uris": row_strings(row, "source_uris"),
+            }
+            for row in query_active_observations(ns, rank_by=("vector", "ANN", embedding), top_k=3)
+        ]
 
         decision = (
             await reconcile_likes_observation(handle, existing, content, tags, anthropic_key)

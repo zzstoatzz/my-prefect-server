@@ -343,6 +343,8 @@ def _extract_pressure_pool_impl(atlas: dict[str, Any]) -> list[dict[str, Any]]:
 
     by_fine: dict[int, list[dict[str, Any]]] = {}
     for p in points:
+        if p.get("memory_status") in {"superseded", "retired"}:
+            continue
         if p.get("promotion_status") != "raw":
             continue
         cf = p.get("cluster_fine")
@@ -502,7 +504,7 @@ class ByClusterContentHash(CachePolicy):
     cluster's evidence + anchors don't change AND the rubric hasn't changed,
     the candidate doesn't need to be regenerated. Including RUBRIC_HASH in
     the key means any rubric edit naturally invalidates all cached results
-    — no manual cache clear needed. Mirrors flows/compact.py:ByObservationsHash.
+    — no manual cache clear needed. Mirrors flows/compact.py:BySummaryInputs.
     """
 
     def compute_key(

@@ -282,7 +282,8 @@ deployments:
     tags: [phi]
     entrypoint: flows/phi_atlas.py:phi_atlas
     # 2D map of phi's mental landscape. UMAP+HDBSCAN over every PDS record
-    # and TurboPuffer row phi owns. ML deps (numpy/scipy/umap-learn/hdbscan)
+    # and eligible TurboPuffer memory row. Replaced rows, expired summaries
+    # and the known smoke-test fixture stay in storage, outside this projection. ML deps (numpy/scipy/umap-learn/hdbscan)
     # live in the [atlas] extra so other flows' pods don't pull them.
     work_pool:
       name: home-pool
@@ -304,7 +305,7 @@ deployments:
     pull: *cached_home
     tags: [phi]
     entrypoint: flows/docket.py:docket
-    # Daily promotion object — consumes the atlas, emits 5-15 candidate
+    # Daily optional investigations — consumes the atlas, emits 0-10 candidate
     # work items. Event-triggered on phi-atlas completion so the docket
     # exactly tracks the atlas it was derived from. No separate cron.
     work_pool: *home
@@ -879,6 +880,20 @@ deployments:
       - cron: "*/5 * * * *"
         active: true
 
+  - name: fastmcp-backlog
+    pull: *cached_home
+    tags: [watch]
+    entrypoint: flows/fastmcp_backlog.py:fastmcp_backlog
+    # appends open issue/PR counts, bucketed by age, to
+    # /home/stoat/prefect-analytics/fastmcp-backlog.jsonl (beside
+    # ANALYTICS_DB_PATH). read with `just fastmcp-backlog`. ~6 GitHub API
+    # calls a run.
+    work_pool: *home
+    concurrency_limit: *cancel_new
+    schedules:
+      - cron: "*/30 * * * *"
+        active: true
+
   - name: fastmcp-brief
     pull: *cached_home
     tags: [watch]
@@ -983,6 +998,9 @@ deployments:
 
   - name: autofix
     pull: *cached_legacy_home
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
     tags: [gardener]
     description: pi diagnoses a failed run and, when proposing is on for that deployment, opens a gardener pull
     entrypoint: flows/autofix.py:autofix
@@ -995,8 +1013,8 @@ deployments:
       job_variables:
         command: uv run --with /home/stoat/phi-spike-worker/releases/371b7aaea5e32129e136d7e8743de002ce118606da87fa9c298e7a52118cb84a/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
         env:
-          # Preserve the live home-worker implementation until its Sprite migration.
-          MPS_PIN: "@9495d617fd5a8c7342149dcfd8aef25ade43d2fd"
+          # the wheel is frozen at 9495d61 (pre-Sprite mps); the flow pin may move, see flows/autofix.py.
+          MPS_PIN: "@e7ebaadc2e817c355b3828201ced24ccced3ee24"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
@@ -1031,8 +1049,10 @@ deployments:
       name: gardener-exe
       job_variables:
         timeout_seconds: 2400
-        local_packages:
-          - /home/stoat/phi-spike-worker/releases/1553f70cb4612fe219d0e1d82232a560947a18e194eb1ee4fe0ec80aa2aa741e/mps-0.1.0-py3-none-any.whl
+        environment_mode: image
+        image: gardener-registry.exe.xyz/gardener@sha256:cab30e527e572f3d1cd943369cf77f738e87626156da64da2911881d76483de6
+        requirements: []
+        local_packages: []
 
   - name: investigate
     tags: [gardener, phi]
@@ -1046,28 +1066,24 @@ deployments:
       name: gardener-exe
       job_variables:
         timeout_seconds: 2400
-        local_packages:
-          - /home/stoat/phi-spike-worker/releases/aea634030ccb8c5e0096d859fe09c0a9e8d2ff267a5bf835f7ffc923a3404300/mps-0.1.0-py3-none-any.whl
+        environment_mode: image
+        image: gardener-registry.exe.xyz/gardener@sha256:ce7109333479e37f958681e8ba30e48d842208354c4baa6f787bf92e7268bd5b
+        requirements: []
+        local_packages: []
 
   - name: pi-pr
-    pull: *cached_legacy_home
-    tags: [gardener]
-    entrypoint: flows/pi_pr.py:pi_pr
-    # pi (luna) proposes a change in a throwaway clone; the flow turns it into
-    # a gardener-authored tangled pull and emits autofix.proposed, so phi
-    # reviews it. pi holds no credential — the flow publishes, so a hijacked
-    # prompt can only produce a bad diff. requires pi + openai-codex creds on
-    # the worker.
-    # Preserve the deployed local implementation; the new isolated flow needs
-    # a separately verified Sprite deployment before changing this route.
+    tags: [gardener, phi]
+    entrypoint: flows.pi_pr.pi_pr
+    pull: []
+    # The trusted flow publishes proposals as Gardener; Pi has no publishing credentials.
     work_pool:
-      name: home-pool
+      name: gardener-exe
       job_variables:
-        command: >-
-          uv run --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git@0b9e77c00a550cb51c5f904e2ed060d7834a3160'
-          prefect flow-run execute
-        env:
-          MPS_PIN: "@0b9e77c00a550cb51c5f904e2ed060d7834a3160"
+        timeout_seconds: 2400
+        environment_mode: image
+        image: gardener-registry.exe.xyz/gardener@sha256:ce7109333479e37f958681e8ba30e48d842208354c4baa6f787bf92e7268bd5b
+        requirements: []
+        local_packages: []
 
   - name: merge-approved
     tags: [gardener]
@@ -1082,7 +1098,7 @@ deployments:
     work_pool:
       name: home-pool
       job_variables:
-        command: uv run --with /home/stoat/phi-spike-worker/releases/310bb2a3f4fcc35357150c88d810f6f488296ac51c2c119ba29b5e851b284902/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
+        command: uv run --with /home/stoat/gardener-images/releases/merge-a8b8b04c/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
 
   - name: test-pull-patch
     tags: [gardener]
@@ -1092,8 +1108,10 @@ deployments:
       name: gardener-exe
       job_variables:
         timeout_seconds: 2400
-        local_packages:
-          - /home/stoat/phi-spike-worker/releases/2f167908b9ed2379eb2df6bea861eacf629716bfcd7b562832b46ce3c93a4f4e/mps-0.1.0-py3-none-any.whl
+        environment_mode: image
+        image: gardener-registry.exe.xyz/gardener@sha256:4c47744dd7c242cf25ef4e87c23ec2894c3e5029ce8c7d97c3690afbf4afe51b
+        requirements: []
+        local_packages: []
 
   - name: dep-bump
     pull: *cached_home
@@ -1131,11 +1149,8 @@ deployments:
     pull: *cached_home
     tags: [watch]
     entrypoint: flows/strata.py:ingest_segment_collections
-    # read the shape of the stream archive from outside: per-segment,
-    # per-collection counts decoded from segment footers via Range requests,
-    # pushed to the strata worker (zat.dev/strata). a few KB per segment; the
-    # first walk covers ~7k segments in a few runs (max_segments per run).
-    # the worker holds no schedule — this deployment is the only cron.
+    # Reconcile footer counts in HeavyPad SQLite; publish changed serving objects to R2.
+    # Seed or restore the checkpoint before enabling; never bootstrap by crawling implicitly.
     work_pool:
       name: home-pool
       job_variables:
@@ -1147,10 +1162,11 @@ deployments:
           MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
           STRATA_URL: https://strata.zat.dev
+          STRATA_STATE_PATH: /home/stoat/prefect-analytics/strata/checkpoint.sqlite
           STRATA_INGEST_TOKEN: prefect-block://strata-ingest-token
           STREAM_ARCHIVE_KEY: prefect-block://stream-archive-key-strata
     schedules:
-      # a segment seals about every two hours; offset from :06/:36 eval windows
+      # Restored 2026-10-11 after HeavyPad checkpoint and R2 cutover verification.
       - cron: "21 * * * *"
         active: true
     concurrency_limit:

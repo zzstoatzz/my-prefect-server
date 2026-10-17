@@ -1,0 +1,11 @@
+**
+!pyproject.toml
+!uv.lock
+!packages/
+!packages/*/
+!packages/*/pyproject.toml
+!packages/mps/src/
+!packages/mps/src/**
+!flows/
+!flows/*.py
+**/__pycache__/

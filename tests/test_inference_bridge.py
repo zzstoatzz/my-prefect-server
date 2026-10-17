@@ -231,3 +231,63 @@ def test_grant_cannot_switch_to_another_authorized_model(bridge_dir, upstream):
         connection.close()
     assert not calls
     assert grants.usage("luna-only")["requests"] == 0
+
+
+def send(path, body, route="/v1/responses"):
+    connection = HTTPConnection("localhost")
+    connection.sock = socket.socket(socket.AF_UNIX)
+    connection.sock.connect(str(path))
+    try:
+        connection.request("POST", route, json.dumps(body), {"Authorization": "untrusted"})
+        response = connection.getresponse()
+        return response.status, response.read()
+    finally:
+        connection.close()
+
+
+def test_exe_responses_transport_and_local_policy(bridge_dir, upstream):
+    url, calls = upstream
+    path = bridge_dir / "exe.sock"
+    body = {"model": "openai/gpt-5.6-luna", "input": [], "max_output_tokens": 8192}
+    with inference_bridge(path, upstream=url, backend="exe", max_requests=None, agent_uid=None):
+        for _ in range(33):
+            assert send(path, body)[0] == 200
+        headers, forwarded = calls[-1]
+        assert "Authorization" not in headers
+        assert forwarded["model"] == "gpt-5.6-luna"
+        assert forwarded["store"] is False
+        assert "background" not in forwarded
+        assert forwarded["stream"] is True
+        assert "max_output_tokens" not in forwarded
+        assert send(path, body | {"model": "openai/gpt-5.6-terra"})[0] == 400
+        assert send(path, body | {"tools": [{"type": "web_search"}]})[0] == 400
+        assert send(path, body, "/workflows/request")[0] == 404
+        assert send(path, body, "/v1/chat/completions")[0] == 400
+    assert len(calls) == 33
+    assert not path.exists()
+
+
+def test_anthropic_cannot_execute_provider_hosted_tools(bridge_dir, upstream):
+    url, calls = upstream
+    path = bridge_dir / "haiku.sock"
+    model = "anthropic/claude-haiku-5.5"
+    body = {"model": model, "messages": [], "max_tokens": 99999}
+    with inference_bridge(
+        path,
+        upstream=url,
+        backend="exe",
+        model=model,
+        agent_uid=None,
+        max_output_tokens=16384,
+    ):
+        for hosted in (
+            {"tools": [{"type": "web_search_20250305", "name": "web_search"}]},
+            {"tools": [{"type": "code_execution_20250825", "name": "code_execution"}]},
+            {"mcp_servers": [{"type": "url", "url": "https://example.com/mcp"}]},
+        ):
+            assert send(path, body | hosted, "/v1/messages")[0] == 400
+        assert not calls
+        local_tool = {"name": "read", "input_schema": {"type": "object", "properties": {}}}
+        assert send(path, body | {"tools": [local_tool]}, "/v1/messages")[0] == 200
+    assert len(calls) == 1
+    assert calls[0][1]["max_tokens"] == 16384

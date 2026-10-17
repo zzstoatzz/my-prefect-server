@@ -35,6 +35,8 @@ from mps.spend import record_usage
 from prefect import flow, get_run_logger, task, unmapped
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
+from prefect.states import State
+from typesafe_sdk import TypeSafeAPIError
 
 # bump to invalidate cached classifications. v4: Jev replaced Haiku, so a
 # batch cached under v3 in the last 24h is re-judged rather than replayed.
@@ -76,6 +78,11 @@ def load_unclassified_emails() -> list[EmailRow]:
     return unclassified_emails(_db_path())
 
 
+def retry_classification(task, task_run, state: State) -> bool:
+    error = state.result(raise_on_failure=False)
+    return not isinstance(error, TypeSafeAPIError) or error.status != 402
+
+
 @task(
     cache_policy=ByEmailBatch(),
     cache_expiration=datetime.timedelta(hours=24),
@@ -84,6 +91,7 @@ def load_unclassified_emails() -> list[EmailRow]:
     retries=3,
     retry_delay_seconds=[2, 5, 10],
     retry_jitter_factor=1,
+    retry_condition_fn=retry_classification,
 )
 def classify_email_batch(batch: list[EmailRow], api_key: str) -> list[EmailClassification]:
     """Jev-classify one batch of emails in a single request. Cached by the batch's message_ids."""

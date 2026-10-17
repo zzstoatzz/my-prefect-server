@@ -33,14 +33,15 @@ def test_usage_and_tool_events_do_not_log_contents(caplog):
     assert "999" not in caplog.text
 
 
-def test_failed_inference_cannot_return_earlier_text():
+@pytest.mark.parametrize("reason", ["error", "aborted", "length", "toolUse"])
+def test_failed_inference_cannot_return_earlier_text(reason):
     event = {
         "type": "message_end",
         "message": {
             "role": "assistant",
-            "stopReason": "error",
+            "stopReason": reason,
             "content": [{"type": "text", "text": "unfinished"}],
         },
     }
-    with pytest.raises(RuntimeError, match="did not complete"):
+    with pytest.raises(RuntimeError):
         read_pi_events(json.dumps(event))

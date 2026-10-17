@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-08",
+  "scope": "Disposable VM probe; production configuration unchanged",
+  "integration": {
+    "name": "llm",
+    "openai_source": "connected ChatGPT account",
+    "anthropic_source": "exe managed gateway",
+    "provider_keys_supplied_to_vm": false
+  },
+  "observations": [
+    "Model discovery succeeded without provider credentials.",
+    "OpenAI Responses with string input failed: Input must be a list.",
+    "Streaming OpenAI Responses with structured input, instructions, and store=false completed: exe-inference-ok; gpt-5.6-luna; 20 input and 8 output tokens.",
+    "Anthropic Messages completed: exe-anthropic-ok; claude-haiku-4-5; 15 input and 9 output tokens.",
+    "Pi 1.1.0 with an explicit models.json provider and disabled extensions/tools completed: pi-exe-ok via Anthropic Messages.",
+    "OpenAI Chat Completions for gpt-5.6-luna returned HTTP 400 saying the model was not in the integration model list, although Responses succeeded for that model.",
+    "After detaching llm, a fresh Anthropic request returned HTTP 403: integration not attached.",
+    "The temporary VM was deleted; llm and reflection again have no attachments; only gardener-registry remains."
+  ],
+  "policy_assessment": {
+    "provenance": "sprites-worker-review.md ties the remote grant service to exposing Aperture over HTTPS after rejecting per-Sprite Tailscale enrollment. No rationale for exactly 32 requests was found in the inspected notes or worker_grants.py.",
+    "retain": "Separate agent code from orchestration and publishing credentials; retain timeout and reliable VM teardown.",
+    "reconsider": "A remote SQLite grant service, exactly 32 requests, and a model restriction need not remain architectural prerequisites if VM-attached inference meets the operational need.",
+    "possible_design": "Keep the local sandbox/relay, point its trusted upstream at Exe, and scope integration access to each job VM. This can remove the remote inference dependency on heavypad without exposing orchestration credentials."
+  },
+  "limits": [
+    "Gardener's pinned Pi 0.84.4 and full Prefect execution were not exercised in this probe.",
+    "Detach was tested for a subsequent request, not interruption of an in-flight stream.",
+    "No per-VM budget, expiry, or model-enforcement equivalent was established.",
+    "The managed Anthropic calls consume Exe credits; exact billing delta was not measured.",
+    "OpenAI transport needs an explicit compatibility change before production migration."
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "local_pi": {
+    "version": "0.87.0",
+    "mcp_skill_count": 21,
+    "duplicate_skill_names": 0,
+    "model_read_verified": true,
+    "session_resume_verified": true
+  },
+  "gardener": {
+    "pi_version": "0.84.4",
+    "sandbox_rpc_cases": 9,
+    "print_context_verified": true,
+    "symlink_rejected": true,
+    "canary_run_id": "68dce61d-3e6c-4ad4-9c58-273f76272f9e",
+    "canary_state": "COMPLETED",
+    "skill_read": "gardener-history",
+    "actual_worker_image": "gardener-registry.exe.xyz/gardener@sha256:ce7109333479e37f958681e8ba30e48d842208354c4baa6f787bf92e7268bd5b"
+  },
+  "releases": {
+    "investigate": {
+      "image": "gardener-registry.exe.xyz/gardener@sha256:ce7109333479e37f958681e8ba30e48d842208354c4baa6f787bf92e7268bd5b",
+      "wheel_sha256": "d155a253dfd1b685b3e753ef24390cf720ef6795f792cb919c6ad6b272bd7b98",
+      "pi_execution_sha256": "fb501bca1045f3c5c3fd95d92f7669de6aa406ff739535a1e25258af56429457",
+      "pi_skills_sha256": "013346b8f6a1fff00a0be72f3734e0a88221b374c5ccd5d621813817064ac5ba"
+    },
+    "autofix-revise": {
+      "image": "gardener-registry.exe.xyz/gardener@sha256:cab30e527e572f3d1cd943369cf77f738e87626156da64da2911881d76483de6",
+      "wheel_sha256": "6f3346e5fe79ed354681d339b3c0f65795d265baab3d365190d5f02390a8d078",
+      "pi_execution_sha256": "fb501bca1045f3c5c3fd95d92f7669de6aa406ff739535a1e25258af56429457",
+      "pi_skills_sha256": "013346b8f6a1fff00a0be72f3734e0a88221b374c5ccd5d621813817064ac5ba"
+    },
+    "test-pull-patch": {
+      "image": "gardener-registry.exe.xyz/gardener@sha256:4c47744dd7c242cf25ef4e87c23ec2894c3e5029ce8c7d97c3690afbf4afe51b",
+      "wheel_sha256": "e9ff2b3f966218086d909fadd6983b4ce655022a2aca076902b6fb0c3eaec6cb",
+      "pi_execution_sha256": "33d4125f5ea2de54594945d7b2c30c03f5a5a8409665ea9f143043054e7fdb40",
+      "pi_skills_sha256": "013346b8f6a1fff00a0be72f3734e0a88221b374c5ccd5d621813817064ac5ba"
+    }
+  }
+}
