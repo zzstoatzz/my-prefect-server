@@ -228,6 +228,15 @@ deployments:
   # the shortlist goes to discord, the run pauses for his free-form reply
   # (`just triage-reply "..."`), and his decisions are recorded. 8:20am CT,
   # after the hourly ingest -> classify chain has run at :00.
+  - name: email-backlog
+    pull: *cached_home
+    entrypoint: flows/email_backlog.py:email_backlog
+    work_pool: *home
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+    schedules: []
+
   - name: email-triage
     pull: *cached_home
     tags: [pipeline]

@@ -1,0 +1,15 @@
+[Unit]
+Description=Private Inbox Zero review service
+After=network-online.target protonmail-bridge.service
+
+[Service]
+WorkingDirectory=%h/.local/share/inbox-zero
+ExecStart=%h/.local/share/inbox-zero/.venv/bin/python deploy/inbox-zero/run.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

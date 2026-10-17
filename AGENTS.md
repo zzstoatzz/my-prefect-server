@@ -17,6 +17,8 @@ this file is a set of notes for us:
 
 ## conventions
 
+- keep the primary checkout on `main`. Temporary task branches/worktrees must be reconciled and removed when the task finishes; preserve unfinished ideas in docs and recoverable archives rather than leaving permanent sibling checkouts.
+- land production service source and configuration on `main` before rollout. Immutable release pins and wheels are expected; running code that exists only on an abandoned branch is not.
 - never use `pip` or `uv pip` — use `uv add`, `uv sync`, or `uv run --with`
 - use `jq` for JSON processing, not python
 - prefect docs are on disk at `~/github.com/prefecthq/prefect/docs` — read before guessing

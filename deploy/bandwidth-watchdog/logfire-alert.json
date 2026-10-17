@@ -1,0 +1,10 @@
+{
+  "project": "zig-prefect-server",
+  "id": "df8c7795-6af2-44c5-9df9-3848d64b04a3",
+  "name": "heavypad bandwidth watchdog",
+  "frequency": "PT5M",
+  "time_window": "PT15M",
+  "notify_when": "starts_having_matches",
+  "channel_ids": ["f22200f9-efdb-4e3a-9141-f0fce6b4c578"],
+  "query": "SELECT start_timestamp, message FROM records WHERE service_name = 'bandwidth-watchdog' AND attributes->>'watchdog_event' IN ('bandwidth.high-usage', 'bandwidth.host-usage', 'bandwidth.monthly-budget', 'bandwidth.paused') ORDER BY start_timestamp DESC LIMIT 5"
+}

@@ -1,0 +1,18 @@
+{
+  "reference_sample": {
+    "rows": 1100,
+    "wall_seconds": 39.94988824496977,
+    "cpu_seconds": 4.870616991
+  },
+  "bulk_sample": {
+    "rows": 1100,
+    "wall_seconds": 0.5125650198897347,
+    "cpu_seconds": 0.06979998999999992
+  },
+  "bulk_full": {
+    "rows": 157710,
+    "wall_seconds": 25.802352542988956,
+    "cpu_seconds": 5.040316597
+  },
+  "sample_equal": true
+}

@@ -33,6 +33,9 @@ push:
 
 # --- infrastructure ---
 
+redis-migrate stage sha="":
+    bash scripts/redis-migrate.sh "{{stage}}" "{{sha}}"
+
 # initialize terraform
 init:
     terraform -chdir=infra init
@@ -111,6 +114,11 @@ deploy:
         exit 1
     fi
 
+    current_redis="$(kubectl -n prefect get service prefect-redis --ignore-not-found -o jsonpath='{.spec.selector.app}')"
+    if [ "$current_redis" = "prefect-redis" ]; then
+        echo "Migrate existing Redis first: docs/redis-durability.md"
+        exit 1
+    fi
     echo "==> creating namespaces"
     kubectl create namespace prefect --dry-run=client -o yaml | kubectl apply -f -
     kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
@@ -137,7 +145,7 @@ deploy:
         | kubectl apply -f -
     kubectl apply -f deploy/prefect-redis.yaml
     kubectl -n prefect wait --for=condition=available --timeout=120s \
-        deployment/prefect-postgres deployment/prefect-redis
+        deployment/prefect-postgres deployment/prefect-redis-durable
 
     echo "==> installing prefect server (zig chart from $CHART_PATH)"
     sed "s|DOMAIN_PLACEHOLDER|$DOMAIN|g" deploy/prefect-values.yaml \
@@ -480,8 +488,8 @@ check:
     just validate-deployments
     uv run ruff check .
     uv run ruff format --check .
-    uv run ty check
-    uv run --extra dagster pytest -q
+    uv run --extra inbox ty check
+    uv run --extra dagster --extra inbox pytest -q
     cd web && bun install --frozen-lockfile && bun run check && bun run lint
 
 # apply standalone automations from deploy/automations.yaml (send-notification
@@ -622,3 +630,7 @@ gardener-status:
 # Install a committed, locked worker release when its VM inventory is empty.
 gardener-install revision="HEAD":
     bash deploy/gardener/install-worker.sh '{{revision}}'
+
+# Deploy the committed bandwidth monitor without network dependency downloads.
+deploy-bandwidth-watchdog:
+    ./scripts/deploy_bandwidth_watchdog.sh

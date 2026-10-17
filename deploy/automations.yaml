@@ -415,3 +415,35 @@ automations:
         block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
         subject: "merged: {{ resource.name }}"
         body: "{{ payload.title }} -> {{ payload.sha }}\n{{ payload.pull }}"
+
+  - name: bandwidth warning -> discord
+    description: Observed Internet TCP budgets or whole-host traffic thresholds exceeded; counts and attribution are deterministic.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect: [bandwidth.high-usage, bandwidth.host-usage, bandwidth.monthly-budget, bandwidth.paused]
+      threshold: 1
+      within: 0
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "bandwidth watchdog: {{ resource.name }}"
+        body: "{{ payload.summary }}"
+
+  - name: bandwidth watchdog missing -> discord
+    description: The independent host monitor has stopped reporting for five minutes.
+    enabled: true
+    trigger:
+      type: event
+      posture: Proactive
+      match:
+        prefect.resource.id: bandwidth.host.heavypad
+      expect: [bandwidth.heartbeat]
+      threshold: 1
+      within: 300
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "bandwidth watchdog missing on heavypad"
+        body: "No bandwidth heartbeat for five minutes. Inspect systemctl --user status bandwidth-watchdog on heavypad; monitoring coverage is unknown."

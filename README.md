@@ -130,6 +130,7 @@ just push                                 # github first (installs come from the
 | [audits/](docs/audits/) | point-in-time reviews of the live deployments, with a dated status of what is still open |
 | [incidents/](docs/incidents/) | post-mortems |
 | [archive/](docs/archive/) | shipped design notes and build logs, kept for the why; none describes the present |
+| [repository consolidation](docs/archive/2026-10-17-repository-consolidation.md) | archived worktrees, retained production changes, and how to recover old work |
 
 [COSTS.md](COSTS.md) is the running record of what this deployment spends.
 

@@ -1,0 +1,9 @@
+{
+  "sample_seconds": 5,
+  "alert_bytes_15m": 5000000000,
+  "host_alert_bytes_15m": 5000000000,
+  "pause_bytes_1h": 20000000000,
+  "monthly_observed_budget_bytes": 100000000000,
+  "cooldown_seconds": 3600,
+  "pause_units": ["deepseek-v41-download.service"]
+}

@@ -70,7 +70,7 @@ auth:
 
 webserver:
   enabled: true
-  replicas: 1
+  replicas: 2
   resources:
     requests: { cpu: 100m, memory: 64Mi }
     limits:   { cpu: 1,    memory: 256Mi }
