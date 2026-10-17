@@ -33,6 +33,9 @@ push:
 
 # --- infrastructure ---
 
+redis-migrate stage sha="":
+    bash scripts/redis-migrate.sh "{{stage}}" "{{sha}}"
+
 # initialize terraform
 init:
     terraform -chdir=infra init
@@ -111,6 +114,11 @@ deploy:
         exit 1
     fi
 
+    current_redis="$(kubectl -n prefect get service prefect-redis --ignore-not-found -o jsonpath='{.spec.selector.app}')"
+    if [ "$current_redis" = "prefect-redis" ]; then
+        echo "Migrate existing Redis first: docs/redis-durability.md"
+        exit 1
+    fi
     echo "==> creating namespaces"
     kubectl create namespace prefect --dry-run=client -o yaml | kubectl apply -f -
     kubectl create namespace monitoring --dry-run=client -o yaml | kubectl apply -f -
@@ -137,7 +145,7 @@ deploy:
         | kubectl apply -f -
     kubectl apply -f deploy/prefect-redis.yaml
     kubectl -n prefect wait --for=condition=available --timeout=120s \
-        deployment/prefect-postgres deployment/prefect-redis
+        deployment/prefect-postgres deployment/prefect-redis-durable
 
     echo "==> installing prefect server (zig chart from $CHART_PATH)"
     sed "s|DOMAIN_PLACEHOLDER|$DOMAIN|g" deploy/prefect-values.yaml \
