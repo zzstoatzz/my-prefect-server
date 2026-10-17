@@ -93,3 +93,9 @@ that traffic. Test event `dcb7856b-35fb-40e0-86b3-8ec0856b89c2` reached Prefect;
 `2145f9b8-9794-43cc-8dc6-16a6d8a4693e`. Its labeled test evidence also arrived
 in Logfire. A production service restart retained accounting state and left the
 three manually paused DeepSeek processes stopped.
+
+The Logfire scheduled evaluation `500b7c90-a966-4eaa-b697-d85c11227b02`
+matched the test evidence and delivered it to Phi's existing channel at
+2026-10-17 00:57:23 UTC. Phi returned HTTP 200 with `{"ok":true,"opened":true}`.
+The full `just check` passed (717 tests, 3 existing skips, Svelte check and lint);
+the final targeted watchdog suite passed all 15 tests.
