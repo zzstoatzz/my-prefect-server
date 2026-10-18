@@ -26,8 +26,8 @@ both Tangled and GitHub pushes, so bot now uses the same existing mirror path.
 All 14 controller tests pass, along with focused lint and formatting checks.
 The rebuilt wheel SHA256 is
 `2bc3a35c35d21fbe68147508754807c41ed6a1663533ad2fba7c3b5203b49e95`;
-upload to HeavyPad is waiting on Tailscale SSH reauthentication. The existing
-deployment wheel remains pinned until the new artifact is present and verified.
+the uploaded HeavyPad artifact matches that hash after Nate completed Tailscale
+SSH reauthentication. The deployment now pins that verified wheel.
 A new controller run must test the approved patch against current main before
 offering human approval. Local revalidation of the approved patch on bot main
 `26d93fc` passed all 22 frontend tests and Svelte checks.
