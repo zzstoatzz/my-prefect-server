@@ -64,7 +64,10 @@ APPROVAL_TIMEOUT_SECONDS = 86_400
 
 # repos whose flows install from the github mirror: the knot alone is not
 # enough, prod would keep running the old code
-MIRRORS = {"my-prefect-server": "https://github.com/zzstoatzz/my-prefect-server.git"}
+MIRRORS = {
+    "my-prefect-server": "https://github.com/zzstoatzz/my-prefect-server.git",
+    "bot": "https://github.com/zzstoatzz/bot.git",
+}
 
 # paths whose changes always get the operator's eyes on the diff itself, not
 # just phi's verdict. the discord line flags them; nothing is auto-merged
