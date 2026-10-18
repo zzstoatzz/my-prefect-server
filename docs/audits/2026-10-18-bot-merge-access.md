@@ -25,9 +25,17 @@ The merge controller previously mirrored only my-prefect-server. Bot requires
 both Tangled and GitHub pushes, so bot now uses the same existing mirror path.
 All 14 controller tests pass, along with focused lint and formatting checks.
 The rebuilt wheel SHA256 is
-`2bc3a35c35d21fbe68147508754807c41ed6a1663533ad2fba7c3b5203b49e95`;
+`15dcb69ab74c54e1dee674f0600bdc1a7211a8966cbfe7f93d2747f6492106c6`;
 the uploaded HeavyPad artifact matches that hash after Nate completed Tailscale
 SSH reauthentication. The deployment now pins that verified wheel.
 A new controller run must test the approved patch against current main before
 offering human approval. Local revalidation of the approved patch on bot main
 `26d93fc` passed all 22 frontend tests and Svelte checks.
+
+The first rebuilt wheel failed its actual isolated runtime import: recent
+commit `e7ebaad` extracted `flows.autofix_policy`, but the wheel's explicit
+file list omitted it. The package now includes that dependency. On HeavyPad,
+the corrected wheel imports merge-approved, autofix-revise, and test-pull-patch
+from outside a source checkout, and exposes both required mirror destinations.
+The incomplete wheel was not selected in the live deployment; its superseded
+registration pipeline was cancelled before rollout.

@@ -34,6 +34,7 @@ packages = ["src/mps"]
 "../../flows/pi_agent.py" = "flows/pi_agent.py"
 "../../flows/pi_pr.py" = "flows/pi_pr.py"
 "../../flows/autofix.py" = "flows/autofix.py"
+"../../flows/autofix_policy.py" = "flows/autofix_policy.py"
 "../../flows/autofix_revise.py" = "flows/autofix_revise.py"
 "../../flows/merge_approved.py" = "flows/merge_approved.py"
 "../../flows/watch_tangled_pulls.py" = "flows/watch_tangled_pulls.py"
