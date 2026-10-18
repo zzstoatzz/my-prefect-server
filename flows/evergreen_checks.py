@@ -35,6 +35,34 @@ class EvergreenStatus(BaseModel):
     results: list[ServiceResult] = Field(min_length=1)
 
 
+def _endpoints(urls: set[str], labels: dict[str, tuple[str, str]], limit: int = 5) -> str:
+    named = [f"{'/'.join(labels[u])} ({u})" for u in sorted(urls)]
+    more = f", and {len(named) - limit} more" if len(named) > limit else ""
+    return ", ".join(named[:limit]) + more
+
+
+def inventory_mismatch(
+    expected: dict[str, tuple[str, str]], actual: dict[str, tuple[str, str]], n_results: int
+) -> str:
+    missing = expected.keys() - actual.keys()
+    extra = actual.keys() - expected.keys()
+    relabeled = {u for u in expected.keys() & actual.keys() if expected[u] != actual[u]}
+    parts = []
+    if missing:
+        parts.append(
+            f"no result for {len(missing)} inventory endpoint(s): {_endpoints(missing, expected)}"
+        )
+    if extra:
+        parts.append(f"{len(extra)} result(s) not in the inventory: {_endpoints(extra, actual)}")
+    if relabeled:
+        parts.append(
+            f"{len(relabeled)} endpoint(s) under a different project/name: {_endpoints(relabeled, actual)}"
+        )
+    if n_results != len(actual):
+        parts.append(f"{n_results - len(actual)} duplicate result(s)")
+    return "Evergreen's results do not match its published inventory: " + "; ".join(parts)
+
+
 def validate_status(
     projects: list[Project], status: EvergreenStatus, now: datetime
 ) -> list[ServiceResult]:
@@ -52,7 +80,7 @@ def validate_status(
         raise ValueError("Evergreen status timestamp is stale or invalid")
     actual = {r.url: (r.project, r.name) for r in status.results}
     if actual != expected or len(actual) != len(status.results):
-        raise ValueError("Evergreen results do not match the complete published inventory")
+        raise ValueError(inventory_mismatch(expected, actual, len(status.results)))
     if any(r.ok != (200 <= r.status < 300) for r in status.results):
         raise ValueError("Evergreen result contradicts its HTTP status")
     return status.results

@@ -39,7 +39,9 @@ automations:
       - type: send-notification
         block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
         subject: "{{ deployment.name }} {{ state.name }}"
-        body: "{{ deployment.name }} run {{ flow_run.name }} reached {{ state.name }} - {{ state.message }}"
+        body: |-
+          {{ state.message }}
+          run: https://prefect-server.waow.tech/runs/flow-run/{{ flow_run.id }}
 
   - name: fastmcp activity -> brief
     description: >-

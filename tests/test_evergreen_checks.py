@@ -52,14 +52,17 @@ def test_missing_service_is_not_healthy():
         *PROJECTS,
         Project(name="another", services=[{"name": "web", "url": "https://other.org"}]),
     ]
-    with pytest.raises(ValueError, match="complete published inventory"):
+    with pytest.raises(
+        ValueError,
+        match=r"no result for 1 inventory endpoint\(s\): another/web \(https://other.org\)",
+    ):
         validate_status(projects, report(), NOW)
 
 
 def test_duplicate_results_cannot_hide_missing_service():
     status = report()
     status.results.append(status.results[0])
-    with pytest.raises(ValueError, match="complete published inventory"):
+    with pytest.raises(ValueError, match=r"1 duplicate result\(s\)"):
         validate_status(PROJECTS, status, NOW)
 
 
@@ -89,8 +92,23 @@ def test_malformed_results_rejected(changes):
 
 
 def test_renamed_service_is_inventory_drift():
-    with pytest.raises(ValueError, match="complete published inventory"):
+    with pytest.raises(ValueError, match=r"different project/name: example/different"):
         validate_status(PROJECTS, report(name="different"), NOW)
+
+
+def test_mismatch_lists_extra_results_and_caps_long_lists():
+    projects = [
+        Project(
+            name="big",
+            services=[{"name": f"s{i}", "url": f"https://big.org/{i}"} for i in range(8)],
+        )
+    ]
+    with pytest.raises(ValueError) as exc:
+        validate_status(projects, report(), NOW)
+    message = str(exc.value)
+    assert "no result for 8 inventory endpoint(s)" in message
+    assert "and 3 more" in message
+    assert "1 result(s) not in the inventory: example/api (https://example.org/health)" in message
 
 
 def test_unmonitored_projects_are_allowed_without_claiming_health():
@@ -139,7 +157,9 @@ def test_real_http_preserves_target_failure_and_detects_inventory_drift(monitor_
     payload["/inventory"][0]["services"].append(
         {"name": "new check", "url": "https://example.org/new"}
     )
-    with pytest.raises(ValueError, match="complete published inventory"):
+    with pytest.raises(
+        ValueError, match=r"no result for 1 inventory endpoint\(s\): example/new check"
+    ):
         check_evergreen.fn(f"{url}/inventory", f"{url}/status")
 
 

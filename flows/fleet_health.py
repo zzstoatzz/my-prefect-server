@@ -23,7 +23,8 @@ Failure semantics: a failed flow run means the sweep itself could not run
 (a check task errored out even after retry). Unhealthy targets are a
 *finding*, not a flow failure — they're logged as warnings, recorded in the
 markdown artifact, and emitted as a `fleet-health.unhealthy` event for
-automations to page on.
+automations to page on. Both messages are read in discord by a person, so
+each names the check, what it saw, and where to look next.
 
 The Evergreen report reader uses the package's existing httpx and pydantic dependencies.
 """
@@ -35,8 +36,10 @@ from dataclasses import dataclass
 from prefect import flow, get_run_logger, task
 from prefect.artifacts import create_markdown_artifact
 from prefect.events import emit_event
+from prefect.runtime import flow_run
+from prefect.states import Failed, State
 
-from flows.evergreen_checks import check_evergreen
+from flows.evergreen_checks import INVENTORY_URL, STATUS_URL, check_evergreen
 
 TIMEOUT_S = 10
 TAIL_WINDOW_S = 20
@@ -54,6 +57,22 @@ SEAL_MAX_S = 10.0
 # crash-loop keeps failing the shallow site check regardless.
 STARTUP_GRACE_S = 6 * 60
 
+RUN_URL = "https://prefect-server.waow.tech/runs/flow-run/{id}"
+STREAM_DEEP = "stream (deep)"
+EVERGREEN = "Evergreen inventory"
+
+NEXT_STEP = {
+    EVERGREEN: (
+        f"compare Evergreen's live results ({STATUS_URL}) with its published inventory"
+        f" ({INVENTORY_URL}). No Evergreen endpoint was checked this sweep."
+    ),
+    STREAM_DEEP: (
+        "open https://stream.waow.tech/status and /metrics. Tail advance, seals, and"
+        " compaction were not checked this sweep."
+    ),
+}
+DEFAULT_NEXT_STEP = "open the run below and read the task's logs."
+
 SUPPLEMENTAL_CHECKS: list[tuple[str, str]] = [
     ("relay-eval", "https://relay-eval.waow.tech/api/latest"),
     ("jetstream.waow.tech", "https://jetstream.waow.tech/"),
@@ -69,6 +88,14 @@ class CheckResult:
     name: str
     healthy: bool
     detail: str
+
+
+@dataclass
+class BrokenCheck:
+    """A check task that errored after its retries, so its target went unchecked."""
+
+    name: str
+    error: str
 
 
 def _get(url: str) -> tuple[int, bytes]:
@@ -132,7 +159,7 @@ def check_stream_deep() -> CheckResult:
 
     st, body_a = _get("https://stream.waow.tech/status")
     if st != 200:
-        return CheckResult("stream (deep)", False, f"/status returned {st}")
+        return CheckResult(STREAM_DEEP, False, f"/status returned {st}")
     seq_a = _status_int(body_a.decode(), "upstream seq")
 
     time.sleep(TAIL_WINDOW_S)
@@ -179,8 +206,8 @@ def check_stream_deep() -> CheckResult:
     if problems:
         for p in problems:
             logger.warning("stream: %s", p)
-        return CheckResult("stream (deep)", False, "; ".join(problems))
-    return CheckResult("stream (deep)", True, detail)
+        return CheckResult(STREAM_DEEP, False, "; ".join(problems))
+    return CheckResult(STREAM_DEEP, True, detail)
 
 
 @task(retries=1, retry_delay_seconds=15)
@@ -192,38 +219,61 @@ def check_url(name: str, url: str) -> CheckResult:
     return CheckResult(name, st == 200, f"HTTP {st}")
 
 
-def summarize(results: list) -> tuple[list[str], list[str], list[str]]:
+def summarize(
+    results: list[CheckResult | BrokenCheck],
+) -> tuple[list[str], list[str], list[BrokenCheck]]:
     """Split sweep results into table rows, unhealthy findings, and checks
     that themselves failed to run. Only the last group fails the flow."""
     rows = ["| target | state | detail |", "| --- | --- | --- |"]
     unhealthy: list[str] = []
-    broken_checks: list[str] = []
+    broken_checks: list[BrokenCheck] = []
     for r in results:
         if isinstance(r, CheckResult):
             mark = "ok" if r.healthy else "**DOWN**"
             rows.append(f"| {r.name} | {mark} | {r.detail} |")
             if not r.healthy:
                 unhealthy.append(f"{r.name}: {r.detail}")
-        else:  # task itself errored after retry — the sweep is incomplete
-            rows.append(f"| (task error) | **DOWN** | {r} |")
-            broken_checks.append(str(r))
+        else:
+            rows.append(f"| {r.name} | **CHECK ERRORED** | {r.error} |")
+            broken_checks.append(r)
     return rows, unhealthy, broken_checks
+
+
+def run_link() -> str:
+    return RUN_URL.format(id=flow_run.id) if flow_run.id else ""
 
 
 def unhealthy_payload(unhealthy: list[str]) -> dict[str, object]:
     """`fleet unhealthy -> discord` renders `summary`; discord caps a message at 2000."""
-    return {"unhealthy": unhealthy, "summary": "\n".join(unhealthy)[:1800]}
+    link = run_link()
+    tail = f"\nrun: {link}" if link else ""
+    return {"unhealthy": unhealthy, "summary": "\n".join(unhealthy)[: 1800 - len(tail)] + tail}
+
+
+def broken_sweep_message(broken: list[BrokenCheck]) -> str:
+    """The Failed state's message, which `flow-run failure -> discord` posts verbatim."""
+    lines = [f"Sweep incomplete: {len(broken)} check(s) errored, so their targets went unchecked."]
+    for b in broken:
+        lines.append(f"\n{b.name} errored: {b.error}")
+        lines.append(f"Next: {NEXT_STEP.get(b.name, DEFAULT_NEXT_STEP)}")
+    return "\n".join(lines)[:1600]
+
+
+def _named(name: str, result: object) -> CheckResult | BrokenCheck:
+    if isinstance(result, CheckResult):
+        return result
+    return BrokenCheck(name, str(result) or type(result).__name__)
 
 
 @flow(log_prints=True)
-def fleet_health() -> None:
+def fleet_health() -> State | None:
     logger = get_run_logger()
 
     deep_future = check_stream_deep.submit()
     evergreen_future = check_evergreen.submit()
-    shallow_futures = [check_url.submit(name, url) for name, url in SUPPLEMENTAL_CHECKS]
-    results: list[CheckResult] = [deep_future.result(raise_on_failure=False)]
-    results += [f.result(raise_on_failure=False) for f in shallow_futures]
+    shallow_futures = [(name, check_url.submit(name, url)) for name, url in SUPPLEMENTAL_CHECKS]
+    results = [_named(STREAM_DEEP, deep_future.result(raise_on_failure=False))]
+    results += [_named(name, f.result(raise_on_failure=False)) for name, f in shallow_futures]
     evergreen = evergreen_future.result(raise_on_failure=False)
     if isinstance(evergreen, list):
         results += [
@@ -232,7 +282,7 @@ def fleet_health() -> None:
         ]
         logger.info("Evergreen inventory: %d endpoints checked", len(evergreen))
     else:
-        results.append(evergreen)
+        results.append(_named(EVERGREEN, evergreen))
 
     rows, unhealthy, broken_checks = summarize(results)
 
@@ -252,6 +302,5 @@ def fleet_health() -> None:
             payload=unhealthy_payload(unhealthy),
         )
     if broken_checks:
-        raise RuntimeError(
-            f"{len(broken_checks)} check(s) could not run: " + " | ".join(broken_checks)
-        )
+        return Failed(message=broken_sweep_message(broken_checks))
+    return None
