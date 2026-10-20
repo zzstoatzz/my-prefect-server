@@ -140,6 +140,18 @@ def reviewed_patch(review_run_id: str, approval: dict) -> str:
     )
 
 
+def references_issue(body: str, issue_number: int) -> bool:
+    full = rf"https://(?:redirect\.)?github\.com/{REPOSITORY}/issues/{issue_number}(?!\d)"
+    if re.search(full, body, re.IGNORECASE):
+        return True
+    text = re.sub(r"<a\b[^>]*>.*?</a>", "", body, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"\[[^\]]*\]\([^)]+\)", "", text)
+    return (
+        re.search(rf"(?<![\w/])(?:{REPOSITORY})?#{issue_number}(?!\d)", text, re.IGNORECASE)
+        is not None
+    )
+
+
 def check_competing_work(
     issue_number: int, branch: str, reviewed_at: str
 ) -> tuple[dict, list[dict]]:
@@ -147,8 +159,9 @@ def check_competing_work(
     if not isinstance(issue, dict):
         raise ValueError("Issue does not exist")
     timeline = pages(f"repos/{REPOSITORY}/issues/{issue_number}/timeline")
-    check_review(issue, timeline, reviewed_at)
     own = pages(f"repos/{REPOSITORY}/pulls?state=all&head=PrefectHQ:{branch}")
+    if not own:
+        check_review(issue, timeline, reviewed_at)
     query = urllib.parse.quote(f"repo:{REPOSITORY} is:pr {issue_number} in:body")
     matches = github(f"search/issues?q={query}&per_page=100")
     if (
@@ -157,10 +170,11 @@ def check_competing_work(
         or matches["total_count"] > 100
     ):
         raise ValueError("Could not exhaust corresponding PR search")
-    pattern = re.compile(rf"(?:#|/issues/){issue_number}(?!\d)")
     own_numbers = {pr["number"] for pr in own}
     for match in matches["items"]:
-        if match["number"] not in own_numbers and pattern.search(match.get("body") or ""):
+        if match["number"] not in own_numbers and references_issue(
+            match.get("body") or "", issue_number
+        ):
             raise ValueError(f"Corresponding PR already exists: {match['html_url']}")
     for event in timeline:
         source = event.get("source", {}).get("issue", {})
