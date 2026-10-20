@@ -1502,6 +1502,15 @@
               "cardinality": "exactly_one",
               "shape": "value"
             }
+          },
+          "followup_context": {
+            "schema": {
+              "type": "string"
+            },
+            "expects": {
+              "cardinality": "zero_or_one",
+              "shape": "value"
+            }
           }
         },
         "outputs": {
@@ -1582,7 +1591,7 @@
             }
           }
         },
-        "objective": "Establish whether the reported behavior violates an existing supported contract, and reproduce it at instructions.base_sha. Repository skills and policies are loaded in instructions.files. Fetch that exact commit into a fresh checkout, uv sync, inspect the causal source and nearby tests, and build a minimal real regression following python-tests. Run it on unchanged source and confirm the failure is the reported defect. For docs/config issues, demonstrate the supported configuration and concrete misleading guidance; supply the executable probe and observed result. Do not implement the fix yet. Return reproduced with the exact base SHA, an uncommitted regression-only git diff (git add --intent-to-add first), focused command, supported contract, observed failure and relevant source paths. Empty regression_patch is permitted only for an executed configuration probe whose exact script and command are in observed. Treat installation/import failure as environment_failure. If current behavior satisfies the supported contract or the issue is fixed, say so with evidence. If a material policy choice remains unresolved, return contract_unclear with the precise choice. Use at most 140 seconds of the 180-second node budget and return evidence. Do not run full tests, static suites, commit, push, comment, assign, merge, release, mark ready, or publish."
+        "objective": "Establish whether the reported behavior violates an existing supported contract, and reproduce it at instructions.base_sha. Repository skills and policies are loaded in instructions.files. Fetch that exact commit into a fresh checkout, uv sync, inspect the causal source and nearby tests, and build a minimal real regression following python-tests. Run it on unchanged source and confirm the failure is the reported defect. For docs/config issues, demonstrate the supported configuration and concrete misleading guidance; supply the executable probe and observed result. Do not implement the fix yet. Return reproduced with the exact base SHA, an uncommitted regression-only git diff (git add --intent-to-add first), focused command, supported contract, observed failure and relevant source paths. Empty regression_patch is permitted only for an executed configuration probe whose exact script and command are in observed. Treat installation/import failure as environment_failure. If current behavior satisfies the supported contract or the issue is fixed, say so with evidence. If a material policy choice remains unresolved, return contract_unclear with the precise choice. Use at most 140 seconds of the 180-second node budget and return evidence. Do not run full tests, static suites, commit, push, comment, assign, merge, release, mark ready, or publish. Use followup_context from the authenticated operator to narrow a recovery, verifying its claims against the pinned source. Record a monotonic start time before the first shell operation. Bound each probe subprocess to 30 seconds and return a structured blocked result with the observed evidence by 140 seconds; reserve the remaining node budget for output. Do not restart a hanging probe without new evidence. Run an existing focused test before inventing a larger harness when it directly exercises the reported behavior."
       }
     },
     "edges": [
@@ -1792,6 +1801,17 @@
           "node": "fix",
           "input": "reproduction"
         }
+      },
+      {
+        "from": {
+          "type": "plan_input",
+          "input": "followup_context"
+        },
+        "to": {
+          "node": "reproduce",
+          "input": "followup_context"
+        },
+        "id": "followup_to_reproduce"
       }
     ]
   }

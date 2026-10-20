@@ -75,7 +75,9 @@ while true; do
   run=$(jq -r '.current.run_id // empty' "$ledger")
   if [[ -z $run ]]; then
     key=$(jq -r '.current.key' "$ledger")
-    if ! AGENTIC_BATCH_POLICY_FILE="$directory/policy.json" bash scripts/agentic_fastmcp.sh run "$issue" "$key" > "$case_dir/submission.json" 2> "$case_dir/setup.log"; then
+    arguments=("$issue" "$key")
+    if [[ -f $case_dir/followup.md ]]; then arguments+=("$case_dir/followup.md"); fi
+    if ! AGENTIC_BATCH_POLICY_FILE="$directory/policy.json" bash scripts/agentic_fastmcp.sh run "${arguments[@]}" > "$case_dir/submission.json" 2> "$case_dir/setup.log"; then
       stop "submission_needs_attention"; exit 1
     fi
     run=$(jq -er '.id' "$case_dir/submission.json")
