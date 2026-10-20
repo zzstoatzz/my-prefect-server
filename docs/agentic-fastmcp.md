@@ -328,3 +328,28 @@ Live main plan: `06ad71ab-4da4-71d5-8000-f2ea659610df`; continuation:
 The changed publisher has focused tests but still needs a qualifying live patch
 for end-to-end verification. The next bounded experiment needs a confirmed current,
 tractable issue and tighter deterministic preparation/probe execution.
+
+#### Targeted recoveries within the original batch
+
+The continuation retained the same 12 issue numbers, original two-hour policy, and
+usage ceilings. It corrected two further workflow problems: operator follow-up
+context previously reached only `fix`, so it now also reaches `reproduce`; and
+eligibility now checks current public docs/source before treating historical
+contract discussion as unresolved.
+
+Logging recovery `06ad720d-bb1e-7ad2-8000-b45b4005401b` passed the existing
+`test_log` and a bounded real stdio probe that collected exactly one info log
+without the reported async errors. The old Inspector/version combination was not
+tested. Header recovery `06ad7222-7370-7dfc-8000-8bcc62d2808c` corrected the earlier
+#1653 verdict: the pinned docs establish header precedence, three existing tests
+passed, and a live HTTP upstream received the configured `User-Agent: myagent`
+instead of the incoming MCP request's `another-agent`. Both were not reproduced
+on pinned current main; neither justified a new patch.
+
+Final observed totals: 15 runs over 12 distinct issues, 14 completed and one original
+timeout, **zero new FastMCP PRs**, 4,582,668 input / 73,870 output tokens. All runs
+were terminal at the final audit; processing finished at 08:14:32 UTC. The active
+main plan is now `06ad721d-8a68-7026-8000-3832c0b077a3`. The context change passed
+23 relevant tests and Cloud validation. Probe subprocess timeouts are requested
+in the agent instructions; the platform's 180-second node limit remains the hard
+outer bound. No new issue batch was authorized or started.
