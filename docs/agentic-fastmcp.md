@@ -11,22 +11,29 @@ contributions (including closed PRs), explicit contributor claims, incomplete
 reports and unresolved design questions. Being the reporter alone is not a claim.
 An eligible candidate reaches a separate fix agent. Deferred candidates skip it.
 
-The fix agent must demonstrate a failing regression on unchanged main, a passing
-fix, neighboring tests and all repository-required checks before publishing one
-draft PR. It rechecks competing work before publication, uses a deterministic
-branch, credits the reporter, and returns incomplete work instead of weakening
-checks. Publication is deliberately not retried automatically. The final report
-accepts failed upstream nodes so a timeout remains visible.
+The preparation agent demonstrates a failing regression and passing fix, or
+executes a supported configuration before correcting its documentation. It
+returns an uncommitted patch pinned to the exact base SHA. A DeploymentNode runs
+`fastmcp-validate-patch/cloud-validation` in the ready `managed` pool. That flow
+applies the exact patch, enforces its scope, runs the full suite and static checks
+(plus docs checks when applicable), and rejects failures or formatter changes.
+Only its `completed` output reaches the publication agent, which rechecks
+competing work, reviews the unchanged diff and opens one credited draft PR on
+`agentic/issue-N`. Publication is not automatically retried. The report accepts
+failed upstream nodes so a timeout or validation failure remains visible.
 
-Agent node execution has a short runtime budget (prior runs timed out around
-three minutes). Full FastMCP validation may exceed it. A blocked result is evidence
-that execution needs a longer-lived coding/test environment, not permission to
-publish an unverified fix. The publication path remains experimental until a real
-eligible issue completes successfully.
+Agent node execution is limited to about three minutes. The managed deployment
+has a 40-minute flow limit, a 45-minute container limit, four CPUs and one
+concurrent run. It has no schedule or GitHub write credential. Its source is
+commit-pinned in the separate `deploy/agentic-workflows/prefect.yaml`; it does not
+use the old self-hosted triage worker. Publication remains experimental until a
+real eligible issue completes successfully.
 
 ```sh
 just agentic-fastmcp validate
+just agentic-fastmcp deploy-validation
 just agentic-fastmcp publish
+just agentic-fastmcp publish-continuation
 just agentic-fastmcp run 5926 experiment-5926-20261020-v1
 just agentic-fastmcp results RUN_ID
 just agentic-fastmcp verify
@@ -36,6 +43,14 @@ Publish only committed configuration. The helper explicitly targets Cloud and
 uses the `bot` profile credential; it does not use the self-hosted server.
 Reuse an idempotency key to recover an uncertain run submission. Use a new key
 for an intentional repeat. Run sequentially on the same issue.
+`run ISSUE KEY CONTEXT_FILE` supplies optional operator context for a follow-up
+experiment. It does not bypass eligibility or required validation.
+
+`continue SOURCE_RUN KEY` resumes an eligible saved patch through the separate
+`fastmcp-publish-patch` plan after a terminal preparation run whose publication
+node was never reached. It reuses the original Cloud outputs, reruns validation,
+and retains the publisher's fresh competing-work checks. It avoids repeating
+triage and reproduction after a validation infrastructure failure.
 
 ## Baseline
 
@@ -98,3 +113,34 @@ that this workflow created a PR.
 The CLI automatically consumes stdin as a request body. The helper redirects
 API subprocess stdin from `/dev/null`; without that, fetching multiple selected
 outputs from a shell read-loop consumes the next row and fails JSON parsing.
+
+## Managed validation experiment
+
+Follow-up #603 run `06ad6c80-2622-763d-8000-8f78ab5e8086` tested the documented
+proxy configuration question but its combined fix/check node timed out after
+179.96 seconds, returning no patch. The report still completed and exposed the
+failure. Main's successful test workflow for `535a3e12` took about five minutes
+([run 39323885441](https://github.com/PrefectHQ/fastmcp/actions/runs/39323885441)),
+so full validation was moved into a normal managed deployment rather than
+weakening the checks to fit an AgentNode.
+
+Deployment `5f1e86fb-d975-47e5-a85d-a45b3dd04865` was initially pinned to source commit
+`c20858de7d565bec3a772f93943934304c586a21`. Controlled run
+`06ad6ca1-79f8-7b74-8000-f99041d5e76e` successfully pulled that source, installed
+the required tools, fetched the FastMCP base, applied a valid patch adding an
+out-of-scope root file, and failed with the expected scope error before tests.
+No GitHub changes were made.
+
+Plan version `06ad6ca2-26b6-779e-8000-72c265f689ef` separates preparation,
+validation and publication. The #603 follow-up is run
+`06ad6ca2-515d-72fe-8000-21835240a111`. Preparation returned a documentation
+patch, but child validation `dd00977f-2b61-52e4-a0db-a44094032e44` rejected a
+serialized hunk with an incorrect line count. Publication was never reached.
+Both validator and publisher now use `git apply --recount` to infer hunk counts
+from the supplied lines without changing the patch's content. The same saved
+patch passes Git's applicability check with this option.
+
+An independent local two-server reproduction also confirmed the proposed
+clarification: direct access advertises a prefixed SSE messages URL that returns
+404, while a prefix-stripping proxy successfully lists and calls the add tool,
+returning 3. This establishes the configuration behavior, not publication success.

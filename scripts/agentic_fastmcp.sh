@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 export PREFECT_API_URL='https://api.prefect.cloud/api/accounts/12242a57-9f05-4bf5-8853-9bff595d4bab/workspaces/cafa2ffa-f6cc-4ed6-ab76-eaa4ba1ad40e'
 unset PREFECT_API_AUTH_STRING
 flow_id=aa69d171-a0a1-40f7-9679-4b811550ad26
+continuation_flow_id=6afddacc-ee55-4190-a5dc-13704bf5ddd2
 plan=deploy/agentic-workflows/fastmcp-issue-pr.json
 api() { prefect --profile bot --no-prompt api "$@" </dev/null; }
 
@@ -16,7 +17,11 @@ case "${1:-}" in
   validate)
     api POST /execution-plans/validate --data "@$plan"
     ;;
-  publish)
+  publish|publish-continuation)
+    if [[ $1 == publish-continuation ]]; then
+      flow_id=$continuation_flow_id
+      plan=deploy/agentic-workflows/fastmcp-publish-patch.json
+    fi
     api POST /execution-plans/validate --data "@$plan" | jq -e '.valid == true'
     version=$(api POST "/flows/$flow_id/execution-plan/versions" --data "@$plan")
     version_id=$(jq -er '.id' <<<"$version")
@@ -33,6 +38,25 @@ case "${1:-}" in
       body=$(jq --rawfile context "$4" '.parameters.followup_context=$context' <<<"$body")
     fi
     api POST "/flows/$flow_id/execution-plan/runs" --data "$body"
+    ;;
+  continue)
+    source_run=${2:?source run ID required}
+    key=${3:?idempotency key required}
+    state=$(api GET "/flow_runs/$source_run/execution-plan")
+    jq -e --arg flow "$flow_id" '
+      .snapshot.flow_id == $flow and
+      (.status == "completed" or .status == "failed") and
+      any(.nodes[]; .node == "publish" and .status == "unreached")
+    ' <<<"$state" >/dev/null
+    eligibility=$(jq -er '.nodes[]|select(.node=="eligibility")|.activation_id' <<<"$state")
+    preparation=$(jq -er '.nodes[]|select(.node=="fix")|.activation_id' <<<"$state")
+    candidate=$(api GET "/flow_runs/$source_run/execution-plan/activations/$eligibility/outputs/eligible")
+    patch=$(api GET "/flow_runs/$source_run/execution-plan/activations/$preparation/outputs/ready")
+    jq -e '.decision == "eligible"' <<<"$candidate" >/dev/null
+    body=$(jq -nc --arg source "$source_run" --arg key "$key" \
+      --argjson candidate "$candidate" --argjson patch "$patch" \
+      '{name:("resume-"+$source),idempotency_key:$key,parameters:{candidate:$candidate,patch:$patch,source_run_id:$source}}')
+    api POST "/flows/$continuation_flow_id/execution-plan/runs" --data "$body"
     ;;
   results)
     run=${2:?run ID required}
@@ -63,7 +87,7 @@ case "${1:-}" in
     done < <(jq -r '.cases[] | [.issue_number,.run_id,.decision,(.fix_status // "unreached")] | @tsv' deploy/agentic-workflows/gate-cases.json)
     ;;
   *)
-    echo 'Usage: just agentic-fastmcp validate|publish|run ISSUE KEY [CONTEXT_FILE]|results RUN_ID|verify' >&2
+    echo 'Usage: just agentic-fastmcp validate|deploy-validation|publish|publish-continuation|run ISSUE KEY [CONTEXT_FILE]|continue SOURCE_RUN KEY|results RUN_ID|verify' >&2
     exit 2
     ;;
 esac

@@ -109,8 +109,8 @@ def validate_patch(base_sha: str, patch: str) -> dict[str, str]:
         fetch_source(repository, base_sha)
         patch_file = root / "candidate.patch"
         patch_file.write_text(patch)
-        run_command(["git", "apply", "--check", str(patch_file)], repository)
-        run_command(["git", "apply", str(patch_file)], repository)
+        run_command(["git", "apply", "--recount", "--check", str(patch_file)], repository)
+        run_command(["git", "apply", "--recount", str(patch_file)], repository)
         run_command(["git", "add", "--intent-to-add", "."], repository)
         changed = (
             subprocess.check_output(["git", "diff", "--name-only", "-z"], cwd=repository)

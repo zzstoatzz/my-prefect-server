@@ -1,0 +1,740 @@
+{
+  "plan": {
+    "schema_version": "0.1",
+    "kind": "ExecutionPlan",
+    "inputs": {
+      "candidate": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "issue_number": {
+              "type": "integer"
+            },
+            "decision": {
+              "type": "string",
+              "enum": [
+                "eligible",
+                "existing_pr",
+                "claimed",
+                "needs_info",
+                "contract_unclear",
+                "not_bug",
+                "closed",
+                "incomplete"
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "issue_url": {
+              "type": "string"
+            },
+            "prior_art": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "mre": {
+              "type": "string"
+            },
+            "evidence": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "issue_number",
+            "decision",
+            "reason",
+            "issue_url",
+            "prior_art",
+            "mre",
+            "evidence"
+          ]
+        },
+        "required": true
+      },
+      "patch": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "base_sha": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            "patch": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200000
+            }
+          },
+          "required": [
+            "base_sha",
+            "patch"
+          ],
+          "additionalProperties": false
+        },
+        "required": true
+      },
+      "source_run_id": {
+        "schema": {
+          "type": "string"
+        },
+        "required": true
+      }
+    },
+    "nodes": {
+      "validate": {
+        "kind": "DeploymentNode",
+        "label": "Run required checks in Prefect Managed",
+        "inputs": {
+          "parameters": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "base_sha": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{40}$"
+                },
+                "patch": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200000
+                }
+              },
+              "required": [
+                "base_sha",
+                "patch"
+              ],
+              "additionalProperties": false
+            },
+            "expects": {
+              "cardinality": "exactly_one",
+              "shape": "value"
+            }
+          }
+        },
+        "outputs": {
+          "completed": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "child_flow_run_id": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "child_flow_run_id",
+                "state"
+              ]
+            }
+          },
+          "failed": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "child_flow_run_id": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "child_flow_run_id",
+                "state"
+              ]
+            }
+          },
+          "crashed": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "child_flow_run_id": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "child_flow_run_id",
+                "state"
+              ]
+            }
+          },
+          "cancelled": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "child_flow_run_id": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "child_flow_run_id",
+                "state"
+              ]
+            }
+          }
+        },
+        "orchestration": {
+          "output_selection": "exactly_one",
+          "evaluate_when": "all_required_inputs_produced"
+        },
+        "deployment": {
+          "id": "5f1e86fb-d975-47e5-a85d-a45b3dd04865"
+        },
+        "wait": {
+          "for": "child_flow_run",
+          "until": "terminal"
+        }
+      },
+      "publish": {
+        "kind": "AgentNode",
+        "label": "Publish the validated patch as a draft PR",
+        "inputs": {
+          "candidate": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "issue_number": {
+                  "type": "integer"
+                },
+                "decision": {
+                  "type": "string",
+                  "enum": [
+                    "eligible",
+                    "existing_pr",
+                    "claimed",
+                    "needs_info",
+                    "contract_unclear",
+                    "not_bug",
+                    "closed",
+                    "incomplete"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "issue_url": {
+                  "type": "string"
+                },
+                "prior_art": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "mre": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "issue_number",
+                "decision",
+                "reason",
+                "issue_url",
+                "prior_art",
+                "mre",
+                "evidence"
+              ]
+            },
+            "expects": {
+              "cardinality": "exactly_one",
+              "shape": "value"
+            }
+          },
+          "patch": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "base_sha": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{40}$"
+                },
+                "patch": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200000
+                }
+              },
+              "required": [
+                "base_sha",
+                "patch"
+              ],
+              "additionalProperties": false
+            },
+            "expects": {
+              "cardinality": "exactly_one",
+              "shape": "value"
+            }
+          },
+          "validation": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "child_flow_run_id": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "child_flow_run_id",
+                "state"
+              ]
+            },
+            "expects": {
+              "cardinality": "exactly_one",
+              "shape": "value"
+            }
+          }
+        },
+        "outputs": {
+          "result": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "draft_pr",
+                    "existing_pr",
+                    "blocked"
+                  ]
+                },
+                "pr_url": {
+                  "type": "string"
+                },
+                "base_sha": {
+                  "type": "string"
+                },
+                "head_sha": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "type": "string"
+                },
+                "patch": {
+                  "type": "string"
+                },
+                "limitations": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "status",
+                "pr_url",
+                "base_sha",
+                "head_sha",
+                "evidence",
+                "patch",
+                "limitations"
+              ]
+            }
+          }
+        },
+        "orchestration": {
+          "output_selection": "exactly_one",
+          "evaluate_when": "all_required_inputs_produced"
+        },
+        "runtime": {
+          "env": {
+            "REPOSITORY": "PrefectHQ/fastmcp",
+            "GH_TOKEN": {
+              "$ref": {
+                "block_document_id": "49976ece-616f-4b9f-a45d-c56f6be064ea"
+              }
+            }
+          }
+        },
+        "objective": "Publish only the exact patch whose required checks passed in the preceding Prefect Managed validation deployment. Its completed output provides the validation child run ID. The deployment checked the same base_sha and patch received here, ran uv sync, uv run pytest -n auto, uv run prek run --all-files, and applicable docs checks, and rejects check failures or modifications to the submitted patch. This node must not edit that patch; if any change is needed, return blocked for a new validation run.\nYou have about 150 seconds. GH_TOKEN is available; never print it. Repository is PrefectHQ/fastmcp. Use gh api REST (old gh lacks closedByPullRequestsReferences and gh search --state all). Recheck issue open state, assignments, all comments/timeline and all-state corresponding PR searches before publication; skip existing contributions/claims. Check branch agentic/issue-N and all-state PRs for it to recover an uncertain prior publication; never blindly retry push/create.\nClone repository and checkout exact patch.base_sha; require upstream main still equals that base. Read repository AGENTS.md and contributing/review requirements; review the entire diff for correctness against the issue and applicable docs/source. Apply the exact patch using git apply --recount, including new files (the validator uses the same mode to infer hunk counts from supplied lines), and git diff --check. The already-completed validation covers this exact immutable tree; do not rerun the full suite here. No code changes are allowed after validation.\nVerify reporter GitHub identity and contributor credit rules; add required Co-authored-by trailer to commit and PR body. Configure git with the authenticated actor's identity and gh auth setup-git without exposing credentials. Create branch agentic/issue-N; commit without bypassing hooks (install hooks if required and available). If hooks fail or alter files, stop and return blocked; do not commit a corrected but unvalidated tree. Push only that branch, never main, never force.\nOpen exactly one DRAFT PR after a final competing-work recheck. Keep body to 1-2 concise paragraphs explaining the user's problem and what changes. Include Fixes #N only when the change actually addresses it, appropriate reporter credit and Prefect Cloud Agentic Workflows provenance; write the body to a file and inspect before gh pr create --draft --body-file. Do not add labels, post comments, mark ready, merge or close issues. Return verified PR URL and remote head SHA with validation child run ID in evidence. For documentation, explain the configuration clarification without claiming a runtime bug was fixed. Return blocked if any publication prerequisite cannot be established."
+      },
+      "report": {
+        "kind": "AgentNode",
+        "label": "Summarize outcome",
+        "inputs": {
+          "eligible": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "issue_number": {
+                  "type": "integer"
+                },
+                "decision": {
+                  "type": "string",
+                  "enum": [
+                    "eligible",
+                    "existing_pr",
+                    "claimed",
+                    "needs_info",
+                    "contract_unclear",
+                    "not_bug",
+                    "closed",
+                    "incomplete"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "issue_url": {
+                  "type": "string"
+                },
+                "prior_art": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "mre": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "issue_number",
+                "decision",
+                "reason",
+                "issue_url",
+                "prior_art",
+                "mre",
+                "evidence"
+              ]
+            },
+            "expects": {
+              "cardinality": "zero_or_one",
+              "shape": "value"
+            }
+          },
+          "published": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "draft_pr",
+                    "existing_pr",
+                    "blocked"
+                  ]
+                },
+                "pr_url": {
+                  "type": "string"
+                },
+                "base_sha": {
+                  "type": "string"
+                },
+                "head_sha": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "type": "string"
+                },
+                "patch": {
+                  "type": "string"
+                },
+                "limitations": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "status",
+                "pr_url",
+                "base_sha",
+                "head_sha",
+                "evidence",
+                "patch",
+                "limitations"
+              ]
+            },
+            "expects": {
+              "cardinality": "zero_or_one",
+              "shape": "value"
+            }
+          },
+          "validation_completed": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "child_flow_run_id": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "child_flow_run_id",
+                "state"
+              ]
+            },
+            "expects": {
+              "cardinality": "zero_or_one",
+              "shape": "value"
+            }
+          },
+          "validation_failed": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "child_flow_run_id": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "child_flow_run_id",
+                "state"
+              ]
+            },
+            "expects": {
+              "cardinality": "zero_or_one",
+              "shape": "value"
+            }
+          },
+          "validation_crashed": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "child_flow_run_id": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "child_flow_run_id",
+                "state"
+              ]
+            },
+            "expects": {
+              "cardinality": "zero_or_one",
+              "shape": "value"
+            }
+          },
+          "validation_cancelled": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "child_flow_run_id": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "child_flow_run_id",
+                "state"
+              ]
+            },
+            "expects": {
+              "cardinality": "zero_or_one",
+              "shape": "value"
+            }
+          },
+          "source_run_id": {
+            "schema": {
+              "type": "string"
+            },
+            "expects": {
+              "cardinality": "exactly_one",
+              "shape": "value"
+            }
+          }
+        },
+        "outputs": {
+          "report": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string"
+                },
+                "issue_number": {
+                  "type": "integer"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "pr_url": {
+                  "type": "string"
+                },
+                "evidence": {
+                  "type": "string"
+                },
+                "incomplete": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "status",
+                "issue_number",
+                "summary",
+                "pr_url",
+                "evidence",
+                "incomplete"
+              ]
+            }
+          }
+        },
+        "orchestration": {
+          "output_selection": "exactly_one",
+          "evaluate_when": "all_reachable_terminal",
+          "on_upstream": {
+            "failed": "allow",
+            "crashed": "allow",
+            "cancelled": "allow",
+            "timed_out": "allow"
+          }
+        },
+        "objective": "Summarize only supplied evidence without commands. Deferred candidates are expected: status=deferred.decision, pr_url=\"\", incomplete=\"\". Existing PR links belong in evidence, not pr_url. If published exists use its status/pr_url/limitations, and include the validation child run ID. If validation_failed, validation_crashed or validation_cancelled exists, status=blocked, pr_url=\"\", incomplete names the child run and failed validation; no publication is authorized. If result.status=patch_prepared but no published result exists, explicitly say validation/publication did not complete, never call it fixed. Otherwise use result status/limitations and leave pr_url empty. If eligible exists but result missing, status=incomplete and explain patch preparation failed/timed out. The paired eligible/deferred branch that was not chosen is not a missing result. Preserve actual reproduction and test limitations. This is a continuation of an already-prepared patch from source_run_id. There is no preparation result input in this plan; its absence is expected. Include the source run ID in evidence. Report validation failures or missing publication accurately."
+      }
+    },
+    "edges": [
+      {
+        "id": "candidate_to_publish",
+        "from": {
+          "type": "plan_input",
+          "input": "candidate"
+        },
+        "to": {
+          "node": "publish",
+          "input": "candidate"
+        }
+      },
+      {
+        "id": "patch_to_validate",
+        "from": {
+          "type": "plan_input",
+          "input": "patch"
+        },
+        "to": {
+          "node": "validate",
+          "input": "parameters"
+        }
+      },
+      {
+        "id": "patch_to_publish",
+        "from": {
+          "type": "plan_input",
+          "input": "patch"
+        },
+        "to": {
+          "node": "publish",
+          "input": "patch"
+        }
+      },
+      {
+        "id": "candidate_to_report",
+        "from": {
+          "type": "plan_input",
+          "input": "candidate"
+        },
+        "to": {
+          "node": "report",
+          "input": "eligible"
+        }
+      },
+      {
+        "id": "source_run_id_to_report",
+        "from": {
+          "type": "plan_input",
+          "input": "source_run_id"
+        },
+        "to": {
+          "node": "report",
+          "input": "source_run_id"
+        }
+      },
+      {
+        "id": "validated_to_publish",
+        "from": {
+          "type": "node_output",
+          "node": "validate",
+          "output": "completed"
+        },
+        "to": {
+          "node": "publish",
+          "input": "validation"
+        }
+      },
+      {
+        "id": "published_to_report",
+        "from": {
+          "type": "node_output",
+          "node": "publish",
+          "output": "result"
+        },
+        "to": {
+          "node": "report",
+          "input": "published"
+        }
+      },
+      {
+        "id": "validation_completed_to_report",
+        "from": {
+          "type": "node_output",
+          "node": "validate",
+          "output": "completed"
+        },
+        "to": {
+          "node": "report",
+          "input": "validation_completed"
+        }
+      },
+      {
+        "id": "validation_failed_to_report",
+        "from": {
+          "type": "node_output",
+          "node": "validate",
+          "output": "failed"
+        },
+        "to": {
+          "node": "report",
+          "input": "validation_failed"
+        }
+      },
+      {
+        "id": "validation_crashed_to_report",
+        "from": {
+          "type": "node_output",
+          "node": "validate",
+          "output": "crashed"
+        },
+        "to": {
+          "node": "report",
+          "input": "validation_crashed"
+        }
+      },
+      {
+        "id": "validation_cancelled_to_report",
+        "from": {
+          "type": "node_output",
+          "node": "validate",
+          "output": "cancelled"
+        },
+        "to": {
+          "node": "report",
+          "input": "validation_cancelled"
+        }
+      }
+    ]
+  }
+}
