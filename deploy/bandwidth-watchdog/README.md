@@ -20,6 +20,8 @@ Decimal GB throughout. Defaults in `config.json`:
 - 100 GB observed TCP during the UTC calendar month: warning, not a claim about
   remaining ISP allowance. This deliberately catches large consumption well
   below the user's approximately 1 TB household plan.
+  Monthly messages lead with the observed total and configured warning threshold,
+  UTC month, and monitoring start time; recent usage follows separately.
 - A heartbeat every minute; a Prefect automation alerts after five minutes missing.
 
 The local sampler and freezer do not need Prefect or Logfire to be reachable.

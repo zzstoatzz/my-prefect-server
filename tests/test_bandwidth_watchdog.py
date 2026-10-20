@@ -78,6 +78,31 @@ def test_new_socket_counts_but_initial_inventory_does_not():
     assert state["month_tcp_bytes"] == 120
 
 
+def test_monthly_alert_explains_cumulative_trigger_after_recent_usage_rolls_off():
+    config = {
+        **CONFIG,
+        "alert_bytes_15m": 5_000_000_000,
+        "host_alert_bytes_15m": 5_000_000_000,
+        "monthly_observed_budget_bytes": 100_000_000_000,
+        "pause_units": [],
+    }
+    state = {}
+    now = 1792198367
+    advance(state, sockets(0), {}, "boot", now, config)
+    advance(state, sockets(183_000_000_000), {}, "boot", now + 5, config)
+    state["outbox"].clear()
+    advance(state, sockets(183_000_000_000), {}, "boot", now + 3610, config)
+
+    [alert] = state["outbox"]
+    assert alert["event"] == "bandwidth.monthly-budget"
+    assert alert["payload"]["month_tcp_bytes"] == 183_000_000_000
+    assert alert["payload"]["tcp_bytes_15m"] == 0
+    message = alert["payload"]["summary"]
+    assert "183.00 GB observed / 100.00 GB monthly warning threshold" in message
+    assert "2026-10 UTC; monitoring since 2026-10-17 00:52 UTC; not ISP billing" in message
+    assert "Recent usage: observed Internet TCP 0.00 GB/15m" in message
+
+
 def test_month_rollover_and_counter_reset():
     state = {}
     advance(state, sockets(100), {}, "boot", 1790812790, CONFIG)

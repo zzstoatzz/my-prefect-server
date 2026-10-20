@@ -154,8 +154,18 @@ def advance(
     ):
         if count >= threshold and now - cooldowns.get(kind, 0) >= config["cooldown_seconds"]:
             cooldowns[kind] = now
+            reason = ""
+            if kind == "monthly-budget":
+                observed_since = datetime.fromtimestamp(state["started"], UTC).strftime(
+                    "%Y-%m-%d %H:%M UTC"
+                )
+                reason = (
+                    f"{count / 1e9:.2f} GB observed / {threshold / 1e9:.2f} GB monthly warning threshold "
+                    f"({month} UTC; monitoring since {observed_since}; not ISP billing). "
+                    "Recent usage: "
+                )
             summary_text = (
-                f"{socket.gethostname()}: {kind}; observed Internet TCP {recent_tcp / 1e9:.2f} GB/15m; host {recent_host / 1e9:.2f} GB/15m (includes LAN). Top hourly groups: "
+                f"{socket.gethostname()}: {kind}; {reason}observed Internet TCP {recent_tcp / 1e9:.2f} GB/15m; host {recent_host / 1e9:.2f} GB/15m (includes LAN). Top hourly groups: "
                 + ", ".join(f"{g.rsplit('/', 1)[-1]} {b / 1e9:.2f} GB" for g, b in top)
             )
             alerts.append(event(kind, {**summary, "summary": summary_text}, now))
