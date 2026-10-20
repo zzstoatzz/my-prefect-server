@@ -638,3 +638,7 @@ deploy-bandwidth-watchdog:
 [positional-arguments]
 agentic-fastmcp *args:
     bash scripts/agentic_fastmcp.sh "$@"
+
+[positional-arguments]
+agentic-batch *args:
+    bash scripts/agentic_batch.sh "$@"

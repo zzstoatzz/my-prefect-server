@@ -20,6 +20,7 @@ from prefect.blocks.system import Secret
 from prefect.client.orchestration import get_client
 from prefect.context import get_run_context
 
+from flows.agentic_batch_policy import batch_branch
 from flows.agentic_validate_patch import fetch_source, install_tools, run_command
 
 REPOSITORY = "PrefectHQ/fastmcp"
@@ -152,6 +153,37 @@ def references_issue(body: str, issue_number: int) -> bool:
     )
 
 
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
+def publication_batch(review_run_id: str, issue_number: int) -> dict:
+    with get_client(sync_client=True) as client:
+        run = client.read_flow_run(UUID(review_run_id))
+    policy = run.parameters.get("batch", {})
+    batch_branch(policy, issue_number)
+    return policy
+
+
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
+def check_batch_capacity(policy: dict, issue_number: int) -> str:
+    branch = batch_branch(policy, issue_number)
+    prefix = f"agentic/{policy['id']}/"
+    count = 0
+    for page in range(1, 11):
+        prs = github.fn(
+            f"repos/{REPOSITORY}/pulls?state=all&sort=created&direction=desc&per_page=100&page={page}"
+        )
+        if not isinstance(prs, list):
+            raise ValueError("Cannot establish batch publication count")
+        count += sum(pr["head"]["ref"].startswith(prefix) for pr in prs)
+        if (
+            len(prs) < 100
+            or datetime.fromisoformat(prs[-1]["created_at"].replace("Z", "+00:00")).timestamp()
+            < policy["started_at"]
+        ):
+            batch_branch(policy, issue_number, count)
+            return branch
+    raise ValueError("Batch publication inventory exceeded its bound")
+
+
 def check_competing_work(
     issue_number: int, branch: str, reviewed_at: str
 ) -> tuple[dict, list[dict]]:
@@ -245,7 +277,8 @@ def publish_patch(
             "body": body,
         },
     )
-    branch = f"agentic/issue-{issue_number}"
+    policy = publication_batch(recovery_review_run_id, issue_number)
+    branch = check_batch_capacity(policy, issue_number)
     issue, existing = check_competing_work(issue_number, branch, reviewed_at)
     reporter = github(f"users/{issue['user']['login']}")
     actor = github("user")
@@ -318,11 +351,13 @@ def publish_patch(
             raise ValueError("Main changed since validation")
         if dry_run:
             return {"status": "dry_run", "head_sha": head}
+        check_batch_capacity(policy, issue_number)
         if not remote:
             push_branch(repository, branch)
         _, existing = check_competing_work(issue_number, branch, reviewed_at)
         if existing:
             raise ValueError("PR appeared during publication; inspect before retrying")
+        check_batch_capacity(policy, issue_number)
         pr = create_draft(branch, head, title, pr_body)
         if not pr["draft"] or pr["head"]["sha"] != head:
             raise ValueError("Created PR does not match the expected draft/head")

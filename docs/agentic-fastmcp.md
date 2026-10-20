@@ -240,3 +240,51 @@ tree and existing draft. Its task records contain no push or PR-creation task;
 GitHub still reports exactly one branch PR, #5928, at the same head. Recurring
 intake remains off. The next experiment should be another manually selected
 issue, measuring outcomes and agent runtime before adding a schedule.
+
+## Bounded intake experiment
+
+The bounded plan adds deterministic GitHub collection before submission, a narrow
+PR-matching AgentNode, and a separate reproduction AgentNode. The final review is
+an independent adversarial pass over the immutable validated patch. Existing PRs,
+including gate-closed contributions, produce `existing_work` with a
+`review_existing_contribution` disposition in the batch ledger. Their full review
+is a subsequent work item; the overnight batch prioritizes missing fixes and does
+not claim to have reviewed those PRs.
+
+The collector retains complete issue comments/timeline, all-state reference search,
+focused title searches, candidate PR bodies and revisions. Explicit fixing links
+permit an early match attempt. The matching agent may perform two additional
+symbol/error searches for unlinked work. Retrieval failures, truncated search,
+over 30 candidates or 250 KB of evidence stop submission for inspection. The
+inventory used to choose a queue is a bounded selection aid, not proof of no PR.
+
+```sh
+just agentic-batch init /absolute/state/night-YYYYMMDD ISSUE1 ISSUE2
+just agentic-batch run /absolute/state/night-YYYYMMDD
+```
+
+Each batch has at most 12 named issues, one active issue, a target/limit of three
+new drafts, and a two-hour publication window. The controller stops after three
+consecutive execution failures, queue exhaustion, or observed usage reaching
+8 million input / 160,000 output tokens. Token limits are checked between issues;
+one issue's bounded agent calls can cross that threshold. Time and publication
+limits are independently checked inside the publisher immediately before pushes
+and PR creation. The publisher uses a batch-specific branch and counts all PR
+states toward the cap. Its deployment concurrency is one. Publication always
+creates a draft. Merges, releases, assignments, comments and marking ready are
+out of scope.
+
+The policy and ledger live outside the checkout. A filesystem lock excludes a
+second controller. A reserved issue/idempotency key is persisted before submission;
+uncertain submission stops the batch and resumes with that same key. The controller
+records node outputs, logs, token counts and actual GitHub PRs. At the deadline it
+requests cancellation of its active workflow and direct deployment children. Worker
+and AgentNode timeouts remain additional bounds. There is no recurring schedule.
+Do not reinitialize a batch to bypass its limits. A later batch requires fresh
+operator authorization.
+
+The publisher now requires the batch policy stored on the reviewed workflow run;
+legacy or unbounded publication requests fail. A continuation inherits the source
+run's original policy and expiration. The experiment deploys an immutable review-
+branch commit while its implementation PR awaits the maintainer; it does not land
+changes on main.

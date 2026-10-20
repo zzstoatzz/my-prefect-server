@@ -34,10 +34,18 @@ case "${1:-}" in
     [[ $issue =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid issue number' >&2; exit 2; }
     scratch=$(mktemp -d)
     trap 'rm -rf "$scratch"' EXIT
+    [[ -n ${AGENTIC_BATCH_POLICY_FILE:-} ]] || { echo 'A bounded batch policy is required' >&2; exit 2; }
+    jq -e --argjson issue "$issue" '
+      . as $p | .max_prs >= 1 and .max_prs <= 3 and
+      (.issue_numbers|length) <= 12 and (.issue_numbers|index($issue)) != null and
+      .started_at <= now and now < .expires_at and .expires_at <= .started_at + 7200
+    ' "$AGENTIC_BATCH_POLICY_FILE" >/dev/null
+    bash scripts/collect_fastmcp_evidence.sh "$issue" > "$scratch/evidence.json"
     bash scripts/load_fastmcp_skills.sh > "$scratch/instructions.json"
     body=$(jq -nc --argjson issue "$issue" --arg key "$key" \
       --slurpfile instructions "$scratch/instructions.json" \
-      '{name:("issue-pr-"+($issue|tostring)),parameters:({issue_number:$issue} + $instructions[0]),idempotency_key:$key}')
+      --slurpfile evidence "$scratch/evidence.json" --slurpfile batch "$AGENTIC_BATCH_POLICY_FILE" \
+      '{name:("issue-pr-"+($issue|tostring)),parameters:({issue_number:$issue,evidence:$evidence[0],batch:$batch[0]} + $instructions[0]),idempotency_key:$key}')
     if [[ -n ${4:-} ]]; then
       body=$(jq --rawfile context "$4" '.parameters.followup_context=$context' <<<"$body")
     fi
@@ -66,12 +74,14 @@ case "${1:-}" in
     ' <<<"$validation" >/dev/null
     scratch=$(mktemp -d)
     trap 'rm -rf "$scratch"' EXIT
+    api GET "/flow_runs/$source_run" | jq -e '.parameters.batch' > "$scratch/batch.json"
     bash scripts/load_fastmcp_skills.sh "$(jq -er '.base_sha' <<<"$patch")" \
       | jq '{review_instructions}' > "$scratch/instructions.json"
     body=$(jq -nc --arg source "$source_run" --arg key "$key" \
       --arg validation "$validation_run" \
       --argjson candidate "$candidate" --argjson patch "$patch" --slurpfile instructions "$scratch/instructions.json" \
-      '{name:("resume-"+$source),idempotency_key:$key,parameters:({candidate:$candidate,patch:$patch,source_run_id:$source,validation:{child_flow_run_id:$validation,state:"Completed"}} + $instructions[0])}')
+      --slurpfile batch "$scratch/batch.json" \
+      '{name:("resume-"+$source),idempotency_key:$key,parameters:({candidate:$candidate,patch:$patch,source_run_id:$source,batch:$batch[0],validation:{child_flow_run_id:$validation,state:"Completed"}} + $instructions[0])}')
     printf '%s\n' "$body" > "$scratch/request.json"
     api POST "/flows/$continuation_flow_id/execution-plan/runs" --data "@$scratch/request.json"
     ;;

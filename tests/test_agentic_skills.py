@@ -143,14 +143,15 @@ def test_every_agent_requires_the_complete_role_bundle(plan):
             "manifest",
             str(MANIFEST),
             """.plan as $p | all($p.nodes | to_entries[] | select(.value.kind == "AgentNode");
-              .key as $role | ($role + "_instructions") as $input |
+              .key as $node | (if $node == "match" then "eligibility" elif $node == "reproduce" then "fix" else $node end) as $role |
+              ($role + "_instructions") as $input |
               $p.inputs[$input].required == true and
-              $p.nodes[$role].inputs.instructions.expects.cardinality == "exactly_one" and
-              $p.inputs[$input].schema == $p.nodes[$role].inputs.instructions.schema and
+              $p.nodes[$node].inputs.instructions.expects.cardinality == "exactly_one" and
+              $p.inputs[$input].schema == $p.nodes[$node].inputs.instructions.schema and
               ($p.inputs[$input].schema.properties.files.required | sort) ==
                 ([$manifest[0].common[], $manifest[0].roles[$role][]] | unique) and
               any($p.edges[]; .from == {type:"plan_input",input:$input} and
-                .to == {node:$role,input:"instructions"}))""",
+                .to == {node:$node,input:"instructions"}))""",
             str(ROOT / "deploy/agentic-workflows" / plan),
         ],
         check=True,
