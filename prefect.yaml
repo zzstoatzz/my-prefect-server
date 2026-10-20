@@ -522,12 +522,12 @@ deployments:
     tags: [publish]
     entrypoint: flows/typeahead_index.py:typeahead_index
     parameters:
-      ref: compact-candidate-cc2d5a1
+      ref: pds-compact-31ec142-20261020
       snapshot_format: compact
     # the typeahead snapshot builder (Zig MODE=indexer), lifted off Fly onto the
     # home box. Pure batch: reads Turso → builds prefix index on the NVMe →
     # uploads to R2 → exits; App B promotes it. No SLA — a late/failed run just
-    # serves the prior snapshot. host prereqs (zig 0.16 + rclone) installed by
+    # serves the prior snapshot. host prereqs (zig 0.17 + rclone) installed by
     # typeahead deploy/home-indexer/install.sh. concurrency 1 so builds never
     # overlap. 09:00 UTC sits clear of the 6h leaflet-atlas marks + the 13:00 cluster.
     work_pool:
@@ -564,22 +564,23 @@ deployments:
           # the App B floor guard rejects — must be explicit (as the old Fly
           # machine was).
           INDEX_SAMPLE_LIMIT: "0"
+          INDEX_PDS_MAX_ACTORS: "10000"
           INDEXER_VERSION: heavypad
-          # cap the ~8.6GB R2 upload so it never saturates the home uplink (the
-          # thing that angers a residential ISP). rclone inherits this env var —
-          # no --bwlimit arg needed. tune to ~half the uplink; 10M = ~80 Mbit/s.
+          # The qualified PDS pair is 23.3 GB, including its SQLite recovery
+          # twin. Cap both upload and checksum readback at 10M (~80 Mbit/s)
+          # so publication does not saturate the home connection.
           RCLONE_BWLIMIT: "10M"
     concurrency_limit: *cancel_new
     schedules:
-      # every 3 days, not daily — ~thirds the monthly bandwidth (~170GB/mo). The
+      # every 3rd day-of-month, not daily. The
       # snapshot tolerates days of staleness because the live overlay covers
       # recently-ingested actors.
       - cron: "0 9 */3 * *"  # 09:00 UTC, every 3rd day-of-month
         # ACTIVE 2026-06-18: the full path is validated end-to-end — local run
         # e3b70e03 proved build->index, and a staging run published a 10GB snapshot
         # to R2 (staging/heavypad-validation/b1781771245-1b0a + its latest pointer).
-        # NOTE: prefect 3.7.2 won't overwrite an existing deployment's schedule, so
-        # activating requires delete+recreate of the deployment (not just redeploy).
+        # Registration replaces schedules; preserve this cron and verify the
+        # queued run parameters after changing the immutable source pin.
         active: true
 
   - name: typeahead-plc-identity

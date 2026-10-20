@@ -139,13 +139,16 @@ just push                                 # github first (installs come from the
 
 [MIT](LICENSE)
 
-Typeahead compact publication configuration selects the qualified
-`compact-candidate-cc2d5a1` source tag after the October 17 serving cutover.
-The registered deployment and October 19 queued run select compact format;
-the scheduled publication itself remains to be verified. The flow
-function still defaults to SQLite for callers without deployment parameters; see the
-[deployment validation notes](docs/deployments-validation.md#typeahead-compact-snapshots--local-implementation-2026-10-08)
-for integration evidence and rollout gates.
+Typeahead publisher configuration selects compact format and immutable source tag
+`pds-compact-31ec142-20261020`, with a 10,000-actor cutoff for PDS scopes. The active
+cron remains `0 9 */3 * *`. Publication verifies both the compact index and its
+same-watermark SQLite recovery twin before replacing the root pointer. The
+October 19 scheduled compact publication and native disaster restore passed;
+that does not certify a future scheduled build. The flow still defaults to SQLite
+for callers without deployment parameters. See the
+[deployment validation notes](docs/deployments-validation.md#typeahead-pds-publisher-configuration--2026-10-20)
+and [Typeahead rollout record](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/plans/pds-homepage-rollout.md)
+for qualification, live registration and cutover evidence.
 
 CI runs the full check and deployment registration workflow in a Spindle NixOS
 microVM. See [deployment validation](docs/deployments-validation.md#ci-execution-environment)
