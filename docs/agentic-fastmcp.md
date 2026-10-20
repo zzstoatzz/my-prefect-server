@@ -240,3 +240,12 @@ tree and existing draft. Its task records contain no push or PR-creation task;
 GitHub still reports exactly one branch PR, #5928, at the same head. Recurring
 intake remains off. The next experiment should be another manually selected
 issue, measuring outcomes and agent runtime before adding a schedule.
+
+## CI compatibility fix — October 20, 2026
+
+The publication flow now uses the synchronous `mps.blocks` secret accessor,
+requires a flow-run context, and validates object responses before reading GitHub
+fields. Agentic execution-plan endpoints use the authenticated Prefect HTTP
+transport because these Cloud extension routes are absent from the SDK's generated
+`ServerRoutes` literals. This source correction unblocks repository type checking;
+it does not re-register the separately pinned Cloud publication deployment.
