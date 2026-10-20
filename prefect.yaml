@@ -581,7 +581,8 @@ deployments:
         # to R2 (staging/heavypad-validation/b1781771245-1b0a + its latest pointer).
         # Registration replaces schedules; preserve this cron and verify the
         # queued run parameters after changing the immutable source pin.
-        active: true
+        # Paused 2026-10-20: home ISP overages; qualify cloud replacement first.
+        active: false
 
   - name: typeahead-plc-identity
     pull: *cached_home
@@ -628,7 +629,8 @@ deployments:
         # cron expression and `active` are applied. The older note claiming
         # deploy won't overwrite an existing schedule, and that activating needs
         # delete+recreate, was wrong on both counts.
-        active: true
+        # Paused 2026-10-20: home ISP overages; qualify cloud replacement first.
+        active: false
 
   - name: pub-search-snapshot
     pull: *cached_home

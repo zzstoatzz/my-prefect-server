@@ -56,6 +56,13 @@ prefect 3 python.
 The hub dbt models run in [Dagster on HeavyPad](deploy/dagster/README.md). Prefect
 retains ingestion/classification and a success-gated handoff to downstream flows.
 
+Typeahead's two bulk home schedules (`typeahead-index` and
+`typeahead-plc-identity`) are configured inactive as of October 20, 2026 to
+avoid further metered transfers during the cloud coverage repair. Live relay
+ingestion and search continue; this does not pause the home worker or other
+flows. See [the bandwidth hold](docs/archive/typeahead-home-bandwidth-hold-20261020.md)
+for resumption requirements.
+
 ## gardener
 
 [gardener](https://hub.waow.tech/gardener) opens on a spatial execution map:
