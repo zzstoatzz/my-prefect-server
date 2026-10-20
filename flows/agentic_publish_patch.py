@@ -163,6 +163,44 @@ def publication_batch(review_run_id: str, issue_number: int) -> dict:
 
 
 @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
+def matched_contributions(review_run_id: str, issue_number: int) -> list[dict]:
+    with get_client(sync_client=True) as client:
+        parent = client.read_flow_run(UUID(review_run_id))
+        source = (
+            client.read_flow_run(UUID(parent.parameters["source_run_id"]))
+            if "source_run_id" in parent.parameters
+            else parent
+        )
+        if (
+            str(source.flow_id) != "aa69d171-a0a1-40f7-9679-4b811550ad26"
+            or source.parameters["batch"] != parent.parameters["batch"]
+            or source.parameters["evidence"]["issue"]["number"] != issue_number
+        ):
+            raise ValueError("PR matching belongs to another batch or issue")
+        prefix = f"/flow_runs/{source.id}/execution-plan"
+        graph = client.request("GET", prefix).json()
+        match = next(node for node in graph["nodes"] if node["node"] == "match")
+        if match["status"] != "completed":
+            raise ValueError("PR matching has not completed")
+        cleared = client.request(
+            "GET", f"{prefix}/activations/{match['activation_id']}/outputs/clear"
+        ).json()
+        if cleared is not True:
+            raise ValueError("PR matching did not clear this issue")
+    return source.parameters["evidence"]["prs"]
+
+
+def contribution_unchanged(current: dict, reviewed: dict) -> bool:
+    return (
+        all(
+            current.get(key) == reviewed.get(key)
+            for key in ("number", "title", "body", "state", "draft", "merged", "updated_at")
+        )
+        and current["head"]["sha"] == reviewed["head_sha"]
+    )
+
+
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
 def check_batch_capacity(policy: dict, issue_number: int) -> str:
     branch = batch_branch(policy, issue_number)
     prefix = f"agentic/{policy['id']}/"
@@ -185,7 +223,7 @@ def check_batch_capacity(policy: dict, issue_number: int) -> str:
 
 
 def check_competing_work(
-    issue_number: int, branch: str, reviewed_at: str
+    issue_number: int, branch: str, reviewed_at: str, prior_prs: list[dict]
 ) -> tuple[dict, list[dict]]:
     issue = github(f"repos/{REPOSITORY}/issues/{issue_number}")
     if not isinstance(issue, dict):
@@ -203,15 +241,30 @@ def check_competing_work(
     ):
         raise ValueError("Could not exhaust corresponding PR search")
     own_numbers = {pr["number"] for pr in own}
+    candidates = set()
     for match in matches["items"]:
         if match["number"] not in own_numbers and references_issue(
             match.get("body") or "", issue_number
         ):
-            raise ValueError(f"Corresponding PR already exists: {match['html_url']}")
+            candidates.add(match["number"])
     for event in timeline:
         source = event.get("source", {}).get("issue", {})
-        if source.get("pull_request") and source.get("number") not in own_numbers:
-            raise ValueError("Issue timeline contains another PR")
+        if (
+            source.get("pull_request")
+            and source.get("number") not in own_numbers
+            and source.get("html_url", "")
+            .lower()
+            .startswith(f"https://github.com/{REPOSITORY}/pull/".lower())
+        ):
+            candidates.add(source["number"])
+    prior = {pr["number"]: pr for pr in prior_prs}
+    candidates.update(prior)
+    for number in candidates:
+        if number not in prior:
+            raise ValueError(f"New corresponding PR needs review: #{number}")
+        current = github(f"repos/{REPOSITORY}/pulls/{number}")
+        if not isinstance(current, dict) or not contribution_unchanged(current, prior[number]):
+            raise ValueError(f"Previously reviewed PR changed: #{number}")
     return issue, own
 
 
@@ -278,8 +331,9 @@ def publish_patch(
         },
     )
     policy = publication_batch(recovery_review_run_id, issue_number)
+    prior_prs = matched_contributions(recovery_review_run_id, issue_number)
     branch = check_batch_capacity(policy, issue_number)
-    issue, existing = check_competing_work(issue_number, branch, reviewed_at)
+    issue, existing = check_competing_work(issue_number, branch, reviewed_at, prior_prs)
     reporter = github(f"users/{issue['user']['login']}")
     actor = github("user")
     credit = f"Co-authored-by: {reporter['login']} <{reporter['id']}+{reporter['login']}@users.noreply.github.com>"
@@ -341,7 +395,7 @@ def publish_patch(
                 .decode()
                 .strip()
             )
-        _, existing = check_competing_work(issue_number, branch, reviewed_at)
+        _, existing = check_competing_work(issue_number, branch, reviewed_at, prior_prs)
         if existing:
             if len(existing) != 1 or existing[0]["head"]["sha"] != head:
                 raise ValueError("Existing PR differs from validated publication")
@@ -354,7 +408,7 @@ def publish_patch(
         check_batch_capacity(policy, issue_number)
         if not remote:
             push_branch(repository, branch)
-        _, existing = check_competing_work(issue_number, branch, reviewed_at)
+        _, existing = check_competing_work(issue_number, branch, reviewed_at, prior_prs)
         if existing:
             raise ValueError("PR appeared during publication; inspect before retrying")
         check_batch_capacity(policy, issue_number)
