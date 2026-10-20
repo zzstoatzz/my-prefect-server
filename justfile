@@ -634,3 +634,7 @@ gardener-install revision="HEAD":
 # Deploy the committed bandwidth monitor without network dependency downloads.
 deploy-bandwidth-watchdog:
     ./scripts/deploy_bandwidth_watchdog.sh
+
+[positional-arguments]
+agentic-fastmcp *args:
+    bash scripts/agentic_fastmcp.sh "$@"
