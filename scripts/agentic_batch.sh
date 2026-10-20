@@ -79,7 +79,7 @@ while true; do
       stop "submission_needs_attention"; exit 1
     fi
     run=$(jq -er '.id' "$case_dir/submission.json")
-    update --arg run "$run" '.current.run_id=$run'
+    update --arg run "$run" '.current.run_id=$run | .status="running"'
     printf 'Started #%s: %s\n' "$issue" "$run"
   fi
   api GET "/flow_runs/$run/execution-plan" > "$case_dir/graph.json"

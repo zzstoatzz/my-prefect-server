@@ -37,7 +37,7 @@ jq -rn --slurpfile issue "$scratch/issue.json" --arg number "$issue" '
   "repo:PrefectHQ/fastmcp is:pr " + $number + " in:body",
   ($issue[0].title | gsub("\\[Bug\\]|\\[bug\\]";"") |
     [scan("[A-Za-z_][A-Za-z0-9_]{3,}") | select((ascii_downcase | IN("fastmcp","with","when","from","that","does","doesn","have","this","into","after","before","without","using","support","fails","returns","error"))|not)] |
-    unique | sort_by(-length) | .[:3] | map("\"" + . + "\"") | join(" ") |
+    unique | sort_by(-length) | .[:6] | map("\"" + . + "\"") | join(" ") |
     if length==0 then error("No useful PR search terms") else "repo:PrefectHQ/fastmcp is:pr " + . end)
 ' > "$scratch/queries"
 printf '[]\n' > "$scratch/searches.json"
