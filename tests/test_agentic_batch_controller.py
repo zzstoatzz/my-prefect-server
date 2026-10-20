@@ -79,3 +79,32 @@ def test_live_controller_lock_prevents_second_process(tmp_path):
     assert result.returncode != 0
     assert "already running" in result.stderr
     assert not list(directory.glob("issue-*"))
+
+
+def test_failed_setup_preserves_reserved_issue_and_idempotency_key(tmp_path):
+    directory = tmp_path / "test-batch"
+    assert init(directory, 3164).returncode == 0
+    policy = directory / "policy.json"
+    policy.chmod(0o644)
+    policy.write_bytes(subprocess.check_output(["jq", ".expires_at=0", str(policy)]))
+    for _ in range(2):
+        result = subprocess.run(
+            ["bash", str(SCRIPT), "run", str(directory)],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        assert result.returncode != 0
+        subprocess.run(
+            [
+                "jq",
+                "-e",
+                '.status=="submission_needs_attention" and .attempts==[] and '
+                '.current=={issue:3164,key:"test-batch-issue-3164",run_id:null}',
+                str(directory / "ledger.json"),
+            ],
+            check=True,
+            capture_output=True,
+        )
+        assert not (directory / "lock").exists()

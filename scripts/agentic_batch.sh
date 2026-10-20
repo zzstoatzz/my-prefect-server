@@ -67,7 +67,7 @@ while true; do
   if jq -e '.current == null' "$ledger" >/dev/null; then
     issue=$(jq -r '.policy.issue_numbers[(.attempts|length)]' "$ledger")
     key=$(jq -r --arg issue "$issue" '.policy.id+"-issue-"+$issue' "$ledger")
-    update --argjson issue "$issue" --arg key "$key" '.current={issue:$issue,key:$key,run_id:null}; .status="running"'
+    update --argjson issue "$issue" --arg key "$key" '.current={issue:$issue,key:$key,run_id:null} | .status="running"'
   fi
   issue=$(jq -r '.current.issue' "$ledger")
   case_dir="$directory/issue-$issue"
