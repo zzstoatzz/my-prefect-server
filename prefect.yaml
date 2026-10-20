@@ -974,9 +974,8 @@ deployments:
           - "hub.brief.ready"
         match:
           prefect.resource.id: "hub.brief.fastmcp"
-    # live from 2026-09-26 (weekend trial). allow_ready stays at its default
-    # (false): every pull request opens as a draft while nate is away. to
-    # pause, set `enabled: false` on the trigger.
+        enabled: false
+    # Paused 2026-10-19 while triage moves to Prefect Cloud Agentic Workflows.
     parameters:
       publish_prs: true
 
