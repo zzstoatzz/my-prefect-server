@@ -249,3 +249,8 @@ fields. Agentic execution-plan endpoints use the authenticated Prefect HTTP
 transport because these Cloud extension routes are absent from the SDK's generated
 `ServerRoutes` literals. This source correction unblocks repository type checking;
 it does not re-register the separately pinned Cloud publication deployment.
+
+The skill loader also selects `sha256sum` on Linux and falls back to macOS
+`shasum -a 256`. The CI image has the former; this preserves the same SHA-256
+content contract without requiring Perl. Real temporary-Git skill-loader tests
+verify the selected revision and every returned content hash.

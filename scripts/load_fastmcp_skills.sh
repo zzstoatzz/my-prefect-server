@@ -41,7 +41,11 @@ while IFS= read -r path; do
     echo "Instruction file is empty or exceeds 100 KB: $path" >&2
     exit 1
   fi
-  digest=$(shasum -a 256 "$scratch/content" | cut -d ' ' -f 1)
+  if command -v sha256sum >/dev/null 2>&1; then
+    digest=$(sha256sum "$scratch/content" | cut -d ' ' -f 1)
+  else
+    digest=$(shasum -a 256 "$scratch/content" | cut -d ' ' -f 1)
+  fi
   jq --arg path "$path" --arg digest "$digest" --rawfile content "$scratch/content" \
     '.[$path] = {sha256:$digest,content:$content}' "$scratch/files.json" > "$scratch/next.json"
   mv "$scratch/next.json" "$scratch/files.json"
