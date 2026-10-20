@@ -25,6 +25,9 @@ case "${1:-}" in
     [[ $issue =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid issue number' >&2; exit 2; }
     body=$(jq -nc --argjson issue "$issue" --arg key "$key" \
       '{name:("issue-pr-"+($issue|tostring)),parameters:{issue_number:$issue},idempotency_key:$key}')
+    if [[ -n ${4:-} ]]; then
+      body=$(jq --rawfile context "$4" '.parameters.followup_context=$context' <<<"$body")
+    fi
     api POST "/flows/$flow_id/execution-plan/runs" --data "$body"
     ;;
   results)
@@ -56,7 +59,7 @@ case "${1:-}" in
     done < <(jq -r '.cases[] | [.issue_number,.run_id,.decision,(.fix_status // "unreached")] | @tsv' deploy/agentic-workflows/gate-cases.json)
     ;;
   *)
-    echo 'Usage: just agentic-fastmcp validate|publish|run ISSUE IDEMPOTENCY_KEY|results RUN_ID|verify' >&2
+    echo 'Usage: just agentic-fastmcp validate|publish|run ISSUE KEY [CONTEXT_FILE]|results RUN_ID|verify' >&2
     exit 2
     ;;
 esac
