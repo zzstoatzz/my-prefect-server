@@ -24,6 +24,21 @@ Direct API callers must supply the same required bundles; the supported launcher
 constructs and hashes them deterministically. Skill delivery does not establish
 that an agent follows every instruction correctly.
 
+Skill-delivery smoke run `06ad6e86-5bc7-7131-8000-90cc1d4d9425` used main-plan
+version `06ad6e85-8fa7-791d-8000-73c50df36422` and FastMCP commit
+`535a3e124c3a312567168c78ed9b946e133360f6`. API readback confirmed all three
+stored bundles exactly matched the fetched contents and hashes (5 eligibility,
+9 preparation, and 8 review files). Eligibility excluded #5926 because of #5927;
+all downstream nodes were unreached. Its first model call received 10,976 input
+tokens, and the invocation completed in 18.68 seconds without retries. This tests
+delivery and screening, not another full issue-to-PR run. Continuation version
+`06ad6e85-c93b-7856-8000-21db74afc054` also requires the review bundle.
+
+Nine loader/wiring tests use real temporary Git repositories: exact content/hash
+preservation across a moving branch, per-role file sets, invalid revisions,
+missing skills/references, empty/oversized files, and symlinks. The existing eight
+publication tests also pass.
+
 First published result: [draft PR #5928](https://github.com/PrefectHQ/fastmcp/pull/5928),
 clarifying SSE proxy configuration for issue #603. This experiment required
 infrastructure repairs and explicit resumptions; it does not establish reliable
