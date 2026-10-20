@@ -5,6 +5,11 @@ Cloud workspace: `prefect-technologies/marvin-bot`. Flow:
 The plan is versioned in `deploy/agentic-workflows/fastmcp-issue-pr.json`.
 This is a manually invoked, one-issue experiment with no schedule.
 
+First published result: [draft PR #5928](https://github.com/PrefectHQ/fastmcp/pull/5928),
+clarifying SSE proxy configuration for issue #603. This experiment required
+infrastructure repairs and explicit resumptions; it does not establish reliable
+unattended backlog processing.
+
 The eligibility agent reads the issue, all comments/timeline, all-state PR
 searches, repository instructions and relevant contracts. It excludes existing
 contributions (including closed PRs), explicit contributor claims, incomplete
@@ -17,17 +22,23 @@ returns an uncommitted patch pinned to the exact base SHA. A DeploymentNode runs
 `fastmcp-validate-patch/cloud-validation` in the ready `managed` pool. That flow
 applies the exact patch, enforces its scope, runs the full suite and static checks
 (plus docs checks when applicable), and rejects failures or formatter changes.
-Only its `completed` output reaches the publication agent, which rechecks
-competing work, reviews the unchanged diff and opens one credited draft PR on
-`agentic/issue-N`. Publication is not automatically retried. The report accepts
-failed upstream nodes so a timeout or validation failure remains visible.
+Only its `completed` output reaches the review agent, which reviews the unchanged
+diff and returns a decision and PR wording. A separate deterministic deployment,
+`fastmcp-publish-validated-patch/cloud-publication`, verifies the completed
+validation run and exact patch hash, rejects stale reviews or changed/assigned
+issues and corresponding PRs, runs commit hooks, and opens one credited draft PR
+on `agentic/issue-N`. Network retries recover the deterministic branch/PR and
+verify its tree/head before proceeding. Agents do not run the full suite or
+perform publication. There is no summarizer agent; selected node outputs and the
+publication child's PR artifact are the evidence.
 
 Agent node execution is limited to about three minutes. The managed deployment
 has a 40-minute flow limit, a 45-minute container limit, four CPUs and one
 concurrent run. It has no schedule or GitHub write credential. Its source is
 commit-pinned in the separate `deploy/agentic-workflows/prefect.yaml`; it does not
-use the old self-hosted triage worker. Publication remains experimental until a
-real eligible issue completes successfully.
+use the old self-hosted triage worker. Publication has a separate 20-minute flow
+limit and loads its GitHub credential from the existing Cloud Secret block.
+Publication has been exercised on that one documentation issue and remains experimental.
 
 ```sh
 just agentic-fastmcp validate
@@ -46,11 +57,16 @@ for an intentional repeat. Run sequentially on the same issue.
 `run ISSUE KEY CONTEXT_FILE` supplies optional operator context for a follow-up
 experiment. It does not bypass eligibility or required validation.
 
-`continue SOURCE_RUN KEY` resumes an eligible saved patch through the separate
-`fastmcp-publish-patch` plan after a terminal preparation run whose publication
-node was never reached. It reuses the original Cloud outputs, reruns validation,
-and retains the publisher's fresh competing-work checks. It avoids repeating
-triage and reproduction after a validation infrastructure failure.
+`continue SOURCE_RUN VALIDATION_RUN KEY` resumes an eligible saved patch through
+the separate `fastmcp-publish-patch` plan after a terminal preparation run whose
+publication node was never reached. It verifies that the designated validation
+deployment completed on exactly those saved parameters, then reviews and
+publishes that immutable patch. It avoids repeating triage, reproduction, and
+successful deterministic validation after a downstream infrastructure failure.
+`retry-publication REVIEW_RUN KEY` retries only a failed deterministic publication.
+It reads the stored approval and the review's actual incoming edges, verifies that
+those immutable inputs match the completed validation, and rechecks GitHub before
+writing. No agent copies or hashes patch bytes during this recovery.
 
 ## Baseline
 
@@ -96,19 +112,18 @@ fix. It returned a clean worktree and no PR; the deterministic branch was also
 independently confirmed absent. Full tests/static checks were not run. This run
 exercised eligibility, the real reproduction stage, and reporting of blocked work.
 
-Next experiment: establish an unambiguous regression that is still unfixed, then
-measure the fix and full-validation stage. Do not enable recurring intake or
-claim end-to-end PR success from these results. Gate logs also show a token cost
+These baseline cases do not establish successful publication. Do not enable
+recurring intake based on screening results. Gate logs also show a token cost
 worth reducing: #5926 used 50,637 input and 1,982 output tokens across six model
 calls; #603 eligibility used 285,381 input and 9,400 output tokens across ten
 calls. These are cumulative provider token counts, not billed costs; cached-token
 pricing is not accounted for. Early exit after a direct PR match and bounded
 tool output are promising next changes.
 
-The final summarizer sometimes populates `pr_url` with a pre-existing PR and calls
+The initial summarizer sometimes populated `pr_url` with a pre-existing PR and called
 expected missing fix outputs incomplete. Use the eligibility and fix outputs as
-the authoritative machine-readable results; a report link alone is not evidence
-that this workflow created a PR.
+the authoritative results for those historical runs. The current plan removes
+that summarizer; its PR artifact is created by the deterministic publisher.
 
 The CLI automatically consumes stdin as a request body. The helper redirects
 API subprocess stdin from `/dev/null`; without that, fetching multiple selected
@@ -144,3 +159,50 @@ An independent local two-server reproduction also confirmed the proposed
 clarification: direct access advertises a prefixed SSE messages URL that returns
 404, while a prefix-stripping proxy successfully lists and calls the add tool,
 returning 3. This establishes the configuration behavior, not publication success.
+
+Continuation `06ad6cd2-111e-7869-8000-b0f91292efed` validated that same patch in
+child `4a3b293e-f8a0-52c4-95aa-263a7104dc76`: 9,620 passed, 10 skipped, 16 xfailed;
+all static hooks passed; 67 documentation tests passed; Mintlify found no broken
+links. Base `535a3e124c3a312567168c78ed9b946e133360f6`, patch SHA256
+`50a65c4956ea4d3c8adebd312ad6b7c292664cd8e102ad2f36eed1b186cf0ae2`.
+Its publication agent then timed out before creating a branch or PR. This exposed
+another misplaced responsibility: deterministic Git/hooks/API work now runs in
+deployment `b74cd9ba-4596-41e8-84fc-6f0620bd8d4b`, with a separate review AgentNode.
+Live read-only checks verified the stored validation/digest and rejection of a
+wrong digest, stale review, assigned issue, and post-review timeline change.
+
+Review `06ad6d10-dedd-7ce8-8000-9c4fe8d4af9f` approved the documentation change,
+but the original publication contract asked the model to copy and hash the patch;
+that copy changed the bytes and the deterministic check correctly rejected it.
+Publication now resolves the review's actual workflow inputs and hashes them
+directly. Live checks passed for that binding and rejected altered approval text.
+The first recovery also exposed a repository-reference bug: a Dependabot release
+note linked `astral-sh/setup-uv#603`. The publisher now distinguishes foreign links
+from FastMCP references; eight regression tests and the live GitHub preflight pass.
+
+## First published result
+
+Deterministic publication run `06ad6d36-96a7-7934-8000-647c4fcf023c` completed
+and opened draft #5928 at head `7ab867013987b90e150b3601e7e8d7bf0ac913f3`.
+Its source deployment is pinned to `b433570eed5c9ea99e65868f57bc822ddda67338`.
+Independent GitHub inspection confirmed the same base, the single intended docs
+change, draft status, and reporter co-authorship in both commit and PR body.
+Tree `628ca3cd6f01ece77331454e404f4705f9aa481d` exactly matches the independently
+applied validated patch. The publication node ran commit hooks successfully.
+
+The change is wanted as a configuration clarification: the direct SSE failure and
+working prefix-stripping proxy were independently executed. It changes no runtime
+behavior or compatibility promise. GitHub CI/review status must be checked at the
+current head; a successful Cloud validation is separate evidence.
+
+At that head, all running GitHub checks completed successfully (editorial-only
+matrix entries preserve their required check names while skipping expensive test
+steps); no substantive bot or human review had arrived. The other open change
+to this page, #5653, renames the hosting product in a different section and does
+not overlap this clarification.
+
+Replay `06ad6d3f-13cd-70b3-8000-a421df26c396` completed using the same validated
+tree and existing draft. Its task records contain no push or PR-creation task;
+GitHub still reports exactly one branch PR, #5928, at the same head. Recurring
+intake remains off. The next experiment should be another manually selected
+issue, measuring outcomes and agent runtime before adding a schedule.
