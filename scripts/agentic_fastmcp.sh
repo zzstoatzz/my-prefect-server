@@ -41,7 +41,8 @@ case "${1:-}" in
     ;;
   continue)
     source_run=${2:?source run ID required}
-    key=${3:?idempotency key required}
+    validation_run=${3:?completed validation run ID required}
+    key=${4:?idempotency key required}
     state=$(api GET "/flow_runs/$source_run/execution-plan")
     jq -e --arg flow "$flow_id" '
       .snapshot.flow_id == $flow and
@@ -53,9 +54,15 @@ case "${1:-}" in
     candidate=$(api GET "/flow_runs/$source_run/execution-plan/activations/$eligibility/outputs/eligible")
     patch=$(api GET "/flow_runs/$source_run/execution-plan/activations/$preparation/outputs/ready")
     jq -e '.decision == "eligible"' <<<"$candidate" >/dev/null
+    validation=$(api GET "/flow_runs/$validation_run")
+    jq -e --argjson patch "$patch" '
+      .deployment_id == "5f1e86fb-d975-47e5-a85d-a45b3dd04865" and
+      .state_type == "COMPLETED" and .parameters == $patch
+    ' <<<"$validation" >/dev/null
     body=$(jq -nc --arg source "$source_run" --arg key "$key" \
+      --arg validation "$validation_run" \
       --argjson candidate "$candidate" --argjson patch "$patch" \
-      '{name:("resume-"+$source),idempotency_key:$key,parameters:{candidate:$candidate,patch:$patch,source_run_id:$source}}')
+      '{name:("resume-"+$source),idempotency_key:$key,parameters:{candidate:$candidate,patch:$patch,source_run_id:$source,validation:{child_flow_run_id:$validation,state:"Completed"}}}')
     api POST "/flows/$continuation_flow_id/execution-plan/runs" --data "$body"
     ;;
   results)
@@ -87,7 +94,7 @@ case "${1:-}" in
     done < <(jq -r '.cases[] | [.issue_number,.run_id,.decision,(.fix_status // "unreached")] | @tsv' deploy/agentic-workflows/gate-cases.json)
     ;;
   *)
-    echo 'Usage: just agentic-fastmcp validate|deploy-validation|publish|publish-continuation|run ISSUE KEY [CONTEXT_FILE]|continue SOURCE_RUN KEY|results RUN_ID|verify' >&2
+    echo 'Usage: just agentic-fastmcp validate|deploy-validation|publish|publish-continuation|run ISSUE KEY [CONTEXT_FILE]|continue SOURCE_RUN VALIDATION_RUN KEY|results RUN_ID|verify' >&2
     exit 2
     ;;
 esac
