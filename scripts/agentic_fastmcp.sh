@@ -65,6 +65,20 @@ case "${1:-}" in
       '{name:("resume-"+$source),idempotency_key:$key,parameters:{candidate:$candidate,patch:$patch,source_run_id:$source,validation:{child_flow_run_id:$validation,state:"Completed"}}}')
     api POST "/flows/$continuation_flow_id/execution-plan/runs" --data "$body"
     ;;
+  retry-publication)
+    review_run=${2:?review run ID required}
+    key=${3:?idempotency key required}
+    state=$(api GET "/flow_runs/$review_run/execution-plan")
+    jq -e 'any(.nodes[]; .node == "publish" and
+      any(.outputs[]; .status == "selected" and
+        (.output == "failed" or .output == "crashed" or .output == "cancelled")))' <<<"$state" >/dev/null
+    review=$(jq -er '.nodes[]|select(.node=="review" and .status=="completed")|.activation_id' <<<"$state")
+    approval=$(api GET "/flow_runs/$review_run/execution-plan/activations/$review/outputs/approved")
+    body=$(jq -nc --arg source "$review_run" --arg key "$key" --argjson approval "$approval" \
+      '{name:("publish-recovery-"+$source),idempotency_key:$key,
+        parameters:($approval|del(.patch_sha256)|.recovery_review_run_id=$source)}')
+    api POST /deployments/b74cd9ba-4596-41e8-84fc-6f0620bd8d4b/create_flow_run --data "$body"
+    ;;
   results)
     run=${2:?run ID required}
     state=$(api GET "/flow_runs/$run/execution-plan")
@@ -94,7 +108,7 @@ case "${1:-}" in
     done < <(jq -r '.cases[] | [.issue_number,.run_id,.decision,(.fix_status // "unreached")] | @tsv' deploy/agentic-workflows/gate-cases.json)
     ;;
   *)
-    echo 'Usage: just agentic-fastmcp validate|deploy-validation|publish|publish-continuation|run ISSUE KEY [CONTEXT_FILE]|continue SOURCE_RUN VALIDATION_RUN KEY|results RUN_ID|verify' >&2
+    echo 'Usage: just agentic-fastmcp validate|deploy-validation|publish|publish-continuation|run ISSUE KEY [CONTEXT_FILE]|continue SOURCE_RUN VALIDATION_RUN KEY|retry-publication REVIEW_RUN KEY|results RUN_ID|verify' >&2
     exit 2
     ;;
 esac

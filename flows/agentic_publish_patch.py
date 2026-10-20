@@ -18,6 +18,7 @@ from prefect import flow, get_run_logger, task
 from prefect.artifacts import create_link_artifact
 from prefect.blocks.system import Secret
 from prefect.client.orchestration import get_client
+from prefect.context import get_run_context
 
 from flows.agentic_validate_patch import fetch_source, install_tools, run_command
 
@@ -89,6 +90,56 @@ def validated_patch(validation_run_id: str, base_sha: str, patch_sha256: str) ->
     return patch
 
 
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
+def reviewed_patch(review_run_id: str, approval: dict) -> str:
+    with get_client(sync_client=True) as client:
+        parent = client.read_flow_run(UUID(review_run_id))
+        if str(parent.flow_id) not in {
+            "aa69d171-a0a1-40f7-9679-4b811550ad26",
+            "6afddacc-ee55-4190-a5dc-13704bf5ddd2",
+        }:
+            raise ValueError("Expected a designated Agentic Workflow review")
+        prefix = f"/flow_runs/{review_run_id}/execution-plan"
+        graph = client.request("GET", prefix).json()
+        review = next(node for node in graph["nodes"] if node["node"] == "review")
+        if review["status"] != "completed":
+            raise ValueError("Agent review has not completed")
+        approved = client.request(
+            "GET", f"{prefix}/activations/{review['activation_id']}/outputs/approved"
+        ).json()
+        if any(approved.get(key) != value for key, value in approval.items()):
+            raise ValueError("Publication metadata differs from the stored approval")
+
+        def input_value(name: str) -> dict:
+            edge = next(
+                edge
+                for edge in graph["edges"]
+                if edge["target"] == {"node": "review", "input": name}
+            )
+            source = edge["source"]
+            if source["type"] == "plan_input":
+                return parent.parameters[source["input"]]
+            node = next(node for node in graph["nodes"] if node["node"] == source["node"])
+            return client.request(
+                "GET", f"{prefix}/activations/{node['activation_id']}/outputs/{source['output']}"
+            ).json()
+
+        patch_input = input_value("patch")
+        validation = input_value("validation")
+        candidate = input_value("candidate")
+    if (
+        validation["child_flow_run_id"] != approval["validation_run_id"]
+        or candidate["issue_number"] != approval["issue_number"]
+        or patch_input["base_sha"] != approval["base_sha"]
+    ):
+        raise ValueError("Approval references different workflow inputs")
+    return validated_patch.fn(
+        approval["validation_run_id"],
+        approval["base_sha"],
+        hashlib.sha256(patch_input["patch"].encode()).hexdigest(),
+    )
+
+
 def check_competing_work(
     issue_number: int, branch: str, reviewed_at: str
 ) -> tuple[dict, list[dict]]:
@@ -155,15 +206,31 @@ def publish_patch(
     issue_number: int,
     validation_run_id: str,
     base_sha: str,
-    patch_sha256: str,
     reviewed_at: str,
     title: str,
     body: str,
     dry_run: bool = False,
+    recovery_review_run_id: str | None = None,
 ) -> dict[str, str]:
     if issue_number <= 0 or not title.strip() or "\n" in title or not body.strip():
         raise ValueError("Expected an issue number, one-line title and PR body")
-    patch = validated_patch(validation_run_id, base_sha, patch_sha256)
+    if recovery_review_run_id is None:
+        parent_task = get_run_context().flow_run.parent_task_run_id
+        if parent_task is None:
+            raise ValueError("Publication must follow an Agentic Workflow review")
+        with get_client(sync_client=True) as client:
+            recovery_review_run_id = str(client.read_task_run(parent_task).flow_run_id)
+    patch = reviewed_patch(
+        recovery_review_run_id,
+        {
+            "issue_number": issue_number,
+            "validation_run_id": validation_run_id,
+            "base_sha": base_sha,
+            "reviewed_at": reviewed_at,
+            "title": title,
+            "body": body,
+        },
+    )
     branch = f"agentic/issue-{issue_number}"
     issue, existing = check_competing_work(issue_number, branch, reviewed_at)
     reporter = github(f"users/{issue['user']['login']}")

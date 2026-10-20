@@ -121,10 +121,6 @@
                   "type": "string",
                   "pattern": "^[0-9a-f]{40}$"
                 },
-                "patch_sha256": {
-                  "type": "string",
-                  "pattern": "^[0-9a-f]{64}$"
-                },
                 "reviewed_at": {
                   "type": "string"
                 },
@@ -141,7 +137,6 @@
                 "issue_number",
                 "validation_run_id",
                 "base_sha",
-                "patch_sha256",
                 "reviewed_at",
                 "title",
                 "body"
@@ -357,10 +352,6 @@
                   "type": "string",
                   "pattern": "^[0-9a-f]{40}$"
                 },
-                "patch_sha256": {
-                  "type": "string",
-                  "pattern": "^[0-9a-f]{64}$"
-                },
                 "reviewed_at": {
                   "type": "string"
                 },
@@ -377,7 +368,6 @@
                 "issue_number",
                 "validation_run_id",
                 "base_sha",
-                "patch_sha256",
                 "reviewed_at",
                 "title",
                 "body"
@@ -417,7 +407,7 @@
             }
           }
         },
-        "objective": "Review the supplied immutable patch for the candidate issue. The deterministic validation deployment has already completed the full test suite, all-files static checks and applicable docs checks. Do not run that suite, install build tools, commit, push, or create a PR. Your job is engineering judgment and concise PR wording.\nRead repository AGENTS.md, CONTRIBUTING.md, linked contribution requirements and the review-pr skill, the full issue/comments/timeline, the changed file in context and the complete supplied diff. Reuse candidate prior-art evidence, refresh corresponding all-state PR searches and explicit claims, and investigate any new evidence. Use gh api REST; do not use unsupported gh GraphQL fields. Reject existing contributions/claims and unresolved behavior choices. Decide whether this documentation/configuration clarification or bug fix is wanted and correct, whether it resolves the reported cause, and whether it makes any unsupported claims. For docs, describe the supported setup without claiming runtime behavior was changed. Do not re-derive a fix or edit the patch.\nIf correct and eligible, emit approved with candidate.issue_number, validation.child_flow_run_id as validation_run_id, patch.base_sha, the SHA256 of the exact patch.patch UTF-8 string, a UTC reviewed_at timestamp obtained after the issue checks, and a short title/body (1-2 paragraphs). Compute the hash with a tool rather than guessing. Include References #N in body; only say Fixes when fully justified. The publication deployment adds verified reporter co-authorship and workflow provenance. It independently fetches the completed validation run, verifies the reviewed base/hash, applies its stored patch, runs commit hooks, checks for issue changes/competing PRs, and creates one draft. No GitHub mutation belongs in this agent.\nIf a required prerequisite or substantive review cannot be completed, emit blocked with reason/evidence. Keep tool output bounded and batch related reads so judgment finishes within the node runtime.\n"
+        "objective": "Review the supplied immutable patch for the candidate issue. The deterministic validation deployment has already completed the full test suite, all-files static checks and applicable docs checks. Do not run that suite, install build tools, commit, push, or create a PR. Your job is engineering judgment and concise PR wording.\nRead repository AGENTS.md, CONTRIBUTING.md, linked contribution requirements and the review-pr skill, the full issue/comments/timeline, the changed file in context and the complete supplied diff. Reuse candidate prior-art evidence, refresh corresponding all-state PR searches and explicit claims, and investigate any new evidence. Use gh api REST; do not use unsupported gh GraphQL fields. Reject existing contributions/claims and unresolved behavior choices. Decide whether this documentation/configuration clarification or bug fix is wanted and correct, whether it resolves the reported cause, and whether it makes any unsupported claims. For docs, describe the supported setup without claiming runtime behavior was changed. Do not re-derive a fix or edit the patch.\nIf correct and eligible, emit approved with candidate.issue_number, validation.child_flow_run_id as validation_run_id, patch.base_sha, a UTC reviewed_at timestamp obtained after the issue checks, and a short title/body (1-2 paragraphs). Include References #N in body; only say Fixes when fully justified. The publication deployment adds verified reporter co-authorship and workflow provenance. It independently fetches the completed validation run, verifies the reviewed base/hash, applies its stored patch, runs commit hooks, checks for issue changes/competing PRs, and creates one draft. No GitHub mutation belongs in this agent.\nIf a required prerequisite or substantive review cannot be completed, emit blocked with reason/evidence. Keep tool output bounded and batch related reads so judgment finishes within the node runtime.\n"
       }
     },
     "edges": [
