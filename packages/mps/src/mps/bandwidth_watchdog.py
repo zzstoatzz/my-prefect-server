@@ -122,8 +122,16 @@ def advance(
     state.update(boot=boot, sockets=sockets, interfaces=interfaces)
     state.setdefault("started", now)
     month = datetime.fromtimestamp(now, UTC).strftime("%Y-%m")
+    cooldowns = state.setdefault("cooldowns", {})
+    monthly_threshold = config["monthly_observed_budget_bytes"]
     if state.get("month") != month:
-        state.update(month=month, month_tcp_bytes=0, month_host_bytes=0)
+        state.update(month=month, month_tcp_bytes=0, month_host_bytes=0, monthly_warned_bytes=0)
+        cooldowns.pop("monthly-budget", None)
+    if "monthly_warned_bytes" not in state:
+        last_warning_month = datetime.fromtimestamp(
+            cooldowns.get("monthly-budget", 0), UTC
+        ).strftime("%Y-%m")
+        state["monthly_warned_bytes"] = monthly_threshold if last_warning_month == month else 0
     state["month_tcp_bytes"] += sum(groups.values())
     state["month_host_bytes"] += host_bytes
     samples = [s for s in state.get("samples", []) if now - s["at"] <= 3600]
@@ -146,22 +154,26 @@ def advance(
         "coverage": "Observed Internet TCP lower bound; host counters include LAN and all protocols. UTC month; not an ISP meter.",
     }
     alerts = []
-    cooldowns = state.setdefault("cooldowns", {})
     for kind, count, threshold in (
         ("high-usage", recent_tcp, config["alert_bytes_15m"]),
         ("host-usage", recent_host, config["host_alert_bytes_15m"]),
-        ("monthly-budget", state["month_tcp_bytes"], config["monthly_observed_budget_bytes"]),
+        ("monthly-budget", state["month_tcp_bytes"], monthly_threshold),
     ):
+        if kind == "monthly-budget" and count < state["monthly_warned_bytes"] + threshold:
+            continue
         if count >= threshold and now - cooldowns.get(kind, 0) >= config["cooldown_seconds"]:
             cooldowns[kind] = now
             reason = ""
             if kind == "monthly-budget":
+                state["monthly_warned_bytes"] = (count // threshold) * threshold
+                next_warning = state["monthly_warned_bytes"] + threshold
                 observed_since = datetime.fromtimestamp(state["started"], UTC).strftime(
                     "%Y-%m-%d %H:%M UTC"
                 )
                 reason = (
                     f"{count / 1e9:.2f} GB observed / {threshold / 1e9:.2f} GB monthly warning threshold "
                     f"({month} UTC; monitoring since {observed_since}; not ISP billing). "
+                    f"Next monthly warning at {next_warning / 1e9:.2f} GB. "
                     "Recent usage: "
                 )
             summary_text = (

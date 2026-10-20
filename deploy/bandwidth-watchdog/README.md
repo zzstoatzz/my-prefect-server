@@ -22,6 +22,13 @@ Decimal GB throughout. Defaults in `config.json`:
   below the user's approximately 1 TB household plan.
   Monthly messages lead with the observed total and configured warning threshold,
   UTC month, and monitoring start time; recent usage follows separately.
+  Notify once per threshold multiple (100, 200, 300 GB by default), with the
+  existing one-hour cooldown between milestones. Quiet hours do not repeat the
+  same warning. A jump across several milestones produces one notification;
+  pending milestones are reported after cooldown. Messages name the next milestone.
+  The recorded milestone survives restarts and resets with the UTC month.
+  Upgrading an existing state preserves accounting and remembers its first monthly
+  warning, so deployment does not repeat it. Spike alerts retain their own cooldowns.
 - A heartbeat every minute; a Prefect automation alerts after five minutes missing.
 
 The local sampler and freezer do not need Prefect or Logfire to be reachable.
