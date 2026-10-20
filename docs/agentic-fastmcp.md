@@ -288,3 +288,43 @@ legacy or unbounded publication requests fail. A continuation inherits the sourc
 run's original policy and expiration. The experiment deploys an immutable review-
 branch commit while its implementation PR awaits the maintainer; it does not land
 changes on main.
+
+The publisher verifies the original run's stored `match.clear` output and rechecks
+the collected PR revisions, bodies, states, and update timestamps. Unchanged prior
+art keeps the matcher's semantic decision. New issue-linked contributions or changed
+prior art require another review. This avoids rejecting an approved follow-up merely
+because the issue references an earlier partial migration. An entirely new, unlinked
+PR can still race these checks; intake matching and publication checks reduce that
+window but cannot provide an atomic GitHub-wide exclusion.
+
+### 20 October 2026 batch result
+
+`night-20261020` finished at 07:58:46 UTC after 12 distinct issues and one search
+recovery (13 runs). It produced **zero new FastMCP PRs**. Twelve runs completed;
+#847's reproduction timed out after 180 seconds. No run remains active and no
+recurring intake was added. The PR-output goal was not achieved.
+
+Recorded `gpt-6-luna` usage was 3,586,000 input and 59,376 output tokens. The last
+model log in the timeout has no usage counters, so this is observed usage rather
+than a bill or exact total. No candidate reached deterministic full validation or
+publication in this batch.
+
+The useful case was #2132, run `06ad71be-a965-7ac0-8000-23a9c1cf10ae`: the
+reproduction and fix agents both observed `asyncio.create_task` fail under Trio.
+The fix agent stopped because the client also relies on asyncio-specific session,
+monitoring, and cancellation operations; a local one-line substitution would be
+incomplete. The regression diff is retained in the ledger.
+
+#1815 and #2837 had existing contributions (#1834 and #2898). The documented
+replacement for #1822 worked through Uvicorn. #4358 and #2521 had contributor
+claims; #2821 lacked reproduction information. #3164, #1653, #2293, and #2879
+needed contract or supported-version decisions. #1653's first search was too broad;
+its single recovery used the corrected matcher within the original policy window.
+
+51 focused tests, Ruff, deployment contracts, and Cloud plan validation passed.
+Live main plan: `06ad71ab-4da4-71d5-8000-f2ea659610df`; continuation:
+`06ad7199-fce2-7b98-8000-f91765205e00`. Managed deployment source:
+`59cbb52fbff469b8b2af9229e162cbc3150ed5f0`, an immutable review-branch commit.
+The changed publisher has focused tests but still needs a qualifying live patch
+for end-to-end verification. The next bounded experiment needs a confirmed current,
+tractable issue and tighter deterministic preparation/probe execution.

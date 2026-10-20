@@ -39,7 +39,7 @@ fi
 printf '%s\n' "$$" > "$directory/lock/pid"
 trap 'rm -f "$directory/lock/pid"; rmdir "$directory/lock"' EXIT
 update() { jq "$@" "$ledger" > "$directory/ledger.next"; mv "$directory/ledger.next" "$ledger"; }
-stop() { update --arg reason "$1" '.status=$reason'; jq '{status,prs,attempts,input_tokens,output_tokens}' "$ledger"; }
+stop() { update --arg reason "$1" '.status=$reason'; jq '{status,prs,attempt_count:(.attempts|length),input_tokens,output_tokens}' "$ledger"; }
 cancel_current() {
   local run=$1 task_ids children child
   task_ids=$(api POST /task_runs/filter --data "$(jq -nc --arg run "$run" '{flow_runs:{id:{any_:[$run]}},limit:200}')" | jq '[.[].id]')
