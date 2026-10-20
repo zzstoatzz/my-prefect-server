@@ -1,0 +1,41 @@
+{
+  "version_id": "06ad6c4f-b05d-73be-8000-54010b81c298",
+  "cases": [
+    {
+      "issue_number": 5926,
+      "run_id": "06ad6c50-1ba8-76ab-8000-4a4b07e34dfd",
+      "decision": "existing_pr"
+    },
+    {
+      "issue_number": 5797,
+      "run_id": "06ad6c50-4dbe-7678-8000-26f54df3de6d",
+      "decision": "existing_pr"
+    },
+    {
+      "issue_number": 4866,
+      "run_id": "06ad6c50-67b2-722b-8000-4c99b9bd8b53",
+      "decision": "existing_pr"
+    },
+    {
+      "issue_number": 4338,
+      "run_id": "06ad6c50-353b-7ae0-8000-6cca882e788f",
+      "decision": "needs_info"
+    },
+    {
+      "issue_number": 5812,
+      "run_id": "06ad6c52-1ddf-7c3e-8000-47a7d42fe524",
+      "decision": "contract_unclear"
+    },
+    {
+      "issue_number": 2026,
+      "run_id": "06ad6c57-6a02-7a74-8000-a95bcb72e626",
+      "decision": "not_bug"
+    },
+    {
+      "issue_number": 603,
+      "run_id": "06ad6c58-ec24-7302-8000-8f7e816a5448",
+      "decision": "eligible",
+      "fix_status": "blocked"
+    }
+  ]
+}

@@ -121,6 +121,7 @@ just push                                 # github first (installs come from the
 | [operations.md](docs/operations.md) | standing up the VM and the home worker; the recipes that run the system |
 | [hub.md](docs/hub.md) | the ingest → classify → transform → brief pipeline and the hub it feeds |
 | [fastmcp-attention.md](docs/fastmcp-attention.md) | when fastmcp briefs fire, what "seen" means, and the staged plan for laptop triage and operator acks |
+| [agentic-fastmcp.md](docs/agentic-fastmcp.md) | Cloud issue eligibility and draft-PR experiment, commands and empirical results |
 | [autofix.md](docs/autofix.md) | the gardener: failed run → pi diagnosis → pull → phi review → operator merge |
 | [coding-jobs.md](docs/coding-jobs.md) | audit retained coding jobs, outputs, reviews, and telemetry coverage |
 | [prefect-patterns.md](docs/prefect-patterns.md) | the mechanism behind the conventions in `AGENTS.md`, with citations |
