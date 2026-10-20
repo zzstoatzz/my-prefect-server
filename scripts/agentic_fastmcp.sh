@@ -9,6 +9,10 @@ plan=deploy/agentic-workflows/fastmcp-issue-pr.json
 api() { prefect --profile bot --no-prompt api "$@" </dev/null; }
 
 case "${1:-}" in
+  deploy-validation)
+    MPS_AGENTIC_REF=$(git rev-parse HEAD) prefect --profile bot --no-prompt deploy \
+      --prefect-file deploy/agentic-workflows/prefect.yaml --all
+    ;;
   validate)
     api POST /execution-plans/validate --data "@$plan"
     ;;
