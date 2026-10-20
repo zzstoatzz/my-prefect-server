@@ -5,6 +5,25 @@ Cloud workspace: `prefect-technologies/marvin-bot`. Flow:
 The plan is versioned in `deploy/agentic-workflows/fastmcp-issue-pr.json`.
 This is a manually invoked, one-issue experiment with no schedule.
 
+Before `run` submits anything, `scripts/load_fastmcp_skills.sh` resolves FastMCP
+main to one commit and loads the full instruction files listed in
+`deploy/agentic-workflows/skills.json`. Eligibility receives `triage`; preparation
+receives `fix-issue`, `python-tests`, `docs`, and `review-pr`; review receives
+`review-pr`, `python-tests`, and `docs`. Each bundle includes AGENTS.md, contribution
+policy, and the applicable testing/versioning references. Conditional assignment,
+release, and monitoring procedures are outside these nodes' scope.
+
+The bundles are required plan inputs, wired directly to each AgentNode's
+`instructions` input. Prefect includes input values in the initial model prompt;
+these are complete contents, not paths the agent must fetch. Run parameters retain
+the source commit, paths, SHA256 hashes, and exact text. Missing, empty, oversized,
+or symlinked required files stop setup before run submission. The fix checks out
+that same commit. `continue` loads review instructions from the saved patch's base,
+not today's main. This loads repository skills, not the operator's local skills.
+Direct API callers must supply the same required bundles; the supported launcher
+constructs and hashes them deterministically. Skill delivery does not establish
+that an agent follows every instruction correctly.
+
 First published result: [draft PR #5928](https://github.com/PrefectHQ/fastmcp/pull/5928),
 clarifying SSE proxy configuration for issue #603. This experiment required
 infrastructure repairs and explicit resumptions; it does not establish reliable

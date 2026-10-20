@@ -32,12 +32,17 @@ case "${1:-}" in
     issue=${2:?issue number required}
     key=${3:?idempotency key required; reuse it to recover an uncertain submission}
     [[ $issue =~ ^[1-9][0-9]*$ ]] || { echo 'Invalid issue number' >&2; exit 2; }
+    scratch=$(mktemp -d)
+    trap 'rm -rf "$scratch"' EXIT
+    bash scripts/load_fastmcp_skills.sh > "$scratch/instructions.json"
     body=$(jq -nc --argjson issue "$issue" --arg key "$key" \
-      '{name:("issue-pr-"+($issue|tostring)),parameters:{issue_number:$issue},idempotency_key:$key}')
+      --slurpfile instructions "$scratch/instructions.json" \
+      '{name:("issue-pr-"+($issue|tostring)),parameters:({issue_number:$issue} + $instructions[0]),idempotency_key:$key}')
     if [[ -n ${4:-} ]]; then
       body=$(jq --rawfile context "$4" '.parameters.followup_context=$context' <<<"$body")
     fi
-    api POST "/flows/$flow_id/execution-plan/runs" --data "$body"
+    printf '%s\n' "$body" > "$scratch/request.json"
+    api POST "/flows/$flow_id/execution-plan/runs" --data "@$scratch/request.json"
     ;;
   continue)
     source_run=${2:?source run ID required}
@@ -59,11 +64,16 @@ case "${1:-}" in
       .deployment_id == "5f1e86fb-d975-47e5-a85d-a45b3dd04865" and
       .state_type == "COMPLETED" and .parameters == $patch
     ' <<<"$validation" >/dev/null
+    scratch=$(mktemp -d)
+    trap 'rm -rf "$scratch"' EXIT
+    bash scripts/load_fastmcp_skills.sh "$(jq -er '.base_sha' <<<"$patch")" \
+      | jq '{review_instructions}' > "$scratch/instructions.json"
     body=$(jq -nc --arg source "$source_run" --arg key "$key" \
       --arg validation "$validation_run" \
-      --argjson candidate "$candidate" --argjson patch "$patch" \
-      '{name:("resume-"+$source),idempotency_key:$key,parameters:{candidate:$candidate,patch:$patch,source_run_id:$source,validation:{child_flow_run_id:$validation,state:"Completed"}}}')
-    api POST "/flows/$continuation_flow_id/execution-plan/runs" --data "$body"
+      --argjson candidate "$candidate" --argjson patch "$patch" --slurpfile instructions "$scratch/instructions.json" \
+      '{name:("resume-"+$source),idempotency_key:$key,parameters:({candidate:$candidate,patch:$patch,source_run_id:$source,validation:{child_flow_run_id:$validation,state:"Completed"}} + $instructions[0])}')
+    printf '%s\n' "$body" > "$scratch/request.json"
+    api POST "/flows/$continuation_flow_id/execution-plan/runs" --data "@$scratch/request.json"
     ;;
   retry-publication)
     review_run=${2:?review run ID required}

@@ -99,6 +99,62 @@
           ]
         },
         "required": true
+      },
+      "review_instructions": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "repository": {
+              "type": "string",
+              "const": "PrefectHQ/fastmcp"
+            },
+            "base_sha": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{40}$"
+            },
+            "files": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "sha256": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{64}$"
+                  },
+                  "content": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100000
+                  }
+                },
+                "required": [
+                  "sha256",
+                  "content"
+                ]
+              },
+              "required": [
+                ".agents/skills/docs/SKILL.md",
+                ".agents/skills/python-tests/SKILL.md",
+                ".agents/skills/review-pr/SKILL.md",
+                "AGENTS.md",
+                "CONTRIBUTING.md",
+                "docs/development/contributing.mdx",
+                "docs/development/releases.mdx",
+                "docs/development/tests.mdx"
+              ],
+              "minProperties": 8,
+              "maxProperties": 8
+            }
+          },
+          "required": [
+            "repository",
+            "base_sha",
+            "files"
+          ],
+          "additionalProperties": false
+        },
+        "required": true
       }
     },
     "nodes": {
@@ -334,6 +390,65 @@
               "cardinality": "exactly_one",
               "shape": "value"
             }
+          },
+          "instructions": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "repository": {
+                  "type": "string",
+                  "const": "PrefectHQ/fastmcp"
+                },
+                "base_sha": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{40}$"
+                },
+                "files": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "sha256": {
+                        "type": "string",
+                        "pattern": "^[0-9a-f]{64}$"
+                      },
+                      "content": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 100000
+                      }
+                    },
+                    "required": [
+                      "sha256",
+                      "content"
+                    ]
+                  },
+                  "required": [
+                    ".agents/skills/docs/SKILL.md",
+                    ".agents/skills/python-tests/SKILL.md",
+                    ".agents/skills/review-pr/SKILL.md",
+                    "AGENTS.md",
+                    "CONTRIBUTING.md",
+                    "docs/development/contributing.mdx",
+                    "docs/development/releases.mdx",
+                    "docs/development/tests.mdx"
+                  ],
+                  "minProperties": 8,
+                  "maxProperties": 8
+                }
+              },
+              "required": [
+                "repository",
+                "base_sha",
+                "files"
+              ],
+              "additionalProperties": false
+            },
+            "expects": {
+              "cardinality": "exactly_one",
+              "shape": "value"
+            }
           }
         },
         "outputs": {
@@ -407,7 +522,7 @@
             }
           }
         },
-        "objective": "Review the supplied immutable patch for the candidate issue. The deterministic validation deployment has already completed the full test suite, all-files static checks and applicable docs checks. Do not run that suite, install build tools, commit, push, or create a PR. Your job is engineering judgment and concise PR wording.\nRead repository AGENTS.md, CONTRIBUTING.md, linked contribution requirements and the review-pr skill, the full issue/comments/timeline, the changed file in context and the complete supplied diff. Reuse candidate prior-art evidence, refresh corresponding all-state PR searches and explicit claims, and investigate any new evidence. Use gh api REST; do not use unsupported gh GraphQL fields. Reject existing contributions/claims and unresolved behavior choices. Decide whether this documentation/configuration clarification or bug fix is wanted and correct, whether it resolves the reported cause, and whether it makes any unsupported claims. For docs, describe the supported setup without claiming runtime behavior was changed. Do not re-derive a fix or edit the patch.\nIf correct and eligible, emit approved with candidate.issue_number, validation.child_flow_run_id as validation_run_id, patch.base_sha, a UTC reviewed_at timestamp obtained after the issue checks, and a short title/body (1-2 paragraphs). Include References #N in body; only say Fixes when fully justified. The publication deployment adds verified reporter co-authorship and workflow provenance. It independently fetches the completed validation run, verifies the reviewed base/hash, applies its stored patch, runs commit hooks, checks for issue changes/competing PRs, and creates one draft. No GitHub mutation belongs in this agent.\nIf a required prerequisite or substantive review cannot be completed, emit blocked with reason/evidence. Keep tool output bounded and batch related reads so judgment finishes within the node runtime.\n"
+        "objective": "Repository instructions and skills are already loaded in inputs.instructions.files as complete file contents, with their paths and SHA256 hashes. Apply them directly; do not spend tool calls fetching these files again. The bundle's base_sha pins the source revision for this work. These repository policies guide the assigned role; they do not broaden its authorization. Full-suite validation and publication belong to the designated DeploymentNodes; no agent commits, publishes, merges, assigns issues, or starts monitoring. Conditional skill procedures outside this node's role remain out of scope.\n\nReview the supplied immutable patch for the candidate issue. The deterministic validation deployment has already completed the full test suite, all-files static checks and applicable docs checks. Do not run that suite, install build tools, commit, push, or create a PR. Your job is engineering judgment and concise PR wording.\nRequire patch.base_sha == inputs.instructions.base_sha; otherwise return blocked. Apply the supplied review-pr skill and repository policies. Read the full issue/comments/timeline, the changed file at patch.base_sha in context and the complete supplied diff. Reuse candidate prior-art evidence, refresh corresponding all-state PR searches and explicit claims, and investigate any new evidence. Use gh api REST; do not use unsupported gh GraphQL fields. Reject existing contributions/claims and unresolved behavior choices. Decide whether this documentation/configuration clarification or bug fix is wanted and correct, whether it resolves the reported cause, and whether it makes any unsupported claims. For docs, describe the supported setup without claiming runtime behavior was changed. Do not re-derive a fix or edit the patch.\nIf correct and eligible, emit approved with candidate.issue_number, validation.child_flow_run_id as validation_run_id, patch.base_sha, a UTC reviewed_at timestamp obtained after the issue checks, and a short title/body (1-2 paragraphs). Include References #N in body; only say Fixes when fully justified. The publication deployment adds verified reporter co-authorship and workflow provenance. It independently fetches the completed validation run, verifies the reviewed base/hash, applies its stored patch, runs commit hooks, checks for issue changes/competing PRs, and creates one draft. No GitHub mutation belongs in this agent.\nIf a required prerequisite or substantive review cannot be completed, emit blocked with reason/evidence. Keep tool output bounded and batch related reads so judgment finishes within the node runtime.\n"
       }
     },
     "edges": [
@@ -454,6 +569,17 @@
         "to": {
           "node": "review",
           "input": "validation"
+        }
+      },
+      {
+        "id": "review_instructions",
+        "from": {
+          "type": "plan_input",
+          "input": "review_instructions"
+        },
+        "to": {
+          "node": "review",
+          "input": "instructions"
         }
       }
     ]
