@@ -3,7 +3,7 @@ set -euo pipefail
 
 revision=${1:-main}
 repository=${2:-https://github.com/PrefectHQ/fastmcp.git}
-manifest="$(dirname "$0")/../deploy/agentic-workflows/skills.json"
+manifest=${3:-"$(dirname "$0")/../deploy/agentic-workflows/skills.json"}
 if [[ $revision != main && ! $revision =~ ^[0-9a-f]{40}$ ]]; then
   echo 'Expected main or a full Git commit SHA' >&2
   exit 2

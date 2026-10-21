@@ -178,12 +178,12 @@ def matched_contributions(review_run_id: str, issue_number: int) -> list[dict]:
         ):
             raise ValueError("PR matching belongs to another batch or issue")
         prefix = f"/flow_runs/{source.id}/execution-plan"
-        graph = client.request("GET", prefix).json()
+        graph = client._client.get(prefix).json()
         match = next(node for node in graph["nodes"] if node["node"] == "match")
         if match["status"] != "completed":
             raise ValueError("PR matching has not completed")
-        cleared = client.request(
-            "GET", f"{prefix}/activations/{match['activation_id']}/outputs/clear"
+        cleared = client._client.get(
+            f"{prefix}/activations/{match['activation_id']}/outputs/clear"
         ).json()
         if cleared is not True:
             raise ValueError("PR matching did not clear this issue")

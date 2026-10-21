@@ -6,6 +6,30 @@ pull:
       repository: https://github.com/zzstoatzz/my-prefect-server.git
       commit_sha: "{{ $MPS_AGENTIC_REF }}"
 deployments:
+  - name: cloud-stack-batch
+    version: "{{ $MPS_AGENTIC_REF }}"
+    entrypoint: flows/agentic_stack_controller.py:stack_batch
+    schedules: []
+    concurrency_limit: 1
+    parameters: {}
+    work_pool:
+      name: managed
+      job_variables:
+        image: prefecthq/prefect:3-python3.12
+        compute_profile: medium
+        timeout: 7500
+  - name: cloud-stack-validation
+    version: "{{ $MPS_AGENTIC_REF }}"
+    entrypoint: flows/agentic_stack.py:validate_stack
+    schedules: []
+    concurrency_limit: 1
+    parameters: {}
+    work_pool:
+      name: managed
+      job_variables:
+        image: prefecthq/prefect:3-python3.12
+        compute_profile: medium
+        timeout: 6900
   - name: cloud-validation
     entrypoint: flows/agentic_validate_patch.py:validate_patch
     schedules: []

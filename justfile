@@ -4,6 +4,9 @@
 
 set dotenv-load
 
+agentic-stack *args:
+    bash scripts/agentic_stack.sh {{args}}
+
 export KUBECONFIG := source_directory() / "kubeconfig.yaml"
 
 # --- dev ---

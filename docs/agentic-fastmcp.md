@@ -1,5 +1,10 @@
 # FastMCP Agentic Workflows experiment
 
+The approved stack extension is being refined in
+[Stack controller architecture](agentic-stack-architecture.md), with concrete
+lessons from Stream, Nate's notes, and Microscope. That document distinguishes
+implemented local validation from remaining Cloud publication work.
+
 Cloud workspace: `prefect-technologies/marvin-bot`. Flow:
 `aa69d171-a0a1-40f7-9679-4b811550ad26` (`fastmcp-issue-pr`).
 The plan is versioned in `deploy/agentic-workflows/fastmcp-issue-pr.json`.
@@ -366,3 +371,109 @@ The skill loader also selects `sha256sum` on Linux and falls back to macOS
 `shasum -a 256`. The CI image has the former; this preserves the same SHA-256
 content contract without requiring Perl. Real temporary-Git skill-loader tests
 verify the selected revision and every returned content hash.
+
+## Stack workflow implementation — October 21, 2026
+
+Nate approved the diagram and requested historical process preservation before
+implementation. [Maintenance history](fastmcp-maintenance-history.md) records the
+original changes and current semantics. The implementation goal is active; the
+Cloud plans and deployments have not been changed for this iteration.
+
+`scripts/collect_fastmcp_stack_evidence.sh` is the new read-only `gh` collector.
+It retains label application history, author identities, duplicate reactions,
+closed contributions, PR discussion/review comments, checks/statuses, stack
+membership, and a source revision. It rejects incomplete searches/pages and an
+issue changed during collection. The existing collector remains compatible with
+the previously published plan.
+
+`flows/agentic_intake.py` deterministically routes explicit contribution matches,
+holds, existing requests for evidence, and human intervention. Its revision key
+invalidates cached decisions when evidence or source changes, while ignoring the
+time of a repeated collection. It performs no label writes or public actions.
+Twenty-two policy regression cases pass. A live read-only replay of #2692 also
+retrieved #2981, its discussion/review history, CI records and duplicate reaction.
+The routing module is wired into the new managed controller source. Stack assembly
+validates each layer on its actual parent and retains the exact commit chain
+in a Git bundle. Restoration independently checks patches, trees, parents and
+credit. A new `cloud-stack-validation` deployment definition pins its version to
+the source commit; it has not been registered in Cloud. Artifact retrieval requires
+a completed run of that deployment/version and an exact matching specification.
+
+`flows/agentic_stack_publication.py` implements native stack reconciliation. It
+recovers existing branches/PRs/stack membership, reads back actual GitHub state,
+and refuses changed bases, heads, credit, wording, draft state, or explicit holds.
+Previously published layers are rechecked before subsequent writes. The publisher
+core requires a controller guard before writes and completion: stored independent
+approval, current evidence, durable publication intent, ownership and batch limits
+must be checked there. `flows/agentic_stack_controller.py` implements that guard
+and the managed flow integration. It has not been registered or run in Cloud,
+and this iteration has made no GitHub publication writes.
+
+Fifty focused cases pass across intake, real Git assembly, a local HTTP fault
+harness with real Git pushes, and a real temporary Prefect server for artifact
+handoff. Lost responses after either PR or stack creation recover the same
+objects. A hold added to a lower layer while the next PR is created prevents
+stack creation. These are component results, not proof of the Cloud/GitHub path.
+The controller/review handoff is implemented locally; its managed execution and
+an observed bounded trial remain unverified. Explicit model selection is configured in `stack-models.json`:
+Luna at low effort for matching/triage and medium effort for reproduction,
+preparation and review. Haiku medium is the comparison candidate.
+
+After the optional UI lookup stopped at a passkey challenge, refreshed Nebula
+source `02e7094381c4d32e5533dacc01dc1b1e6c49c069` exposed the unpublished
+`/agentic/provider-connections` and `/agentic/providers` routes. Live reads
+confirmed both models under the Prefect provider and an empty connection list.
+Created and read back `fastmcp-stack-models`, connection
+`06ad84ea-0b25-7034-8000-caab9dbc44f6`, using the existing Prefect-served provider
+without supplying new credentials. The live semantic validator accepted schema
+0.2 probes selecting `gpt-6-luna`/`low` and `claude-haiku-5-5`/`medium` explicitly
+(`valid: true`, no errors). Those probes were not published or run; provider
+runtime readiness and actual usage still require the bounded trial. The
+connection routes are intentionally absent from public OpenAPI and may change.
+
+### Controller and trial preparation
+
+Four single-agent role plans now cover assessment, reproduction, preparation and
+independent review. All four passed the live schema 0.2 semantic validator with
+explicit model/effort settings. They have not been published. The controller
+owns deterministic routing, immutable intake, bounded admission, exact validation
+handoff, one repair round, publication, and grouped decision artifacts. It requires
+the managed pool, a full source SHA matching its deployment version, and a stable
+batch idempotency key. Completed group checkpoints are restored on resumption.
+
+`just agentic-stack validate` checks the role plans. After reviewed source lands
+on main, `just agentic-stack register` registers only the two new managed
+deployments. It leaves existing deployments alone. Runtime configuration needs
+the actual four role flow/version IDs, validator deployment ID, and landed source
+SHA. `just agentic-stack run BATCH RUNTIME DEPLOYMENT` starts a known batch;
+`just agentic-stack results RUN` reads its final bins. A run still requires the
+skill's approval for its named inputs and external effects. No schedule is added.
+
+Model run admissions are retained before polling, including failed attempts.
+Usage reporting reads bounded, deduplicated provider activity logs and excludes
+invocation summaries from request totals. Missing counters remain unknown;
+delayed/dropped telemetry means reported totals are partial observations, not
+billing or a hard token ceiling. The platform currently supplies a 180-second
+agent attempt bound, not an authorable dollar/token cap. The batch admits at most
+six items in two groups of three, one repair round, and a two-hour window. Parent
+cancellation prevents further publication; an already-started child can continue
+until its own execution limit. Validate that behavior in the live trial.
+
+The full repository check passed 856 tests with four skips, lint, formatting,
+types, deployment contracts, and frontend checks before the final checkpoint and
+usage-report additions. After those additions, five policy/real-Prefect tests
+passed, including usage from failed requests, exclusion of aggregate summaries,
+and missing telemetry remaining unknown. Repository lint, formatting, types and
+deployment contracts passed again. The new controller also imports in an isolated Python
+3.12 environment with Prefect and httpx, without the unrelated `mps` application
+package. These checks do not prove managed tool downloads, provider execution,
+or GitHub publication readiness.
+
+Read-only candidate screening found existing fork PRs for all six recent client
+reports examined: #5824/#5825, #5542/#5543, #5655/#5779 (and #5656),
+#5657/#5658, #5926/#5927, and #5922/#5923. They belong in existing-work review,
+not competing fixes. GitHub Stacks require same-repository branches. Any adoption
+proposal must preserve original authorship, issue credit and prior discussion;
+the controller currently does not adopt forks. #5779 also cites #5671 as earlier
+work, so that history must be included before deciding its disposition. This is
+candidate screening, not approval of any diff or a claim of stack readiness.
