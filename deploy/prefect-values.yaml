@@ -21,7 +21,7 @@
 
 image:
   repository: atcr.io/zzstoatzz.io/prefect-server
-  tag: "993424a75aa8b2e46d3bff11dd6c81885ff9fb4d"
+  tag: "9bbee4f7d195fb510337c6d836c6b0bd26c7db5f"
   pullPolicy: IfNotPresent
   pullSecrets:
     - atcr-creds
@@ -32,7 +32,10 @@ config:
     port: 4200
     loggingLevel: "INFO"
   ui:
-    staticDir: /app/ui
+    # served from the ui-bundle init container below, not the /app/ui bundle
+    # baked into the server image. drop the init container and set this back
+    # to /app/ui to return to the stock UI.
+    staticDir: /ui-bundle
     serveBase: /
   database:
     backend: postgres
@@ -74,6 +77,32 @@ webserver:
   resources:
     requests: { cpu: 100m, memory: 64Mi }
     limits:   { cpu: 1,    memory: 256Mi }
+  # Prefect UI bundle built by prefect-server's publish-ui-image workflow from
+  # the commit pinned in its docker/ui.env (the ui-v2-mobile fork branch).
+  extraInitContainers:
+    - name: ui-bundle
+      image: atcr.io/zzstoatzz.io/prefect-ui:a9eda1a84064607386647796cfccedd85a21d6ec
+      imagePullPolicy: IfNotPresent
+      command: ["cp", "-R", "/ui/.", "/ui-bundle/"]
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests: { cpu: 10m, memory: 16Mi }
+        limits:   { cpu: 200m, memory: 64Mi }
+      volumeMounts:
+        - name: ui-bundle
+          mountPath: /ui-bundle
+
+extraVolumes:
+  - name: ui-bundle
+    emptyDir: {}
+extraVolumeMounts:
+  - name: ui-bundle
+    mountPath: /ui-bundle
+    readOnly: true
 
 services:
   enabled: true
