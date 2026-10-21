@@ -477,3 +477,21 @@ proposal must preserve original authorship, issue credit and prior discussion;
 the controller currently does not adopt forks. #5779 also cites #5671 as earlier
 work, so that history must be included before deciding its disposition. This is
 candidate screening, not approval of any diff or a claim of stack readiness.
+
+Further history rules out reviving #5671 → #5656 merely to obtain two layers.
+#5656 explicitly depended on #5671, but Nate subsequently
+[closed it in favor of #5779](https://github.com/PrefectHQ/fastmcp/pull/5656#issuecomment-6296713451)
+on October 20, preserving its code, tests and credit. This is a maintainer's
+supersession decision, not an assignment-gate closure. #5779 is the selected
+proposal to assess for #5655; the older PRs remain evidence and attribution
+sources. Do not reverse that disposition or split the combined proposal without
+a new maintainer decision. Candidate screening has not independently verified
+the current diffs, so none of these PRs is declared ready.
+
+A live read-only replay of #5655 retained both #5656 and #5779, including Nate's
+supersession comment, with complete direct-match coverage at FastMCP source
+`d92276995f2f7b34dedbc7a8dfa8a4fa2ea4d013`. Deterministic intake returned
+`review_existing`, both PR states, and an empty label-write list. The evidence
+revision was `7bfdc2378039266d13309a811ab3b41f0d50320c42520ac785db0ea053d428f1`.
+This verifies history retention and routing, not an agent's interpretation or
+the correctness of either implementation.
