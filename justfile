@@ -255,6 +255,38 @@ publish-server-remote optimize="ReleaseFast":
     echo "==> safe to disconnect now — reattach with: just server-deploy-logs"
     ssh root@"$SERVER" 'tail -n +1 -f /tmp/prefect-server-deploy.log & TPID=$!; PID=$(cat /tmp/prefect-server-deploy.pid); while kill -0 "$PID" 2>/dev/null; do sleep 2; done; sleep 1; kill "$TPID" 2>/dev/null' || true
 
+# build prefect-server's pinned UI bundle image on the node and import it into
+# k3s containerd, for when CI cannot publish it. The webserver's ui-bundle init
+# container uses IfNotPresent, so an imported image is never pulled.
+publish-ui-remote:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    SERVER=$(just server-ip)
+    SERVER_SRC="${PREFECT_SERVER_SOURCE:-../prefect-server}"
+    if [ -n "$(git -C "$SERVER_SRC" status --porcelain -- docker/ui.Dockerfile docker/ui.env)" ]; then
+      echo "ABORT: $SERVER_SRC has uncommitted UI build inputs"
+      exit 1
+    fi
+    REV=$(git -C "$SERVER_SRC" rev-parse HEAD)
+    echo "==> shipping docker/ui.* from prefect-server $REV to $SERVER"
+    git -C "$SERVER_SRC" archive "$REV" docker/ui.Dockerfile docker/ui.env \
+      | ssh root@"$SERVER" 'rm -rf /opt/prefect-ui-build && mkdir -p /opt/prefect-ui-build && tar -x -C /opt/prefect-ui-build'
+    ssh root@"$SERVER" 'bash -s' <<'SCRIPT'
+    set -euo pipefail
+    cd /opt/prefect-ui-build
+    set -a; . docker/ui.env; set +a
+    IMAGE="atcr.io/zzstoatzz.io/prefect-ui:${UI_COMMIT}"
+    echo "==> building ${IMAGE}"
+    buildah bud --layers -f docker/ui.Dockerfile \
+      --build-arg UI_REPO="$UI_REPO" --build-arg UI_COMMIT="$UI_COMMIT" -t "$IMAGE" .
+    echo "==> importing into k3s containerd"
+    buildah push "$IMAGE" docker-archive:/tmp/prefect-ui.tar:"$IMAGE"
+    ctr -n k8s.io images import /tmp/prefect-ui.tar
+    rm -f /tmp/prefect-ui.tar
+    ctr -n k8s.io images ls -q | grep -Fx "$IMAGE"
+    echo "==> imported ${IMAGE}"
+    SCRIPT
+
 # assert the server is actually DOING work, not merely alive.
 #
 # After the 2026-08-13 outage: pods Running, worker ONLINE and heartbeating,
