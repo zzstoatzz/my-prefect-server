@@ -81,7 +81,7 @@ webserver:
   # the commit pinned in its docker/ui.env (the ui-v2-mobile fork branch).
   extraInitContainers:
     - name: ui-bundle
-      image: atcr.io/zzstoatzz.io/prefect-ui:a9eda1a84064607386647796cfccedd85a21d6ec
+      image: atcr.io/zzstoatzz.io/prefect-ui:3c108a1ab2719197e4ec3381fbc3d830c3eacf40
       imagePullPolicy: IfNotPresent
       command: ["cp", "-R", "/ui/.", "/ui-bundle/"]
       securityContext:
