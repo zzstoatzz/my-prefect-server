@@ -1,8 +1,7 @@
-# tailnet-only prefect server (plan, not started)
+# tailnet-only prefect server
 
 Goal: `prefect-server.waow.tech` (UI, `/api`, `/push`, `/api/presence`) answers
-only to tailnet devices. Nothing here has been applied; the inventory was taken
-2026-10-21.
+only to tailnet devices. The inventory was taken 2026-10-21; step 1 is done.
 
 ## constraints
 
@@ -20,12 +19,13 @@ only to tailnet devices. Nothing here has been applied; the inventory was taken
 
 ## steps
 
-1. **close public ssh and k3s API.** Ready: kubeconfig and `just ssh` already
-   work over the tailnet (`tls-server-name: kubernetes`, since the k3s cert has no
-   SAN for the tailnet address). Remove the 22 and 6443 rules from
-   `infra/main.tf` and apply the same rules to the live firewall (there is no
-   local terraform state). Note that terraform does not install tailscale, so a
-   rebuilt node is reachable only through the Hetzner console until it joins.
+1. **close public ssh and k3s API.** Done 2026-10-21: the live firewall and
+   `infra/main.tf` allow only 80/443 (there is no local terraform state, so the
+   live rules were replaced with `hcloud firewall replace-rules`). kubeconfig and
+   `just ssh` work over the tailnet (`tls-server-name: kubernetes`, since the k3s
+   cert has no SAN for the tailnet address). Terraform does not install
+   tailscale, so a rebuilt node is reachable only through the Hetzner console
+   until it joins.
 2. **DNS-01 for prefect-server.** Create a scoped Cloudflare token (DNS edit,
    `waow.tech`), add a DNS-01 issuer, move the prefect-server certificate to it,
    and confirm a renewal. While there, find the ACME solver pod that has been
