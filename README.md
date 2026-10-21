@@ -126,6 +126,7 @@ just push                                 # github first (installs come from the
 | | |
 |---|---|
 | [operations.md](docs/operations.md) | standing up the VM and the home worker; the recipes that run the system |
+| [tailnet-only.md](docs/tailnet-only.md) | plan for serving prefect-server only to tailnet devices: constraints, steps, and every consumer that has to move first |
 | [hub.md](docs/hub.md) | the ingest → classify → transform → brief pipeline and the hub it feeds |
 | [fastmcp-attention.md](docs/fastmcp-attention.md) | when fastmcp briefs fire, what "seen" means, and the staged plan for laptop triage and operator acks |
 | [agentic-fastmcp.md](docs/agentic-fastmcp.md) | Cloud issue eligibility and draft-PR experiment, commands and empirical results |
