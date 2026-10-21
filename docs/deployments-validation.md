@@ -81,6 +81,31 @@ its mps wheel layout, Heavypad paths, Sprite package declarations and revision
 binding. Keep these policies here; an upstream validator should allow legitimate
 image and worker-path deployments.
 
+## Typeahead PDS publisher configuration — 2026-10-20
+
+The configuration selects immutable Typeahead tag `pds-compact-31ec142-20261020`
+(on main, with the qualified native source), `snapshot_format: compact`, and
+`INDEX_PDS_MAX_ACTORS=10000`. It preserves the active cron `0 9 */3 * *`,
+concurrency 1 / CANCEL_NEW, source loading, secret-block references, quiet-build
+setting and bandwidth limit. No other deployment is changed by this source diff.
+The worker selects Zig 0.17 from the checkout's `build.zig.zon`; that compiler is
+installed on HeavyPad. The qualified recovery pair totals 23.3 GB; both its upload
+and checksum readback use the existing 10M bandwidth limit.
+
+The October 19 09:00 UTC scheduled compact publication completed at 11:25 UTC.
+Protected pair readback, native admission, catch-up, same-watermark rollback and
+empty-directory recovery passed. Those completed compact-rollout gates supersede
+the pending status in the dated October 8–17 history below.
+
+PDS qualification passed 5,055 full-corpus response comparisons, 5,175 comparisons
+in each rollback direction with 60 mutations, real failed/retried/policy-change
+replay and paired warm/cold measurements without a statistically supported global
+latency regression. The PDS pair passed full R2 checksum readback on October 20.
+Native Fly admission and the production cutover remain separately gated; this
+configuration is not evidence of deployment or a future scheduled execution.
+Record live registration and serving verification in the
+[Typeahead rollout record](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/plans/pds-homepage-rollout.md).
+
 ## Typeahead compact snapshots — local implementation, 2026-10-08
 
 The typeahead flow accepts `snapshot_format="compact"`; its default remains

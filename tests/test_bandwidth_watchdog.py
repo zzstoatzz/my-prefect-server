@@ -78,7 +78,7 @@ def test_new_socket_counts_but_initial_inventory_does_not():
     assert state["month_tcp_bytes"] == 120
 
 
-def test_monthly_alert_explains_cumulative_trigger_after_recent_usage_rolls_off():
+def test_monthly_milestones_survive_quiet_periods_and_restart(tmp_path):
     config = {
         **CONFIG,
         "alert_bytes_15m": 5_000_000_000,
@@ -90,17 +90,68 @@ def test_monthly_alert_explains_cumulative_trigger_after_recent_usage_rolls_off(
     now = 1792198367
     advance(state, sockets(0), {}, "boot", now, config)
     advance(state, sockets(183_000_000_000), {}, "boot", now + 5, config)
-    state["outbox"].clear()
-    advance(state, sockets(183_000_000_000), {}, "boot", now + 3610, config)
-
-    [alert] = state["outbox"]
-    assert alert["event"] == "bandwidth.monthly-budget"
+    [alert] = [e for e in state["outbox"] if e["event"] == "bandwidth.monthly-budget"]
     assert alert["payload"]["month_tcp_bytes"] == 183_000_000_000
-    assert alert["payload"]["tcp_bytes_15m"] == 0
     message = alert["payload"]["summary"]
     assert "183.00 GB observed / 100.00 GB monthly warning threshold" in message
     assert "2026-10 UTC; monitoring since 2026-10-17 00:52 UTC; not ISP billing" in message
-    assert "Recent usage: observed Internet TCP 0.00 GB/15m" in message
+    assert "Next monthly warning at 200.00 GB." in message
+    state["outbox"].clear()
+    advance(state, sockets(183_000_000_000), {}, "boot", now + 3610, config)
+    assert state["outbox"] == []
+    path = tmp_path / "state.json"
+    save(path, state)
+    state = json.loads(path.read_text())
+    advance(state, sockets(183_000_000_000), {}, "boot", now + 3615, config)
+    assert state["outbox"] == []
+    advance(state, sockets(200_000_000_000), {}, "boot", now + 3620, config)
+    [alert] = [e for e in state["outbox"] if e["event"] == "bandwidth.monthly-budget"]
+    assert "Next monthly warning at 300.00 GB." in alert["payload"]["summary"]
+    state["outbox"].clear()
+    advance(state, sockets(200_000_000_000), {}, "boot", now + 8000, config)
+    assert state["outbox"] == []
+
+
+def test_monthly_milestone_waits_for_cooldown_and_coalesces_crossed_levels():
+    config = {**CONFIG, "alert_bytes_15m": 100000, "host_alert_bytes_15m": 100000}
+    state = {}
+    now = 1800000000
+    advance(state, sockets(0), {}, "boot", now, config)
+    advance(state, sockets(1000), {}, "boot", now + 5, config)
+    state["outbox"].clear()
+    advance(state, sockets(5500), {}, "boot", now + 10, config)
+    assert state["outbox"] == []
+    advance(state, sockets(5500), {}, "boot", now + 3610, config)
+    assert len(state["outbox"]) == 1
+    assert state["monthly_warned_bytes"] == 5000
+    state["outbox"].clear()
+    advance(state, sockets(5500), {}, "boot", now + 8000, config)
+    assert state["outbox"] == []
+
+
+def test_monthly_migration_preserves_previous_warning_and_accounting():
+    state = {}
+    now = 1800000000
+    advance(state, sockets(0), {}, "boot", now, CONFIG)
+    advance(state, sockets(1500), {}, "boot", now + 5, CONFIG)
+    del state["monthly_warned_bytes"]
+    state["outbox"].clear()
+    advance(state, sockets(1500), {}, "boot", now + 4000, CONFIG)
+    assert state["outbox"] == []
+    assert state["month_tcp_bytes"] == 1500
+    assert state["monthly_warned_bytes"] == 1000
+
+
+def test_new_month_rearms_warning_even_within_previous_cooldown():
+    state = {}
+    now = 1790812790
+    advance(state, sockets(0), {}, "boot", now, CONFIG)
+    advance(state, sockets(1500), {}, "boot", now + 5, CONFIG)
+    state["outbox"].clear()
+    advance(state, sockets(3000), {}, "boot", now + 11, CONFIG)
+    [alert] = state["outbox"]
+    assert alert["event"] == "bandwidth.monthly-budget"
+    assert alert["payload"]["month_tcp_bytes"] == 1500
 
 
 def test_month_rollover_and_counter_reset():

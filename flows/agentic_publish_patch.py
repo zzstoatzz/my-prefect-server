@@ -14,11 +14,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
 
+from mps.blocks import secret_sync
 from prefect import flow, get_run_logger, task
 from prefect.artifacts import create_link_artifact
-from prefect.blocks.system import Secret
 from prefect.client.orchestration import get_client
-from prefect.context import get_run_context
+from prefect.context import FlowRunContext
 
 from flows.agentic_batch_policy import batch_branch
 from flows.agentic_validate_patch import fetch_source, install_tools, run_command
@@ -29,7 +29,7 @@ VALIDATOR = UUID("5f1e86fb-d975-47e5-a85d-a45b3dd04865")
 
 @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
 def github(path: str, method: str = "GET", body: dict | None = None) -> dict | list | None:
-    token = Secret.load("fastmcp-triage-gh-token").get()
+    token = secret_sync("fastmcp-triage-gh-token")
     request = urllib.request.Request(
         "https://api.github.com/" + path,
         data=json.dumps(body).encode() if body is not None else None,
@@ -101,12 +101,12 @@ def reviewed_patch(review_run_id: str, approval: dict) -> str:
         }:
             raise ValueError("Expected a designated Agentic Workflow review")
         prefix = f"/flow_runs/{review_run_id}/execution-plan"
-        graph = client.request("GET", prefix).json()
+        graph = client._client.get(prefix).json()
         review = next(node for node in graph["nodes"] if node["node"] == "review")
         if review["status"] != "completed":
             raise ValueError("Agent review has not completed")
-        approved = client.request(
-            "GET", f"{prefix}/activations/{review['activation_id']}/outputs/approved"
+        approved = client._client.get(
+            f"{prefix}/activations/{review['activation_id']}/outputs/approved"
         ).json()
         if any(approved.get(key) != value for key, value in approval.items()):
             raise ValueError("Publication metadata differs from the stored approval")
@@ -121,8 +121,8 @@ def reviewed_patch(review_run_id: str, approval: dict) -> str:
             if source["type"] == "plan_input":
                 return parent.parameters[source["input"]]
             node = next(node for node in graph["nodes"] if node["node"] == source["node"])
-            return client.request(
-                "GET", f"{prefix}/activations/{node['activation_id']}/outputs/{source['output']}"
+            return client._client.get(
+                f"{prefix}/activations/{node['activation_id']}/outputs/{source['output']}"
             ).json()
 
         patch_input = input_value("patch")
@@ -270,7 +270,7 @@ def check_competing_work(
 
 @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
 def push_branch(repository: Path, branch: str) -> None:
-    token = Secret.load("fastmcp-triage-gh-token").get()
+    token = secret_sync("fastmcp-triage-gh-token")
     environment = dict(os.environ)
     authorization = base64.b64encode(("x-access-token:" + token).encode()).decode()
     environment.update(
@@ -293,11 +293,15 @@ def create_draft(branch: str, head: str, title: str, body: str) -> dict:
         if len(existing) != 1 or existing[0]["head"]["sha"] != head:
             raise ValueError("Unexpected PR exists for this publication branch")
         return existing[0]
-    return github.fn(
+    result = github.fn(
         f"repos/{REPOSITORY}/pulls",
         "POST",
         {"title": title, "body": body, "head": branch, "base": "main", "draft": True},
     )
+
+    if not isinstance(result, dict):
+        raise ValueError("Expected a GitHub pull request object")
+    return result
 
 
 @flow(name="fastmcp-publish-validated-patch", timeout_seconds=1200)
@@ -314,7 +318,10 @@ def publish_patch(
     if issue_number <= 0 or not title.strip() or "\n" in title or not body.strip():
         raise ValueError("Expected an issue number, one-line title and PR body")
     if recovery_review_run_id is None:
-        parent_task = get_run_context().flow_run.parent_task_run_id
+        context = FlowRunContext.get()
+        if context is None or context.flow_run is None:
+            raise ValueError("Publication requires a flow run context")
+        parent_task = context.flow_run.parent_task_run_id
         if parent_task is None:
             raise ValueError("Publication must follow an Agentic Workflow review")
         with get_client(sync_client=True) as client:
@@ -336,6 +343,8 @@ def publish_patch(
     issue, existing = check_competing_work(issue_number, branch, reviewed_at, prior_prs)
     reporter = github(f"users/{issue['user']['login']}")
     actor = github("user")
+    if not isinstance(reporter, dict) or not isinstance(actor, dict):
+        raise ValueError("Expected GitHub reporter and publisher user objects")
     credit = f"Co-authored-by: {reporter['login']} <{reporter['id']}+{reporter['login']}@users.noreply.github.com>"
     pr_body = (
         body.rstrip()
@@ -354,9 +363,13 @@ def publish_patch(
         run_command(["git", "diff", "--cached", "--check"], repository)
         tree = subprocess.check_output(["git", "write-tree"], cwd=repository).decode().strip()
         remote = github(f"repos/{REPOSITORY}/git/ref/heads/{branch}")
+        if remote is not None and not isinstance(remote, dict):
+            raise ValueError("Expected a GitHub branch reference object")
         if remote:
             head = remote["object"]["sha"]
             commit = github(f"repos/{REPOSITORY}/git/commits/{head}")
+            if not isinstance(commit, dict):
+                raise ValueError("Expected a GitHub commit object")
             if commit["tree"]["sha"] != tree or [parent["sha"] for parent in commit["parents"]] != [
                 base_sha
             ]:
@@ -401,6 +414,8 @@ def publish_patch(
                 raise ValueError("Existing PR differs from validated publication")
             return {"status": "existing_pr", "pr_url": existing[0]["html_url"], "head_sha": head}
         main = github(f"repos/{REPOSITORY}/git/ref/heads/main")
+        if not isinstance(main, dict):
+            raise ValueError("Expected the GitHub main branch reference")
         if main["object"]["sha"] != base_sha:
             raise ValueError("Main changed since validation")
         if dry_run:

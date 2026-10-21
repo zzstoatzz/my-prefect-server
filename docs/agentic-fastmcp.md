@@ -353,3 +353,16 @@ main plan is now `06ad721d-8a68-7026-8000-3832c0b077a3`. The context change pass
 23 relevant tests and Cloud validation. Probe subprocess timeouts are requested
 in the agent instructions; the platform's 180-second node limit remains the hard
 outer bound. No new issue batch was authorized or started.
+## CI compatibility fix — October 20, 2026
+
+The publication flow now uses the synchronous `mps.blocks` secret accessor,
+requires a flow-run context, and validates object responses before reading GitHub
+fields. Agentic execution-plan endpoints use the authenticated Prefect HTTP
+transport because these Cloud extension routes are absent from the SDK's generated
+`ServerRoutes` literals. This source correction unblocks repository type checking;
+it does not re-register the separately pinned Cloud publication deployment.
+
+The skill loader also selects `sha256sum` on Linux and falls back to macOS
+`shasum -a 256`. The CI image has the former; this preserves the same SHA-256
+content contract without requiring Perl. Real temporary-Git skill-loader tests
+verify the selected revision and every returned content hash.
