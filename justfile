@@ -48,19 +48,20 @@ infra:
 destroy:
     terraform -chdir=infra destroy -var="hcloud_token=$HCLOUD_TOKEN"
 
-# get the server IP from terraform
+# the node's tailnet address. ssh and the k3s API are closed to the public
+# internet, so the public IP from terraform is not reachable for either.
 server-ip:
     #!/usr/bin/env bash
     set -euo pipefail
-    if IP=$(terraform -chdir=infra output -raw server_ip 2>/dev/null) && [ -n "$IP" ]; then
-        printf '%s\n' "$IP"
+    if [ -n "${NODE_HOST:-}" ]; then
+        printf '%s\n' "$NODE_HOST"
         exit 0
     fi
     if [ -f kubeconfig.yaml ]; then
         ruby -ryaml -ruri -e 'puts URI(YAML.load_file("kubeconfig.yaml")["clusters"][0]["cluster"]["server"]).host'
         exit 0
     fi
-    echo "no terraform state or kubeconfig.yaml available" >&2
+    echo "set NODE_HOST to the node's tailnet address, or restore kubeconfig.yaml" >&2
     exit 1
 
 # ssh into the server
@@ -78,12 +79,11 @@ kubeconfig:
         sleep 5
     done
     scp root@$IP:/etc/rancher/k3s/k3s.yaml kubeconfig.yaml
-    if [[ "$(uname)" == "Darwin" ]]; then
-        sed -i '' "s|127.0.0.1|$IP|g" kubeconfig.yaml
-    else
-        sed -i "s|127.0.0.1|$IP|g" kubeconfig.yaml
-    fi
     chmod 600 kubeconfig.yaml
+    # the k3s serving cert has no SAN for the tailnet address; verify against
+    # the `kubernetes` SAN it always carries instead
+    KUBECONFIG=kubeconfig.yaml kubectl config set-cluster default \
+        --server="https://$IP:6443" --tls-server-name=kubernetes >/dev/null
     echo "kubeconfig written"
     kubectl get nodes
 
