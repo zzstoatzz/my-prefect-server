@@ -12,3 +12,25 @@ spec:
       - http01:
           ingress:
             class: traefik
+---
+# for hosts served only on the tailnet, where Let's Encrypt cannot reach an
+# HTTP-01 challenge. token: secrets store cloudflare.cert_manager_dns01_waow_tech
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-dns01
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: LETSENCRYPT_EMAIL_PLACEHOLDER
+    privateKeySecretRef:
+      name: letsencrypt-dns01
+    solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-dns01
+              key: api-token
+        selector:
+          dnsZones:
+            - waow.tech

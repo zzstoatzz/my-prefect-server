@@ -121,7 +121,7 @@ ingress:
   enabled: true
   className: traefik
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
+    cert-manager.io/cluster-issuer: letsencrypt-dns01
   hosts:
     - host: DOMAIN_PLACEHOLDER
       paths:

@@ -1,7 +1,7 @@
 # tailnet-only prefect server
 
 Goal: `prefect-server.waow.tech` (UI, `/api`, `/push`, `/api/presence`) answers
-only to tailnet devices. The inventory was taken 2026-10-21; step 1 is done.
+only to tailnet devices. The inventory was taken 2026-10-21; steps 1 and 2 are done.
 
 ## constraints
 
@@ -12,10 +12,11 @@ only to tailnet devices. The inventory was taken 2026-10-21; step 1 is done.
   other repos) and `spindle.zzstoatzz.io` (tangled's appview dials it). Public
   80/443 therefore stay open; prefect-server is restricted per host, not by the
   Hetzner firewall.
-- cert-manager uses HTTP-01. Once the prefect-server record points at a tailnet
-  address, Let's Encrypt cannot reach it, so that certificate needs DNS-01 with a
-  Cloudflare token that can edit `waow.tech` records (the existing
-  `cloudflare-api-token` block cannot see that zone).
+- A tailnet-only host cannot answer HTTP-01, so its certificate must use the
+  DNS-01 issuer (step 2).
+- heavypad's prefect worker must keep running. The flip may take a short
+  planned cutover window, nothing longer; heavypad's tailnet address is allowed
+  before anything is restricted.
 
 ## steps
 
@@ -26,10 +27,13 @@ only to tailnet devices. The inventory was taken 2026-10-21; step 1 is done.
    cert has no SAN for the tailnet address). Terraform does not install
    tailscale, so a rebuilt node is reachable only through the Hetzner console
    until it joins.
-2. **DNS-01 for prefect-server.** Create a scoped Cloudflare token (DNS edit,
-   `waow.tech`), add a DNS-01 issuer, move the prefect-server certificate to it,
-   and confirm a renewal. While there, find the ACME solver pod that has been
-   stuck since July (`cm-acme-http-solver-*`) and which certificate it belongs to.
+2. **DNS-01 for prefect-server.** Done 2026-10-21: `letsencrypt-dns01`
+   (deploy/cluster-issuer.yaml) solves through Cloudflare with a token scoped to
+   DNS Write + Zone Read on `waow.tech` (secrets store
+   `cloudflare.cert_manager_dns01_waow_tech`, k8s `cert-manager/cloudflare-dns01`).
+   prefect-server and hub both moved to it and re-issued. The solver stuck since
+   July was hub's: hub is Cloudflare-proxied behind Access, so HTTP-01 got the
+   Access page, and its origin certificate had expired on 2026-08-16.
 3. **migrate consumers** (below), each verified against the live server.
 4. **flip.** Point the `prefect-server.waow.tech` A record at the tailnet
    address, and add a Traefik `ipAllowList` on that host for the tailnet range
