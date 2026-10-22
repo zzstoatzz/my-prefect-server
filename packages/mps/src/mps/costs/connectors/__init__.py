@@ -6,6 +6,7 @@ from mps.costs.connectors.cloudflare import CloudflareConnector
 from mps.costs.connectors.fly import FlyConnector
 from mps.costs.connectors.hetzner import HetznerConnector
 from mps.costs.connectors.neon import NeonConnector
+from mps.costs.connectors.turso import TursoConnector
 from mps.costs.types import Connector
 
 ALL_CONNECTORS: list[Connector] = [
@@ -13,6 +14,7 @@ ALL_CONNECTORS: list[Connector] = [
     CloudflareConnector(),
     HetznerConnector(),
     NeonConnector(),
+    TursoConnector(),
 ]
 
 __all__ = [
@@ -21,4 +23,5 @@ __all__ = [
     "FlyConnector",
     "HetznerConnector",
     "NeonConnector",
+    "TursoConnector",
 ]

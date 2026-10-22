@@ -345,3 +345,34 @@ def test_costs_names_the_run_incomplete_when_a_connector_reports_a_gap(monkeypat
         assert state.name == "Incomplete" and "cloudflare: R2 storage" in state.message
     else:
         assert state.name == "Completed"
+
+
+def test_turso_bills_the_scaler_plan_to_shared_by_default(monkeypatch):
+    from mps.costs.connectors.turso import TursoConnector
+
+    monkeypatch.delenv("TURSO_PLAN", raising=False)
+    monkeypatch.delenv("TURSO_PLAN_USD", raising=False)
+    items = asyncio.run(TursoConnector().collect(Period.trailing_month()))
+
+    assert [(i.provider, i.project, i.service, i.amount, i.estimated) for i in items] == [
+        ("turso", "shared", "scaler-plan", 2900, True)
+    ]
+
+
+def test_turso_price_override_and_unknown_plan(monkeypatch):
+    from mps.costs.connectors.turso import TursoConnector
+
+    monkeypatch.setenv("TURSO_PLAN_USD", "24.92")
+    assert asyncio.run(TursoConnector().collect(Period.trailing_month()))[0].amount == 2492
+
+    monkeypatch.delenv("TURSO_PLAN_USD")
+    monkeypatch.setenv("TURSO_PLAN", "enterprise")
+    with pytest.raises(RuntimeError, match="unknown turso plan"):
+        asyncio.run(TursoConnector().collect(Period.trailing_month()))
+
+
+def test_flow_collects_turso():
+    import flows.costs as costs_flow
+
+    connectors = asyncio.run(costs_flow.build_connectors())
+    assert "turso" in [c.name for c in connectors]

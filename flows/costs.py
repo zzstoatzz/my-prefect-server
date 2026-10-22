@@ -27,6 +27,7 @@ from mps.costs.connectors import (
     FlyConnector,
     HetznerConnector,
     NeonConnector,
+    TursoConnector,
 )
 from mps.costs.types import Connector, LineItem
 from mps.observability import configure_logfire
@@ -44,8 +45,8 @@ HETZNER_TOKENS_BLOCK = "hetzner-tokens"
 async def build_connectors() -> list[Connector]:
     """Assemble connectors. Hetzner is special: its tokens are project-scoped,
     so we load the `hetzner-tokens` Secret block (a dict of {label: token}) and
-    hand the values to the connector. The other three read single tokens from
-    env (injected from Secret blocks via prefect.yaml)."""
+    hand the values to the connector. Fly, Cloudflare, and Neon read single tokens
+    from env (injected from Secret blocks via prefect.yaml); Turso needs none."""
     hetzner_tokens: list[str] | None = None
     try:
         hetzner_tokens = [str(v) for v in (await secret_mapping(HETZNER_TOKENS_BLOCK)).values()]
@@ -57,6 +58,7 @@ async def build_connectors() -> list[Connector]:
         CloudflareConnector(),
         HetznerConnector(tokens=hetzner_tokens),
         NeonConnector(),
+        TursoConnector(),
     ]
 
 
