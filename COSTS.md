@@ -52,6 +52,7 @@ wrong, fix the mapping in `my-prefect-server`
 - Hetzner is billed at **EU list price** (already off the US premium); next lever is right-sizing the server type to real utilization.
 
 ## changelog
+- **2026-10-22** — cost tracker: fly compute is priced by each machine's measured uptime over the trailing 7 days instead of extrapolating whatever was started at collection time (cc1c989); `pear` (pear-definitelyarealcompany), `follower-weight` and `porxie` are attributed instead of unattributed (cc1c989, 3732d51); a turso connector adds the org's scaler plan ($29/mo list) under `shared` (cfda92c). Method and caveats are in evergreen's COSTS.md accuracy table.
 - **2026-06-17** — split Cloudflare cost collection into R2 bucket line items plus explicit fixed resource lines, so `plyr.fm` receives its R2/domain share instead of Cloudflare landing under `shared`.
 - **2026-06-16** — moved `prefect-server` cpx31 Ashburn (US) → cpx32 Falkenstein (EU): **$73.49 → $41.99 (−$31/mo)**.
 - **2026-06-17** — initial cost notice; 1 service(s) attributed here. Run the command above for the live figure.
