@@ -39,9 +39,17 @@ only to tailnet devices. The inventory was taken 2026-10-21; steps 1 and 2 are d
    `prefect-server.waow.tech` A record at the tailnet address and wait out the
    TTL; nothing is restricted yet, so clients still holding the public address
    keep working. Once heavypad resolves the tailnet address and its workers
-   heartbeat through it, add a Traefik `ipAllowList` on that host for the tailnet range
-   plus the pod CIDR (needs `externalTrafficPolicy: Local` on Traefik's service
-   so source addresses survive). Keeping the hostname keeps every hardcoded URL
+   heartbeat through it, add a Traefik `ipAllowList` on that host for
+   `10.42.0.0/16` (pod CIDR) and `100.64.0.0/10`. No per-path exceptions: once the
+   record points at the tailnet, off-tailnet clients cannot reach the hostname at
+   all, so presence from the phone needs its own public route first. Traefik already runs with
+   `externalTrafficPolicy: Local` (deploy/traefik-config.yaml, applied
+   2026-10-22 without restarting it): measured with a header-echo probe, public
+   clients now arrive with their real address, while tailnet clients arrive as
+   the svclb pod address (10.42.x), which is why the pod CIDR is in the list.
+   The allowlist must not go on before the DNS move: clients that still
+   resolve the public address (heavypad today) arrive with their public IP and
+   would be refused. Keeping the hostname keeps every hardcoded URL
    and Discord link working, and spindle CI guests, which cannot use MagicDNS,
    can still resolve it.
 5. **verify** from off-tailnet (refused) and from the Mac, the phone, heavypad,

@@ -1,0 +1,17 @@
+# k3s owns traefik through its HelmChart; settings go here, not on the live
+# Service, or the next k3s restart reverts them.
+#
+# externalTrafficPolicy Local keeps the client address for traffic arriving on
+# the public interface, which a per-host ipAllowList needs. Traffic arriving
+# over the tailnet is still rewritten to the svclb pod address (10.42.x), so a
+# tailnet allowlist must include the pod CIDR. docs/tailnet-only.md.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    service:
+      spec:
+        externalTrafficPolicy: Local
