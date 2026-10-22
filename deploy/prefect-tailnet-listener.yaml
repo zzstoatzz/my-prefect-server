@@ -1,0 +1,60 @@
+# prefect-server's API on the node's tailnet address only, for clients that
+# reach the server through a userspace tailnet proxy (gardener's ts-unplug).
+# ts-unplug forwards plain HTTP and keeps the client's Host header, so it
+# cannot go through traefik on 443; this skips the ingress.
+#
+# socat binds the address of the node's tailscale0 interface, read at start,
+# never the public interface, so the Hetzner firewall is not the only thing
+# keeping it private. A NodePort would bind every node address. If tailscale0
+# has no address (tailscaled restarting), the container exits and restarts
+# until it does.
+# docs/tailnet-only.md.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prefect-tailnet-listener
+  namespace: prefect
+  labels:
+    app: prefect-tailnet-listener
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: prefect-tailnet-listener
+  template:
+    metadata:
+      labels:
+        app: prefect-tailnet-listener
+    spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: socat
+          image: alpine/socat:1.8.1.1@sha256:7f9a06753033f2b7de18edc2353f2c15153413d95a039163c6db270fc7a6c3b0
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              addr=$(ip -4 -o addr show dev tailscale0 | awk '{print $4}' | cut -d/ -f1)
+              [ -n "$addr" ] || { echo "tailscale0 has no IPv4 address" >&2; exit 1; }
+              exec socat -d "TCP-LISTEN:4200,bind=$addr,reuseaddr,fork" TCP:prefect-server.prefect.svc.cluster.local:4200
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 5m
+              memory: 8Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
