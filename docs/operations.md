@@ -52,7 +52,9 @@ attempt. That includes `pi-agent/investigate`, the deployment phi's
 `request_workflow` reaches through the heavypad bridge. Its worker (`deploy/phi-inference/pi-exe-worker.service`) and local
 wheel artifacts live on Heavypad; see the deployment declarations and
 [validation contracts](deployments-validation.md). The `phi-sprites-spike`
-pool and its worker are still installed but carry no deployments.
+pool was deleted on 2026-10-22 after six weeks with no deployments, and its
+heavypad worker unit removed; `packages/prefect-sprites` and `mps.sprite_worker`
+remain.
 
 `kubernetes-pool` survives only as a defined fallback. its base job template
 is applied by `just storage`; no k8s worker runs in normal operation.

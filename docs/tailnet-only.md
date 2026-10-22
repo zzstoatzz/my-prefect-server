@@ -72,7 +72,7 @@ only to tailnet devices. The inventory was taken 2026-10-21; steps 1 and 2 are d
 | heavypad Funnel `:8443/workflows/request` | heavypad, public via Tailscale Funnel | phi's workflow requests, separate bearer token | not affected by the flip; an existing public surface to keep in the inventory |
 | evergreen probes | Cloudflare Worker | `/api/health` (unauthenticated), grafana | remove the prefect and grafana service URLs from `site/services.json` at the flip, not before; evergreen has no private flag |
 | pub-search ingestion watchdog | GitHub Actions | done 2026-10-22: holds the read-only string (verified "builder ok"); prints "builder check skipped" when unreachable | nothing; it loses the cause-level check after the flip |
-| phi-sprites-spike pool | worker on heavypad (`pi-sprites-worker.service`, online 2026-10-22); runs execute on Fly Sprites | not yet traced: whether Sprites-side runs call the API | trace before the flip; retire if unused |
+| phi-sprites-spike pool | removed 2026-10-22 | 5 runs ever, all on 2026-09-09; no deployments | nothing; the worker unit and pool are gone, the implementation stays |
 
 Open questions: the contents of `presence-ingress/prefect-api-url`; whether
 heavypad overrides DNS today (the docs say the worker polls "over Tailscale",
