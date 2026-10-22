@@ -35,8 +35,11 @@ only to tailnet devices. The inventory was taken 2026-10-21; steps 1 and 2 are d
    July was hub's: hub is Cloudflare-proxied behind Access, so HTTP-01 got the
    Access page, and its origin certificate had expired on 2026-08-16.
 3. **migrate consumers** (below), each verified against the live server.
-4. **flip.** Point the `prefect-server.waow.tech` A record at the tailnet
-   address, and add a Traefik `ipAllowList` on that host for the tailnet range
+4. **flip**, in two stages so heavypad never loses its path. First point the
+   `prefect-server.waow.tech` A record at the tailnet address and wait out the
+   TTL; nothing is restricted yet, so clients still holding the public address
+   keep working. Once heavypad resolves the tailnet address and its workers
+   heartbeat through it, add a Traefik `ipAllowList` on that host for the tailnet range
    plus the pod CIDR (needs `externalTrafficPolicy: Local` on Traefik's service
    so source addresses survive). Keeping the hostname keeps every hardcoded URL
    and Discord link working, and spindle CI guests, which cannot use MagicDNS,
@@ -48,7 +51,7 @@ only to tailnet devices. The inventory was taken 2026-10-21; steps 1 and 2 are d
 
 | consumer | runs on | today | change |
 |---|---|---|---|
-| home-pool worker, prefect-mcp-selfhosted, phi-inference, dagster | heavypad (tailnet) | public URL via public DNS | nothing beyond the DNS flip; confirm heavypad resolves to the tailnet address afterward |
+| home-pool worker, prefect-mcp-selfhosted, phi-inference, dagster | heavypad (tailnet) | public URL via public DNS | nothing beyond the DNS flip. Verified 2026-10-22: heavypad reaches the tailnet address with a valid certificate for the hostname (`curl --resolve`), and it resolves through tailscale0, so it follows the record without a hosts pin (which would need sudo) |
 | laptop worker, `just prefect`, operator CLI | Mac (tailnet) | public URL | nothing; Tailscale must be connected |
 | prefect-ios app, Safari | iPhone (tailnet) | `/api`, `/push`, events socket | Tailscale on-demand; Siri intents and notification actions need the VPN up |
 | iPhone Shortcuts presence | iPhone, background | `POST /api/presence` | unreliable without VPN; move to `hub.waow.tech/api/presence` behind Cloudflare with a path bypass, or keep an exception |
