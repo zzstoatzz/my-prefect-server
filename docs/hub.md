@@ -91,7 +91,7 @@ and its observed schema/column lineage.
 | `fastmcp-brief` | automations + cron `0 */4 * * *` floor | reads the recent event window off the bus and composes a brief when something merits surfacing |
 | `fastmcp-triage` | on `hub.brief.ready`, **laptop-pool** | headless Claude Code in a sandboxed fastmcp clone triages what the brief surfaced; the flow opens any pull request the agent proposes. see [fastmcp-attention.md](fastmcp-attention.md) |
 
-all flows except `fastmcp-triage` (laptop-pool) run on the `home-pool` process worker on the home box (heavypad); `kubernetes-pool` is retained as an unused fallback. code is pulled at runtime via `git clone` from tangled.sh (github fallback). deps install via `uv run --with 'my-prefect-server @ git+...'`. deployments are registered by CI on every push to main (`.tangled/workflows/deploy.yml`).
+all flows run on the `home-pool` process worker on the home box (heavypad), except the gardener flows (`autofix-revise`, `investigate`, `pi-pr`, `test-pull-patch`) on `gardener-exe`; `kubernetes-pool` is retained as an unused fallback. code is pulled at runtime via `git clone` from tangled.sh (github fallback). deps install via `uv run --with 'my-prefect-server @ git+...'`. deployments are registered by CI on every push to main (`.tangled/workflows/deploy.yml`).
 
 ## dbt layer
 

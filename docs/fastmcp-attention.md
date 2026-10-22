@@ -6,8 +6,11 @@ ledger that phi can read.
 
 ## the path today
 
-The laptop `fastmcp-triage` trigger is disabled as of 2026-10-19 while triage
-moves to Prefect Cloud Agentic Workflows. The watcher, briefs, Discord brief
+The laptop `fastmcp-triage` trigger was disabled on 2026-10-19 while triage
+moved to Prefect Cloud Agentic Workflows, and on 2026-10-22 the deployment,
+the `laptop-pool` work pool, and the laptop worker were removed: a worker on
+the operator's Mac made the server's admin credential a path into that
+machine. The flow code and its tests remain. The watcher, briefs, Discord brief
 delivery, and backlog counter remain enabled. The laptop triage details below
 describe the retained implementation, not an active automatic workflow.
 

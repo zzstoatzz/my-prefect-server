@@ -52,7 +52,7 @@ only to tailnet devices. The inventory was taken 2026-10-21; steps 1 and 2 are d
 | consumer | runs on | today | change |
 |---|---|---|---|
 | home-pool worker, prefect-mcp-selfhosted, phi-inference, dagster | heavypad (tailnet) | public URL via public DNS | nothing beyond the DNS flip. Verified 2026-10-22: heavypad reaches the tailnet address with a valid certificate for the hostname (`curl --resolve`), and it resolves through tailscale0, so it follows the record without a hosts pin (which would need sudo) |
-| laptop worker, `just prefect`, operator CLI | Mac (tailnet) | public URL | nothing; Tailscale must be connected |
+| `just prefect`, operator CLI (laptop worker removed 2026-10-22) | Mac (tailnet) | public URL | nothing; Tailscale must be connected |
 | prefect-ios app, Safari | iPhone (tailnet) | `/api`, `/push`, events socket | Tailscale on-demand; Siri intents and notification actions need the VPN up |
 | iPhone Shortcuts presence | iPhone, background | `POST /api/presence` | unreliable without VPN; move to `hub.waow.tech/api/presence` behind Cloudflare with a path bypass, or keep an exception |
 | hub pod | in-cluster | done 2026-10-22: `presence-ingress/prefect-api-url` is `http://prefect-server.prefect.svc:4200/api`, verified with the hub's own credential | nothing at the flip |
