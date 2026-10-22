@@ -1,0 +1,28 @@
+# A thin layer over an existing gardener deployment image: the eMudhra root
+# distrust, and stock ts-unplug for the run's tailnet path to the Prefect API.
+# Rebuilding the deployment images from Dockerfile would re-run every wheel
+# build; this changes nothing else in them.
+#
+#   docker build -f Dockerfile.trust --build-arg BASE=<registry>/gardener@sha256:<digest> .
+#
+# Trust: the compromised TLS intermediates chain to emSign Root TLS CA - G3,
+# which Mozilla does not carry; Ubuntu's store reaches them through its
+# cross-signer, emSign ECC Root CA - G3 (matched by certificate sha256 against
+# the advisory's roots.json). AAA Certificate Services is already absent from
+# this store; its line is kept so a store that still lists it is covered.
+# The flow venv's certifi predates the fix, so its bundle file is pointed at
+# the filtered system bundle, which works without environment variables.
+ARG BASE
+
+FROM golang:1.26.0-alpine@sha256:d4c4845f5d60c6a974c6000ce58ae079328d03ab7f721a0734277e69905473e5 AS tsunplug
+ENV CGO_ENABLED=0 GOFLAGS=-trimpath
+RUN go install github.com/tailscale/ts-plug/cmd/ts-unplug@0b0b083dae1aad0ad55c62ba28d3402f421a9aab
+
+FROM ${BASE}
+COPY --from=tsunplug /go/bin/ts-unplug /usr/local/bin/ts-unplug
+RUN sed -i -e 's|^mozilla/emSign_ECC_Root_CA_-_G3.crt|!&|' \
+           -e 's|^mozilla/Comodo_AAA_Services_root.crt|!&|' \
+        /etc/ca-certificates.conf \
+    && update-ca-certificates --fresh \
+    && ln -sf /etc/ssl/certs/ca-certificates.crt \
+        "$(/opt/gardener/venv/bin/python -c 'import certifi; print(certifi.where())')"

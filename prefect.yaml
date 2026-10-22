@@ -1022,7 +1022,7 @@ deployments:
       job_variables:
         timeout_seconds: 2400
         environment_mode: image
-        image: gardener-registry.exe.xyz/gardener@sha256:cab30e527e572f3d1cd943369cf77f738e87626156da64da2911881d76483de6
+        image: gardener-registry.exe.xyz/gardener@sha256:0cb823fc9e34fef2b096c9135c5e17e5f671d571655373d1555480160e5d8f57
         requirements: []
         local_packages: []
 
@@ -1039,7 +1039,7 @@ deployments:
       job_variables:
         timeout_seconds: 2400
         environment_mode: image
-        image: gardener-registry.exe.xyz/gardener@sha256:ce7109333479e37f958681e8ba30e48d842208354c4baa6f787bf92e7268bd5b
+        image: gardener-registry.exe.xyz/gardener@sha256:f95289d0a71820330b218a586727e5c381a3e9b502afd6a6ebb43cc46582cc2f
         requirements: []
         local_packages: []
 
@@ -1053,7 +1053,7 @@ deployments:
       job_variables:
         timeout_seconds: 2400
         environment_mode: image
-        image: gardener-registry.exe.xyz/gardener@sha256:ce7109333479e37f958681e8ba30e48d842208354c4baa6f787bf92e7268bd5b
+        image: gardener-registry.exe.xyz/gardener@sha256:f95289d0a71820330b218a586727e5c381a3e9b502afd6a6ebb43cc46582cc2f
         requirements: []
         local_packages: []
 
@@ -1081,7 +1081,7 @@ deployments:
       job_variables:
         timeout_seconds: 2400
         environment_mode: image
-        image: gardener-registry.exe.xyz/gardener@sha256:4c47744dd7c242cf25ef4e87c23ec2894c3e5029ce8c7d97c3690afbf4afe51b
+        image: gardener-registry.exe.xyz/gardener@sha256:2ed11ddbbec881a9bac7ac64c1c0a8f8713a3f0a19ce5c6c4237cb24a24edb41
         requirements: []
         local_packages: []
 
