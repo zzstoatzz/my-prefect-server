@@ -55,14 +55,14 @@ only to tailnet devices. The inventory was taken 2026-10-21; steps 1 and 2 are d
 | laptop worker, `just prefect`, operator CLI | Mac (tailnet) | public URL | nothing; Tailscale must be connected |
 | prefect-ios app, Safari | iPhone (tailnet) | `/api`, `/push`, events socket | Tailscale on-demand; Siri intents and notification actions need the VPN up |
 | iPhone Shortcuts presence | iPhone, background | `POST /api/presence` | unreliable without VPN; move to `hub.waow.tech/api/presence` behind Cloudflare with a path bypass, or keep an exception |
-| hub pod | in-cluster | secret `presence-ingress/prefect-api-url` | set to `http://prefect-server:4200/api` (prefect-push already uses service DNS) |
+| hub pod | in-cluster | done 2026-10-22: `presence-ingress/prefect-api-url` is `http://prefect-server.prefect.svc:4200/api`, verified with the hub's own credential | nothing at the flip |
 | prefect-push | in-cluster | inbound `/push` from the app | follows the app onto the tailnet |
 | spindle CI deploys (my-prefect-server `deploy.yml`, stream `admission.yml`) | heavypad microVMs | public URL | should route over heavypad's tailnet once DNS points there; verify one run |
 | gardener-exe flow runs | exe.dev VMs (off tailnet) | worker env URL | tailscale is in the VM image; inject an ephemeral tagged auth key via `run_environment` |
 | phi bot | Fly (off tailnet) | REST `/api/flow_runs/*` | tailscale on Fly with an ephemeral key, or an exception |
 | hosted MCP `prefect-by-zzstoatzz.fastmcp.app` | SaaS (off tailnet) | headers carry the API URL | retire in favor of the heavypad MCP once phi is on the tailnet |
-| evergreen probes | Cloudflare Worker | `/api/health`, grafana | drop or mark private the prefect and grafana entries |
-| pub-search ingestion watchdog | GitHub Actions | optional Prefect check | drop the check or add the tailscale action |
+| evergreen probes | Cloudflare Worker | `/api/health` (unauthenticated), grafana | remove the prefect and grafana service URLs from `site/services.json` at the flip, not before; evergreen has no private flag |
+| pub-search ingestion watchdog | GitHub Actions | done 2026-10-22: holds the read-only string (verified "builder ok"); prints "builder check skipped" when unreachable | nothing; it loses the cause-level check after the flip |
 | phi-sprites-spike pool | Fly Sprites | unused pool | retire |
 
 Open questions: the contents of `presence-ingress/prefect-api-url`; whether
