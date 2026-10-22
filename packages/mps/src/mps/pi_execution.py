@@ -77,7 +77,7 @@ def prepare_pi_runtime() -> Path:
     tools = Path("/opt/phi-agent")
     relay = Path(__file__).with_name("pi_relay.py")
     revision = (
-        f"v3-node-24.18.0-pi-0.84.4-{ADAPTER_REVISION}-{SKILLS_REVISION}-"
+        f"v3-node-24.22.1-pi-0.84.4-{ADAPTER_REVISION}-{SKILLS_REVISION}-"
         f"{hashlib.sha256(relay.read_bytes()).hexdigest()}"
     )
     with Path("/var/lib/phi-agent-install.lock").open("w") as lock:
@@ -105,7 +105,7 @@ def prepare_pi_runtime() -> Path:
             tools.mkdir(mode=0o755, exist_ok=True)
             with tempfile.TemporaryDirectory(prefix="phi-node-") as directory:
                 staging = Path(directory)
-                archive_name = f"node-v24.18.0-linux-{architecture}.tar.xz"
+                archive_name = f"node-v24.22.1-linux-{architecture}.tar.xz"
                 for name in (archive_name, "SHASUMS256.txt"):
                     subprocess.run(
                         [
@@ -113,7 +113,7 @@ def prepare_pi_runtime() -> Path:
                             "-fsSL",
                             "--max-time",
                             "120",
-                            f"https://nodejs.org/dist/v24.18.0/{name}",
+                            f"https://nodejs.org/dist/v24.22.1/{name}",
                             "-o",
                             str(staging / name),
                         ],

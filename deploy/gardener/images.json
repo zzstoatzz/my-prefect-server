@@ -5,7 +5,7 @@
     "investigate": {
       "id": "2c0ba8f3-7adf-44f8-a96e-8214c1bd8f2f",
       "wheel_sha256": "d155a253dfd1b685b3e753ef24390cf720ef6795f792cb919c6ad6b272bd7b98",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:f95289d0a71820330b218a586727e5c381a3e9b502afd6a6ebb43cc46582cc2f",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:1127c3ad82eb43408ea34fa66f8bbcbc9ef487d0863ce2fa136252e02297bcc6",
       "inference_backend": "exe",
       "module_overrides": [
         {
@@ -49,13 +49,14 @@
         "distrusted": [
           "mozilla/emSign_ECC_Root_CA_-_G3.crt"
         ],
-        "certifi": "bundle file linked to /etc/ssl/certs/ca-certificates.crt"
+        "certifi": "bundle file linked to /etc/ssl/certs/ca-certificates.crt",
+        "node": "v24.22.1 (NSS 3.131.1 roots), node-v24.22.1-linux-x64.tar.gz sha256 eb6728e77c576a35162c122c45ccadf224d89ff00abc8dae46cc2897c6002d7c, replaces /opt/phi-agent/node"
       }
     },
     "autofix-revise": {
       "id": "02d90936-9f9b-45f7-97e6-8f18539b0b7e",
       "wheel_sha256": "6f3346e5fe79ed354681d339b3c0f65795d265baab3d365190d5f02390a8d078",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:0cb823fc9e34fef2b096c9135c5e17e5f671d571655373d1555480160e5d8f57",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:6fa8d0c7e3d63f2cff138543b4d4e0294938009f990d9f5e7c38c6871059fbbe",
       "inference_backend": "exe",
       "flow_override": {
         "source_revision": "db1d9d03d43ed8948a8859b0ace50fab440a4da8",
@@ -109,13 +110,14 @@
         "distrusted": [
           "mozilla/emSign_ECC_Root_CA_-_G3.crt"
         ],
-        "certifi": "bundle file linked to /etc/ssl/certs/ca-certificates.crt"
+        "certifi": "bundle file linked to /etc/ssl/certs/ca-certificates.crt",
+        "node": "v24.22.1 (NSS 3.131.1 roots), node-v24.22.1-linux-x64.tar.gz sha256 eb6728e77c576a35162c122c45ccadf224d89ff00abc8dae46cc2897c6002d7c, replaces /opt/phi-agent/node"
       }
     },
     "test-pull-patch": {
       "id": "6f98ab00-3c0a-44ef-b35a-bda13bfb67e2",
       "wheel_sha256": "e9ff2b3f966218086d909fadd6983b4ce655022a2aca076902b6fb0c3eaec6cb",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:2ed11ddbbec881a9bac7ac64c1c0a8f8713a3f0a19ce5c6c4237cb24a24edb41",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:a48e919eb0e755662e0b889262335321214a5e769bed3dd4c3fc1524dac7a0d7",
       "inference_backend": "exe",
       "flow_override": {
         "source_revision": "65d32360230e5a7f87f08dc3a9befd1b96f62ada",
@@ -137,13 +139,14 @@
         "distrusted": [
           "mozilla/emSign_ECC_Root_CA_-_G3.crt"
         ],
-        "certifi": "bundle file linked to /etc/ssl/certs/ca-certificates.crt"
+        "certifi": "bundle file linked to /etc/ssl/certs/ca-certificates.crt",
+        "node": "v24.22.1 (NSS 3.131.1 roots), node-v24.22.1-linux-x64.tar.gz sha256 eb6728e77c576a35162c122c45ccadf224d89ff00abc8dae46cc2897c6002d7c, replaces /opt/phi-agent/node"
       }
     },
     "pi-pr": {
       "id": "ec0cc6dc-bed2-4b93-80ba-41c15cb2a5cb",
       "wheel_sha256": "d155a253dfd1b685b3e753ef24390cf720ef6795f792cb919c6ad6b272bd7b98",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:f95289d0a71820330b218a586727e5c381a3e9b502afd6a6ebb43cc46582cc2f",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:1127c3ad82eb43408ea34fa66f8bbcbc9ef487d0863ce2fa136252e02297bcc6",
       "inference_backend": "exe",
       "module_overrides": [
         {
@@ -187,7 +190,8 @@
         "distrusted": [
           "mozilla/emSign_ECC_Root_CA_-_G3.crt"
         ],
-        "certifi": "bundle file linked to /etc/ssl/certs/ca-certificates.crt"
+        "certifi": "bundle file linked to /etc/ssl/certs/ca-certificates.crt",
+        "node": "v24.22.1 (NSS 3.131.1 roots), node-v24.22.1-linux-x64.tar.gz sha256 eb6728e77c576a35162c122c45ccadf224d89ff00abc8dae46cc2897c6002d7c, replaces /opt/phi-agent/node"
       }
     }
   }

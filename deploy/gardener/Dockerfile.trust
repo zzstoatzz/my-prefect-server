@@ -12,6 +12,10 @@
 # this store; its line is kept so a store that still lists it is covered.
 # The flow venv's certifi predates the fix, so its bundle file is pointed at
 # the filtered system bundle, which works without environment variables.
+# Pi's node uses its own bundled roots; node 24.22.1 (NSS 3.131.1) refuses the
+# compromised chains where 24.18.0 accepted them, so it replaces the node tree
+# prepare_pi_runtime installed. The install marker is left alone, so the run
+# does not reinstall 24.18.0.
 ARG BASE
 
 FROM golang:1.26.0-alpine@sha256:d4c4845f5d60c6a974c6000ce58ae079328d03ab7f721a0734277e69905473e5 AS tsunplug
@@ -26,3 +30,11 @@ RUN sed -i -e 's|^mozilla/emSign_ECC_Root_CA_-_G3.crt|!&|' \
     && update-ca-certificates --fresh \
     && ln -sf /etc/ssl/certs/ca-certificates.crt \
         "$(/opt/gardener/venv/bin/python -c 'import certifi; print(certifi.where())')"
+RUN curl -fsSL --max-time 120 -o /tmp/node.tar.gz \
+        https://nodejs.org/dist/v24.22.1/node-v24.22.1-linux-x64.tar.gz \
+    && echo "eb6728e77c576a35162c122c45ccadf224d89ff00abc8dae46cc2897c6002d7c  /tmp/node.tar.gz" | sha256sum -c - \
+    && rm -rf /opt/phi-agent/node \
+    && mkdir /opt/phi-agent/node \
+    && tar -xzf /tmp/node.tar.gz -C /opt/phi-agent/node --strip-components=1 --no-same-owner \
+    && rm /tmp/node.tar.gz \
+    && /opt/phi-agent/node/bin/node --version
