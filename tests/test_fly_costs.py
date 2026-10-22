@@ -1,12 +1,14 @@
 """Regression tests for Fly inventory pricing and attribution."""
 
 import asyncio
+import datetime as dt
 
 from mps.costs.connectors import fly
 from mps.costs.connectors.fly import (
     FlyConnector,
     _machine_monthly_cents,
     _snapshot_monthly_cents_by_app,
+    _uptime_fraction,
     _volume_monthly_cents,
 )
 from mps.costs.projects import project_for
@@ -103,8 +105,13 @@ def test_connector_splits_compute_volumes_and_snapshots(monkeypatch):
             }
         }
 
+    async def prometheus_down(_token, _org):
+        raise RuntimeError("prometheus unavailable")
+
     monkeypatch.setattr(fly, "_apps_with_resources", fake_resources)
-    items = asyncio.run(FlyConnector().collect(Period.trailing_month()))
+    monkeypatch.setattr(fly, "_uptime_samples", prometheus_down)
+    connector = FlyConnector()
+    items = asyncio.run(connector.collect(Period.trailing_month()))
 
     assert [(item.service, item.amount) for item in items] == [
         ("typeahead-search:compute", 592),
@@ -113,3 +120,68 @@ def test_connector_splits_compute_volumes_and_snapshots(monkeypatch):
     ]
     assert "stopped machine rootfs unmeasured" in items[0].usage
     assert all(item.project == "typeahead" for item in items)
+    assert any(gap.startswith("machine uptime") for gap in connector.unmeasured)
+
+
+NOW = dt.datetime(2026, 10, 22, tzinfo=dt.UTC)
+WEEK_OF_SAMPLES = 7 * 24 * 12
+
+
+def _machine(machine_id, state, created="2026-09-01T00:00:00Z"):
+    return {
+        "id": machine_id,
+        "state": state,
+        "region": "ewr",
+        "created_at": created,
+        "config": {"guest": {"cpu_kind": "shared", "cpus": 1, "memory_mb": 1024}},
+    }
+
+
+def test_uptime_fraction_scales_by_reported_samples():
+    samples = {"half": WEEK_OF_SAMPLES // 2, "always": WEEK_OF_SAMPLES}
+
+    assert _uptime_fraction(_machine("half", "stopped"), samples, NOW) == 0.5
+    assert _uptime_fraction(_machine("always", "started"), samples, NOW) == 1.0
+
+
+def test_uptime_fraction_measures_young_machines_against_their_age():
+    young = _machine("young", "started", created="2026-10-21T00:00:00Z")
+
+    assert _uptime_fraction(young, {"young": 24 * 12}, NOW) == 1.0
+
+
+def test_uptime_fraction_without_samples_follows_current_state():
+    assert _uptime_fraction(_machine("fresh", "started"), {}, NOW) == 1.0
+    assert _uptime_fraction(_machine("idle", "stopped"), {}, NOW) == 0.0
+
+
+def test_on_demand_machines_are_priced_by_uptime(monkeypatch):
+    monkeypatch.setenv("FLY_API_TOKEN", "token")
+
+    async def fake_resources(_token, _org):
+        return {
+            "relay-api-staging": {
+                "machines": [
+                    _machine("worker", "stopped"),
+                    _machine("app", "started"),
+                    _machine("standby", "stopped"),
+                ],
+                "volumes": [],
+                "snapshots": [],
+            },
+            "labelz": {"machines": [], "volumes": [], "snapshots": []},
+        }
+
+    async def fake_samples(_token, _org):
+        return {"worker": WEEK_OF_SAMPLES // 4, "app": WEEK_OF_SAMPLES // 2}
+
+    monkeypatch.setattr(fly, "_apps_with_resources", fake_resources)
+    monkeypatch.setattr(fly, "_uptime_samples", fake_samples)
+    connector = FlyConnector()
+    items = asyncio.run(connector.collect(Period.trailing_month()))
+
+    assert [(item.service, item.amount) for item in items] == [
+        ("relay-api-staging:compute", round(592 * 0.25 + 592 * 0.5)),
+    ]
+    assert "up 25%" in items[0].usage and "up 50%" in items[0].usage
+    assert not any(gap.startswith("machine uptime") for gap in connector.unmeasured)

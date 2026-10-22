@@ -54,6 +54,9 @@ _RESOURCE_PATTERNS: dict[str, str] = {
     "pds": "pds-infra",
     # labelz
     "labelz": "labelz",
+    # habitat org server for definitelyarealcompany (prefect.io/infra/pear)
+    "pear": "pear",
+    "follower-weight": "follower-weight",
     # misc
     "pollz": "misc",
     "bsky-feed": "misc",  # zig-bsky-feed and bsky-feed

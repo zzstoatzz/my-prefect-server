@@ -1,18 +1,24 @@
 """Fly.io connector.
 
-Fly has no stable public per-app billing endpoint, so we inventory running
-machines, volumes, and volume snapshots via the Machines API and estimate their
-monthly list-price cost. Each billing category gets its own line item so storage
-is attributed to the app that owns it. Every line item is flagged estimated=True
-— treat it as a current run-rate, not an invoice, and reconcile it against the
-Fly dashboard. Bandwidth, paid IPs, and stopped-Machine rootfs are not counted.
+Fly has no stable public per-app billing endpoint, so we inventory machines,
+volumes, and volume snapshots via the Machines API and estimate their monthly
+list-price cost. Compute is each existing machine's list price scaled by its
+measured uptime over the trailing week (Fly Prometheus), so on-demand machines
+cost what they actually run. If Prometheus is unavailable, compute falls back to
+pricing the currently started machines as if they ran all month. Each billing
+category gets its own line item so storage is attributed to the app that owns
+it. Every line item is flagged estimated=True — treat it as a run-rate, not an
+invoice, and reconcile it against the Fly dashboard. Bandwidth, paid IPs, and
+stopped-Machine rootfs are not counted.
 
-Auth: FLY_API_TOKEN. Org via FLY_ORG_SLUG (default "personal").
+Auth: FLY_API_TOKEN (Machines API and Prometheus). Org via FLY_ORG_SLUG
+(default "personal").
 """
 
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import os
 
 import httpx
@@ -21,7 +27,14 @@ from mps.costs.projects import project_for
 from mps.costs.types import LineItem, Period
 
 API = "https://api.machines.dev/v1"
+PROMETHEUS = "https://api.fly.io/prometheus/{org}/api/v1/query"
 PROVIDER = "fly"
+
+# Fly's metrics keep a complete week for every instance; older history is
+# patchy per series, so a longer window would understate always-on machines.
+UPTIME_WINDOW = dt.timedelta(days=7)
+UPTIME_STEP = dt.timedelta(minutes=5)
+UPTIME_QUERY = "sum by (instance)(count_over_time(fly_instance_memory_mem_total[{window}:{step}]))"
 
 # Fly compute rates (USD/month), July 2026. shared vCPU and RAM are billed
 # separately; performance vCPUs cost ~16x a shared one.
@@ -144,6 +157,44 @@ def _snapshot_monthly_cents_by_app(
     return _allocate_cents(total_cents, stored_by_app)
 
 
+def _prometheus_auth(token: str) -> str:
+    return token if token.startswith("FlyV1 ") else f"FlyV1 {token}"
+
+
+async def _uptime_samples(token: str, org: str) -> dict[str, int]:
+    """5-minute samples each instance reported over UPTIME_WINDOW."""
+    window = f"{int(UPTIME_WINDOW.total_seconds() // 86400)}d"
+    step = f"{int(UPTIME_STEP.total_seconds() // 60)}m"
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.get(
+            PROMETHEUS.format(org=org),
+            params={"query": UPTIME_QUERY.format(window=window, step=step)},
+            headers={"Authorization": _prometheus_auth(token)},
+        )
+        resp.raise_for_status()
+        body = resp.json()
+    if body.get("status") != "success":
+        raise RuntimeError(f"prometheus query failed: {body.get('error', body)}")
+    return {
+        r["metric"]["instance"]: int(float(r["value"][1]))
+        for r in body["data"]["result"]
+        if r.get("metric", {}).get("instance")
+    }
+
+
+def _uptime_fraction(machine: dict, samples: dict[str, int], now: dt.datetime) -> float:
+    """Share of the window (or of the machine's life, if younger) it was running."""
+    reported = samples.get(machine.get("id", ""))
+    if reported is None:
+        return 1.0 if machine.get("state") == "started" else 0.0
+    window = UPTIME_WINDOW
+    if created := machine.get("created_at"):
+        age = now - dt.datetime.fromisoformat(created.replace("Z", "+00:00"))
+        window = min(window, max(age, UPTIME_STEP))
+    expected = window / UPTIME_STEP
+    return min(1.0, reported / expected)
+
+
 async def _apps_with_resources(token: str, org: str) -> dict[str, dict[str, list[dict]]]:
     headers = {"Authorization": f"Bearer {token}"}
     async with httpx.AsyncClient(base_url=API, headers=headers, timeout=30) as client:
@@ -182,6 +233,50 @@ async def _apps_with_resources(token: str, org: str) -> dict[str, dict[str, list
         return dict(await asyncio.gather(*(app_resources(app) for app in apps)))
 
 
+def _size(guest: dict) -> str:
+    return f"{guest.get('cpu_kind', '?')}-{guest.get('cpus', '?')}x/{guest.get('memory_mb', '?')}MB"
+
+
+def _guest(machine: dict) -> dict:
+    return (machine.get("config", {}) or {}).get("guest", {}) or {}
+
+
+def _uptime_compute(
+    machines: list[dict], samples: dict[str, int], now: dt.datetime
+) -> tuple[int, str, str] | None:
+    cents = 0.0
+    parts: list[str] = []
+    for m in machines:
+        fraction = _uptime_fraction(m, samples, now)
+        if fraction <= 0:
+            continue
+        cents += _machine_monthly_cents(_guest(m), m.get("region", "iad")) * fraction
+        shown = f"{fraction:.0%}" if fraction >= 0.005 else "<1%"
+        parts.append(f"{_size(_guest(m))} up {shown}")
+    if not parts or round(cents) == 0:
+        return None
+    usage = f"{len(parts)} machine(s) ran in the last 7d: " + ", ".join(parts)
+    note = (
+        "July 2026 list prices scaled by each existing machine's measured uptime over "
+        "the trailing 7 days; excludes stopped rootfs"
+    )
+    return round(cents), usage, note
+
+
+def _snapshot_compute(started: list[dict], stopped: int) -> tuple[int, str, str] | None:
+    cents = sum(_machine_monthly_cents(_guest(m), m.get("region", "iad")) for m in started)
+    if not cents:
+        return None
+    usage = f"{len(started)} started machine(s): " + ", ".join(_size(_guest(m)) for m in started)
+    if stopped:
+        usage += f"; {stopped} stopped machine rootfs unmeasured"
+    note = (
+        "uptime unavailable: current started-machine inventory extrapolated at July 2026 "
+        "list prices; excludes stopped rootfs"
+    )
+    return cents, usage, note
+
+
 class FlyConnector:
     name = PROVIDER
 
@@ -194,6 +289,17 @@ class FlyConnector:
 
         resources_by_app = await _apps_with_resources(token, org)
         snapshot_cents = _snapshot_monthly_cents_by_app(resources_by_app)
+        now = dt.datetime.now(dt.UTC)
+        samples: dict[str, int] | None
+        try:
+            samples = await _uptime_samples(token, org)
+        except Exception as exc:
+            samples = None
+            self.unmeasured.append(f"machine uptime ({type(exc).__name__}: {exc})")
+            print(
+                f"  fly: uptime UNMEASURED ({type(exc).__name__}: {exc}); "
+                "pricing started machines as always on"
+            )
         items: list[LineItem] = []
         stopped_count = 0
         for app, resources in resources_by_app.items():
@@ -204,19 +310,12 @@ class FlyConnector:
             stopped = len(machines) - len(started_machines)
             stopped_count += stopped
 
-            compute_cents = 0
-            sizes: list[str] = []
-            for m in started_machines:
-                guest = (m.get("config", {}) or {}).get("guest", {}) or {}
-                compute_cents += _machine_monthly_cents(guest, m.get("region", "iad"))
-                sizes.append(
-                    f"{guest.get('cpu_kind', '?')}-{guest.get('cpus', '?')}x"
-                    f"/{guest.get('memory_mb', '?')}MB"
-                )
-            if compute_cents:
-                usage = f"{len(started_machines)} started machine(s): " + ", ".join(sizes)
-                if stopped:
-                    usage += f"; {stopped} stopped machine rootfs unmeasured"
+            if samples is None:
+                compute = _snapshot_compute(started_machines, stopped)
+            else:
+                compute = _uptime_compute(machines, samples, now)
+            if compute is not None:
+                compute_cents, usage, note = compute
                 items.append(
                     LineItem(
                         provider=PROVIDER,
@@ -225,10 +324,7 @@ class FlyConnector:
                         amount=compute_cents,
                         estimated=True,
                         usage=usage,
-                        note=(
-                            "current started-machine inventory extrapolated at July 2026 "
-                            "list prices; excludes stopped rootfs and actual uptime"
-                        ),
+                        note=note,
                     )
                 )
 

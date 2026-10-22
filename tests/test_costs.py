@@ -23,6 +23,8 @@ def test_project_mapping_longest_match_wins():
     assert project_for("plyr.fm") == "plyr.fm"
     assert project_for("relay.waow") == "relays"  # not plyr's relay-api
     assert project_for("relay-api-staging") == "plyr.fm"
+    assert project_for("pear-definitelyarealcompany") == "pear"
+    assert project_for("follower-weight") == "follower-weight"
     assert project_for("leaflet-search-tap") == "standard.site"
     assert project_for("coral") == "trending"
     assert project_for("bufo-bot") == "bufo"
