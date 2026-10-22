@@ -38,7 +38,7 @@ existing `ssh`, `nodeAttrs` (heavypad's Funnel needs one) and `hosts` entries.
      {"src": ["autogroup:member"], "dst": ["*"], "ip": ["*"]},
 
      // a gardener run reaches the Prefect API and nothing else
-     {"src": ["tag:gardener-vm"], "dst": ["prefect-server"], "ip": ["tcp:443"]},
+     {"src": ["tag:gardener-vm"], "dst": ["prefect-server"], "ip": ["tcp:4200"]},
    ],
    ```
 
@@ -79,7 +79,7 @@ after tagging.
 
    "grants": [
      {"src": ["autogroup:member"], "dst": ["*"], "ip": ["*"]},
-     {"src": ["tag:gardener-vm"], "dst": ["tag:prefect-server"], "ip": ["tcp:443"]},
+     {"src": ["tag:gardener-vm"], "dst": ["tag:prefect-server"], "ip": ["tcp:4200"]},
      {"src": ["tag:prefect-server"], "dst": ["heavypad"], "ip": ["tcp:9100", "tcp:6555"]},
    ],
    ```

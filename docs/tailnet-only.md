@@ -17,6 +17,13 @@ only to tailnet devices. The inventory was taken 2026-10-21; steps 1 and 2 are d
 - heavypad's prefect worker must keep running. The flip may take a short
   planned cutover window, nothing longer; heavypad's tailnet address is allowed
   before anything is restricted.
+- The tailnet policy lives in Tailscale. `infra/tailnet-policy.hujson` is a
+  verbatim copy of the live file for review, taken 2026-10-22 after part A of
+  `docs/tailnet-policy-draft.md` was applied (allow-all removed; gardener VMs
+  reach only the node's tailnet listener on tcp:4200; policy tests enforced on
+  every save). Change it through the API with `If-Match` on the current ETag,
+  using the operator credential (store `tailscale.operator_oauth_client_*`,
+  policy-file scope), then refresh the copy.
 
 ## steps
 
