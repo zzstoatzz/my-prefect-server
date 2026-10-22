@@ -111,7 +111,7 @@ Copy the client secret, then store it without displaying it. `sops set` takes
 a JSON value, so the raw secret is wrapped as a JSON string first:
 
 ```bash
-pbpaste | jq -Rs 'rtrimstr("\n")' | sops set --value-stdin| sops set --value-stdin ~/tangled.org/zzstoatzz.io/secrets/prod.yaml '["tailscale"]["gardener_oauth_client_secret"]'
+pbpaste | jq -Rs 'rtrimstr("\n")' | sops set --value-stdin ~/tangled.org/zzstoatzz.io/secrets/prod.yaml '["tailscale"]["gardener_oauth_client_secret"]'
 ```
 
 The client ID isn't secret; it can go in the same section or in the worker's
