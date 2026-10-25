@@ -29,6 +29,7 @@ def main() -> int:
     return subprocess.run(
         ["uv", "run", "--with", "prefect==3.8.2", "prefect", *sys.argv[1:]],
         env=env,
+        check=False,
     ).returncode
 
 
