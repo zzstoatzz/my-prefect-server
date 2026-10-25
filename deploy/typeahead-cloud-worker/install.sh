@@ -14,7 +14,7 @@ fi
 id typeahead-indexer >/dev/null 2>&1 || useradd --system --create-home --home-dir /var/lib/typeahead-indexer --shell /usr/sbin/nologin typeahead-indexer
 chown typeahead-indexer:typeahead-indexer "$mount_path"
 ln -sfn "$mount_path" /var/lib/typeahead-indexer/builds
-install -d -o typeahead-indexer -g typeahead-indexer /var/lib/typeahead-indexer/.local/opt
+install -d -o typeahead-indexer -g typeahead-indexer /var/lib/typeahead-indexer/.local /var/lib/typeahead-indexer/.local/opt
 zig_dir=/var/lib/typeahead-indexer/.local/opt/zig-x86_64-linux-0.17.0
 if [ ! -x "$zig_dir/zig" ]; then
   archive=$(mktemp)
