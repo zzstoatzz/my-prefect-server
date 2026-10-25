@@ -548,7 +548,8 @@ deployments:
           INDEX_QUIET: "0"
           INDEX_BUILD_ROOT: /var/lib/typeahead-indexer/active
           INDEX_ARCHIVE_ROOT: /var/lib/typeahead-indexer/builds/archive
-          INDEX_MIN_FREE_GIB: "65"
+          INDEX_MIN_FREE_GIB: "80"
+          INDEX_MIN_REMAIN_GIB: "8"
           # Staging first; production publication remains explicitly disarmed.
           INDEX_CHANNEL: staging
           INDEX_STAGING_NAME: cloud-publisher-20261025

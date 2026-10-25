@@ -87,6 +87,13 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
         logger = logging.getLogger(__name__)
     output: deque[str] = deque(maxlen=50)
     deadline = time.monotonic() + timeout
+
+    def check_disk_reserve() -> None:
+        minimum = int(env.get("INDEX_MIN_REMAIN_GIB", "0")) * 2**30
+        if minimum and shutil.disk_usage(env["INDEX_BUILD_ROOT"]).free < minimum:
+            raise RuntimeError("Offline build stopped before exhausting disk reserve")
+
+    check_disk_reserve()
     proc = subprocess.Popen(
         cmd,
         cwd=str(cwd),
@@ -107,6 +114,7 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
         with selectors.DefaultSelector() as selector:
             selector.register(proc.stdout, selectors.EVENT_READ)
             while selector.get_map():
+                check_disk_reserve()
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise subprocess.TimeoutExpired(cmd, timeout)

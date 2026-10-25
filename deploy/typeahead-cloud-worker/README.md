@@ -7,9 +7,10 @@ readback stay in the cloud. The PLC identity deployment remains on hold.
 Both the worker and future flow-run commands pin Prefect 3.8.2, matching the
 server. The worker is limited to one flow, one CPU and 3 GiB maximum memory,
 with low CPU/I/O priority. Active SQLite work runs on the host local SSD, with
-at least 65 GiB free before a build. Completed generations move to the dedicated
+at least 80 GiB free before a build. Completed generations move to the dedicated
 150 GB volume only after copies match their published checksums; publication
-failure preserves active data. The compiler cache survives source checkouts.
+failure preserves active data. Streamed build output also enforces an 8 GiB
+remaining-space reserve. The compiler cache survives source checkouts.
 Its API credential is a root-only
 `/etc/typeahead-cloud-worker.env` containing `PREFECT_API_URL` and
 `PREFECT_API_AUTH_STRING`, derived from the existing operator configuration.
