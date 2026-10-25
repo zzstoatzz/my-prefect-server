@@ -26,6 +26,7 @@ Expected env (set by the deployment):
   - INDEX_BUILD_ROOT             (persistent NVMe path; NOT /tmp — build peaks ~65GB)
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -35,6 +36,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 from collections import deque
@@ -188,10 +190,13 @@ def build_binary(repo_dir: Path) -> Path:
     binary = services / "zig-out" / "bin" / "typeahead-ingester"
     env = {**os.environ}
     zig = zig_for(services)
+    cache = str(INDEXER_HOME / "zig-cache")
     get_run_logger().info(f"building with {zig}")
     try:
         _stream(
-            quiet_command(repo_dir, [zig, "build", "-Doptimize=ReleaseSafe", "-j1"]),
+            quiet_command(
+                repo_dir, [zig, "build", "-Doptimize=ReleaseSafe", "-j1", "--cache-dir", cache]
+            ),
             services,
             env,
             timeout=10800,
@@ -200,7 +205,9 @@ def build_binary(repo_dir: Path) -> Path:
         get_run_logger().warning("primary dep fetch failed; retrying via github mirrors")
         shutil.copy(services / "build.zig.zon.gh", services / "build.zig.zon")
         _stream(
-            quiet_command(repo_dir, [zig, "build", "-Doptimize=ReleaseSafe", "-j1"]),
+            quiet_command(
+                repo_dir, [zig, "build", "-Doptimize=ReleaseSafe", "-j1", "--cache-dir", cache]
+            ),
             services,
             env,
             timeout=10800,
@@ -398,10 +405,83 @@ def prune_builds(build_root: str | None = None) -> int:
     return freed
 
 
+def require_build_space() -> None:
+    root = Path(os.environ.get("INDEX_BUILD_ROOT", str(INDEXER_HOME / "build")))
+    root.mkdir(parents=True, exist_ok=True)
+    minimum = int(os.environ.get("INDEX_MIN_FREE_GIB", "0")) * 2**30
+    if shutil.disk_usage(root).free < minimum:
+        raise RuntimeError("Insufficient free space for the offline index build")
+
+
+def verify_archived_generation(source: Path, destination: Path) -> None:
+    manifest_bytes = (source / "manifest.json").read_bytes()
+    if (destination / "manifest.json").read_bytes() != manifest_bytes:
+        raise ValueError("Archive manifest differs from completed generation")
+    manifest = json.loads(manifest_bytes)
+    artifacts = [("index.db", manifest)]
+    if prefix := manifest.get("prefix_map"):
+        artifacts.append(("index.db.prefix", prefix))
+    for name, expected in artifacts:
+        path = destination / name
+        with path.open("rb") as stream:
+            digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        if path.stat().st_size != expected["byte_size"] or digest != expected["sha256"]:
+            raise ValueError("Archive artifact differs from published checksum: " + name)
+
+
+def archive_completed_generations(root: Path, archive: Path) -> list[Path]:
+    root, archive = root.resolve(), archive.resolve()
+    if archive == root or archive.is_relative_to(root) or root.is_relative_to(archive):
+        raise ValueError("Build and archive roots must not overlap")
+    archive.mkdir(parents=True, exist_ok=True)
+    archived = []
+    for source in sorted(root.glob("build-*")):
+        if source.is_symlink() or not (source / "manifest.json").is_file():
+            continue
+        destination = archive / source.name
+        if not destination.exists():
+            with tempfile.TemporaryDirectory(dir=archive, prefix=".archive-") as temp:
+                staged = Path(temp) / source.name
+                shutil.copytree(source, staged)
+                verify_archived_generation(source, staged)
+                for path in staged.rglob("*"):
+                    if path.is_file():
+                        with path.open("rb") as stream:
+                            os.fsync(stream.fileno())
+                descriptor = os.open(staged, os.O_RDONLY)
+                try:
+                    os.fsync(descriptor)
+                finally:
+                    os.close(descriptor)
+                staged.rename(destination)
+        else:
+            verify_archived_generation(source, destination)
+        descriptor = os.open(archive, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        shutil.rmtree(source)
+        archived.append(destination)
+    return archived
+
+
+@task(retries=2, retry_delay_seconds=30)
+def archive_builds() -> list[str]:
+    archive_root = os.environ.get("INDEX_ARCHIVE_ROOT")
+    if not archive_root:
+        return []
+    root = Path(os.environ["INDEX_BUILD_ROOT"])
+    archived = archive_completed_generations(root, Path(archive_root))
+    get_run_logger().info("archived %d verified generations off local SSD", len(archived))
+    return [str(path) for path in archived]
+
+
 @flow(name="typeahead-index", log_prints=True, timeout_seconds=43200)
 def typeahead_index(
     ref: str | None = None, snapshot_format: Literal["sqlite", "compact"] = "sqlite"
 ):
+    require_build_space()
     repo = clone_repo(ref)
     binary = build_binary(repo)
     if snapshot_format == "compact":
@@ -412,4 +492,5 @@ def typeahead_index(
         publish_compact(repo, source)
     else:
         run_indexer(binary)
-    prune_builds()
+    archive_builds()
+    prune_builds(os.environ.get("INDEX_ARCHIVE_ROOT"))

@@ -546,7 +546,9 @@ deployments:
           # persistent NVMe paths — process runs execute in ephemeral /tmp.
           INDEXER_HOME: /var/lib/typeahead-indexer/work
           INDEX_QUIET: "0"
-          INDEX_BUILD_ROOT: /var/lib/typeahead-indexer/builds
+          INDEX_BUILD_ROOT: /var/lib/typeahead-indexer/active
+          INDEX_ARCHIVE_ROOT: /var/lib/typeahead-indexer/builds/archive
+          INDEX_MIN_FREE_GIB: "65"
           # Staging first; production publication remains explicitly disarmed.
           INDEX_CHANNEL: staging
           INDEX_STAGING_NAME: cloud-publisher-20261025

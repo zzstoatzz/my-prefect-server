@@ -43,7 +43,7 @@ prefect 3 python.
   the network; nothing catches a transient error where the engine could have
   retried it. [prefect-patterns.md](docs/prefect-patterns.md) has the mechanism.
   Typeahead's index-builder task retries failures after 30, 120, and 300 seconds,
-  within the flow's four-hour limit. Process errors include the last 50 output
+  within the flow's twelve-hour limit. Process errors include the last 50 output
   lines (up to 2,000 characters each), preserving the underlying Zig error.
 - **one writer for the analytics** — `analytics.duckdb` opens read-write only
   under a global concurrency limit of one; readers snapshot the file.
@@ -63,7 +63,8 @@ avoid further metered transfers during the cloud coverage repair. Live relay
 ingestion and search continue; this does not pause the home worker or other
 flows. See [the bandwidth hold](docs/archive/typeahead-home-bandwidth-hold-20261020.md)
 for resumption requirements. The index deployment is being qualified on the
-resource-limited `typeahead-cloud-pool`; its schedule stays inactive and its
+resource-limited `typeahead-cloud-pool`, with active SQLite work on local SSD
+and verified completed artifacts archived to a volume; its schedule stays inactive and its
 pointer stays staging until publication and serving checks pass. See
 [cloud publisher](deploy/typeahead-cloud-worker/README.md).
 
