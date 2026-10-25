@@ -44,4 +44,4 @@ deployments:
     schedules:
       - cron: '*/30 * * * *'
         timezone: UTC
-        active: false
+        active: true
