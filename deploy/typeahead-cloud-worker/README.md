@@ -4,7 +4,8 @@ The index build runs on the existing Hetzner orchestration host, under a dedicat
 unprivileged process worker. Bulk source export, artifact upload and checksum
 readback stay in the cloud. The PLC identity deployment remains on hold.
 
-The worker is limited to one flow, one CPU, 3 GiB maximum memory, low CPU/I/O
+Both the worker and future flow-run commands pin Prefect 3.8.2, matching the
+server. The worker is limited to one flow, one CPU, 3 GiB maximum memory, low CPU/I/O
 priority and a dedicated 150 GB volume. Its API credential is a root-only
 `/etc/typeahead-cloud-worker.env` containing `PREFECT_API_URL` and
 `PREFECT_API_AUTH_STRING`, derived from the existing operator configuration.

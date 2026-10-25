@@ -527,6 +527,7 @@ deployments:
         command: >-
           uv run
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
+          --with prefect==3.8.2
           prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
