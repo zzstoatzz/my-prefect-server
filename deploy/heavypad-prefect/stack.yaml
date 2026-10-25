@@ -1,0 +1,208 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: prefect-home
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: prefect-home
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+  namespace: prefect-home
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: prefect-home
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: prefect-home-postgres}
+  template:
+    metadata:
+      labels: {app: prefect-home-postgres}
+    spec:
+      containers:
+        - name: postgres
+          image: postgres@sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229
+          env:
+            - {name: POSTGRES_USER, value: prefect}
+            - {name: POSTGRES_DB, value: prefect}
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: server-secrets, key: postgres-password}
+          volumeMounts: [{name: data, mountPath: /var/lib/postgresql/data}]
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: '1', memory: 1Gi}
+          readinessProbe:
+            exec: {command: [pg_isready, -U, prefect, -d, prefect]}
+            periodSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: postgres-data}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: prefect-home
+spec:
+  selector: {app: prefect-home-postgres}
+  ports: [{port: 5432, targetPort: 5432}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: prefect-home
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: prefect-home-redis}
+  template:
+    metadata:
+      labels: {app: prefect-home-redis}
+    spec:
+      containers:
+        - name: redis
+          image: redis@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+          args: [redis-server, --appendonly, 'yes', --appendfsync, always, --save, '', --maxmemory, 192mb, --maxmemory-policy, noeviction]
+          volumeMounts: [{name: data, mountPath: /data}]
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          readinessProbe:
+            exec: {command: [redis-cli, ping]}
+            periodSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: redis-data}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: prefect-home
+spec:
+  selector: {app: prefect-home-redis}
+  ports: [{port: 6379, targetPort: 6379}]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: server-env
+  namespace: prefect-home
+data:
+  PREFECT_SERVER_API_HOST: '0.0.0.0'
+  PREFECT_SERVER_PORT: '4200'
+  PREFECT_DATABASE_BACKEND: postgres
+  PREFECT_BROKER_BACKEND: redis
+  PREFECT_REDIS_MESSAGING_HOST: redis
+  PREFECT_REDIS_MESSAGING_PORT: '6379'
+  PREFECT_REDIS_MESSAGING_DB: '0'
+  PREFECT_SERVER_LOGGING_LEVEL: INFO
+  PREFECT_SERVER_SERVICES_DB_VACUUM_ENABLED: events,flow_runs
+  PREFECT_SERVER_SERVICES_DB_VACUUM_RETENTION_PERIOD: '1209600'
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: prefect-home
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: prefect-home-api}
+  template:
+    metadata:
+      labels: {app: prefect-home-api}
+    spec:
+      imagePullSecrets: [{name: atcr-creds}]
+      initContainers:
+        - name: ui
+          image: atcr.io/zzstoatzz.io/prefect-ui:3c108a1ab2719197e4ec3381fbc3d830c3eacf40
+          command: [cp, -R, /ui/., /ui-bundle/]
+          volumeMounts: [{name: ui, mountPath: /ui-bundle}]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {cpu: 200m, memory: 64Mi}
+      containers:
+        - name: api
+          image: atcr.io/zzstoatzz.io/prefect-server@sha256:37d66cdbd7fd0e2582e65b831e4e8eebf8c457a896d8b1375a045b7fda2151fb
+          envFrom: [{configMapRef: {name: server-env}}]
+          env:
+            - {name: PREFECT_SERVER_UI_STATIC_DIRECTORY, value: /ui-bundle}
+            - name: PREFECT_DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: server-secrets, key: database-url}
+            - name: PREFECT_SERVER_API_AUTH_STRING
+              valueFrom:
+                secretKeyRef: {name: server-secrets, key: api-auth}
+          volumeMounts: [{name: ui, mountPath: /ui-bundle, readOnly: true}]
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: '1', memory: 512Mi}
+          readinessProbe:
+            httpGet: {path: /api/health, port: 4200}
+            periodSeconds: 5
+      volumes: [{name: ui, emptyDir: {sizeLimit: 128Mi}}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: services
+  namespace: prefect-home
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: prefect-home-services}
+  template:
+    metadata:
+      labels: {app: prefect-home-services}
+    spec:
+      imagePullSecrets: [{name: atcr-creds}]
+      containers:
+        - name: services
+          image: atcr.io/zzstoatzz.io/prefect-server@sha256:37d66cdbd7fd0e2582e65b831e4e8eebf8c457a896d8b1375a045b7fda2151fb
+          args: [services]
+          envFrom: [{configMapRef: {name: server-env}}]
+          env:
+            - name: PREFECT_DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: server-secrets, key: database-url}
+            - name: PREFECT_SERVER_API_AUTH_STRING
+              valueFrom:
+                secretKeyRef: {name: server-secrets, key: api-auth}
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: '1', memory: 512Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: prefect-home
+spec:
+  type: NodePort
+  selector: {app: prefect-home-api}
+  ports: [{port: 4200, targetPort: 4200, nodePort: 30420}]
