@@ -128,6 +128,11 @@ class Refresh:
 
     def delete_machine(self, app: str, machine: dict):
         mid = machine["id"]
+        if machine["state"] == "destroyed":
+            return
+        if machine["state"] == "created":
+            self.fly("DELETE", app, f"machines/{mid}?force=true")
+            return
         if machine["state"] != "stopped":
             self.fly("POST", app, f"machines/{mid}/stop", {"signal": "SIGTERM", "timeout": 60})
         for _ in range(20):
