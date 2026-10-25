@@ -180,7 +180,7 @@ def test_all_home_source_deployments_use_cache_and_preserve_legacy_pins():
             assert "mps.deployment_steps.cached_checkout" in deployment["pull"][0]
     for deployment in config["deployments"]:
         if deployment["work_pool"]["name"] != "home-pool":
-            assert "cached_checkout" not in json.dumps(deployment.get("pull"))
+            assert "/home/stoat/" not in json.dumps(deployment.get("pull"))
 
 
 def test_oversized_bundle_bypasses_future_cache_fills(tmp_path, source, monkeypatch):
