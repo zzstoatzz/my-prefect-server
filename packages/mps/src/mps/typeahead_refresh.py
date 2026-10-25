@@ -8,6 +8,7 @@ from pathlib import Path
 
 import boto3
 import httpx
+from prefect import task
 
 SLOTS = ("typeahead-startup-20261024", "typeahead-search-refresh")
 ROUTE_KEY = "control/search-routing.json"
@@ -314,7 +315,7 @@ class Refresh:
                 self.logger.error("Restored previous verified backend after failed promotion")
             raise
 
-    def resume_published(self):
+    def resume_published(self, expected: dict | None = None):
         import tempfile
 
         response = self.s3.get_object(Bucket=self.bucket, Key="control/builds/latest.json")
@@ -322,6 +323,8 @@ class Refresh:
         if len(raw) > 65536:
             raise ValueError("Published manifest too large")
         manifest = json.loads(raw)
+        if expected is not None and manifest != expected:
+            raise RuntimeError("Published generation changed before rollout")
         if (
             manifest["manifest_version"] != 2
             or manifest["format_version"] != 5
@@ -589,12 +592,16 @@ class Refresh:
         }
 
 
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
 def refresh_snapshot(generation: Path | None = None):
     from prefect import get_run_logger
 
     refresh = Refresh(get_run_logger())
     try:
-        report = refresh.resume_published() if generation is None else refresh.apply(generation)
+        expected = (
+            None if generation is None else json.loads((generation / "manifest.json").read_bytes())
+        )
+        report = refresh.resume_published(expected)
         output = (
             Path(os.environ["INDEXER_HOME"]) / "refresh-receipts" / (report["build_id"] + ".json")
         )

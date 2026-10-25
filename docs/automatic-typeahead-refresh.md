@@ -84,6 +84,9 @@ artifact upload or publication readback is repeated. Current identity, corpus fl
 slot pointer, image, readiness, restart, query and public gates still apply. The next
 new generation cleans the inactive slot before preparing its replacement, so
 failed preparation cannot accumulate an unbounded set of machines or disks.
+The rollout task retries transient failures against the same verified publication
+and matching prepared candidate, preserving the completed disk instead of starting
+installation over. An unexpected change of publication rejects the retry.
 Never persist `resume_rollout=true` into the scheduled deployment defaults.
 
 The final qualification record and registered schedule will be linked here after
