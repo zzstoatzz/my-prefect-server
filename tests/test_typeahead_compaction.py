@@ -30,7 +30,16 @@ def test_compact_target_fails_closed(monkeypatch):
 def test_cleanup_retains_serving_legacy_twin():
     paths = [
         Path("build-" + name)
-        for name in ("b100", "b100-px05", "b200", "b200-px05", "b300", "b300-px05")
+        for name in (
+            "b100",
+            "b100-px05",
+            "b200",
+            "b200-px05",
+            "b300",
+            "b300-px05",
+            "b400",
+            "b400-px05",
+        )
     ]
     victims = builds_to_prune(paths, "b100-px05")
     assert {p.name for p in victims} == {"build-b200", "build-b200-px05"}

@@ -140,3 +140,15 @@ The compatible server retained `anchor_date` on interval registration but queued
 runs at registration time plus the interval. A fixed cron avoids refresh starvation
 when deployments are frequently registered. Verify the queued dates, not just the
 stored schedule object, after changing this configuration.
+
+## Local build retention
+
+Pruning runs before a new build's disk admission and after successful archival.
+Keep the two newest logical generations, counting legacy/compact twins together,
+plus the serving generation and its twin. A 503 freshness response can identify a
+working but stale snapshot: valid `ok`, `probe_ok` and build identity still allow
+safe retention. Unknown identity protects data; more than four retained directories
+then fails the run instead of silently claiming successful cleanup. Symlinked
+build directories are excluded. Existing local-SSD reserves and cancellation
+cleanup remain enforced; failed payloads are preserved for recovery, and reserves
+stop new work before it exhausts disk. See the [disk audit](audits/2026-10-25-worker-disk-cleanup.md).

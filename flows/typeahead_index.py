@@ -26,6 +26,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from collections import deque
 from contextlib import suppress
@@ -458,8 +459,25 @@ def serving_build_id(url: str = FRESHNESS_URL, timeout: int = 10) -> str | None:
     """The build_id the search service is serving, or None if unreachable."""
     try:
         request = urllib.request.Request(url, headers={"User-Agent": "fleet-health/1"})
-        with urllib.request.urlopen(request, timeout=timeout) as resp:
-            return json.load(resp).get("build_id") or None
+        try:
+            response = urllib.request.urlopen(request, timeout=timeout)
+        except urllib.error.HTTPError as exc:
+            if exc.code != 503:
+                raise
+            response = exc
+        with response:
+            health = json.load(response)
+        if not isinstance(health, dict):
+            return None
+        build_id = health.get("build_id")
+        if (
+            health.get("ok") is True
+            and health.get("probe_ok") is True
+            and isinstance(build_id, str)
+            and re.fullmatch(r"(?:compact-)?b[0-9]{10}-[A-Za-z0-9_-]+", build_id)
+        ):
+            return build_id
+        return None
     except (OSError, ValueError):
         return None
 
@@ -467,7 +485,7 @@ def serving_build_id(url: str = FRESHNESS_URL, timeout: int = 10) -> str | None:
 def builds_to_prune(
     build_dirs: list[Path], serving: str | None, keep: int = KEEP_BUILDS
 ) -> list[Path]:
-    """Every `build-<id>` dir except the `keep` newest and the serving one.
+    """Keep the newest generations and the serving one, including format twins.
 
     Build ids start with a unix-second timestamp (`b<seconds>-<hex>`), so
     lexical order is chronological. Never prunes when the serving id is
@@ -477,18 +495,21 @@ def builds_to_prune(
     if serving is None:
         return []
     ordered = sorted(build_dirs, key=lambda p: p.name, reverse=True)
-    protected = {f"build-{serving}"}
-    if serving.endswith("-px05"):
-        protected.add(f"build-{serving.removesuffix('-px05')}")
-    return [p for p in ordered[keep:] if p.name not in protected]
+
+    def generation(name: str) -> str:
+        return name.removesuffix("-px05")
+
+    newest = sorted({generation(p.name) for p in ordered}, reverse=True)[:keep]
+    protected = {*newest, generation(f"build-{serving}")}
+    return [p for p in ordered if generation(p.name) not in protected]
 
 
 @task
 def prune_builds(build_root: str | None = None) -> int:
     """Delete old build directories under the build root; returns bytes freed.
 
-    Runs only after run_indexer succeeded, so the newest directory is the
-    build this run just published. Affects nobody but this flow: no other
+    Runs before new-build disk admission and after successful archival.
+    Affects nobody but this flow: no other
     deployment reads the build root, and the search service serves from R2.
     """
     try:
@@ -496,10 +517,18 @@ def prune_builds(build_root: str | None = None) -> int:
     except MissingContextError:
         logger = logging.getLogger(__name__)
     root = Path(build_root or os.environ.get("INDEX_BUILD_ROOT", str(INDEXER_HOME / "build")))
-    build_dirs = [p for p in root.iterdir() if p.is_dir() and p.name.startswith("build-")]
+    if not root.exists():
+        return 0
+    build_dirs = [
+        p
+        for p in root.iterdir()
+        if p.is_dir() and not p.is_symlink() and p.name.startswith("build-")
+    ]
     serving = serving_build_id()
     if serving is None:
         logger.warning("serving build_id unknown (%s unreachable); pruning nothing", FRESHNESS_URL)
+        if len(build_dirs) > KEEP_BUILDS * 2:
+            raise RuntimeError("Build retention blocked: serving identity unavailable")
         return 0
     victims = builds_to_prune(build_dirs, serving)
     freed = 0
@@ -702,6 +731,7 @@ def typeahead_index(
         archive_builds()
         prune_builds(os.environ.get("INDEX_ARCHIVE_ROOT"))
         return
+    prune_builds(os.environ.get("INDEX_ARCHIVE_ROOT"))
     require_build_space()
     repo = clone_repo(ref)
     binary = build_binary(repo)

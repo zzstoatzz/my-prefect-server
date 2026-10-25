@@ -61,6 +61,8 @@ Typeahead snapshot builds have moved from the home publisher to the
 resource-limited cloud pool. The [automatic refresh](docs/automatic-typeahead-refresh.md)
 prepares an independent idle backend, verifies it, then conditionally changes
 routing while retaining the previous backend. Full rollout, rollback and prepared-candidate recovery passed October 25.
+Local build retention keeps two logical generations plus the serving one;
+[the disk audit](docs/audits/2026-10-25-worker-disk-cleanup.md) records cleanup and failure handling.
 The index runs at 06:00 UTC on odd-numbered days, at most 48 hours apart. Live
 registration and queued parameters are verified; the next run is October 27 at
 06:00 UTC. The separate PLC

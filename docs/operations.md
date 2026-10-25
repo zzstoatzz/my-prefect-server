@@ -65,7 +65,14 @@ just heavypad-status   # installed toolchain, worker unit, disk, codex login exp
 
 ### disk on heavypad
 
-Measured 2026-09-19: 878 GB used of 1.8 TB. What holds it, who cleans it, and
+Verified October 25: root usage fell from 92% to 43%, with about 1,000 GiB free,
+after retiring 48 old build directories and 184 experiment database/prefix paths.
+Two newest home build generations remain (36 GiB); experiment scripts, manifests,
+JSON evidence and logs remain. The cloud publisher is unchanged. The local home
+publisher remains disabled; PLC history, Stream data, package caches and active
+model downloads were not removed. See the [producer audit and cleanup record](audits/2026-10-25-worker-disk-cleanup.md).
+
+Historical September 19 inventory (superseded by the audit above): 878 GB used of 1.8 TB. What holds it, who cleans it, and
 who a cleanup touches:
 
 | path | size | owner | retention | affected by cleanup |
