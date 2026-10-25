@@ -3,6 +3,7 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from contextlib import suppress
 
@@ -15,7 +16,10 @@ def run(command: list[str], parent: int) -> int:
         raise SystemExit(128 + signum)
 
     signal.signal(signal.SIGTERM, interrupted)
-    child = subprocess.Popen(command, start_new_session=True)
+    temporary = tempfile.TemporaryDirectory(prefix="typeahead-command-")
+    child = subprocess.Popen(
+        command, start_new_session=True, env={**os.environ, "TMPDIR": temporary.name}
+    )
     try:
         while child.poll() is None:
             if os.getppid() != parent:
@@ -30,6 +34,7 @@ def run(command: list[str], parent: int) -> int:
         with suppress(ProcessLookupError):
             os.killpg(child.pid, signal.SIGKILL)
         child.wait()
+        temporary.cleanup()
 
 
 def main():

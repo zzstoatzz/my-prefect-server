@@ -4,6 +4,7 @@ import signal
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
@@ -20,12 +21,13 @@ def test_silent_command_timeout_stops_its_process(tmp_path):
     command = [
         sys.executable,
         "-c",
-        f"import os,time,pathlib;pathlib.Path({str(marker)!r}).write_text(str(os.getpid()));time.sleep(60)",
+        f"import os,time,pathlib,json;pathlib.Path({str(marker)!r}).write_text(json.dumps([os.getpid(),os.environ['TMPDIR']]));time.sleep(60)",
     ]
     with pytest.raises(RuntimeError, match="exceeded"):
         _stream(command, tmp_path, dict(os.environ), timeout=1)
-    pid = int(marker.read_text())
+    pid, scratch = json.loads(marker.read_text())
     assert not alive(pid)
+    assert not Path(scratch).exists()
 
 
 def test_guard_preserves_child_failure_output(tmp_path):
