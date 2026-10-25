@@ -507,20 +507,22 @@ deployments:
           TURSO_URL: prefect-block://typeahead-turso-url
           TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
   - name: typeahead-index
-    pull: *cached_home
+    pull:
+      - mps.deployment_steps.cached_checkout:
+          repository: https://tangled.org/zzstoatzz.io/my-prefect-server.git
+          fallback_repository: https://github.com/zzstoatzz/my-prefect-server.git
+          cache_root: /var/lib/typeahead-indexer/.cache/mps/source
+          directory: my-prefect-server
     tags: [publish]
     entrypoint: flows/typeahead_index.py:typeahead_index
     parameters:
       ref: pds-compact-31ec142-20261020
       snapshot_format: compact
-    # the typeahead snapshot builder (Zig MODE=indexer), lifted off Fly onto the
-    # home box. Pure batch: reads Turso → builds prefix index on the NVMe →
-    # uploads to R2 → exits; App B promotes it. No SLA — a late/failed run just
-    # serves the prior snapshot. host prereqs (zig 0.17 + rclone) installed by
-    # typeahead deploy/home-indexer/install.sh. concurrency 1 so builds never
-    # overlap. 09:00 UTC sits clear of the 6h leaflet-atlas marks + the 13:00 cluster.
+    # Cloud qualification uses the existing PDS builder source and a staging
+    # pointer. Keep the schedule inactive until full publication, replay and
+    # public freshness pass; then arm production and retain this cloud pool.
     work_pool:
-      name: home-pool
+      name: typeahead-cloud-pool
       job_variables:
         command: >-
           uv run
@@ -541,24 +543,21 @@ deployments:
           INDEX_R2_ACCESS_KEY_ID: prefect-block://index-r2-access-key-id
           INDEX_R2_SECRET_ACCESS_KEY: prefect-block://index-r2-secret-access-key
           # persistent NVMe paths — process runs execute in ephemeral /tmp.
-          INDEXER_HOME: /home/stoat/typeahead-index
+          INDEXER_HOME: /var/lib/typeahead-indexer/work
           INDEX_QUIET: "0"
-          INDEX_BUILD_ROOT: /home/stoat/typeahead-index/build
-          # publish to prod. INDEX_ALLOW_PROD arms the overwrite of latest.json.
-          # (local-channel dry-run validated the full path 2026-06-18 — run e3b70e03
-          # Completed, built a full 10GB snapshot; now publishing for real.)
-          INDEX_CHANNEL: prod
-          INDEX_ALLOW_PROD: "1"
+          INDEX_BUILD_ROOT: /var/lib/typeahead-indexer/builds
+          # Staging first; production publication remains explicitly disarmed.
+          INDEX_CHANNEL: staging
+          INDEX_STAGING_NAME: cloud-publisher-20261025
+          INDEX_ALLOW_PROD: "0"
           # 0 = full corpus. The binary DEFAULTS to a 1000-actor sample, which
           # the App B floor guard rejects — must be explicit (as the old Fly
           # machine was).
           INDEX_SAMPLE_LIMIT: "0"
           INDEX_PDS_MAX_ACTORS: "10000"
-          INDEXER_VERSION: heavypad
-          # The qualified PDS pair is 23.3 GB, including its SQLite recovery
-          # twin. Cap both upload and checksum readback at 10M (~80 Mbit/s)
-          # so publication does not saturate the home connection.
-          RCLONE_BWLIMIT: "10M"
+          INDEXER_VERSION: hetzner-cloud
+          # This transfer runs entirely on cloud infrastructure.
+          RCLONE_BWLIMIT: "20M"
     concurrency_limit: *cancel_new
     schedules:
       # every 3rd day-of-month, not daily. The

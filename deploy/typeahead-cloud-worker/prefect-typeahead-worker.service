@@ -1,0 +1,40 @@
+[Unit]
+Description=Typeahead cloud snapshot publisher
+After=network-online.target tailscaled.service
+Wants=network-online.target
+RequiresMountsFor=@BUILD_MOUNT@
+
+[Service]
+Type=exec
+User=typeahead-indexer
+Group=typeahead-indexer
+WorkingDirectory=/var/lib/typeahead-indexer
+EnvironmentFile=/etc/typeahead-cloud-worker.env
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=UV_CACHE_DIR=/var/lib/typeahead-indexer/.cache/uv
+Environment=PREFECT_PLUGINS_ENABLED=true
+Environment=PREFECT_PLUGINS_ALLOW=mps-secrets
+Environment=PREFECT_WORKER_WEBSERVER_HOST=127.0.0.1
+Environment=PREFECT_WORKER_WEBSERVER_PORT=8096
+ExecStart=/usr/local/bin/uv run --no-project --python 3.13 --with "my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git@@MPS_COMMIT@" --with prefect==3.8.2 prefect worker start --pool typeahead-cloud-pool --type process --limit 1
+CPUQuota=100%
+MemoryHigh=2G
+MemoryMax=3G
+MemorySwapMax=0
+TasksMax=256
+Nice=10
+IOWeight=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/typeahead-indexer @BUILD_MOUNT@
+KillMode=control-group
+TimeoutStopSec=60
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

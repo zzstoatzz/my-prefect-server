@@ -17,6 +17,7 @@ prefect 3 python.
   ────────────────────────────             ─────────────────────────────
   home-pool process worker      ── poll ─► prefect-server (zig) + postgres
   runs home-pool flows          ◄─ runs ── + redis
+                                          Typeahead cloud publisher (qualification)
   Dagster runs hub dbt locally
   owns analytics.duckdb,
   llm-spend.jsonl               ── rsync ► hub.waow.tech + grafana (public)
@@ -56,12 +57,15 @@ prefect 3 python.
 The hub dbt models run in [Dagster on HeavyPad](deploy/dagster/README.md). Prefect
 retains ingestion/classification and a success-gated handoff to downstream flows.
 
-Typeahead's two bulk home schedules (`typeahead-index` and
+Typeahead's two bulk schedules (`typeahead-index` and
 `typeahead-plc-identity`) are configured inactive as of October 20, 2026 to
 avoid further metered transfers during the cloud coverage repair. Live relay
 ingestion and search continue; this does not pause the home worker or other
 flows. See [the bandwidth hold](docs/archive/typeahead-home-bandwidth-hold-20261020.md)
-for resumption requirements.
+for resumption requirements. The index deployment is being qualified on the
+resource-limited `typeahead-cloud-pool`; its schedule stays inactive and its
+pointer stays staging until publication and serving checks pass. See
+[cloud publisher](deploy/typeahead-cloud-worker/README.md).
 
 ## gardener
 

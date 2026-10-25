@@ -1,0 +1,36 @@
+# Typeahead cloud publisher
+
+The index build runs on the existing Hetzner orchestration host, under a dedicated
+unprivileged process worker. Bulk source export, artifact upload and checksum
+readback stay in the cloud. The PLC identity deployment remains on hold.
+
+The worker is limited to one flow, one CPU, 3 GiB maximum memory, low CPU/I/O
+priority and a dedicated 150 GB volume. Its API credential is a root-only
+`/etc/typeahead-cloud-worker.env` containing `PREFECT_API_URL` and
+`PREFECT_API_AUTH_STRING`, derived from the existing operator configuration.
+Runtime Turso and R2 credentials remain Prefect Secret-block references.
+
+On the verified host, attach and format a volume before running:
+
+```sh
+bash deploy/typeahead-cloud-worker/install.sh MPS_COMMIT VOLUME_ID
+```
+
+The installer checks that the volume is mounted, preserves other data, installs
+rclone/uv and the checksum-pinned Zig 0.17.0 toolchain, and starts the systemd
+worker from a committed MPS revision. Do not put credential values in arguments
+or logs. Inspect `systemctl status prefect-typeahead-worker` and its journal.
+
+`prefect.yaml` is authoritative. Initial qualification preserves the existing
+`pds-compact-31ec142-20261020` builder pin, full corpus and 10,000-actor PDS cutoff,
+but publishes to `staging/cloud-publisher-20261025/latest.json`. The schedule is
+inactive and production publication disarmed until full cloud publication,
+native replay, protected recovery and public freshness pass. Register only the
+selected deployment for manual qualification, with an exact `MPS_PIN`.
+
+After qualification, update production channel/arming and the active schedule in
+`prefect.yaml`, land on main, register and verify the queued run. Do not restore
+the home publisher. Build source and the staged pair must remain available if
+publication fails; do not repeat a successful full source export unnecessarily.
+Backend binary rollout and front-door routing changes are separate work and
+remain on hold pending Nate's explicit authorization.
