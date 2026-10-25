@@ -12,6 +12,8 @@ def main() -> int:
         [
             "sops",
             "decrypt",
+            "--output-type",
+            "json",
             "--extract",
             '["heavypad_prefect"]',
             str(Path.home() / "tangled.org/zzstoatzz.io/secrets/prod.yaml"),

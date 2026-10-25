@@ -650,4 +650,4 @@ heavypad-prefect *args:
 
 # Explicit cluster target; never uses the laptop's current kubectl context.
 heavypad-kubectl *args:
-    ssh -o BatchMode=yes stoat@heavypad 'DOCKER_HOST=unix:///var/run/docker.sock docker exec -i k3d-prefect-home-server-0 k3s kubectl {{ args }}'
+    ssh -o BatchMode=yes stoat@heavypad 'DOCKER_HOST=unix:///var/run/docker.sock docker exec -i k3d-prefect-home-server-0 kubectl {{ args }}'
