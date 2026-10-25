@@ -52,8 +52,12 @@ def test_real_converter_flow_retry(tmp_path, monkeypatch):
     )
     source = source_root / "builds/legacy"
     monkeypatch.setenv("INDEX_CHANNEL", "local")
+    partial = source.parent / "build-legacy-px05"
+    partial.mkdir()
+    (partial / "interrupted-copy").write_bytes(b"incomplete conversion")
     before = (source / "index.db").read_bytes()
     output = publish_compact.fn(repo, source)
+    assert not (output / "interrupted-copy").exists()
     original = (output / "index.db.prefix").read_bytes()
     assert publish_compact.fn(repo, source) == output
     assert (output / "index.db.prefix").read_bytes() == original

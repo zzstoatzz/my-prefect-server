@@ -21,6 +21,7 @@ dependencies = [
     "logfire>=4.36.0",
     "typesafe-sdk>=0.7.0",
     "websockets>=15",
+    "boto3>=1.43.88",
 ]
 
 [build-system]

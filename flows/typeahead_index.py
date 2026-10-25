@@ -277,6 +277,8 @@ def compact_target() -> tuple[str, str] | None:
         if not re.fullmatch(r"[A-Za-z0-9_-]+", name):
             raise ValueError("staging requires a safe INDEX_STAGING_NAME")
         return f"staging/{name}", f"staging/{name}/latest.json"
+    if channel == "managed":
+        return "releases/search", "control/builds/latest.json"
     raise ValueError("unknown INDEX_CHANNEL")
 
 
@@ -288,6 +290,8 @@ def publish_compact(repo: Path, source: Path) -> Path:
     output = source.parent / f"build-{compact_id}"
     scripts = repo / "scripts/snapshot_compaction"
     env = dict(os.environ)
+    if output.exists() and not (output / "manifest.json").is_file():
+        shutil.rmtree(output)
     if not output.exists():
         _stream(
             quiet_command(
@@ -343,6 +347,75 @@ def publish_compact(repo: Path, source: Path) -> Path:
     return output
 
 
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
+def publish_completed_generation(repo: Path, generation: str) -> Path:
+    source = Path(generation).resolve()
+    roots = [
+        Path(os.environ["INDEX_BUILD_ROOT"]).resolve(),
+        Path(os.environ["INDEX_ARCHIVE_ROOT"]).resolve(),
+    ]
+    if not any(source.is_relative_to(root) for root in roots):
+        raise ValueError("Completed generation must belong to this publisher")
+    if compact_target() != ("releases/search", "control/builds/latest.json"):
+        raise ValueError("Completed-generation recovery requires the managed channel")
+    manifest = json.loads((source / "manifest.json").read_bytes())
+    if manifest["manifest_version"] != 2 or time.time() - manifest["source_watermark"] >= 3 * 86400:
+        raise ValueError("Completed generation must be a fresh compact snapshot")
+    bid = manifest["active_build"]
+    twin_id = manifest["legacy_twin"]["build_id"]
+    if not all(re.fullmatch(r"b[0-9]{10}-[A-Za-z0-9_-]+", value) for value in [bid, twin_id]):
+        raise ValueError("Invalid completed generation identity")
+    legacy_path = source.parent / ("build-" + twin_id)
+    legacy = json.loads((legacy_path / "manifest.json").read_bytes())
+    if (
+        legacy["active_build"] != twin_id
+        or legacy["source_watermark"] != manifest["source_watermark"]
+    ):
+        raise ValueError("Completed generation twin mismatch")
+    output = INDEXER_HOME / "completed-publications" / bid
+    output.mkdir(parents=True, exist_ok=True)
+    for name in ["index.db", "index.db.prefix"]:
+        data = (source / name).resolve()
+        if not any(data.is_relative_to(root) for root in roots):
+            raise ValueError("Completed artifact leaves the publisher roots")
+        link = output / name
+        if link.is_symlink():
+            link.unlink()
+        elif link.exists():
+            raise ValueError("Completed-publication artifact is not a managed link")
+        link.symlink_to(data)
+    legacy["snapshot_url"] = f"releases/search/{twin_id}/index.db"
+    raw = json.dumps(legacy, separators=(",", ":")).encode()
+    legacy_manifest = output / "legacy-manifest.json"
+    legacy_manifest.write_bytes(raw)
+    manifest["snapshot_url"] = f"releases/search/{bid}/index.db"
+    manifest["prefix_map"]["object_key"] = manifest["snapshot_url"] + ".prefix"
+    manifest["legacy_twin"]["manifest"] = {
+        "object_key": f"releases/search/{twin_id}/manifest.json",
+        "byte_size": len(raw),
+        "sha256": hashlib.sha256(raw).hexdigest(),
+    }
+    (output / "manifest.json").write_text(json.dumps(manifest, separators=(",", ":")))
+    _stream(
+        [
+            sys.executable,
+            str(repo / "scripts/snapshot_compaction/publish.py"),
+            "--generation",
+            str(output),
+            "--legacy-database",
+            str(legacy_path / "index.db"),
+            "--legacy-manifest",
+            str(legacy_manifest),
+            "--pointer",
+            "control/builds/latest.json",
+        ],
+        repo,
+        dict(os.environ),
+        timeout=7200,
+    )
+    return output
+
+
 # builds the flow leaves on disk after a successful publish. The published
 # snapshot lives in R2 and App B promotes from there, so a build directory is
 # a reproducible artifact, not a serving dependency. Two is the serving build
@@ -354,7 +427,8 @@ FRESHNESS_URL = "https://typeahead.waow.tech/health/freshness"
 def serving_build_id(url: str = FRESHNESS_URL, timeout: int = 10) -> str | None:
     """The build_id the search service is serving, or None if unreachable."""
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as resp:
+        request = urllib.request.Request(url, headers={"User-Agent": "fleet-health/1"})
+        with urllib.request.urlopen(request, timeout=timeout) as resp:
             return json.load(resp).get("build_id") or None
     except (OSError, ValueError):
         return None
@@ -486,7 +560,44 @@ def typeahead_index(
     ref: str | None = None,
     snapshot_format: Literal["sqlite", "compact"] = "sqlite",
     reuse_source: str | None = None,
+    automatic_refresh: bool = False,
+    resume_generation: str | None = None,
 ):
+    if resume_generation is not None:
+        if snapshot_format != "compact" or not automatic_refresh:
+            raise ValueError("Completed-generation recovery requires automatic compact refresh")
+        from mps.typeahead_refresh import prune_snapshot_artifacts, refresh_snapshot
+
+        repo = clone_repo(ref)
+        source = Path(resume_generation).resolve()
+        allowed = [
+            Path(os.environ["INDEX_BUILD_ROOT"]).resolve(),
+            Path(os.environ["INDEX_ARCHIVE_ROOT"]).resolve(),
+        ]
+        if not any(source.is_relative_to(root) for root in allowed):
+            raise ValueError("Completed generation must belong to this publisher")
+        manifest = json.loads((source / "manifest.json").read_bytes())
+        if (
+            source.name != "build-" + manifest["active_build"]
+            or not 0 <= time.time() - manifest["source_watermark"] < 3 * 86400
+        ):
+            raise ValueError("Completed generation identity or freshness is invalid")
+        if manifest["manifest_version"] == 1:
+            compact = source.parent / (source.name + "-px05")
+            generation = (
+                publish_completed_generation(repo, str(compact))
+                if (compact / "manifest.json").exists()
+                else publish_compact(repo, source)
+            )
+        else:
+            generation = publish_completed_generation(repo, resume_generation)
+        refresh_snapshot(generation)
+        prune_snapshot_artifacts()
+        if generation.parent == INDEXER_HOME / "completed-publications":
+            shutil.rmtree(generation)
+        archive_builds()
+        prune_builds(os.environ.get("INDEX_ARCHIVE_ROOT"))
+        return
     require_build_space()
     repo = clone_repo(ref)
     binary = build_binary(repo)
@@ -495,8 +606,17 @@ def typeahead_index(
         source = run_indexer(binary, local_only=True, reuse_source=reuse_source)
         if source is None:
             raise RuntimeError("local index build did not return a source generation")
-        publish_compact(repo, source)
+        generation = publish_compact(repo, source)
+        if automatic_refresh:
+            if os.environ.get("INDEX_CHANNEL") != "managed":
+                raise ValueError("Automatic rollout requires the managed publication channel")
+            from mps.typeahead_refresh import prune_snapshot_artifacts, refresh_snapshot
+
+            refresh_snapshot(generation)
+            prune_snapshot_artifacts()
     else:
+        if automatic_refresh:
+            raise ValueError("Automatic rollout requires compact snapshots")
         run_indexer(binary, reuse_source=reuse_source)
     archive_builds()
     prune_builds(os.environ.get("INDEX_ARCHIVE_ROOT"))

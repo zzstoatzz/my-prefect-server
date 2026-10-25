@@ -67,6 +67,9 @@ resource-limited `typeahead-cloud-pool`, with active SQLite work on local SSD
 and verified completed artifacts archived to a volume; its schedule stays inactive and its
 pointer stays staging until publication and serving checks pass. See
 [cloud publisher](deploy/typeahead-cloud-worker/README.md).
+The [automatic refresh implementation](docs/automatic-typeahead-refresh.md) adds
+isolated backend preparation and guarded routing; full-cycle qualification and
+schedule activation are still pending.
 
 ## gardener
 
@@ -153,9 +156,10 @@ just push                                 # github first (installs come from the
 [MIT](LICENSE)
 
 Typeahead publisher configuration selects compact format and immutable source tag
-`pds-compact-31ec142-20261020`, with a 10,000-actor cutoff for PDS scopes. The active
-cron remains `0 9 */3 * *`. Publication verifies both the compact index and its
-same-watermark SQLite recovery twin before replacing the root pointer. The
+`pds-compact-31ec142-20261020`, with a 10,000-actor cutoff for PDS scopes. The configured cron is still inactive during the new refresh qualification.
+The prepared managed channel verifies compact artifacts and their same-watermark
+SQLite twin, then prepares the inactive backend before changing a separate routing
+record. It leaves the historical root pointer unchanged. The
 October 19 scheduled compact publication and native disaster restore passed;
 that does not certify a future scheduled build. The flow still defaults to SQLite
 for callers without deployment parameters. See the

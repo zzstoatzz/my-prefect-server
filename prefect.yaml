@@ -518,9 +518,10 @@ deployments:
     parameters:
       ref: pds-compact-31ec142-20261020
       snapshot_format: compact
-    # Cloud qualification uses the existing PDS builder source and a staging
-    # pointer. Keep the schedule inactive until full publication, replay and
-    # public freshness pass; then arm production and retain this cloud pool.
+      automatic_refresh: true
+    # Full artifacts are built on cloud SSD. The controller installs only on
+    # the idle Fly slot, verifies it, then atomically changes the routing record.
+    # Keep inactive until the real full-cycle qualification passes.
     work_pool:
       name: typeahead-cloud-pool
       job_variables:
@@ -550,9 +551,10 @@ deployments:
           INDEX_ARCHIVE_ROOT: /var/lib/typeahead-indexer/builds/archive
           INDEX_MIN_FREE_GIB: "96"
           INDEX_MIN_REMAIN_GIB: "8"
-          # Staging first; production publication remains explicitly disarmed.
-          INDEX_CHANNEL: staging
-          INDEX_STAGING_NAME: cloud-publisher-20261025
+          INDEX_CHANNEL: managed
+          INDEX_REFRESH_IMAGE: registry.fly.io/typeahead-search-refresh@sha256:0c431115b6528d626ae36669dda9cc73d256cba6223bd443cf27daebc6ae512a
+          FLY_PRIMARY_TOKEN: prefect-block://typeahead-startup-fly-deploy-token
+          FLY_REFRESH_TOKEN: prefect-block://typeahead-refresh-fly-deploy-token
           INDEX_ALLOW_PROD: "0"
           # 0 = full corpus. The binary DEFAULTS to a 1000-actor sample, which
           # the App B floor guard rejects — must be explicit (as the old Fly
