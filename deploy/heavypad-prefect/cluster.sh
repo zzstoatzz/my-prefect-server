@@ -10,7 +10,7 @@ if k3d cluster list --no-headers | awk '{print $1}' | grep -qx prefect-home; the
 fi
 k3d cluster create prefect-home \
   --servers 1 --agents 0 --image rancher/k3s:v1.35.5-k3s1 \
-  --api-port 127.0.0.1:16443 --no-lb \
+  --api-port 127.0.0.1:16443 \
   --port '127.0.0.1:14200:30420@server:0' \
   --servers-memory 6g \
   --volume "$state/storage:/var/lib/rancher/k3s/storage@server:0" \
