@@ -39,3 +39,8 @@ the home publisher. Build source and the staged pair must remain available if
 publication fails; do not repeat a successful full source export unnecessarily.
 Backend binary rollout and front-door routing changes are separate work and
 remain on hold pending Nate's explicit authorization.
+
+A recovery run may pass `reuse_source` with an existing absolute SQLite checkpoint
+path. This selects the native reader's existing `INDEX_REUSE_SOURCE` path and
+avoids another source export. The default remains `None`, so scheduled runs export
+a fresh checkpoint. Validate and record the preserved input before using it.

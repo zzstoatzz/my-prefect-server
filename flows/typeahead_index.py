@@ -218,7 +218,9 @@ def build_binary(repo_dir: Path) -> Path:
 
 
 @task(retries=3, retry_delay_seconds=[30, 120, 300])
-def run_indexer(binary: Path, local_only: bool = False) -> Path | None:
+def run_indexer(
+    binary: Path, local_only: bool = False, reuse_source: str | None = None
+) -> Path | None:
     """Run MODE=indexer: read Turso → build snapshot → publish to R2 → exit.
 
     Channel/arming come from the inherited env (INDEX_CHANNEL, INDEX_ALLOW_PROD).
@@ -231,6 +233,12 @@ def run_indexer(binary: Path, local_only: bool = False) -> Path | None:
     channel = os.environ.get("INDEX_CHANNEL", "local")
     logger.info(f"MODE=indexer channel={channel} build_root={build_root}")
     env = {**os.environ, "MODE": "indexer", "INDEX_BUILD_ROOT": build_root}
+    if reuse_source is not None:
+        path = Path(reuse_source)
+        if not path.is_absolute() or not path.is_file():
+            raise ValueError("reuse_source must name an existing absolute checkpoint path")
+        env["INDEX_REUSE_SOURCE"] = str(path)
+        env["INDEX_SOURCE"] = "export_http"
     existing = set(Path(build_root).glob("build-*/manifest.json")) if local_only else set()
     if local_only:
         if env.get("INDEX_PUBLISH_ONLY"):
@@ -479,18 +487,20 @@ def archive_builds() -> list[str]:
 
 @flow(name="typeahead-index", log_prints=True, timeout_seconds=43200)
 def typeahead_index(
-    ref: str | None = None, snapshot_format: Literal["sqlite", "compact"] = "sqlite"
+    ref: str | None = None,
+    snapshot_format: Literal["sqlite", "compact"] = "sqlite",
+    reuse_source: str | None = None,
 ):
     require_build_space()
     repo = clone_repo(ref)
     binary = build_binary(repo)
     if snapshot_format == "compact":
         compact_target()
-        source = run_indexer(binary, local_only=True)
+        source = run_indexer(binary, local_only=True, reuse_source=reuse_source)
         if source is None:
             raise RuntimeError("local index build did not return a source generation")
         publish_compact(repo, source)
     else:
-        run_indexer(binary)
+        run_indexer(binary, reuse_source=reuse_source)
     archive_builds()
     prune_builds(os.environ.get("INDEX_ARCHIVE_ROOT"))
