@@ -409,7 +409,7 @@ def publish_completed_generation(repo: Path, generation: str) -> Path:
         if not any(data.is_relative_to(root) for root in roots):
             raise ValueError("Completed artifact leaves the publisher roots")
         link = output / name
-        if link.is_symlink():
+        if link.is_symlink() or (link.exists() and link.samefile(data)):
             link.unlink()
         elif link.exists():
             raise ValueError("Completed-publication artifact is not a managed link")
@@ -440,7 +440,7 @@ def publish_completed_generation(repo: Path, generation: str) -> Path:
             "control/builds/latest.json",
         ],
         repo,
-        dict(os.environ),
+        dict(os.environ, RCLONE_COPY_LINKS="true"),
         timeout=7200,
     )
     return output

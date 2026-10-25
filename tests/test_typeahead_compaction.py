@@ -88,3 +88,64 @@ def test_completed_generation_recovery_rejects_other_roots_and_stale_data(tmp_pa
     )
     with pytest.raises(ValueError, match="fresh compact snapshot"):
         publish_completed_generation.fn(tmp_path, str(generation))
+
+
+def test_completed_publication_with_real_rclone_links_and_retry(tmp_path, monkeypatch):
+    import hashlib
+    import shutil
+    import sqlite3
+    import time
+
+    import flows.typeahead_index as flow
+
+    configured = os.environ.get("TYPEAHEAD_COMPACTION_SOURCE")
+    if configured is None or shutil.which("rclone") is None:
+        pytest.skip("requires the release checkout and real rclone")
+    repo = Path(configured)
+    active, archive, work, remote = [tmp_path / n for n in ["active", "archive", "work", "remote"]]
+    active.mkdir()
+    archive.mkdir()
+    fixture = tmp_path / "fixture"
+    subprocess.run(
+        [sys.executable, str(repo / "scripts/snapshot_compaction/recovery_fixture.py"), str(fixture)],
+        check=True,
+    )
+    bid = f"b{int(time.time())}-links"
+    source = active / ("build-" + bid)
+    shutil.move(fixture / "builds/legacy", source)
+    watermark = int(time.time())
+    with sqlite3.connect(source / "index.db") as db:
+        db.execute("UPDATE index_meta SET value=? WHERE key='build_id'", (bid,))
+        db.execute("UPDATE index_meta SET value=? WHERE key='source_watermark'", (str(watermark),))
+    manifest = json.loads((source / "manifest.json").read_text())
+    manifest.update(active_build=bid, source_watermark=watermark, snapshot_url=f"builds/{bid}/index.db")
+    with (source / "index.db").open("rb") as stream:
+        manifest["sha256"] = hashlib.file_digest(stream, "sha256").hexdigest()
+    (source / "manifest.json").write_text(json.dumps(manifest))
+    compact = active / ("build-" + bid + "-px05")
+    subprocess.run(
+        [sys.executable, str(repo / "scripts/snapshot_compaction/convert.py"), "--unlimited-cpu",
+         "--source", str(source / "index.db"), "--manifest", str(source / "manifest.json"),
+         "--output", str(compact), "--build-id", bid + "-px05"],
+        check=True,
+    )
+    monkeypatch.setattr(flow, "INDEXER_HOME", work)
+    for name, value in {
+        "INDEX_BUILD_ROOT": str(active), "INDEX_ARCHIVE_ROOT": str(archive),
+        "INDEX_CHANNEL": "managed", "INDEX_R2_BUCKET": str(remote),
+        "INDEX_R2_ENDPOINT": "https://unused.invalid", "INDEX_R2_ACCESS_KEY_ID": "unused",
+        "INDEX_R2_SECRET_ACCESS_KEY": "unused", "RCLONE_CONFIG_R2_TYPE": "local",
+    }.items():
+        monkeypatch.setenv(name, value)
+    output = flow.publish_completed_generation.fn(repo, str(compact))
+    pointer = remote / "control/builds/latest.json"
+    before = pointer.read_bytes()
+    published = json.loads(before)
+    assert published["active_build"] == bid + "-px05"
+    assert (remote / published["snapshot_url"]).read_bytes() == (compact / "index.db").read_bytes()
+    link = output / "index.db"
+    link.unlink()
+    os.link(compact / "index.db", link)
+    assert flow.publish_completed_generation.fn(repo, str(compact)) == output
+    assert pointer.read_bytes() == before
+    assert (remote / published["prefix_map"]["object_key"]).read_bytes() == (compact / "index.db.prefix").read_bytes()
