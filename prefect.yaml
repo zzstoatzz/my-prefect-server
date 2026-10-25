@@ -896,9 +896,9 @@ deployments:
     # calls a run.
     work_pool: *home
     concurrency_limit: *cancel_new
-    schedules:
-      - cron: "*/30 * * * *"
-        active: true
+    # Schedule ownership moved to the isolated HeavyPad pilot.
+    # Keep the old deployment for history/manual rollback, with no recurring runs.
+    schedules: []
 
   - name: fastmcp-brief
     pull: *cached_home
