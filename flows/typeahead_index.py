@@ -513,9 +513,43 @@ def prune_builds(build_root: str | None = None) -> int:
     return freed
 
 
+def cleanup_abandoned_compactions(root: Path) -> dict:
+    removed, busy = [], []
+    if not Path("/proc/self/fd").is_dir():
+        return {"removed": removed, "busy": busy, "bytes_freed": 0}
+    cutoff = time.time() - 600
+    candidates = []
+    for path in root.glob(".compact-release-*"):
+        if path.is_symlink() or not path.is_dir() or path.stat().st_uid != os.geteuid():
+            continue
+        files = [item for item in path.rglob("*") if item.is_file() and not item.is_symlink()]
+        if max([path.stat().st_mtime, *(item.stat().st_mtime for item in files)]) < cutoff:
+            candidates.append((path, sum(item.stat().st_size for item in files)))
+    for process in Path("/proc").glob("[0-9]*"):
+        try:
+            opened = [str(fd.resolve()) for fd in (process / "fd").iterdir()]
+            mapped = (process / "maps").read_text()
+        except (OSError, PermissionError):
+            continue
+        for path, _ in candidates:
+            prefix = str(path) + "/"
+            if any(item.startswith(prefix) for item in opened) or prefix in mapped:
+                busy.append(str(path))
+    for path, size in candidates:
+        if str(path) not in busy:
+            shutil.rmtree(path)
+            removed.append({"path": str(path), "bytes": size})
+    return {
+        "removed": removed,
+        "busy": sorted(set(busy)),
+        "bytes_freed": sum(item["bytes"] for item in removed),
+    }
+
+
 def require_build_space() -> None:
     root = Path(os.environ.get("INDEX_BUILD_ROOT", str(INDEXER_HOME / "build")))
     root.mkdir(parents=True, exist_ok=True)
+    cleanup_abandoned_compactions(root)
     minimum = int(os.environ.get("INDEX_MIN_FREE_GIB", "0")) * 2**30
     if shutil.disk_usage(root).free < minimum:
         raise RuntimeError("Insufficient free space for the offline index build")
@@ -581,6 +615,8 @@ def archive_builds() -> list[str]:
         return []
     root = Path(os.environ["INDEX_BUILD_ROOT"])
     archived = archive_completed_generations(root, Path(archive_root))
+    cleanup = cleanup_abandoned_compactions(root)
+    get_run_logger().info("Abandoned compaction staging cleanup: %s", cleanup)
     get_run_logger().info("archived %d verified generations off local SSD", len(archived))
     return [str(path) for path in archived]
 

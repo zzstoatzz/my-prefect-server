@@ -521,7 +521,7 @@ deployments:
       automatic_refresh: true
     # Full artifacts are built on cloud SSD. The controller installs only on
     # the idle Fly slot, verifies it, then atomically changes the routing record.
-    # Keep inactive until the real full-cycle qualification passes.
+    # Full rollout, rollback and prepared-candidate recovery passed October 25.
     work_pool:
       name: typeahead-cloud-pool
       job_variables:
@@ -572,7 +572,7 @@ deployments:
       - interval: 172800
         anchor_date: "2026-10-27T06:00:00Z"
         timezone: UTC
-        active: false
+        active: true
 
   - name: typeahead-plc-identity
     pull: *cached_home

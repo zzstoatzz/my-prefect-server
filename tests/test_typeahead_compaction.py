@@ -171,3 +171,33 @@ def test_completed_publication_with_real_rclone_links_and_retry(tmp_path, monkey
     assert (remote / published["prefix_map"]["object_key"]).read_bytes() == (
         compact / "index.db.prefix"
     ).read_bytes()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="requires real Linux process file references")
+def test_staging_cleanup_preserves_active_recent_and_completed_data(tmp_path):
+    from flows.typeahead_index import cleanup_abandoned_compactions
+
+    paths = [
+        tmp_path / name
+        for name in [
+            ".compact-release-abandoned",
+            ".compact-release-open",
+            ".compact-release-recent",
+            "build-completed",
+        ]
+    ]
+    for path in paths:
+        path.mkdir()
+        (path / "data").write_bytes(b"actual staging data")
+    for path in paths[:2]:
+        os.utime(path / "data", (100, 100))
+        os.utime(path, (100, 100))
+    (tmp_path / ".compact-release-symlink").symlink_to(paths[3], target_is_directory=True)
+    with (paths[1] / "data").open("rb"):
+        result = cleanup_abandoned_compactions(tmp_path)
+        assert not paths[0].exists() and paths[1].exists()
+        assert str(paths[1]) in result["busy"]
+    cleanup_abandoned_compactions(tmp_path)
+    assert not paths[1].exists()
+    assert paths[2].exists() and paths[3].exists()
+    assert (tmp_path / ".compact-release-symlink").is_symlink()

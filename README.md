@@ -60,8 +60,9 @@ retains ingestion/classification and a success-gated handoff to downstream flows
 Typeahead snapshot builds have moved from the home publisher to the
 resource-limited cloud pool. The [automatic refresh](docs/automatic-typeahead-refresh.md)
 prepares an independent idle backend, verifies it, then conditionally changes
-routing while retaining the previous backend. Full-cycle qualification is underway;
-the recurring index schedule remains inactive until acceptance. The separate PLC
+routing while retaining the previous backend. Full rollout, rollback and prepared-candidate recovery passed October 25.
+The configured index cadence is every 48 hours at 06:00 UTC; live registration
+verification follows the source update. The separate PLC
 identity deployment remains paused. See the [cloud worker](deploy/typeahead-cloud-worker/README.md)
 for resource limits and recovery, and the [historical bandwidth hold](docs/archive/typeahead-home-bandwidth-hold-20261020.md)
 for the home migration context.

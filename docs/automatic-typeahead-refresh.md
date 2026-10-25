@@ -1,9 +1,10 @@
 # Automatic Typeahead snapshot refresh
 
-Implementation and qualification in progress, October 25, 2026. The cloud index
-schedule remains inactive until the full rollout and rollback qualification passes.
-The public Worker now uses the stable transport URL; its R2 route still selects
-the already qualified backend. No serving Fly machine was restarted for this work.
+Full publication, isolated installation, cached restart, guarded promotion,
+rollback and prepared-candidate recovery passed October 25, 2026. The configured
+cadence is every 48 hours at 06:00 UTC, next October 27. Live schedule registration
+is being verified after the source update. The public Worker uses the stable
+transport route; no serving machine performs bulk installation.
 
 ## Data and deployment sequence
 
@@ -89,8 +90,9 @@ and matching prepared candidate, preserving the completed disk instead of starti
 installation over. An unexpected change of publication rejects the retry.
 Never persist `resume_rollout=true` into the scheduled deployment defaults.
 
-The final qualification record and registered schedule will be linked here after
-the real full-cycle check passes. Current code is not proof that it ran.
+The [Typeahead execution record](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/ops/automatic-refresh-20261025.md)
+contains full-cycle, rollback, retry and resource receipts. Source configuration
+alone does not establish that the live schedule is registered.
 
 ## Operator rollback
 
@@ -112,3 +114,10 @@ reserve checks wake at least once per second even if the command is silent.
 Each command has a private temporary directory removed after its process group
 stops. Recovery restores the native compactor from the persistent compiler cache after
 a fresh checkout; it does not repeat an already completed corpus build.
+
+Abandoned `.compact-release-*` conversion staging is reclaimed before a new build
+and after verified archival. Cleanup only considers owned directories older than
+ten minutes, skips symlinks, and preserves directories referenced by live process
+files or mappings. Completed `build-*` generations are outside that cleanup.
+The cloud-host test covered real open files, recent staging, completed data and
+symlinks; 6.8 GiB left by the earlier cancelled conversion was removed.
