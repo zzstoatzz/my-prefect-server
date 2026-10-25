@@ -593,9 +593,10 @@ def typeahead_index(
     automatic_refresh: bool = False,
     resume_generation: str | None = None,
     rollback: bool = False,
+    resume_rollout: bool = False,
 ):
     if rollback:
-        if resume_generation is not None or reuse_source is not None:
+        if resume_generation is not None or reuse_source is not None or resume_rollout:
             raise ValueError("Rollback does not build or install a generation")
         from mps.typeahead_refresh import rollback_snapshot
         from prefect.states import Completed
@@ -607,6 +608,29 @@ def typeahead_index(
                 message="Rollback restored availability; the previous snapshot is stale and needs refresh",
             )
         return report
+    if resume_rollout:
+        if (
+            snapshot_format != "compact"
+            or not automatic_refresh
+            or resume_generation is not None
+            or reuse_source is not None
+        ):
+            raise ValueError("Rollout recovery requires only the automatic compact channel")
+        from mps.typeahead_refresh import prune_snapshot_artifacts, refresh_snapshot
+
+        report = refresh_snapshot()
+        prune_snapshot_artifacts()
+        wrapper = INDEXER_HOME / "completed-publications" / report["build_id"]
+        if wrapper.exists():
+            if (
+                json.loads((wrapper / "manifest.json").read_text())["active_build"]
+                != report["build_id"]
+            ):
+                raise ValueError("Completed-publication cleanup identity mismatch")
+            shutil.rmtree(wrapper)
+        archive_builds()
+        prune_builds(os.environ.get("INDEX_ARCHIVE_ROOT"))
+        return
     if resume_generation is not None:
         if snapshot_format != "compact" or not automatic_refresh:
             raise ValueError("Completed-generation recovery requires automatic compact refresh")

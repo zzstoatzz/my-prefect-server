@@ -24,7 +24,10 @@ Installation runs before the search process starts. It downloads and checks the
 compact SQLite metadata, verifies the full prefix payload and writes its native
 admission sidecar, then atomically records local activation. A failed install
 never changes public routing. An unchanged admitted installation skips the full
-scan on restart. The same-watermark legacy twin is retained remotely; the other
+scan on restart. During installation, the `downloading` phase includes Rclone's
+post-copy checksum read; a preallocated file's length is not transfer progress.
+Full validation can take minutes on the inactive disk while production continues.
+The same-watermark legacy twin is retained remotely; the other
 backend and its independent overlay provide immediate traffic rollback.
 
 Before traffic moves, the controller checks global/exact/CJK/PDS searches, replica
@@ -44,11 +47,15 @@ job needs no Cloudflare administrative token.
 ## Recovery and retention
 
 `resume_generation` accepts an already completed legacy or compact build under the
-publisher's active/archive roots. It avoids another compilation, source export,
-and full corpus index build. An incomplete compact conversion is discarded and
+publisher's active/archive roots. It avoids rebuilding the indexer, exporting the source again, or repeating the
+full corpus index build. The small compactor target is restored when needed. An incomplete compact conversion is discarded and
 regenerated from its intact legacy source. Completed staging artifacts can be
 republished into the durable managed namespace without copying local payloads.
+The publication subprocess explicitly enables Rclone link following for this
+wrapper; its source paths are checked against the publisher roots first.
 All original artifact digests remain enforced by the publisher and installer.
+If the requested generation is already selected, recovery repeats its semantic
+and public acceptance checks instead of treating identity alone as success.
 
 After acceptance, both current and previous generations and their twins are
 retained in the managed R2 namespace. Older managed artifacts are pruned under a
@@ -63,6 +70,21 @@ store and scoped individually to the two apps. Rotate by minting a replacement
 app-scoped token, writing it through SOPS stdin, syncing its Prefect block,
 verifying an isolated deployment, then revoking the old token. Runs resolve the
 blocks on startup; neither credential grants Cloudflare account access.
+
+Cached restart uses explicit stop, confirmed stopped state, configuration update
+with `skip_launch`, then start and confirmed started state before HTTP qualification.
+This prevents the old process from answering readiness during an asynchronous update.
+Ambiguous transport responses are reconciled against actual Machine state.
+
+A failed candidate remains in the inactive slot for inspection and recovery. Run
+`just prefect deployment run typeahead-index/typeahead-index -p resume_rollout=true`
+to use the already-verified `control/builds/latest.json` publication. A matching
+owned candidate is reused; otherwise only installation is repeated. No corpus build,
+artifact upload or publication readback is repeated. Current identity, corpus floors,
+slot pointer, image, readiness, restart, query and public gates still apply. The next
+new generation cleans the inactive slot before preparing its replacement, so
+failed preparation cannot accumulate an unbounded set of machines or disks.
+Never persist `resume_rollout=true` into the scheduled deployment defaults.
 
 The final qualification record and registered schedule will be linked here after
 the real full-cycle check passes. Current code is not proof that it ran.
@@ -84,5 +106,6 @@ must not be saved into the scheduled deployment defaults.
 Subprocesses run under a parent-liveness guard. Normal cancellation, timeout, and
 parent death terminate the command's process group, including grandchildren. Disk
 reserve checks wake at least once per second even if the command is silent.
-Recovery restores the native compactor from the persistent compiler cache after
+Each command has a private temporary directory removed after its process group
+stops. Recovery restores the native compactor from the persistent compiler cache after
 a fresh checkout; it does not repeat an already completed corpus build.

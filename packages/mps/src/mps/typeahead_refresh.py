@@ -219,6 +219,188 @@ class Refresh:
             time.sleep(30)
         return observations
 
+    def wait_machine(self, app: str, mid: str, state: str, *, guest=None):
+        deadline = time.monotonic() + 180
+        while True:
+            machine = self.fly("GET", app, "machines/" + mid)
+            if machine["state"] == state and (
+                guest is None
+                or all(machine["config"]["guest"].get(k) == v for k, v in guest.items())
+            ):
+                return machine
+            if time.monotonic() >= deadline:
+                raise RuntimeError("Isolated machine did not reach " + state)
+            time.sleep(3)
+
+    def restart_candidate(self, app: str, mid: str, config: dict, route: dict, etag: str):
+        before = self.fly("GET", app, "machines/" + mid)
+        self.serving_guard(route, etag, app)
+        if before["state"] != "stopped":
+            try:
+                self.fly(
+                    "POST", app, "machines/" + mid + "/stop", {"signal": "SIGTERM", "timeout": 60}
+                )
+            except httpx.TransportError:
+                self.logger.warning("Stop response was ambiguous; checking actual machine state")
+        stopped = self.wait_machine(app, mid, "stopped")
+        config["guest"] = {"cpu_kind": "shared", "cpus": 2, "memory_mb": 1024}
+        self.serving_guard(route, etag, app)
+        try:
+            self.fly(
+                "POST",
+                app,
+                "machines/" + mid,
+                {
+                    "config": config,
+                    "skip_launch": True,
+                    "current_version": stopped["instance_id"],
+                },
+            )
+        except httpx.TransportError:
+            self.logger.warning("Update response was ambiguous; checking actual configuration")
+        self.wait_machine(app, mid, "stopped", guest=config["guest"])
+        self.serving_guard(route, etag, app)
+        try:
+            self.fly("POST", app, "machines/" + mid + "/start")
+        except httpx.TransportError:
+            self.logger.warning("Start response was ambiguous; checking actual machine state")
+        started = self.wait_machine(app, mid, "started", guest=config["guest"])
+        return {
+            "stopped_before_update": True,
+            "started_after_update": True,
+            "before_instance": before["instance_id"],
+            "after_instance": started["instance_id"],
+        }
+
+    def accept_candidate(
+        self, target: dict, config: dict, report: dict, route: dict, etag: str, app: str
+    ):
+        report["pre_resize"] = self.candidate_checks(target)
+        report["restart"] = self.restart_candidate(app, target["machine_id"], config, route, etag)
+        deadline = time.monotonic() + 180
+        while True:
+            try:
+                self.healthy(target)
+                break
+            except (RuntimeError, httpx.HTTPError, ValueError, KeyError):
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Candidate failed cached restart at final size") from None
+                time.sleep(3)
+        report["qualified"] = self.candidate_checks(target)
+        self.serving_guard(route, etag, app)
+        next_route = {
+            "version": 1,
+            "current": target,
+            "previous": route["current"],
+            "promoted_at": int(time.time()),
+        }
+        try:
+            report["route_etag"] = self.replace_route(next_route, etag)
+            time.sleep(2)
+            report["observations"] = self.watch(target)
+            report["current"] = target
+            report["passed"] = True
+            return report
+        except BaseException:
+            actual, actual_etag = self.route()
+            if actual == next_route:
+                self.healthy(route["current"], require_fresh=False)
+                self.replace_route(route, actual_etag)
+                self.logger.error("Restored previous verified backend after failed promotion")
+            raise
+
+    def resume_published(self):
+        import tempfile
+
+        response = self.s3.get_object(Bucket=self.bucket, Key="control/builds/latest.json")
+        raw = response["Body"].read(65537)
+        if len(raw) > 65536:
+            raise ValueError("Published manifest too large")
+        manifest = json.loads(raw)
+        if (
+            manifest["manifest_version"] != 2
+            or manifest["format_version"] != 5
+            or not 0 <= time.time() - manifest["source_watermark"] < 3 * 86400
+        ):
+            raise ValueError("Published compact snapshot is not fresh")
+        route, etag = self.route()
+        if route["current"]["build_id"] == manifest["active_build"]:
+            with tempfile.TemporaryDirectory(prefix="typeahead-resume-") as directory:
+                generation = Path(directory)
+                (generation / "manifest.json").write_bytes(raw)
+                return self.apply(generation)
+        serving = self.healthy(route["current"], require_fresh=False)["index"]
+        if manifest["source_watermark"] < route["current"]["source_watermark"] or any(
+            manifest[key] < serving[key] // 2 for key in ["actor_count", "prefix_count"]
+        ):
+            raise ValueError("Published snapshot regresses serving watermark or corpus floors")
+        if (
+            not manifest["snapshot_url"].startswith(ARTIFACT_PREFIX)
+            or manifest["prefix_map"]["object_key"] != manifest["snapshot_url"] + ".prefix"
+        ):
+            raise ValueError("Published snapshot is outside managed artifacts")
+        app = next(s for s in SLOTS if origin(s) != route["current"]["origin"])
+        self.serving_guard(route, etag, app)
+        machines = self.fly("GET", app, "machines")
+        matching = [
+            m
+            for m in machines
+            if m["config"].get("metadata", {}).get("owner") == OWNER
+            and m["config"].get("metadata", {}).get("build_id") == manifest["active_build"]
+        ]
+        if len(machines) == 1 and len(matching) == 1:
+            machine = matching[0]
+            config = machine["config"]
+            if (
+                config["image"] != self.image
+                or config["env"].get("REFRESH_BUILD_ID") != manifest["active_build"]
+                or config["env"].get("INDEX_LATEST_KEY") != "control/slots/" + app + "/latest.json"
+                or len(config.get("mounts", [])) != 1
+            ):
+                raise RuntimeError("Prepared candidate configuration changed")
+            pointer = self.s3.get_object(Bucket=self.bucket, Key=config["env"]["INDEX_LATEST_KEY"])[
+                "Body"
+            ].read(65537)
+            if json.loads(pointer) != manifest:
+                raise RuntimeError("Prepared candidate publication identity changed")
+            if machine["state"] == "stopped":
+                self.fly("POST", app, "machines/" + machine["id"] + "/start")
+            target = {
+                "origin": origin(app),
+                "build_id": manifest["active_build"],
+                "source_watermark": manifest["source_watermark"],
+                "machine_id": machine["id"],
+                "volume_id": config["mounts"][0]["volume"],
+                "legacy_build_id": manifest["legacy_twin"]["build_id"],
+            }
+            deadline = time.monotonic() + 2400
+            while True:
+                self.serving_guard(route, etag, app)
+                try:
+                    self.healthy(target)
+                    break
+                except (RuntimeError, httpx.HTTPError, ValueError, KeyError):
+                    if self.fly("GET", app, "machines/" + machine["id"])["state"] in (
+                        "stopped",
+                        "destroyed",
+                    ):
+                        raise RuntimeError("Prepared candidate stopped before readiness") from None
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError("Prepared candidate did not become healthy") from None
+                    time.sleep(20)
+            report = {
+                "build_id": target["build_id"],
+                "app": app,
+                "previous": route["current"],
+                "volume_id": target["volume_id"],
+                "resumed_prepared_candidate": True,
+            }
+            return self.accept_candidate(target, config, report, route, etag, app)
+        with tempfile.TemporaryDirectory(prefix="typeahead-resume-") as directory:
+            generation = Path(directory)
+            (generation / "manifest.json").write_bytes(raw)
+            return self.apply(generation)
+
     def apply(self, generation: Path):
         manifest = json.loads((generation / "manifest.json").read_text())
         if (
@@ -268,7 +450,6 @@ class Refresh:
             },
         )
         machine = None
-        next_route = None
         report = {
             "build_id": manifest["active_build"],
             "previous": current,
@@ -356,52 +537,12 @@ class Refresh:
                         machine["id"],
                     )
                     time.sleep(20)
-            report["pre_resize"] = self.candidate_checks(target)
-            config["guest"]["cpus"] = 2
-            self.fly("POST", app, "machines/" + machine["id"], {"config": config})
-            for _ in range(30):
-                try:
-                    self.healthy(target)
-                    break
-                except (RuntimeError, httpx.HTTPError, ValueError, KeyError):
-                    time.sleep(3)
-            else:
-                raise RuntimeError("Candidate failed cached restart at final size")
-            report["qualified"] = self.candidate_checks(target)
-            self.serving_guard(route, etag, app)
-            next_route = {
-                "version": 1,
-                "current": target,
-                "previous": current,
-                "promoted_at": int(time.time()),
-            }
-            report["route_etag"] = self.replace_route(next_route, etag)
-            time.sleep(2)
-            report["observations"] = self.watch(target)
-            report["current"] = target
-            report["passed"] = True
-            return report
+            return self.accept_candidate(target, config, report, route, etag, app)
         except BaseException:
-            actual, actual_etag = self.route()
-            if next_route is not None and actual == next_route:
-                self.healthy(current, require_fresh=False)
-                self.replace_route(route, actual_etag)
-                self.logger.error("Restored previous verified backend after failed promotion")
-            actual, _ = self.route()
-            if actual["current"]["origin"] != origin(app):
-                self.healthy(actual["current"], require_fresh=False)
-                for candidate in self.fly("GET", app, "machines"):
-                    metadata = candidate["config"].get("metadata", {})
-                    if (
-                        metadata.get("owner") == OWNER
-                        and metadata.get("build_id") == manifest["active_build"]
-                    ):
-                        self.delete_machine(app, candidate)
-                owned_volume = next(
-                    (v for v in self.fly("GET", app, "volumes") if v["id"] == volume["id"]), None
-                )
-                if owned_volume is not None and not owned_volume.get("attached_machine_id"):
-                    self.fly("DELETE", app, "volumes/" + volume["id"])
+            self.logger.error(
+                "Prepared candidate retained in inactive app %s for inspection or resume_rollout",
+                app,
+            )
             raise
 
     def prune_artifacts(self):
@@ -443,12 +584,12 @@ class Refresh:
         }
 
 
-def refresh_snapshot(generation: Path):
+def refresh_snapshot(generation: Path | None = None):
     from prefect import get_run_logger
 
     refresh = Refresh(get_run_logger())
     try:
-        report = refresh.apply(generation)
+        report = refresh.resume_published() if generation is None else refresh.apply(generation)
         output = (
             Path(os.environ["INDEXER_HOME"]) / "refresh-receipts" / (report["build_id"] + ".json")
         )
