@@ -65,6 +65,14 @@ route-identity guard. The previous Fly backend remains running until it is the
 inactive slot for the next refresh. The separately retained original compact
 backend is outside the controller's ownership and is not deleted by it.
 
+Later October 25, the operator authorized retiring both superseded backends and
+their 60 GiB disks after the smaller backend passed qualification. Both machines
+and disks are now deleted; the two managed app identities remain, with the inactive
+slot empty for the next refresh. The route has `previous: null`, so immediate
+old-backend rollback is unavailable until another successful refresh. R2 artifacts
+and pinned images remain for installation/replay recovery. See the
+[retirement receipt](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/ops/automatic-refresh-20261025.md#superseded-backend-retirement).
+
 `prefect.yaml` owns the schedule, format, immutable source/image pins, cloud paths,
 reserves and app-scoped Secret-block references. The billing Fly credential remains
 read-only. The two deployment credentials are backed by the encrypted secrets
