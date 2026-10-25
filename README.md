@@ -23,6 +23,11 @@ prefect 3 python.
   llm-spend.jsonl               ── rsync ► hub.waow.tech + grafana (public)
 ```
 
+The [isolated HeavyPad pilot](deploy/heavypad-prefect/README.md) now runs a
+separate k3s control plane behind a private Tailscale HTTPS address. Only the
+low-risk FastMCP backlog counter has moved; the canonical hostname, critical
+jobs and Typeahead cloud publisher remain on the original server.
+
 ## design
 
 - **home computes, the edge serves** — home-pool flows run on the home box, which

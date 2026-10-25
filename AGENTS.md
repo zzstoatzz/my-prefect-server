@@ -83,3 +83,15 @@ prefer declared ownership over inferred. background: the "known-wrong state" sec
 - reference material lives in `docs/`; the README's docs table is the index. post-mortems
   go in `docs/incidents/`; shipped design notes and build logs go in `docs/archive/`, never the
   repo root or this file
+
+## isolated HeavyPad pilot
+
+The original `just prefect` and `kubeconfig.yaml` still target Hetzner. The
+separate `just heavypad-prefect` and `just heavypad-kubectl` target the pilot;
+never switch the default profile or kubectl context to operate it. Read
+`deploy/heavypad-prefect/README.md` before migration. `prefect.heavypad.yaml`
+owns pilot schedules; original CI continues registering `prefect.yaml` only.
+Only the backlog counter is migrated. Keep its original schedule empty, and
+never run two schedulers for the same effects. Publishing, alerts, email,
+Gardener and Typeahead remain outside the pilot migration scope. Canonical
+hostname cutover and node deletion require a later operator decision.

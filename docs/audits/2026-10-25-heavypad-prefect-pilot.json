@@ -1,0 +1,225 @@
+{
+  "at": "2026-10-25T23:55:38.684973+00:00",
+  "pilot_url": "https://heavypad.tailb660b6.ts.net:10443",
+  "server_image": "atcr.io/zzstoatzz.io/prefect-server@sha256:37d66cdbd7fd0e2582e65b831e4e8eebf8c457a896d8b1375a045b7fda2151fb",
+  "k3d_version": "5.9.0",
+  "k3s_version": "v1.35.5+k3s1",
+  "authentication": {
+    "anonymous": 401,
+    "original_credential": 401,
+    "pilot_credential": 200
+  },
+  "cluster_restart_passed": true,
+  "backup_restore_canary_rows": 1,
+  "original_hostname_unchanged": true,
+  "ui_archive_sha256": "d7a1df343e8aa563c3108fd4968f017335e17d40f0ec4fb259966c6721f231eb",
+  "backups_encrypted_and_copied_off_host": true,
+  "original": {
+    "deployment_id": "5089a7a2-d3ed-46c6-99bf-314948792a8b",
+    "pin": "@471219cf4b3b32cea0dee0b8a1bf930f374b8a8c",
+    "schedules": [],
+    "runs": [
+      {
+        "id": "ee73999f-07c5-41de-b92e-ba44c282ccf1",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-16T20:12:26.539220Z",
+        "start_time": "2026-10-16T20:13:02.957737Z",
+        "end_time": "2026-10-16T20:14:03.894599Z"
+      },
+      {
+        "id": "f565ee0b-9613-46c7-b233-debe5d1554a6",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-16T20:30:00.000000Z",
+        "start_time": "2026-10-16T20:30:14.944467Z",
+        "end_time": "2026-10-16T20:30:22.382782Z"
+      },
+      {
+        "id": "fbd6cf2a-d35a-471a-831f-5f778ee65b7e",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-16T21:00:00.000000Z",
+        "start_time": "2026-10-16T21:00:27.248902Z",
+        "end_time": "2026-10-16T21:00:36.104659Z"
+      },
+      {
+        "id": "dd6f80bc-d65c-4276-8667-0e4a9ee4f682",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-16T21:30:00.000000Z",
+        "start_time": "2026-10-16T21:30:12.107514Z",
+        "end_time": "2026-10-16T21:30:20.155175Z"
+      },
+      {
+        "id": "8fee9674-0aba-4f3d-9c91-2254dc417baf",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-16T22:00:00.000000Z",
+        "start_time": "2026-10-16T22:00:16.710311Z",
+        "end_time": "2026-10-16T22:00:24.732877Z"
+      },
+      {
+        "id": "80c30109-991b-4649-a43a-f792843665b0",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-16T22:30:00.000000Z",
+        "start_time": "2026-10-16T22:30:07.590321Z",
+        "end_time": "2026-10-16T22:30:16.652637Z"
+      },
+      {
+        "id": "27d784a9-9578-47f7-8d4e-2790c7717d43",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-16T23:00:00.000000Z",
+        "start_time": "2026-10-16T23:00:15.188242Z",
+        "end_time": "2026-10-16T23:00:23.070345Z"
+      },
+      {
+        "id": "52dfc9f1-7105-441c-b2ef-66a3e0e506c7",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-16T23:30:00.000000Z",
+        "start_time": "2026-10-16T23:30:18.840204Z",
+        "end_time": "2026-10-16T23:30:26.809522Z"
+      },
+      {
+        "id": "f3677dd0-9d7a-4931-b925-e1c0a2853eb9",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-17T00:00:00.000000Z",
+        "start_time": "2026-10-17T00:00:10.405921Z",
+        "end_time": "2026-10-17T00:00:18.842622Z"
+      },
+      {
+        "id": "545c83b4-b3e5-4f4e-96e6-a254bfbb73da",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-17T00:30:00.000000Z",
+        "start_time": "2026-10-17T00:30:16.302874Z",
+        "end_time": "2026-10-17T00:30:24.475389Z"
+      },
+      {
+        "id": "99004e17-f087-44b9-891c-8276ab108b99",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-17T01:00:00.000000Z",
+        "start_time": "2026-10-17T01:00:07.151178Z",
+        "end_time": "2026-10-17T01:00:13.120908Z"
+      },
+      {
+        "id": "c2e619df-355a-4d21-bab9-f6171535a0c0",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-17T01:30:00.000000Z",
+        "start_time": "2026-10-17T01:30:09.275537Z",
+        "end_time": "2026-10-17T01:30:15.233954Z"
+      },
+      {
+        "id": "62e6cd68-ebd1-4a33-a281-9e8f07c1dbb1",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-17T02:00:00.000000Z",
+        "start_time": "2026-10-17T02:00:06.957817Z",
+        "end_time": "2026-10-17T02:00:13.082211Z"
+      },
+      {
+        "id": "77eb6bdd-0c81-4303-a2b8-51973debec40",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-17T02:30:00.000000Z",
+        "start_time": "2026-10-17T02:30:09.706690Z",
+        "end_time": "2026-10-17T02:30:15.376498Z"
+      },
+      {
+        "id": "4fab40d8-bfae-4deb-bbdb-99313200abc7",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-17T03:00:00.000000Z",
+        "start_time": "2026-10-17T03:00:09.945258Z",
+        "end_time": "2026-10-17T03:00:15.815521Z"
+      },
+      {
+        "id": "7d72824c-64f4-4c60-8510-786b3c8ef6f4",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-17T03:30:00.000000Z",
+        "start_time": "2026-10-17T03:30:09.355367Z",
+        "end_time": "2026-10-17T03:30:15.693516Z"
+      },
+      {
+        "id": "e6b1b23b-6875-49c6-94ec-6d2a8d455a8e",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-17T04:00:00.000000Z",
+        "start_time": "2026-10-17T04:00:09.384180Z",
+        "end_time": "2026-10-17T04:00:15.342117Z"
+      },
+      {
+        "id": "c244d865-70aa-47a4-b61b-ebb3501b9ee9",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-17T04:30:00.000000Z",
+        "start_time": "2026-10-17T04:30:03.429689Z",
+        "end_time": "2026-10-17T04:30:09.504063Z"
+      },
+      {
+        "id": "8d44eed3-6a2c-4a65-8124-ee8f52a81766",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-17T05:00:00.000000Z",
+        "start_time": "2026-10-17T05:00:34.623698Z",
+        "end_time": "2026-10-17T05:00:49.083265Z"
+      },
+      {
+        "id": "8cdc64bc-1fae-4087-acac-5f1e97f86574",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-17T05:30:00.000000Z",
+        "start_time": "2026-10-17T05:30:02.579667Z",
+        "end_time": "2026-10-17T05:30:08.490893Z"
+      }
+    ]
+  },
+  "pilot": {
+    "deployment_id": "75c6a70d-2fcb-46c5-adc9-09522f6f2aea",
+    "pin": "@73681335f5c0a38c24e97a2bf4c3cfbfd90cb7e5",
+    "schedules": [
+      {
+        "id": "944cb494-747b-45b3-8f10-0a69e4e8ed64",
+        "created": "2026-10-25T23:51:05.835861Z",
+        "updated": "2026-10-25T23:51:05.835861Z",
+        "deployment_id": "75c6a70d-2fcb-46c5-adc9-09522f6f2aea",
+        "schedule": {
+          "cron": "*/30 * * * *",
+          "timezone": "UTC"
+        },
+        "active": true,
+        "max_scheduled_runs": null,
+        "parameters": {},
+        "slug": null
+      }
+    ],
+    "runs": [
+      {
+        "id": "5a9f6726-a50c-4491-a20c-9ef0f927ef24",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-25T23:49:44.553338Z",
+        "start_time": "2026-10-25T23:49:56.459398Z",
+        "end_time": "2026-10-25T23:50:01.398372Z"
+      },
+      {
+        "id": "47e960ba-ebf5-428d-bf31-9d1fdff1d078",
+        "state": "COMPLETED",
+        "expected_start_time": "2026-10-25T23:51:34.988770Z",
+        "start_time": "2026-10-25T23:51:50.597513Z",
+        "end_time": "2026-10-25T23:51:55.324778Z"
+      },
+      {
+        "id": "6e55d697-e6f1-4530-9bb1-4686db1e7a6c",
+        "state": "SCHEDULED",
+        "expected_start_time": "2026-10-26T00:00:00.000000Z",
+        "start_time": null,
+        "end_time": null
+      },
+      {
+        "id": "297b3682-6c85-44b8-97da-2e38ae3be699",
+        "state": "SCHEDULED",
+        "expected_start_time": "2026-10-26T00:30:00.000000Z",
+        "start_time": null,
+        "end_time": null
+      },
+      {
+        "id": "61c643b8-211c-43f5-bf4e-df5de76a8800",
+        "state": "SCHEDULED",
+        "expected_start_time": "2026-10-26T01:00:00.000000Z",
+        "start_time": null,
+        "end_time": null
+      }
+    ]
+  },
+  "canary": {
+    "id": "cd329e02-5117-4ea5-9575-61c9a9d2545a",
+    "state": "COMPLETED"
+  }
+}

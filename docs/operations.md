@@ -140,3 +140,10 @@ just init-analytics    # first time: dbt deps, seed, compile
 `analytics.duckdb` is single-writer. every read-write open holds the
 `analytics-duckdb-writer` global concurrency limit through
 `mps.lock.analytics_write_slot`; readers snapshot the file instead of locking.
+
+## Isolated HeavyPad control-plane pilot
+
+The pilot is live at a separate private Tailscale HTTPS URL, with one low-risk
+backlog-count flow migrated. The original server, domain and worker still serve
+critical jobs. Use the explicit pilot CLI and Kubernetes targets; do not change
+the default context. [Pilot operations, backups, rollback and cutover prerequisites](../deploy/heavypad-prefect/README.md).
