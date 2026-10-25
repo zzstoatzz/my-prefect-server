@@ -117,3 +117,68 @@ The index sort briefly retains approximately 30 GB of spill files alongside its
 58.12 GB staging database. Future runs now require 96 GiB free before starting,
 so that this measured peak also fits the separate 8 GiB remaining-space reserve.
 The original 80 GiB threshold did not budget enough headroom for both.
+
+## Qualified fresh generation
+
+Conversion completed at 03:35:43 UTC. Its compact generation is
+`b1792896197-ebe5-px05`, with 12,757,757 actors, 147,835,341 keys and source
+watermark 1792894100. The manifest SHA-256 is
+`3d6f572c3027b6cdaef7dd4035014d7fbab39f9f96be557042e4cd47118dafbd`.
+The legacy database's completed size is 16,302,272,512 bytes; the compact prefix
+file is 7,290,933,248 bytes.
+
+Independent current-reader qualification overlapped staged artifact publication,
+using SHA-256-checked local SSD copies. It passed native attach (57.297 seconds),
+initial replay to zero lag, exact-handle and general searches, equivalent hostname
+and URL PDS scopes, excluded-scope 503 and unknown-scope empty results. Query
+times in this check were 2.31–9.09 ms, with process RSS 142,308 KiB. The reader
+was terminated cleanly after the checks; this was not a production restart.
+The production pointer promotion still requires the entire publisher flow to be
+Completed and staging-pointer/remote-artifact verification to pass.
+
+The initial 20 MiB/s cloud transfer cap was lifted only on this worker's new
+staging-generation Rclone upload/readback processes, using the documented SIGUSR2
+bandwidth-limiter toggle. The helper records PID/start-time identities so a
+process is signalled once. It must be stopped after this publication. Checksums,
+artifact identity checks and the CPU/memory service budgets were preserved.
+
+The retained builder executable used for the first reader check was not
+byte-identical to the deployed search executable. That report is retained as
+`qualification.builder-reader.json`; it does not satisfy the publication gate.
+The exact deployed executable was retrieved read-only from the existing Fly
+machine and hash-checked before testing:
+`c3c6cf72a20d0334654ba95da41aabcd6f5e44a68293d6cf670eb5abc820c330`.
+A second complete qualification passed with that executable: attach 57.6 seconds,
+zero replay lag, all global/PDS and negative checks, peak RSS 159,152 KiB. The
+promotion guard requires this exact executable identity in the successful report.
+No production search process was restarted or reconfigured for either test.
+
+Live Wrangler lifecycle inspection confirmed the documented policy: `builds/`
+expires after 21 days, `staging/` after 7, with no object-expiration rule matching
+`releases/`. The initial fresh pointer may reference staged objects while the
+three-day production cadence is restored. Rollout preparation must also preserve
+a fresh compact/legacy recovery pair under `releases/`; do not rely on expiring
+staging paths for recovery. The seven-day tombstone replay constraint still applies.
+
+## Completed cloud publication and data promotion
+
+The full staging flow completed at 04:09:54 UTC, after remote checksum verification
+and two verified generation archives. Pruning conservatively skipped deletion
+while public freshness still returned 503. The disk guard recorded no low-space
+stop. Its checkpoint archival event and the build-cache cleanup receipts remain
+available; the temporary transfer-cap helper was stopped after completion.
+
+Real small-object probes isolated the HTTP 501 to Rclone's post-upload HEAD
+check. `--s3-no-head` and its deployment environment equivalent both returned
+zero with matching readback bytes. Disabling MD5 did not fix it and is not used.
+Future cloud configuration sets `RCLONE_S3_NO_HEAD=true` while retaining the
+publisher's full SHA-256/size readback for all objects, and uses an 80 MiB/s cap.
+Probe objects were deleted.
+
+The guarded production data pointer promotion succeeded at 04:11:06 UTC, with
+matching staged/local manifest bytes, exact production-reader qualification,
+verified artifact sizes, the preserved old pointer and successful pointer
+readback. Its receipt is `freshness-publication-20261025.json` on the cloud host.
+The production search image and front-door routing were unchanged. Serving
+freshness is not yet confirmed; observe automatic installation before declaring
+recovery or activating the publishing schedule.

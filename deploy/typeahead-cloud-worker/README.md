@@ -45,3 +45,10 @@ A recovery run may pass `reuse_source` with an existing absolute SQLite checkpoi
 path. This selects the native reader's existing `INDEX_REUSE_SOURCE` path and
 avoids another source export. The default remains `None`, so scheduled runs export
 a fresh checkpoint. Validate and record the preserved input before using it.
+
+The cloud Rclone build rejects its post-upload HEAD request with HTTP 501.
+`RCLONE_S3_NO_HEAD=true` avoids that incompatible request. The compact publisher
+still reads every uploaded object back and checks its full SHA-256 and size;
+this verification is mandatory before pointer publication. Real small-object
+probes verified clean upload/readback with this setting and were deleted.
+The cloud transfer cap is 80 MiB/s; the old home-transfer cap is not retained.

@@ -561,7 +561,8 @@ deployments:
           INDEX_PDS_MAX_ACTORS: "10000"
           INDEXER_VERSION: hetzner-cloud
           # This transfer runs entirely on cloud infrastructure.
-          RCLONE_BWLIMIT: "20M"
+          RCLONE_BWLIMIT: "80M"
+          RCLONE_S3_NO_HEAD: "true"
     concurrency_limit: *cancel_new
     schedules:
       # every 3rd day-of-month, not daily. The
