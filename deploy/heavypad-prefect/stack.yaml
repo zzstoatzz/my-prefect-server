@@ -184,6 +184,7 @@ spec:
       containers:
         - name: services
           image: atcr.io/zzstoatzz.io/prefect-server@sha256:37d66cdbd7fd0e2582e65b831e4e8eebf8c457a896d8b1375a045b7fda2151fb
+          command: [/app/prefect-server]
           args: [services]
           envFrom: [{configMapRef: {name: server-env}}]
           env:
