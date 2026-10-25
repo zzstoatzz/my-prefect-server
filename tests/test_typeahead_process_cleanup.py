@@ -12,7 +12,9 @@ from flows.typeahead_index import ProcessExecutionError, _stream
 
 
 def alive(pid):
-    result = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        ["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True, check=False
+    )
     return result.returncode == 0 and not result.stdout.strip().startswith("Z")
 
 

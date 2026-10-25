@@ -107,7 +107,11 @@ def test_completed_publication_with_real_rclone_links_and_retry(tmp_path, monkey
     archive.mkdir()
     fixture = tmp_path / "fixture"
     subprocess.run(
-        [sys.executable, str(repo / "scripts/snapshot_compaction/recovery_fixture.py"), str(fixture)],
+        [
+            sys.executable,
+            str(repo / "scripts/snapshot_compaction/recovery_fixture.py"),
+            str(fixture),
+        ],
         check=True,
     )
     bid = f"b{int(time.time())}-links"
@@ -118,23 +122,39 @@ def test_completed_publication_with_real_rclone_links_and_retry(tmp_path, monkey
         db.execute("UPDATE index_meta SET value=? WHERE key='build_id'", (bid,))
         db.execute("UPDATE index_meta SET value=? WHERE key='source_watermark'", (str(watermark),))
     manifest = json.loads((source / "manifest.json").read_text())
-    manifest.update(active_build=bid, source_watermark=watermark, snapshot_url=f"builds/{bid}/index.db")
+    manifest.update(
+        active_build=bid, source_watermark=watermark, snapshot_url=f"builds/{bid}/index.db"
+    )
     with (source / "index.db").open("rb") as stream:
         manifest["sha256"] = hashlib.file_digest(stream, "sha256").hexdigest()
     (source / "manifest.json").write_text(json.dumps(manifest))
     compact = active / ("build-" + bid + "-px05")
     subprocess.run(
-        [sys.executable, str(repo / "scripts/snapshot_compaction/convert.py"), "--unlimited-cpu",
-         "--source", str(source / "index.db"), "--manifest", str(source / "manifest.json"),
-         "--output", str(compact), "--build-id", bid + "-px05"],
+        [
+            sys.executable,
+            str(repo / "scripts/snapshot_compaction/convert.py"),
+            "--unlimited-cpu",
+            "--source",
+            str(source / "index.db"),
+            "--manifest",
+            str(source / "manifest.json"),
+            "--output",
+            str(compact),
+            "--build-id",
+            bid + "-px05",
+        ],
         check=True,
     )
     monkeypatch.setattr(flow, "INDEXER_HOME", work)
     for name, value in {
-        "INDEX_BUILD_ROOT": str(active), "INDEX_ARCHIVE_ROOT": str(archive),
-        "INDEX_CHANNEL": "managed", "INDEX_R2_BUCKET": str(remote),
-        "INDEX_R2_ENDPOINT": "https://unused.invalid", "INDEX_R2_ACCESS_KEY_ID": "unused",
-        "INDEX_R2_SECRET_ACCESS_KEY": "unused", "RCLONE_CONFIG_R2_TYPE": "local",
+        "INDEX_BUILD_ROOT": str(active),
+        "INDEX_ARCHIVE_ROOT": str(archive),
+        "INDEX_CHANNEL": "managed",
+        "INDEX_R2_BUCKET": str(remote),
+        "INDEX_R2_ENDPOINT": "https://unused.invalid",
+        "INDEX_R2_ACCESS_KEY_ID": "unused",
+        "INDEX_R2_SECRET_ACCESS_KEY": "unused",
+        "RCLONE_CONFIG_R2_TYPE": "local",
     }.items():
         monkeypatch.setenv(name, value)
     output = flow.publish_completed_generation.fn(repo, str(compact))
@@ -148,4 +168,6 @@ def test_completed_publication_with_real_rclone_links_and_retry(tmp_path, monkey
     os.link(compact / "index.db", link)
     assert flow.publish_completed_generation.fn(repo, str(compact)) == output
     assert pointer.read_bytes() == before
-    assert (remote / published["prefix_map"]["object_key"]).read_bytes() == (compact / "index.db.prefix").read_bytes()
+    assert (remote / published["prefix_map"]["object_key"]).read_bytes() == (
+        compact / "index.db.prefix"
+    ).read_bytes()
