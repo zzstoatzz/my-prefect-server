@@ -568,9 +568,10 @@ deployments:
     concurrency_limit: *cancel_new
     schedules:
       # Leave a day before the installer's 3-day admission limit (public alerts at 4).
-      # The current recovery run supplies this cycle; the next is Oct 27 06:00 UTC.
-      - interval: 172800
-        anchor_date: "2026-10-27T06:00:00Z"
+      # Fixed calendar times survive registration. This server's interval scheduler
+      # ignores anchor_date and would push the next run out on each registration.
+      # Odd days at 06:00 UTC: at most 48h apart, sometimes 24h at a month boundary.
+      - cron: "0 6 */2 * *"
         timezone: UTC
         active: true
 

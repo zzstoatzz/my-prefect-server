@@ -2,7 +2,8 @@
 
 Full publication, isolated installation, cached restart, guarded promotion,
 rollback and prepared-candidate recovery passed October 25, 2026. The configured
-cadence is every 48 hours at 06:00 UTC, next October 27. Live schedule registration
+cadence is 06:00 UTC on odd-numbered days, next October 27. Runs are at most
+48 hours apart, with a 24-hour gap at some month boundaries. Live schedule registration
 is being verified after the source update. The public Worker uses the stable
 transport route; no serving machine performs bulk installation.
 
@@ -121,3 +122,8 @@ ten minutes, skips symlinks, and preserves directories referenced by live proces
 files or mappings. Completed `build-*` generations are outside that cleanup.
 The cloud-host test covered real open files, recent staging, completed data and
 symlinks; 6.8 GiB left by the earlier cancelled conversion was removed.
+
+The compatible server retained `anchor_date` on interval registration but queued
+runs at registration time plus the interval. A fixed cron avoids refresh starvation
+when deployments are frequently registered. Verify the queued dates, not just the
+stored schedule object, after changing this configuration.
