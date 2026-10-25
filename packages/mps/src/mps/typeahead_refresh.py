@@ -231,7 +231,15 @@ class Refresh:
         current = route_target(route)
         self.healthy(current, require_fresh=False)
         if current["build_id"] == manifest["active_build"]:
-            return {"idempotent": True, "build_id": current["build_id"], "passed": True}
+            return {
+                "idempotent": True,
+                "build_id": current["build_id"],
+                "current": current,
+                "previous": route.get("previous"),
+                "qualified": self.candidate_checks(current),
+                "observations": self.watch(current),
+                "passed": True,
+            }
         status = self.healthy(current, require_fresh=False)["index"]
         if manifest["source_watermark"] < current["source_watermark"] or any(
             manifest[k] < status[k] // 2 for k in ["actor_count", "prefix_count"]

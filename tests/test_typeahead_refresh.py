@@ -34,7 +34,14 @@ def test_real_route_compare_and_swap_and_resource_guard(monkeypatch):
     service = refresh.Refresh(logging.getLogger(__name__))
     artifact_keys = []
     try:
-        origin = refresh.origin(refresh.SLOTS[0])
+        actual_route = json.loads(
+            service.s3.get_object(Bucket=service.bucket, Key="control/search-routing.json")[
+                "Body"
+            ].read()
+        )
+        origin = actual_route["current"]["origin"]
+        active_app = next(app for app in refresh.SLOTS if refresh.origin(app) == origin)
+        inactive_app = next(app for app in refresh.SLOTS if app != active_app)
         code, status, _ = service.get(origin, "/index/status")
         assert code == 200
         route = {
@@ -51,9 +58,9 @@ def test_real_route_compare_and_swap_and_resource_guard(monkeypatch):
         )
         fetched, etag = service.route()
         assert fetched == route
-        service.serving_guard(fetched, etag, refresh.SLOTS[1])
+        service.serving_guard(fetched, etag, inactive_app)
         with pytest.raises(RuntimeError, match="refusing inactive resource mutation"):
-            service.serving_guard(fetched, etag, refresh.SLOTS[0])
+            service.serving_guard(fetched, etag, active_app)
         replacement = dict(route, promoted_at=1)
         next_etag = service.replace_route(replacement, etag)
         assert service.route() == (replacement, next_etag)
@@ -61,7 +68,7 @@ def test_real_route_compare_and_swap_and_resource_guard(monkeypatch):
             service.replace_route(route, etag)
         assert error.value.response["ResponseMetadata"]["HTTPStatusCode"] == 412
         with pytest.raises(RuntimeError, match="Routing changed"):
-            service.serving_guard(fetched, etag, refresh.SLOTS[1])
+            service.serving_guard(fetched, etag, inactive_app)
         assert service.route()[0] == replacement
         with pytest.raises(RuntimeError, match="snapshot identity mismatch"):
             service.healthy({**route["current"], "build_id": "b1792908655-does-not-exist"})
