@@ -83,7 +83,7 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
 
     check_disk_reserve()
     proc = subprocess.Popen(
-        cmd,
+        [sys.executable, "-m", "mps.process_guard", "--parent", str(os.getpid()), "--", *cmd],
         cwd=str(cwd),
         env=env,
         stdout=subprocess.PIPE,
@@ -106,7 +106,7 @@ def _stream(cmd: list[str], cwd: Path, env: dict, timeout: int) -> None:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     raise subprocess.TimeoutExpired(cmd, timeout)
-                for key, _ in selector.select(remaining):
+                for key, _ in selector.select(min(1.0, remaining)):
                     chunk = os.read(key.fd, 65536)
                     if not chunk:
                         selector.unregister(key.fileobj)
@@ -262,6 +262,31 @@ def run_indexer(
             raise RuntimeError("expected exactly one completed legacy source build")
         return created.pop().parent
     return None
+
+
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
+def ensure_compactor(repo: Path) -> Path:
+    suffix = "dylib" if sys.platform == "darwin" else "so"
+    library = repo / "services/zig-out/lib" / ("libtypeahead_compact." + suffix)
+    if not library.is_file():
+        zig = zig_for(repo / "services/build.zig.zon")
+        _stream(
+            [
+                zig,
+                "build",
+                "compact",
+                "-Doptimize=ReleaseSafe",
+                "-j1",
+                "--cache-dir",
+                str(INDEXER_HOME / "zig-cache"),
+            ],
+            repo / "services",
+            dict(os.environ),
+            timeout=600,
+        )
+    if not library.is_file():
+        raise RuntimeError("Native compactor artifact is missing after cache restoration")
+    return library
 
 
 def compact_target() -> tuple[str, str] | None:
@@ -601,11 +626,11 @@ def typeahead_index(
             raise ValueError("Completed generation identity or freshness is invalid")
         if manifest["manifest_version"] == 1:
             compact = source.parent / (source.name + "-px05")
-            generation = (
-                publish_completed_generation(repo, str(compact))
-                if (compact / "manifest.json").exists()
-                else publish_compact(repo, source)
-            )
+            if (compact / "manifest.json").exists():
+                generation = publish_completed_generation(repo, str(compact))
+            else:
+                ensure_compactor(repo)
+                generation = publish_compact(repo, source)
         else:
             generation = publish_completed_generation(repo, resume_generation)
         refresh_snapshot(generation)

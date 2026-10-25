@@ -52,3 +52,8 @@ still reads every uploaded object back and checks its full SHA-256 and size;
 this verification is mandatory before pointer publication. Real small-object
 probes verified clean upload/readback with this setting and were deleted.
 The cloud transfer cap is 80 MiB/s; the old home-transfer cap is not retained.
+
+The pool and worker both need a concurrency limit of one. On the operator checkout,
+run `just prefect work-pool set-concurrency-limit typeahead-cloud-pool 1` after
+creating the pool, then inspect the live pool limit. Deployment registration does
+not replace this pool setting. The worker service also retains `--limit 1`.

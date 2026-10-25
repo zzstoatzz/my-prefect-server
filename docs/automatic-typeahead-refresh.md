@@ -80,3 +80,9 @@ returns a Degraded state rather than claiming freshness was restored.
 Completed data can be resumed with the per-run parameter
 `resume_generation=/var/lib/typeahead-indexer/active/build-<id>`. This parameter
 must not be saved into the scheduled deployment defaults.
+
+Subprocesses run under a parent-liveness guard. Normal cancellation, timeout, and
+parent death terminate the command's process group, including grandchildren. Disk
+reserve checks wake at least once per second even if the command is silent.
+Recovery restores the native compactor from the persistent compiler cache after
+a fresh checkout; it does not repeat an already completed corpus build.
