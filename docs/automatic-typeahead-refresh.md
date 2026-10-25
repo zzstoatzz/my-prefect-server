@@ -3,8 +3,8 @@
 Full publication, isolated installation, cached restart, guarded promotion,
 rollback and prepared-candidate recovery passed October 25, 2026. The configured
 cadence is 06:00 UTC on odd-numbered days, next October 27. Runs are at most
-48 hours apart, with a 24-hour gap at some month boundaries. Live schedule registration
-is being verified after the source update. The public Worker uses the stable
+48 hours apart, with a 24-hour gap at some month boundaries. Live registration and queued parameters
+are verified against the actual server. The public Worker uses the stable
 transport route; no serving machine performs bulk installation.
 
 ## Data and deployment sequence
@@ -92,8 +92,8 @@ installation over. An unexpected change of publication rejects the retry.
 Never persist `resume_rollout=true` into the scheduled deployment defaults.
 
 The [Typeahead execution record](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/ops/automatic-refresh-20261025.md)
-contains full-cycle, rollback, retry and resource receipts. Source configuration
-alone does not establish that the live schedule is registered.
+contains full-cycle, rollback, retry and resource receipts. The [schedule receipt](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/evals/startup-refresh-schedule-20261025.json)
+records the active cron, next queued runs, cloud pool, source pin and normal parameters.
 
 ## Operator rollback
 

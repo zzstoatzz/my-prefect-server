@@ -83,6 +83,9 @@ image and worker-path deployments.
 
 ## Typeahead PDS publisher configuration — 2026-10-20
 
+Historical configuration. The October 25 [automatic cloud refresh](automatic-typeahead-refresh.md)
+supersedes this section's pool, schedule, channel and installation assumptions.
+
 The configuration selects immutable Typeahead tag `pds-compact-31ec142-20261020`
 (on main, with the qualified native source), `snapshot_format: compact`, and
 `INDEX_PDS_MAX_ACTORS=10000`. It preserves the active cron `0 9 */3 * *`,

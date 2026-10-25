@@ -62,7 +62,8 @@ resource-limited cloud pool. The [automatic refresh](docs/automatic-typeahead-re
 prepares an independent idle backend, verifies it, then conditionally changes
 routing while retaining the previous backend. Full rollout, rollback and prepared-candidate recovery passed October 25.
 The index runs at 06:00 UTC on odd-numbered days, at most 48 hours apart. Live
-registration verification follows the source update. The separate PLC
+registration and queued parameters are verified; the next run is October 27 at
+06:00 UTC. The separate PLC
 identity deployment remains paused. See the [cloud worker](deploy/typeahead-cloud-worker/README.md)
 for resource limits and recovery, and the [historical bandwidth hold](docs/archive/typeahead-home-bandwidth-hold-20261020.md)
 for the home migration context.
