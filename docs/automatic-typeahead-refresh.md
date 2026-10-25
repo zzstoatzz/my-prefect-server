@@ -73,6 +73,11 @@ old-backend rollback is unavailable until another successful refresh. R2 artifac
 and pinned images remain for installation/replay recovery. See the
 [retirement receipt](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/ops/automatic-refresh-20261025.md#superseded-backend-retirement).
 
+The Fly cost collector resolves `waiting_for_detach` entries through the per-volume
+endpoint before pricing them: the list can retain a deleted test disk while the
+canonical resource is already `pending_destroy`. The live check after retirement
+found one such 20 GiB entry; excluding it removes a false $3/month charge.
+
 `prefect.yaml` owns the schedule, format, immutable source/image pins, cloud paths,
 reserves and app-scoped Secret-block references. The billing Fly credential remains
 read-only. The two deployment credentials are backed by the encrypted secrets

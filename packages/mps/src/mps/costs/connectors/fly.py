@@ -218,6 +218,16 @@ async def _apps_with_resources(token: str, org: str) -> dict[str, dict[str, list
                 get_json(f"/apps/{app}/machines"),
                 get_json(f"/apps/{app}/volumes"),
             )
+
+            async def canonical_volume(volume: dict) -> dict:
+                if volume.get("state") != "waiting_for_detach":
+                    return volume
+                async with semaphore:
+                    response = await client.get(f"/apps/{app}/volumes/{volume['id']}")
+                    response.raise_for_status()
+                    return response.json()
+
+            app_volumes = list(await asyncio.gather(*(canonical_volume(v) for v in app_volumes)))
             snapshot_groups = await asyncio.gather(
                 *(
                     get_json(f"/apps/{app}/volumes/{volume['id']}/snapshots")
