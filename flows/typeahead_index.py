@@ -269,7 +269,7 @@ def ensure_compactor(repo: Path) -> Path:
     suffix = "dylib" if sys.platform == "darwin" else "so"
     library = repo / "services/zig-out/lib" / ("libtypeahead_compact." + suffix)
     if not library.is_file():
-        zig = zig_for(repo / "services/build.zig.zon")
+        zig = zig_for(repo / "services")
         _stream(
             [
                 zig,
@@ -348,6 +348,8 @@ def publish_compact(repo: Path, source: Path) -> Path:
         or candidate["source_watermark"] != legacy["source_watermark"]
     ):
         raise ValueError("existing compact generation does not match source")
+    if target == ("releases/search", "control/builds/latest.json"):
+        return publish_completed_generation.fn(repo, str(output))
     if target is not None:
         _stream(
             quiet_command(
@@ -656,6 +658,8 @@ def typeahead_index(
 
             refresh_snapshot(generation)
             prune_snapshot_artifacts()
+        if generation.parent == INDEXER_HOME / "completed-publications":
+            shutil.rmtree(generation)
     else:
         if automatic_refresh:
             raise ValueError("Automatic rollout requires compact snapshots")
