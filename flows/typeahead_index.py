@@ -1,29 +1,17 @@
 """
-Build the typeahead prefix-index snapshot (the offline `MODE=indexer` job) on
-the home box and publish it to R2.
+Build the offline Typeahead snapshot on the cloud process worker and publish to R2.
 
-This is the Zig snapshot builder lifted off Fly. It's a pure batch job — reads
-the actor corpus from Turso, builds the prefix index on local disk, uploads it
-to R2, rewrites `latest.json`, and exits. No server, no ingress. App B
-(typeahead-search) promotes the new snapshot on its own. If this run is late or
-fails, the last good snapshot keeps serving, so there's no SLA here.
+The flow clones the pinned builder source, compiles it with the host toolchain,
+exports the actor corpus, builds on local SSD, and publishes an immutable snapshot
+and its manifest. Compact publication also retains a legacy twin at the same
+watermark. Search installs new generations while the previous snapshot serves.
+Freshness monitoring requires a successful publication at least every four days.
 
-The flow is a thin shim around the Zig binary: clone typeahead → `zig build`
-(native, host toolchain installed by typeahead `deploy/home-indexer/install.sh`)
-→ run the binary with the publish env. Zig + rclone must be on PATH (they are,
-under ~/.local/bin, for the home-pool worker unit).
-
-Secrets are injected as env vars from Secret blocks via the deployment's
-`job_variables.env` in prefect.yaml; subprocesses just inherit the env. Flow
-code never touches the Secret API.
-
-Expected env (set by the deployment):
-  - TURSO_URL                     (block: turso-url — BARE host, no scheme)
-  - TURSO_AUTH_TOKEN              (block: turso-token)
-  - INDEX_R2_ENDPOINT/_BUCKET/_ACCESS_KEY_ID/_SECRET_ACCESS_KEY  (R2 creds)
-  - INDEX_CHANNEL                 (prod | staging | local; default local=no upload)
-  - INDEX_ALLOW_PROD             (=1 to arm prod publish)
-  - INDEX_BUILD_ROOT             (persistent NVMe path; NOT /tmp — build peaks ~65GB)
+Runtime secrets are resolved from deployment Secret-block references. The flow
+passes them to child processes without reading Secret blocks itself. Deployment
+configuration controls staging versus production publication, local SSD and archive
+paths, and minimum free-space reserves. Completed generations move to the archive
+only after copied artifacts match their published checksums.
 """
 
 import hashlib
