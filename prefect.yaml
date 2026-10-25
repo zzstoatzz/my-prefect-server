@@ -567,16 +567,11 @@ deployments:
           RCLONE_S3_NO_HEAD: "true"
     concurrency_limit: *cancel_new
     schedules:
-      # every 3rd day-of-month, not daily. The
-      # snapshot tolerates days of staleness because the live overlay covers
-      # recently-ingested actors.
-      - cron: "0 9 */3 * *"  # 09:00 UTC, every 3rd day-of-month
-        # ACTIVE 2026-06-18: the full path is validated end-to-end — local run
-        # e3b70e03 proved build->index, and a staging run published a 10GB snapshot
-        # to R2 (staging/heavypad-validation/b1781771245-1b0a + its latest pointer).
-        # Registration replaces schedules; preserve this cron and verify the
-        # queued run parameters after changing the immutable source pin.
-        # Paused 2026-10-20: home ISP overages; qualify cloud replacement first.
+      # Leave a day before the installer's 3-day admission limit (public alerts at 4).
+      # The current recovery run supplies this cycle; the next is Oct 27 06:00 UTC.
+      - interval: 172800
+        anchor_date: "2026-10-27T06:00:00Z"
+        timezone: UTC
         active: false
 
   - name: typeahead-plc-identity

@@ -57,19 +57,14 @@ prefect 3 python.
 The hub dbt models run in [Dagster on HeavyPad](deploy/dagster/README.md). Prefect
 retains ingestion/classification and a success-gated handoff to downstream flows.
 
-Typeahead's two bulk schedules (`typeahead-index` and
-`typeahead-plc-identity`) are configured inactive as of October 20, 2026 to
-avoid further metered transfers during the cloud coverage repair. Live relay
-ingestion and search continue; this does not pause the home worker or other
-flows. See [the bandwidth hold](docs/archive/typeahead-home-bandwidth-hold-20261020.md)
-for resumption requirements. The index deployment is being qualified on the
-resource-limited `typeahead-cloud-pool`, with active SQLite work on local SSD
-and verified completed artifacts archived to a volume; its schedule stays inactive and its
-pointer stays staging until publication and serving checks pass. See
-[cloud publisher](deploy/typeahead-cloud-worker/README.md).
-The [automatic refresh implementation](docs/automatic-typeahead-refresh.md) adds
-isolated backend preparation and guarded routing; full-cycle qualification and
-schedule activation are still pending.
+Typeahead snapshot builds have moved from the home publisher to the
+resource-limited cloud pool. The [automatic refresh](docs/automatic-typeahead-refresh.md)
+prepares an independent idle backend, verifies it, then conditionally changes
+routing while retaining the previous backend. Full-cycle qualification is underway;
+the recurring index schedule remains inactive until acceptance. The separate PLC
+identity deployment remains paused. See the [cloud worker](deploy/typeahead-cloud-worker/README.md)
+for resource limits and recovery, and the [historical bandwidth hold](docs/archive/typeahead-home-bandwidth-hold-20261020.md)
+for the home migration context.
 
 ## gardener
 
@@ -156,16 +151,13 @@ just push                                 # github first (installs come from the
 [MIT](LICENSE)
 
 Typeahead publisher configuration selects compact format and immutable source tag
-`pds-compact-31ec142-20261020`, with a 10,000-actor cutoff for PDS scopes. The configured cron is still inactive during the new refresh qualification.
-The prepared managed channel verifies compact artifacts and their same-watermark
-SQLite twin, then prepares the inactive backend before changing a separate routing
-record. It leaves the historical root pointer unchanged. The
-October 19 scheduled compact publication and native disaster restore passed;
-that does not certify a future scheduled build. The flow still defaults to SQLite
-for callers without deployment parameters. See the
-[deployment validation notes](docs/deployments-validation.md#typeahead-pds-publisher-configuration--2026-10-20)
-and [Typeahead rollout record](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/plans/pds-homepage-rollout.md)
-for qualification, live registration and cutover evidence.
+`pds-compact-31ec142-20261020`, with a 10,000-actor cutoff for PDS scopes. The
+managed channel verifies compact artifacts and their same-watermark SQLite twin,
+then prepares the inactive backend before changing a separate routing record.
+It leaves the historical root pointer unchanged. See the
+[automatic refresh runbook](docs/automatic-typeahead-refresh.md) for current
+qualification, schedule and rollback state. The flow defaults to SQLite for
+callers without deployment parameters.
 
 CI runs the full check and deployment registration workflow in a Spindle NixOS
 microVM. See [deployment validation](docs/deployments-validation.md#ci-execution-environment)

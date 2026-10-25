@@ -27,19 +27,22 @@ rclone/uv and the checksum-pinned Zig 0.17.0 toolchain, and starts the systemd
 worker from a committed MPS revision. Do not put credential values in arguments
 or logs. Inspect `systemctl status prefect-typeahead-worker` and its journal.
 
-`prefect.yaml` is authoritative. Initial qualification preserves the existing
-`pds-compact-31ec142-20261020` builder pin, full corpus and 10,000-actor PDS cutoff,
-but publishes to `staging/cloud-publisher-20261025/latest.json`. The schedule is
-inactive and production publication disarmed until full cloud publication,
-native replay, protected recovery and public freshness pass. Register only the
-selected deployment for manual qualification, with an exact `MPS_PIN`.
+`prefect.yaml` is authoritative for the deployment and schedule. The builder pin
+is `pds-compact-31ec142-20261020`, with the full corpus and 10,000-actor PDS cutoff.
+Publication uses `releases/search/` and `control/builds/latest.json`; it does not
+change the historical root `latest.json`. Both artifact formats remain available
+for the current and previous routed generations. The rollout controller installs
+only onto the inactive Fly slot with independent storage, checks admission and
+queries, and conditionally updates the routing record. Serving compute and disk
+never perform bulk installation. See [automatic refresh](../../docs/automatic-typeahead-refresh.md)
+for qualification, cadence, retention and routing rollback.
 
-After qualification, update production channel/arming and the active schedule in
-`prefect.yaml`, land on main, register and verify the queued run. Do not restore
-the home publisher. Build source and the staged pair must remain available if
-publication fails; do not repeat a successful full source export unnecessarily.
-Backend binary rollout and front-door routing changes are separate work and
-remain on hold pending Nate's explicit authorization.
+Land source/configuration on main before registering the selected deployment with
+an exact `MPS_PIN`. Verify the live schedule, next queued run and its parameters
+after registration. Do not restore the home publisher or enable PLC identity as
+part of snapshot refresh. Preserve completed data when a publication fails;
+`resume_generation` can finish a completed build without another corpus export.
+Never save a recovery path into the deployment's scheduled defaults.
 
 A recovery run may pass `reuse_source` with an existing absolute SQLite checkpoint
 path. This selects the native reader's existing `INDEX_REUSE_SOURCE` path and
