@@ -58,6 +58,12 @@ REPO_URL = "https://github.com/zzstoatzz/my-prefect-server.git"
 GARDENER_DID = getattr(tangled, "GARDENER_DID", "did:plc:7vx7exykq2zfxjxxejovrymi")
 PHI_DID = getattr(tangled, "PHI_DID", "did:plc:65sucjiel52gefhcdcypynsr")
 PULL_PREFIX = f"at://{GARDENER_DID}/sh.tangled.repo.pull/"
+# the frozen wheel's run_pi passes these straight to the `pi` CLI on heavypad,
+# where no aperture provider is configured: pi silently falls back to the
+# operator's ChatGPT codex login and its default model, which ChatGPT accounts
+# stopped serving on 2026-10-15. name both explicitly.
+PI_PROVIDER = "openai-codex"
+PI_MODEL = "gpt-5.6-sol"
 LOG_LINES = 150
 SUMMARY_LIMIT = 240
 PROPOSAL_WINDOW = timedelta(days=7)
@@ -461,7 +467,8 @@ def propose_fix(
         output = run_pi(
             prompt,
             cwd=cwd,
-            provider="aperture",
+            provider=PI_PROVIDER,
+            model=PI_MODEL,
             thinking="medium",
             tool_mode="full",
             skills=skills,
@@ -561,7 +568,8 @@ def autofix(
             diagnosis = run_pi(
                 prompt,
                 cwd=cwd,
-                provider="aperture",
+                provider=PI_PROVIDER,
+                model=PI_MODEL,
                 thinking="medium",
                 tool_mode="read-only",
                 skills=skills,

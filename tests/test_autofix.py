@@ -408,6 +408,7 @@ def test_diagnosis_round_gets_the_context_file_and_the_skill(monkeypatch, tmp_pa
     def fake_pi(prompt, *, cwd, skills=None, **kw):
         seen["context"] = Path(cwd, autofix.CONTEXT_FILE).read_text()
         seen["skills"] = skills
+        seen["runner"] = (kw["provider"], kw["model"])
         return "SUMMARY: x\nbody"
 
     monkeypatch.setattr(autofix, "gather", fake)
@@ -426,6 +427,7 @@ def test_diagnosis_round_gets_the_context_file_and_the_skill(monkeypatch, tmp_pa
     assert state.name == "Diagnosed"
     assert "commits since abc: none" in seen["context"]
     assert seen["skills"] and seen["skills"][0].endswith("skill-gardener-history")
+    assert seen["runner"] == ("openai-codex", "gpt-5.6-sol")
 
 
 def test_autofix_events_name_the_failed_run_without_claiming_to_be_it() -> None:
