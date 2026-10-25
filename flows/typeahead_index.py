@@ -565,7 +565,21 @@ def typeahead_index(
     reuse_source: str | None = None,
     automatic_refresh: bool = False,
     resume_generation: str | None = None,
+    rollback: bool = False,
 ):
+    if rollback:
+        if resume_generation is not None or reuse_source is not None:
+            raise ValueError("Rollback does not build or install a generation")
+        from mps.typeahead_refresh import rollback_snapshot
+        from prefect.states import Completed
+
+        report = rollback_snapshot()
+        if report["freshness"]["stale"]:
+            return Completed(
+                name="Degraded",
+                message="Rollback restored availability; the previous snapshot is stale and needs refresh",
+            )
+        return report
     if resume_generation is not None:
         if snapshot_format != "compact" or not automatic_refresh:
             raise ValueError("Completed-generation recovery requires automatic compact refresh")

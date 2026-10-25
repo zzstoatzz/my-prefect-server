@@ -465,3 +465,58 @@ def prune_snapshot_artifacts():
             service.close()
 
     return prune()
+
+
+def rollback_snapshot():
+    from prefect import get_run_logger
+
+    service = Refresh(get_run_logger())
+    try:
+        route, etag = service.route()
+        previous = route.get("previous")
+        if previous is None:
+            raise RuntimeError("No previous managed backend is available")
+        service.healthy(previous, require_fresh=False)
+        replacement = {
+            "version": 1,
+            "current": previous,
+            "previous": route["current"],
+            "promoted_at": int(time.time()),
+            "rollback": True,
+        }
+        service.replace_route(replacement, etag)
+        time.sleep(2)
+        try:
+            code, freshness, _ = service.get(PUBLIC, "/health/freshness")
+            if (
+                code not in (200, 503)
+                or not freshness.get("ok")
+                or not freshness.get("probe_ok")
+                or freshness.get("build_id") != previous["build_id"]
+            ):
+                raise RuntimeError("Rollback public verification failed")
+            service.candidate_checks(previous)
+        except BaseException:
+            actual, actual_etag = service.route()
+            if actual == replacement:
+                service.healthy(route["current"], require_fresh=False)
+                service.replace_route(route, actual_etag)
+            raise
+        report = {
+            "at_unix": int(time.time()),
+            "current": previous,
+            "previous": route["current"],
+            "freshness": freshness,
+            "machine_or_volume_changed": False,
+            "passed": True,
+        }
+        output = (
+            Path(os.environ["INDEXER_HOME"])
+            / "refresh-receipts"
+            / ("rollback-" + str(int(time.time())) + ".json")
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(report, indent=2) + "\n")
+        return report
+    finally:
+        service.close()

@@ -66,3 +66,17 @@ blocks on startup; neither credential grants Cloudflare account access.
 
 The final qualification record and registered schedule will be linked here after
 the real full-cycle check passes. Current code is not proof that it ran.
+
+## Operator rollback
+
+Run `just prefect deployment run typeahead-index/typeahead-index -p rollback=true`
+to exchange the current/previous routing targets after checking the previous
+backend. This does not rebuild, download, resize, or delete a backend. It checks
+public freshness and direct query contracts afterward, restoring the prior route
+if verification fails. The same command exchanges them again to return to the
+newer backend. A still-serving previous snapshot older than the freshness limit
+returns a Degraded state rather than claiming freshness was restored.
+
+Completed data can be resumed with the per-run parameter
+`resume_generation=/var/lib/typeahead-indexer/active/build-<id>`. This parameter
+must not be saved into the scheduled deployment defaults.
