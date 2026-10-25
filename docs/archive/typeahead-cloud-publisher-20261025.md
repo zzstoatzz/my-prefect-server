@@ -109,3 +109,11 @@ PDS scopes, excluded-scope failure and unknown-scope empty results. The small R2
 manifest promotion is gated on a Completed publisher run, successful qualification,
 staging-pointer equality, preserved old-pointer equality and artifact identities.
 The production backend image and routing remain unchanged throughout data repair.
+
+At 03:28:55 UTC, group/pack completed all 517,844,392 associations into
+147,835,341 keys. The final legacy database is 16,302,268,416 bytes; SQLite
+staging was deleted after detachment, restoring 97.37 GB free on local SSD.
+The index sort briefly retains approximately 30 GB of spill files alongside its
+58.12 GB staging database. Future runs now require 96 GiB free before starting,
+so that this measured peak also fits the separate 8 GiB remaining-space reserve.
+The original 80 GiB threshold did not budget enough headroom for both.
