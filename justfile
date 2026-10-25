@@ -643,3 +643,11 @@ deploy-bandwidth-watchdog:
 [positional-arguments]
 agentic-fastmcp *args:
     bash scripts/agentic_fastmcp.sh "$@"
+
+# Isolated HeavyPad pilot; never changes the original production profile.
+heavypad-prefect *args:
+    uv run scripts/heavypad_prefect_cli.py {{ args }}
+
+# Explicit cluster target; never uses the laptop's current kubectl context.
+heavypad-kubectl *args:
+    ssh -o BatchMode=yes stoat@heavypad 'DOCKER_HOST=unix:///var/run/docker.sock docker exec -i k3d-prefect-home-server-0 k3s kubectl {{ args }}'
