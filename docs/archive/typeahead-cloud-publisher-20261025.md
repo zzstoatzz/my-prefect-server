@@ -182,3 +182,35 @@ readback. Its receipt is `freshness-publication-20261025.json` on the cloud host
 The production search image and front-door routing were unchanged. Serving
 freshness is not yet confirmed; observe automatic installation before declaring
 recovery or activating the publishing schedule.
+
+## Production contention and pointer restoration — current state
+
+The preceding successful publication receipt is superseded by
+`freshness-pointer-restored-20261025.json`. Do not republish that pointer merely
+because its qualification passed.
+
+At 04:12:30 UTC the original production reader began downloading the incoming
+16.30 GB legacy twin. This saturated its serving volume: live search logs showed
+2–8.9 second queries, and health requests timed out. The existing generation
+remained attached; there was no machine restart, image change or new-generation
+activation. This was an availability regression caused by the incoming snapshot
+installation, despite the data and reader qualification passing in isolation.
+
+The incoming Rclone child was paused, immediately restoring query and health
+latency. At 04:20:46 UTC the previous protected production pointer was restored
+and byte-verified. At 04:21:55 the incoming download was cancelled; its failed
+promotion leaves the existing generation active. Checks returned native health
+in 98–121 ms, global search in 185–247 ms and PDS search in 336 ms with valid
+actor results. The original backend image, size and front-door routing remain.
+
+**Public snapshot freshness is still stale and this goal is not complete.**
+The cloud publishing schedule remains inactive and production publication
+explicitly disarmed in source. The fresh artifacts and archives are retained.
+Do not trigger another incoming bulk installation on the serving machine.
+Further installation/rollout work belongs on the isolated parallel backend;
+production traffic changes remain held for Nate's explicit authorization.
+
+The publisher worker was refreshed from main `8e08015`, with Prefect 3.8.2,
+UMask 0077, the existing CPU/memory limits and a verified READY cloud pool.
+It is idle. The temporary transfer-cap helper is stopped. Probe objects were
+removed. Production recovery did not use the Bluesky fallback.
