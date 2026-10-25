@@ -359,7 +359,10 @@ def publish_completed_generation(repo: Path, generation: str) -> Path:
     if compact_target() != ("releases/search", "control/builds/latest.json"):
         raise ValueError("Completed-generation recovery requires the managed channel")
     manifest = json.loads((source / "manifest.json").read_bytes())
-    if manifest["manifest_version"] != 2 or time.time() - manifest["source_watermark"] >= 3 * 86400:
+    if (
+        manifest["manifest_version"] != 2
+        or not 0 <= time.time() - manifest["source_watermark"] < 3 * 86400
+    ):
         raise ValueError("Completed generation must be a fresh compact snapshot")
     bid = manifest["active_build"]
     twin_id = manifest["legacy_twin"]["build_id"]

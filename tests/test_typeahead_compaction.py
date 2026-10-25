@@ -67,3 +67,24 @@ def test_real_converter_flow_retry(tmp_path, monkeypatch):
     (output / "manifest.json").write_text(json.dumps(manifest))
     with pytest.raises(ValueError, match="does not match"):
         publish_compact.fn(repo, source)
+
+
+def test_completed_generation_recovery_rejects_other_roots_and_stale_data(tmp_path, monkeypatch):
+    from flows.typeahead_index import publish_completed_generation
+
+    active, archive = tmp_path / "active", tmp_path / "archive"
+    active.mkdir()
+    archive.mkdir()
+    monkeypatch.setenv("INDEX_BUILD_ROOT", str(active))
+    monkeypatch.setenv("INDEX_ARCHIVE_ROOT", str(archive))
+    monkeypatch.setenv("INDEX_CHANNEL", "managed")
+    assert compact_target() == ("releases/search", "control/builds/latest.json")
+    with pytest.raises(ValueError, match="belong to this publisher"):
+        publish_completed_generation.fn(tmp_path, str(tmp_path / "other"))
+    generation = active / "build-b1792908655-test-px05"
+    generation.mkdir()
+    (generation / "manifest.json").write_text(
+        json.dumps({"manifest_version": 2, "source_watermark": 100})
+    )
+    with pytest.raises(ValueError, match="fresh compact snapshot"):
+        publish_completed_generation.fn(tmp_path, str(generation))

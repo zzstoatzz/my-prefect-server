@@ -224,7 +224,7 @@ class Refresh:
         if (
             manifest["manifest_version"] != 2
             or manifest["format_version"] != 5
-            or time.time() - manifest["source_watermark"] >= 3 * 86400
+            or not 0 <= time.time() - manifest["source_watermark"] < 3 * 86400
         ):
             raise ValueError("A fresh compact generation is required")
         route, etag = self.route()
@@ -284,6 +284,7 @@ class Refresh:
                 "guest": {"cpu_kind": "shared", "cpus": 4, "memory_mb": 1024},
                 "mounts": [{"volume": volume["id"], "path": "/data"}],
                 "restart": {"policy": "on-failure", "max_retries": 3},
+                "stop_config": {"signal": "SIGTERM", "timeout": 60000000000},
                 "metadata": {"owner": OWNER, "build_id": manifest["active_build"]},
                 "services": [
                     {
