@@ -1,0 +1,47 @@
+name: heavypad-prefect-pilot
+
+pull:
+  - prefect.deployments.steps.run_shell_script:
+      stream_output: true
+      script: |
+        bash -c 'git clone --quiet https://github.com/zzstoatzz/my-prefect-server.git pilot-source && git -C pilot-source checkout --quiet "${MPS_PIN#@}"'
+  - prefect.deployments.steps.set_working_directory:
+      directory: pilot-source
+
+deployments:
+  - name: canary
+    entrypoint: flows/prefect_home_canary.py:prefect_home_canary
+    tags: [heavypad-pilot]
+    work_pool: &pilot
+      name: heavypad-pilot-pool
+      job_variables:
+        command: >-
+          uv run --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
+          --with prefect==3.8.2 prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
+    schedules: []
+
+  - name: fastmcp-backlog
+    entrypoint: flows/fastmcp_backlog.py:fastmcp_backlog
+    tags: [watch, heavypad-pilot]
+    work_pool:
+      <<: *pilot
+      job_variables:
+        command: >-
+          uv run --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
+          --with prefect==3.8.2 prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
+          FASTMCP_BACKLOG_PATH: /home/stoat/prefect-analytics/fastmcp-backlog.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
+    parameters:
+      backfill_days: 0
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+      - cron: '*/30 * * * *'
+        timezone: UTC
+        active: false
