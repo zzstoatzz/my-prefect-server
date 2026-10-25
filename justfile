@@ -645,13 +645,20 @@ agentic-fastmcp *args:
     bash scripts/agentic_fastmcp.sh "$@"
 
 # Isolated HeavyPad pilot; never changes the original production profile.
+[positional-arguments]
 heavypad-prefect *args:
-    uv run scripts/heavypad_prefect_cli.py {{ args }}
+    uv run scripts/heavypad_prefect_cli.py "$@"
 
 # Explicit cluster target; never uses the laptop's current kubectl context.
+[positional-arguments]
 heavypad-kubectl *args:
-    ssh -o BatchMode=yes stoat@heavypad 'DOCKER_HOST=unix:///var/run/docker.sock docker exec -i k3d-prefect-home-server-0 kubectl {{ args }}'
+    uv run scripts/heavypad_kubectl.py "$@"
 
 # Create an encrypted pilot backup; the original server is never targeted.
 heavypad-prefect-backup:
     ssh -o BatchMode=yes stoat@heavypad '~/.local/share/prefect-home/backup.sh'
+
+# Default verifies hashes only; --apply renders the pilot's secret consumers.
+[positional-arguments]
+heavypad-prefect-secrets *args:
+    uv run scripts/heavypad_prefect_secrets.py "$@"
