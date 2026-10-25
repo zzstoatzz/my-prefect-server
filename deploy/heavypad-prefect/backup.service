@@ -1,0 +1,10 @@
+[Unit]
+Description=Encrypted backup of isolated HeavyPad Prefect pilot
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/prefect-home/backup.sh
+Nice=10
+IOSchedulingClass=idle
+MemoryMax=512M
+CPUQuota=50%

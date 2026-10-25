@@ -1,0 +1,22 @@
+[Unit]
+Description=Isolated HeavyPad Prefect pilot worker
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/prefect-home/worker.env
+Environment=PATH=%h/.local/bin:%h/.local/share/prefect-home/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PREFECT_PLUGINS_ENABLED=false
+ExecStart=%h/.local/share/prefect-home/bin/prefect worker start --pool heavypad-pilot-pool --name heavypad-pilot --limit 1
+Restart=on-failure
+RestartSec=10
+KillMode=control-group
+TimeoutStopSec=60
+MemoryHigh=1G
+MemoryMax=2G
+CPUQuota=100%
+TasksMax=512
+
+[Install]
+WantedBy=default.target
