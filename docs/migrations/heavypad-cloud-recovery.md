@@ -48,7 +48,7 @@ job traffic already originates there; home API/log traffic to the cloud should
 become local, while remote workers would send orchestration traffic home.
 Bandwidth under actual load still needs measurement. Home power/ISP failure now
 also removes scheduling, orchestration and local monitoring. Before critical
-migration: automatic off-host backups (currently manual copies), restore on a
+migration: restore-tested automatic off-host backups (now enabled; see the runbook), restore on a
 second host, independent external health reporting, and a measured recovery
 procedure. The current backup script protects PostgreSQL, not a coordinated
 PostgreSQL/Redis/host-files snapshot.
@@ -424,6 +424,12 @@ schedule was emptied in `0ea9aa4`; the live schedule was then cleared explicitly
 readback found no Scheduled/Pending/Running/Cancelling original runs before the HeavyPad
 schedule was activated from `c313bf8` (`3,18,33,48 * * * *` UTC, concurrency one,
 `CANCEL_NEW`). The first scheduled run completed at 20:48:18 UTC in 22 seconds.
+Its `auto_scheduled=true` record and artifact were read back: 63 targets, bridge
+HTTP 200, and one unhealthy finding for `find-bufo/search` (HTTP 0). Completion
+means the sweep ran; it does not assert every target was healthy. The three
+copied notification rules and block hash were verified without a synthetic alert.
+
+The R2 restore check now requires the HeavyPad fleet-health deployment ID.
 
 The original catch-all `flow-run failure -> autofix` no longer sees fleet-health
 failures, the same accepted gap as diagnostics and backlog. Rollback: clear the HeavyPad

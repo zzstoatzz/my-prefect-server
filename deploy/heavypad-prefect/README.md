@@ -48,7 +48,8 @@ remote reads and real PDS publication have both passed with public readback.
 Public MCP health checks run here hourly at :12. The unhealthy-finding rule is
 copied and verified; the Cloud counterpart has passed the same eight-server
 protocol/discovery sweep without notification automations. The broader
-`fleet-health` job remains original because it also probes a localhost service.
+`fleet-health` job runs here at :03/:18/:33/:48 UTC. Its localhost bridge probe
+retains the same HeavyPad host vantage; the original schedule is cleared.
 Costs publish daily at 08:00 UTC here after real Cloud and HeavyPad publication
 and public PDS readback; the old cost schedule is cleared. Cloud is manual-only
 and defaults to dry-run. Known unmeasured Fly root disks and R2 storage remain

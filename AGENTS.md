@@ -91,7 +91,7 @@ separate `just heavypad-prefect` and `just heavypad-kubectl` target the HeavyPad
 never switch the default profile or kubectl context to operate it. Read
 `deploy/heavypad-prefect/README.md` before migration. `prefect.heavypad.yaml`
 owns HeavyPad server schedules; original CI continues registering `prefect.yaml` only.
-The backlog counter, diagnostics, bufo-traffic, costs and mcp-fleet-health are migrated.
+The backlog counter, diagnostics, bufo-traffic, costs, mcp-fleet-health and fleet-health are migrated.
 Keep their original schedules
 empty, and never run two schedulers for the same effects. Diagnostics notification
 dependencies and the fleet-unhealthy rule are copied; automatic remediation remains on the original server.
