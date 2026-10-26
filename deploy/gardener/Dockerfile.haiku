@@ -1,0 +1,10 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+ARG SOURCE_REVISION
+ARG WHEEL_SHA256
+LABEL io.waow.gardener.haiku-source=$SOURCE_REVISION io.waow.gardener.wheel-sha256=$WHEEL_SHA256
+COPY upgrade_haiku.py /opt/gardener/release/upgrade_haiku.py
+RUN /opt/gardener/venv/bin/python /opt/gardener/release/upgrade_haiku.py \
+    /opt/gardener/release/mps-0.1.0-py3-none-any.whl --installed \
+    --report /opt/gardener/release/haiku-upgrade.json \
+    && echo "$WHEEL_SHA256  /opt/gardener/release/mps-0.1.0-py3-none-any.whl" | sha256sum -c -

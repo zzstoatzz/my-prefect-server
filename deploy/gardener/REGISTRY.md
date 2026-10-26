@@ -100,3 +100,15 @@ wait for or cancel owned jobs, restore each snapshot's job variables, and reinst
 worker release `d0ef23a` with `just gardener-install d0ef23a`. That release still
 uses the previous image configuration and grant-based inference. Resume the pool
 and verify a job before declaring rollback complete.
+
+## Haiku policy upgrades
+
+`Dockerfile.haiku` and `upgrade_haiku.py` replace Haiku 4.5 calls only in the
+frozen policy modules. The migration preserves every other wheel member and
+installed module, updates wheel and installed RECORD hashes, and rejects
+installed-source drift. Build on the registry host from the existing immutable
+image, passing `BASE_IMAGE`, the committed `SOURCE_REVISION`, and the expected
+`WHEEL_SHA256`. The image records the old/new wheel hashes and changed modules
+in `/opt/gardener/release/haiku-upgrade.json`. Keep the original image and wheel
+for rollback. Legacy process deployments use the same script on a copy of their
+wheel, published under its new content hash before updating `prefect.yaml`.
