@@ -5,8 +5,9 @@ io.zzstoatzz.cost.snapshot record, and upserts it at rkey=YYYY-MM-DD so re-runs
 on the same day overwrite cleanly. A snapshot is published only when every
 provider succeeds; an unavailable provider must never masquerade as a $0 bill.
 
-Provider tokens are injected as env vars from Secret blocks via prefect.yaml;
-connector code reads os.environ directly. The evergreen site renders the result
+Provider tokens are injected as env vars, or loaded from runtime blocks when
+COSTS_PROVIDER_BLOCK_PREFIX is set. Connector code reads os.environ directly.
+The evergreen site renders the result
 straight from the public PDS (com.atproto.repo.listRecords).
 
 ad hoc:  uv run python flows/costs.py            # dry-run, prints JSON
@@ -17,10 +18,11 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 
 from atproto import AsyncClient
 from mps.atproto import session_did
-from mps.blocks import secret_mapping
+from mps.blocks import secret, secret_mapping
 from mps.costs import Period, Snapshot
 from mps.costs.connectors import (
     CloudflareConnector,
@@ -33,7 +35,7 @@ from mps.costs.types import Connector, LineItem
 from mps.observability import configure_logfire
 from pdsx._internal.auth import login
 from prefect import flow, task
-from prefect.artifacts import create_table_artifact
+from prefect.artifacts import acreate_table_artifact
 from prefect.cache_policies import NONE
 from prefect.states import Completed
 from pydantic import BaseModel, Field
@@ -47,9 +49,18 @@ async def build_connectors() -> list[Connector]:
     so we load the `hetzner-tokens` Secret block (a dict of {label: token}) and
     hand the values to the connector. Fly, Cloudflare, and Neon read single tokens
     from env (injected from Secret blocks via prefect.yaml); Turso needs none."""
+    prefix = os.environ.get("COSTS_PROVIDER_BLOCK_PREFIX", "")
+    if "COSTS_PROVIDER_BLOCK_PREFIX" in os.environ:
+        for variable, block in (
+            ("FLY_API_TOKEN", "fly-api-token"),
+            ("CLOUDFLARE_API_TOKEN", "cloudflare-api-token"),
+            ("NEON_API_KEY", "neon-api-key"),
+        ):
+            if not os.environ.get(variable):
+                os.environ[variable] = await secret(prefix + block)
     hetzner_tokens: list[str] | None = None
     try:
-        hetzner_tokens = [str(v) for v in (await secret_mapping(HETZNER_TOKENS_BLOCK)).values()]
+        hetzner_tokens = [str(v) for v in (await secret_mapping(prefix + HETZNER_TOKENS_BLOCK)).values()]
     except Exception as exc:
         print(f"  hetzner: no {HETZNER_TOKENS_BLOCK} block ({exc}); will fall back to env")
 
@@ -153,7 +164,7 @@ async def costs(config: CostsConfig | None = None):
     )
     print(f"snapshot total: ${snapshot.total / 100:.2f} across {len(line_items)} items")
 
-    create_table_artifact(
+    await acreate_table_artifact(
         key="cost-snapshot",
         table=[
             {

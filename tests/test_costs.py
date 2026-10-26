@@ -333,12 +333,16 @@ def test_costs_names_the_run_incomplete_when_a_connector_reports_a_gap(monkeypat
     monkeypatch.setattr(costs_flow, "collect_connector", fake_collect)
     monkeypatch.setattr(costs_flow, "write_snapshot", fake_write_snapshot)
     monkeypatch.setattr(costs_flow, "configure_logfire", lambda *_: None)
-    monkeypatch.setattr(costs_flow, "create_table_artifact", lambda **_: None)
 
     with prefect_test_harness():
         state = asyncio.run(
             costs_flow.costs(costs_flow.CostsConfig(dry_run=False), return_state=True)
         )
+        from prefect.client.orchestration import get_client
+
+        with get_client(sync_client=True) as client:
+            artifacts = client.read_artifacts()
+        assert [artifact.key for artifact in artifacts] == ["cost-snapshot"]
 
     assert len(wrote) == 1
     if gap:

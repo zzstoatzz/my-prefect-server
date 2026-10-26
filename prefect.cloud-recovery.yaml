@@ -6,6 +6,42 @@ pull:
       commit_sha: "{{ $MPS_SHA }}"
 
 deployments:
+  - name: costs-recovery
+    entrypoint: flows/costs.py:costs
+    description: Manual-only cost collection; defaults to read-only and preserves measurement gaps.
+    tags: [recovery, manual-only]
+    pull:
+      - prefect.deployments.steps.set_working_directory:
+          directory: /tmp
+      - prefect.deployments.steps.git_clone:
+          repository: https://github.com/zzstoatzz/my-prefect-server.git
+          commit_sha: "{{ $MPS_SHA }}"
+          clone_directory_name: recovery-source
+      - prefect.deployments.steps.set_working_directory:
+          directory: /tmp/recovery-source
+    work_pool:
+      name: managed
+      job_variables:
+        image: prefecthq/prefect:3-python3.12
+        env:
+          PYTHONPATH: /tmp/recovery-source/packages/mps/src
+          COSTS_PROVIDER_BLOCK_PREFIX: recovery-
+          CLOUDFLARE_ACCOUNT_ID: "3e9ba01cd687b3c4d29033908177072e"
+          CLOUDFLARE_FIXED_COSTS_JSON: '{"plyr.fm":{"amount":1.00,"project":"plyr.fm","note":"plyr.fm domain registration"},"workers-paid-plan":{"amount":4.00,"project":"shared","note":"Cloudflare Workers Paid plan"}}'
+        pip_packages:
+          - prefect==3.8.2
+          - httpx==0.28.1
+          - pydantic==2.13.4
+          - atproto==0.0.67
+          - pdsx==0.0.1a23
+    parameters:
+      config:
+        dry_run: true
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules: []
+
   - name: mcp-fleet-health-recovery
     entrypoint: flows/mcp_fleet_health.py:mcp_fleet_health
     description: Manual public MCP protocol/discovery checks; findings are artifacts, without Cloud notification automations.

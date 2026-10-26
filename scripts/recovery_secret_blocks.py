@@ -13,6 +13,7 @@ from prefect.context import use_profile
 
 STORE = Path.home() / "tangled.org/zzstoatzz.io/secrets/prod.yaml"
 CLOUD = "https://api.prefect.cloud/api/accounts/12242a57-9f05-4bf5-8853-9bff595d4bab/workspaces/cafa2ffa-f6cc-4ed6-ab76-eaa4ba1ad40e"
+PROVIDER_BLOCKS = {"fly-api-token", "cloudflare-api-token", "neon-api-key", "hetzner-tokens"}
 
 
 def extract(path):
@@ -25,7 +26,7 @@ def extract(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("target", choices=["heavypad", "cloud"])
-    parser.add_argument("--block", action="append", choices=["logfire-read-token", "operator-atproto-creds"], required=True)
+    parser.add_argument("--block", action="append", choices=sorted(PROVIDER_BLOCKS | {"logfire-read-token", "operator-atproto-creds"}), required=True)
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     canonical = json.loads(extract('["prefect"]["blocks"]'))
@@ -39,17 +40,18 @@ def main():
         contexts.enter_context(temporary_settings(settings))
         for name in args.block:
             expected = canonical[name]
+            target_name = "recovery-" + name if args.target == "cloud" and name in PROVIDER_BLOCKS else name
             try:
-                actual = Secret.load(name).get()
+                actual = Secret.load(target_name).get()
             except (ObjectNotFound, ValueError):
                 actual = None
             if actual != expected:
                 if not args.apply:
-                    raise RuntimeError(f"Secret block missing or drifted: {name}")
-                Secret(value=expected).save(name, overwrite=True)
-            if Secret.load(name).get() != expected:
-                raise RuntimeError(f"Secret block did not converge: {name}")
-            print(f"Verified {args.target} Secret block: {name}; no value printed")
+                    raise RuntimeError(f"Secret block missing or drifted: {target_name}")
+                Secret(value=expected).save(target_name, overwrite=True)
+            if Secret.load(target_name).get() != expected:
+                raise RuntimeError(f"Secret block did not converge: {target_name}")
+            print(f"Verified {args.target} Secret block: {target_name}; no value printed")
 
 
 if __name__ == "__main__":
