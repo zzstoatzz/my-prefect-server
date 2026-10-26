@@ -152,3 +152,7 @@ then fails the run instead of silently claiming successful cleanup. Symlinked
 build directories are excluded. Existing local-SSD reserves and cancellation
 cleanup remain enforced; failed payloads are preserved for recovery, and reserves
 stop new work before it exhausts disk. See the [disk audit](audits/2026-10-25-worker-disk-cleanup.md).
+
+## October 26 monitoring repair
+
+The installer image is pinned to `sha256:37fa2b5ed4cf21c63a1e75fefd0f48d001c2cf3d0635f5ee16441c40cece6525`. It requires a Logfire write token on each managed app before installation and refreshes the native Turso client’s TLS validation clock between requests. Both managed apps have the existing project token staged from the canonical encrypted store. The Typeahead transport marks routed health probes so the sync alert follows the production slot. See the [Typeahead monitoring runbook](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/plans/automatic-snapshot-refresh.md#search-telemetry). The schedule and builder source are unchanged.
