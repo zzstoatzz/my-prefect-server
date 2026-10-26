@@ -114,7 +114,7 @@ deployments:
         command: >-
           uv run --no-project --with prefect==3.8.2
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
-          prefect flow-run execute
+          python -m prefect.engine
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
