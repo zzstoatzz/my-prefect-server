@@ -244,7 +244,11 @@ def run_link() -> str:
     if not flow_run.id:
         return ""
     base = PREFECT_UI_URL.value()
-    return f"{base.rstrip('/')}/runs/flow-run/{flow_run.id}" if base else RUN_URL.format(id=flow_run.id)
+    return (
+        f"{base.rstrip('/')}/runs/flow-run/{flow_run.id}"
+        if base
+        else RUN_URL.format(id=flow_run.id)
+    )
 
 
 def unhealthy_payload(unhealthy: list[str]) -> dict[str, object]:

@@ -95,4 +95,6 @@ def test_unhealthy_summary_uses_the_runtime_ui(monkeypatch):
     monkeypatch.setenv("PREFECT__RUNTIME__FLOW_RUN__ID", "948b0104-40f8-479e-9803-08199c870857")
     with temporary_settings({PREFECT_UI_URL: "https://heavypad.tailb660b6.ts.net:10443/"}):
         summary = unhealthy_payload(["example: HTTP 503"])["summary"]
-    assert summary.endswith("\nrun: https://heavypad.tailb660b6.ts.net:10443/runs/flow-run/948b0104-40f8-479e-9803-08199c870857")
+    assert summary.endswith(
+        "\nrun: https://heavypad.tailb660b6.ts.net:10443/runs/flow-run/948b0104-40f8-479e-9803-08199c870857"
+    )

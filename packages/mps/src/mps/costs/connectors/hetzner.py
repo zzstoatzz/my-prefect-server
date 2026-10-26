@@ -184,6 +184,8 @@ class HetznerConnector:
                         note="monthly list price; excludes traffic overage",
                     )
                 )
+            if prices is None:
+                continue
             # volumes bill per provisioned GB regardless of attachment; attribute
             # by the volume's own name (fall back to the attached server's name
             # when the volume name is auto-generated and matches no project).

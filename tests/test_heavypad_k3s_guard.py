@@ -31,7 +31,9 @@ def run_guard(tmp_path, ready_after):
         "PREFECT_HOME_K3S_WAIT": "0",
         "PREFECT_HOME_K3S_POLL": "0",
     }
-    result = subprocess.run(["bash", str(GUARD)], env=env, capture_output=True, text=True)
+    result = subprocess.run(
+        ["bash", str(GUARD)], env=env, capture_output=True, text=True, check=False
+    )
     return result, int((tmp_path / "restarts").read_text())
 
 

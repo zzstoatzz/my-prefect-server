@@ -7,8 +7,12 @@ from datetime import datetime, timedelta
 
 import httpx
 from prefect.context import use_profile
-from prefect.settings import PREFECT_API_AUTH_STRING, PREFECT_API_KEY, PREFECT_API_URL, temporary_settings
-
+from prefect.settings import (
+    PREFECT_API_AUTH_STRING,
+    PREFECT_API_KEY,
+    PREFECT_API_URL,
+    temporary_settings,
+)
 from recovery_secret_blocks import CLOUD, extract
 
 
@@ -27,11 +31,25 @@ def main():
     with ExitStack() as contexts:
         if args.target == "cloud":
             contexts.enter_context(use_profile("bot"))
-            contexts.enter_context(temporary_settings({PREFECT_API_URL: CLOUD, PREFECT_API_AUTH_STRING: None}))
-            client = contexts.enter_context(httpx.Client(base_url=CLOUD + "/", headers={"Authorization": f"Bearer {PREFECT_API_KEY.value()}"}, timeout=30))
+            contexts.enter_context(
+                temporary_settings({PREFECT_API_URL: CLOUD, PREFECT_API_AUTH_STRING: None})
+            )
+            client = contexts.enter_context(
+                httpx.Client(
+                    base_url=CLOUD + "/",
+                    headers={"Authorization": f"Bearer {PREFECT_API_KEY.value()}"},
+                    timeout=30,
+                )
+            )
         else:
             auth = json.loads(extract('["heavypad_prefect"]'))["api_auth_string"]
-            client = contexts.enter_context(httpx.Client(base_url="https://heavypad.tailb660b6.ts.net:10443/api/", auth=tuple(auth.split(":", 1)), timeout=30))
+            client = contexts.enter_context(
+                httpx.Client(
+                    base_url="https://heavypad.tailb660b6.ts.net:10443/api/",
+                    auth=tuple(auth.split(":", 1)),
+                    timeout=30,
+                )
+            )
 
         def request(method, path, **kwargs):
             response = client.request(method, path, **kwargs)
@@ -40,17 +58,29 @@ def main():
 
         run = request("GET", f"flow_runs/{args.run_id}")
         assert run["state_type"] == "COMPLETED", "Publication run is not completed"
-        artifacts = request("POST", "artifacts/filter", json={"artifacts": {"flow_run_id": {"any_": [args.run_id]}}})
+        artifacts = request(
+            "POST", "artifacts/filter", json={"artifacts": {"flow_run_id": {"any_": [args.run_id]}}}
+        )
         tables = [a for a in artifacts if a["key"] == "bufo-traffic"]
         assert len(tables) == 1, "Expected exactly one traffic artifact"
         rows = tables[0]["data"]
         if isinstance(rows, str):
             rows = json.loads(rows)
         assert rows, "Publication has no expected day records"
-        start = datetime.fromisoformat(run["start_time"].replace("Z", "+00:00")) - timedelta(seconds=5)
+        start = datetime.fromisoformat(run["start_time"].replace("Z", "+00:00")) - timedelta(
+            seconds=5
+        )
         end = datetime.fromisoformat(run["end_time"].replace("Z", "+00:00")) + timedelta(seconds=5)
         for row in rows:
-            response = httpx.get(canonical["pds"].rstrip("/") + "/xrpc/com.atproto.repo.getRecord", params={"repo": canonical["handle"], "collection": "com.find-bufo.traffic", "rkey": row["day"]}, timeout=30)
+            response = httpx.get(
+                canonical["pds"].rstrip("/") + "/xrpc/com.atproto.repo.getRecord",
+                params={
+                    "repo": canonical["handle"],
+                    "collection": "com.find-bufo.traffic",
+                    "rkey": row["day"],
+                },
+                timeout=30,
+            )
             response.raise_for_status()
             record = response.json()["value"]
             assert record["day"] == row["day"]
@@ -63,7 +93,9 @@ def main():
                 assert sum(record[key].values()) == record["total"]
             generated = datetime.fromisoformat(record["generatedAt"].replace("Z", "+00:00"))
             assert start <= generated <= end, "PDS record was not generated during this run"
-            print(f"Verified public day {row['day']}: {record['total']} requests; run timestamp and aggregates match")
+            print(
+                f"Verified public day {row['day']}: {record['total']} requests; run timestamp and aggregates match"
+            )
 
 
 if __name__ == "__main__":

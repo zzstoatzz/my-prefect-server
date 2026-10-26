@@ -60,7 +60,9 @@ async def build_connectors() -> list[Connector]:
                 os.environ[variable] = await secret(prefix + block)
     hetzner_tokens: list[str] | None = None
     try:
-        hetzner_tokens = [str(v) for v in (await secret_mapping(prefix + HETZNER_TOKENS_BLOCK)).values()]
+        hetzner_tokens = [
+            str(v) for v in (await secret_mapping(prefix + HETZNER_TOKENS_BLOCK)).values()
+        ]
     except Exception as exc:
         print(f"  hetzner: no {HETZNER_TOKENS_BLOCK} block ({exc}); will fall back to env")
 
