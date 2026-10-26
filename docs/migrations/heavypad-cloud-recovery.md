@@ -87,7 +87,8 @@ was unavailable, and did not qualify host-process burn detection in managed
 infrastructure. That is an explicit observability limitation, not home recovery.
 
 `just heavypad-prefect-monitoring --apply` copies the existing `discord-alerts`
-block and only `sustained burn -> discord` and `flow-run failure -> discord`.
+block and the `sustained burn -> discord` and `flow-run failure -> discord` rules;
+its later MCP batch also adds `fleet unhealthy -> discord`.
 The check mode compares block data by hash and rules/actions against the source;
 notification run links use the HeavyPad URL. After explicit operator approval,
 one clearly labelled test alert exercised the real flow-failure pipeline on
@@ -137,9 +138,12 @@ HeavyPad notification rules while backlog still depends on failure alerts.
 
 ## Next migration candidates
 
-1. `fleet-health` and `mcp-fleet-health`: preserve and verify the alerting chain,
-   including the effect of residential versus managed network vantage points.
-2. Defer DuckDB writers, event-dependent briefs, approvals, publishing and Gardener
+1. `costs`: verify provider block delivery and complete read-only snapshots on
+   both runtimes before transferring the daily publication. It writes PDS records
+   independently of DuckDB; preserve refusal to publish on provider failure.
+2. `fleet-health`: qualify its home-only bridge coverage before moving the sweep.
+   Its public-only MCP sibling is already qualified below.
+3. Defer DuckDB writers, event-dependent briefs, approvals, publishing and Gardener
    until their checkpoint, execution and effect ownership are specified.
 
 ## Downtime inventory
@@ -307,7 +311,9 @@ the original hostname everywhere.
 
 The old automation description saying results live in Hub was stale: the current
 `web/src` has no reader for these health keys/events. Its Prefect artifact reader
-is the separate Gardener view, which remains on the original API. Health reports
+is the separate Gardener view, which remains on the original API. The deployed
+Hub image `c344d5c` was also checked read-only: no fleet-health keys occur in its
+server bundle, and its sole artifact-reader chunk maps to the Gardener route. Health reports
 are saved Prefect artifacts with backend-correct run links. No Hub API/credential
 retarget was made as part of this batch.
 
