@@ -1,0 +1,22 @@
+name: prefect-cloud-recovery
+
+pull:
+  - prefect.deployments.steps.git_clone:
+      repository: https://github.com/zzstoatzz/my-prefect-server.git
+      commit_sha: "{{ $MPS_SHA }}"
+
+deployments:
+  - name: diagnostics-recovery
+    entrypoint: flows/diagnostics.py:diagnostics
+    description: >-
+      Manual portability rehearsal. Measures its managed runtime, not HeavyPad.
+      No home mounts, credentials, schedules or notification automations.
+    tags: [recovery, manual-only]
+    work_pool:
+      name: managed
+      job_variables:
+        image: prefecthq/prefect:3-python3.12
+        pip_packages: [prefect==3.8.2]
+    parameters:
+      scan_cache_size: false
+    schedules: []

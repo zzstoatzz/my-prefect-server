@@ -9,6 +9,20 @@ pull:
       directory: flow-source
 
 deployments:
+  - name: diagnostics
+    entrypoint: flows/diagnostics.py:diagnostics
+    tags: [watch, heavypad]
+    work_pool:
+      name: heavypad-pool
+      job_variables:
+        command: uv run --no-project --with prefect==3.8.2 prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
+    parameters:
+      scan_cache_size: false
+    schedules: []
+
   - name: canary
     entrypoint: flows/prefect_home_canary.py:prefect_home_canary
     tags: [heavypad]
