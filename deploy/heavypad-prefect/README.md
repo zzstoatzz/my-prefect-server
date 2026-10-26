@@ -121,10 +121,9 @@ backups were copied to `~/.local/state/prefect-home-backups` on the operator Mac
 The initial dump was decrypted privately and restored to a separate scratch
 PostgreSQL database; the completed canary record was verified, then the scratch
 database was removed. A later dump includes the migrated flow and copied block.
-Off-host copies currently require operator execution; automatic off-host backup
-replication remains a prerequisite before migrating critical workloads.
+Since October 26, encrypted dumps also replicate automatically to R2 (below).
 
-### Off-site replication to R2 (drafted, not enabled)
+### Off-site replication to R2
 
 HeavyPad pushes the already age-encrypted dumps to the private R2 bucket named by
 `heavypad_prefect.r2_backup_bucket` (planned: `heavypad-prefect-backups`), under
@@ -168,6 +167,13 @@ fails if the newest local dump is over 26 hours old, R2's newest object differs 
 the last upload is over 26 hours old, or the last verified restore is over eight days old.
 A failed run is the alert, through the existing `flow-run failure -> discord` rule. That
 alert depends on HeavyPad itself, so it does not detect a HeavyPad outage.
+
+Enabled October 26, 2026 from `6929e03`: all ten dumps through
+`postgres/20261026T074947Z.dump.age` uploaded and checked; the restore from R2 passed
+(7 deployments, 74 flow runs, newest completed run 12 minutes before the dump); the
+first manual `backup-freshness` run completed. The previous backup unit (without
+`OnSuccess=`) and timer (without `FixedRandomDelay=`) are kept beside the scripts as
+`*.pre-onsuccess` and `*.pre-fixed-delay` for rollback.
 
 #### Enable runbook
 

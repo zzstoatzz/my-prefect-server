@@ -152,4 +152,4 @@ deployments:
     schedules:
       - cron: '5 7 * * *'
         timezone: UTC
-        active: false
+        active: true
