@@ -1,0 +1,11 @@
+[Unit]
+Description=Copy encrypted HeavyPad Prefect backups to R2
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/prefect-home/offsite.sh
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=15min

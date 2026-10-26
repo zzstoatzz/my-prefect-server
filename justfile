@@ -658,6 +658,14 @@ heavypad-kubectl *args:
 heavypad-prefect-backup:
     ssh -o BatchMode=yes stoat@heavypad '~/.local/share/prefect-home/backup.sh'
 
+# Copy HeavyPad's encrypted backups to R2; never deletes or overwrites.
+heavypad-prefect-offsite:
+    ssh -o BatchMode=yes stoat@heavypad 'systemctl --user start --wait prefect-home-offsite.service'
+
+# Restore the newest R2 copy into a throwaway network-less PostgreSQL on HeavyPad.
+heavypad-prefect-offsite-verify:
+    ssh -o BatchMode=yes stoat@heavypad 'systemctl --user start --wait prefect-home-offsite-verify.service && tail -n 1 ~/.local/state/prefect-home/restore-verifications.log'
+
 # Default verifies hashes only; --apply renders the HeavyPad server's secret consumers.
 [positional-arguments]
 heavypad-prefect-secrets *args:

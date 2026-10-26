@@ -135,3 +135,21 @@ deployments:
       - cron: '*/30 * * * *'
         timezone: UTC
         active: true
+
+  - name: backup-freshness
+    entrypoint: flows/backup_freshness.py:backup_freshness
+    tags: [watch, heavypad]
+    work_pool:
+      name: heavypad-pool
+      job_variables:
+        command: uv run --no-project --with prefect==3.8.2 prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+      - cron: '5 7 * * *'
+        timezone: UTC
+        active: false

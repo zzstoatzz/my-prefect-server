@@ -1,0 +1,11 @@
+[Unit]
+Description=Weekly restore check of the newest R2 Prefect backup
+
+[Timer]
+OnCalendar=Mon *-*-* 07:00:00 UTC
+Persistent=true
+RandomizedDelaySec=600
+FixedRandomDelay=true
+
+[Install]
+WantedBy=timers.target

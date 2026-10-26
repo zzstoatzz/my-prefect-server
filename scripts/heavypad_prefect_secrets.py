@@ -50,6 +50,20 @@ def github_block(auth: str, apply: bool) -> None:
         raise RuntimeError("Pilot github-token block did not converge")
 
 
+def r2_environment(credentials: dict) -> str | None:
+    if "r2_backup_access_key_id" not in credentials:
+        return None
+    return (
+        "RCLONE_CONFIG_R2_TYPE=s3\n"
+        "RCLONE_CONFIG_R2_PROVIDER=Cloudflare\n"
+        f"RCLONE_CONFIG_R2_ENDPOINT={credentials['r2_backup_endpoint']}\n"
+        f"RCLONE_CONFIG_R2_ACCESS_KEY_ID={credentials['r2_backup_access_key_id']}\n"
+        f"RCLONE_CONFIG_R2_SECRET_ACCESS_KEY={credentials['r2_backup_secret_access_key']}\n"
+        "RCLONE_CONFIG_R2_NO_CHECK_BUCKET=true\n"
+        f"PREFECT_HOME_R2_BUCKET={credentials['r2_backup_bucket']}\n"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true")
@@ -80,7 +94,13 @@ def main() -> None:
         f"PREFECT_API_AUTH_STRING={credentials['api_auth_string']}\n"
         "PREFECT_LOCAL_STORAGE_PATH=/home/stoat/.local/share/prefect-home/results\n"
     )
+    r2_env = r2_environment(credentials)
     if args.apply:
+        if r2_env:
+            remote(
+                "umask 077; mkdir -p ~/.config/prefect-home; cat > ~/.config/prefect-home/r2.env; chmod 600 ~/.config/prefect-home/r2.env",
+                r2_env,
+            )
         remote(
             KUBE + " apply -f -",
             json.dumps(
@@ -106,6 +126,10 @@ def main() -> None:
     digest = remote("sha256sum ~/.config/prefect-home/worker.env").split()[0]
     if digest != hashlib.sha256(env.encode()).hexdigest():
         raise RuntimeError("HeavyPad worker environment drift")
+    if r2_env:
+        digest = remote("sha256sum ~/.config/prefect-home/r2.env").split()[0]
+        if digest != hashlib.sha256(r2_env.encode()).hexdigest():
+            raise RuntimeError("HeavyPad R2 backup environment drift")
     github_block(credentials["api_auth_string"], args.apply)
     print("HeavyPad consumers already current; no secret values printed")
 

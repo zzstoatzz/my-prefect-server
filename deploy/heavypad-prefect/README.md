@@ -124,6 +124,108 @@ database was removed. A later dump includes the migrated flow and copied block.
 Off-host copies currently require operator execution; automatic off-host backup
 replication remains a prerequisite before migrating critical workloads.
 
+### Off-site replication to R2 (drafted, not enabled)
+
+HeavyPad pushes the already age-encrypted dumps to the private R2 bucket named by
+`heavypad_prefect.r2_backup_bucket` (planned: `heavypad-prefect-backups`), under
+`postgres/`. R2 only ever holds ciphertext. A successful
+`prefect-home-backup.service` starts `prefect-home-offsite.service` (`OnSuccess=`), and
+`offsite.timer` repeats it daily at 17:45 UTC to catch up after a failed upload.
+`offsite.sh` runs a digest-pinned rclone container with `copy --immutable --checksum`:
+new dumps are uploaded under their unique timestamped names, an identical existing object
+is skipped without a write (so re-runs succeed inside the lock window), an existing object
+whose content differs fails the run instead of being overwritten, and nothing is deleted
+when HeavyPad prunes its seven-day local copies. `rclone check --one-way` must then confirm
+every local dump is in R2 before `offsite.json` records the newest upload.
+
+A 90-day lifecycle rule expires objects. A bucket lock rule (7 days, if the bucket
+supports it) blocks deletes and overwrites, including those made with the upload
+credential. R2 has no "write but not delete" permission, so only the lock window is
+protected against a stolen upload token; older copies are not. The token is scoped
+to Object Read & Write on this one bucket. Its S3 credentials, endpoint and bucket name
+live in the canonical store as `heavypad_prefect.r2_backup_access_key_id`,
+`r2_backup_secret_access_key`, `r2_backup_endpoint` and `r2_backup_bucket`;
+`just heavypad-prefect-secrets` renders `~/.config/prefect-home/r2.env` (mode 600) and
+checks it by hash.
+
+All three timers use `FixedRandomDelay=true`. Without it, a user-manager daemon-reload
+re-rolls `RandomizedDelaySec`. The first scheduled 05:45 UTC backup on October 26 never
+triggered while other units were being reloaded near its elapse time, and a timer that
+has never run has no `Persistent=` stamp to catch up from.
+
+`offsite-verify.sh` (weekly, `offsite-verify.timer`) downloads the newest R2 object,
+verifies its hash against R2 and against the local dump if HeavyPad still has it,
+decrypts it with HeavyPad's age key, and restores it into a throwaway PostgreSQL
+with the server's pinned image digest. That container has `--network none`, a tmpfs data
+directory and memory/CPU limits. It runs on HeavyPad's host Docker, outside k3d, and no Prefect
+server is started, so restored schedules and automations cannot run. It asserts the
+HeavyPad deployment IDs exist and the newest completed run is within two hours of the
+dump time, then records counts (never values) in `restore-verifications.log` and
+`restore-verified.json`. Update its deployment ID list when ownership changes.
+
+The `backup-freshness` deployment reads those status files daily at 07:05 UTC and
+fails if the newest local dump is over 26 hours old, R2's newest object differs from it,
+the last upload is over 26 hours old, or the last verified restore is over eight days old.
+A failed run is the alert, through the existing `flow-run failure -> discord` rule. That
+alert depends on HeavyPad itself, so it does not detect a HeavyPad outage.
+
+#### Enable runbook
+
+Run in order from a clean main checkout; stop at the first failed check. Each step lists
+its rollback. Prerequisite: the `heavypad_prefect.r2_backup_*` keys exist in the store.
+
+1. Land source. Merge this work to main and `just push`. Rollback: revert the commits.
+2. Render the R2 credential. `just heavypad-prefect-secrets --apply`, then the plain check
+   must print "already current"; other consumers re-render byte-identically. Rollback:
+   `ssh stoat@heavypad 'rm ~/.config/prefect-home/r2.env'`.
+3. Fix the backup timer delay. Compare first, then install and reload:
+
+   ```sh
+   ssh stoat@heavypad 'cat ~/.config/systemd/user/prefect-home-backup.{service,timer}' | diff - <(cat deploy/heavypad-prefect/backup.{service,timer})
+   scp deploy/heavypad-prefect/backup.timer stoat@heavypad:.config/systemd/user/prefect-home-backup.timer
+   ssh stoat@heavypad 'systemctl --user daemon-reload && systemctl --user list-timers prefect-home-backup.timer'
+   ```
+
+   The next elapse must stay put across a second `daemon-reload`. Rollback: restore the
+   previous timer file (without `FixedRandomDelay=`) and reload.
+4. Install the scripts and off-site units, not yet chained or timed:
+
+   ```sh
+   scp deploy/heavypad-prefect/offsite{,-verify}.sh stoat@heavypad:.local/share/prefect-home/
+   for unit in offsite.service offsite.timer offsite-verify.service offsite-verify.timer; do
+     scp "deploy/heavypad-prefect/$unit" "stoat@heavypad:.config/systemd/user/prefect-home-$unit"
+   done
+   ssh stoat@heavypad 'systemctl --user daemon-reload'
+   ```
+
+   Rollback: remove those four unit files and two scripts, then reload.
+5. First upload: `just heavypad-prefect-offsite`. Uploaded objects stay locked for seven days.
+   Readback: `offsite.json` names the newest local dump. Rollback: none needed;
+   objects expire through the lifecycle rule.
+6. First restore check: `just heavypad-prefect-offsite-verify` prints an `ok` line. Rollback:
+   none; it only reads R2 and removes its own container and files.
+7. Chain uploads to backups and start the timers:
+
+   ```sh
+   scp deploy/heavypad-prefect/backup.service stoat@heavypad:.config/systemd/user/prefect-home-backup.service
+   ssh stoat@heavypad 'systemctl --user daemon-reload && systemctl --user enable --now prefect-home-offsite.timer prefect-home-offsite-verify.timer'
+   ```
+
+   Rollback: `systemctl --user disable --now` both timers, restore the backup service
+   without `OnSuccess=`, reload.
+8. Register freshness inactive, then prove it:
+
+   ```sh
+   MPS_PIN="@$(git rev-parse HEAD)" just heavypad-prefect --no-prompt deploy --prefect-file prefect.heavypad.yaml --name backup-freshness
+   just heavypad-prefect deployment run backup-freshness/backup-freshness --watch
+   ```
+
+   It must complete. Then set its schedule `active: true`, land that on main, and register
+   it again with the new pin. Rollback: set `active: false` and register again, or
+   `just heavypad-prefect deployment delete backup-freshness/backup-freshness`.
+
+Locked objects remain until their lock expires; change the lock rule only by explicit decision.
+
 The HeavyPad server API/services were restarted, then the whole isolated k3d cluster was
 stopped and started. Database state and the canary survived; all pods and the
 HeavyPad worker recovered, and the migrated backlog flow subsequently completed.

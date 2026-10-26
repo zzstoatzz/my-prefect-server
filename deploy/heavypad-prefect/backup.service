@@ -1,5 +1,6 @@
 [Unit]
 Description=Encrypted backup of isolated HeavyPad Prefect
+OnSuccess=prefect-home-offsite.service
 
 [Service]
 Type=oneshot

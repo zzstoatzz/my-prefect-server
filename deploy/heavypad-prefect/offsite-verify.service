@@ -1,0 +1,11 @@
+[Unit]
+Description=Restore the newest R2 Prefect backup into a throwaway PostgreSQL
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/prefect-home/offsite-verify.sh
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=30min

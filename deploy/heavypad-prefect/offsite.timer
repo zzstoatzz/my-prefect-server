@@ -1,0 +1,11 @@
+[Unit]
+Description=Catch-up copy of HeavyPad Prefect backups to R2
+
+[Timer]
+OnCalendar=*-*-* 17:45:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+FixedRandomDelay=true
+
+[Install]
+WantedBy=timers.target
