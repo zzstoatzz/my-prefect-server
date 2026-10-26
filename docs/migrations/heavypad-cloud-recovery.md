@@ -128,12 +128,9 @@ HeavyPad notification rules while backlog still depends on failure alerts.
 
 ## Next migration candidates
 
-1. `bufo-traffic`: dry-run first, then the single recurring owner; repeatable daily
-   PDS upserts, a two-day lookback, Logfire and operator blocks, no DuckDB writer.
-   Qualify secrets/plugin delivery and the remote write before claiming recovery.
-2. `fleet-health` and `mcp-fleet-health`: preserve and verify the alerting chain,
+1. `fleet-health` and `mcp-fleet-health`: preserve and verify the alerting chain,
    including the effect of residential versus managed network vantage points.
-3. Defer DuckDB writers, event-dependent briefs, approvals, publishing and Gardener
+2. Defer DuckDB writers, event-dependent briefs, approvals, publishing and Gardener
    until their checkpoint, execution and effect ownership are specified.
 
 ## Downtime inventory
@@ -162,3 +159,95 @@ and its upstream retention/deadlines before each migration.
 | Native build gates: `dep-bump`, `stream-admission` | Build/adoption gates unavailable; do not bypass them or assume CI/deployment progress continues safely. | Native Zig/Docker/toolchains, host build resources, SSH/publishing credentials and external CI callers. |
 | Manual record operations: `pds-records` | Manual actions unavailable; interrupted writes/deletes need reconciliation, not blind retry. | PDS credentials and action parameters; no automatic catch-up. |
 | Unqualified external source: `mcp-atlas` | Deployment points at flows/crawl.py, absent from this repository. Availability and dependencies remain unqualified; block migration. | Recover its actual source/runtime contract before classifying or moving it. |
+
+## Qualified bufo traffic batch
+
+HeavyPad now owns the hourly :07 UTC publisher. The original deployment has no
+schedule and no unstarted/active runs at cutover. Cloud has no schedule, defaults
+to `dry_run=true`, and requires explicit parameters to publish. Both publishers
+were exercised sequentially after fencing the original owner, never concurrently.
+Schedule activation used source `060e24199afa2144d556262ee4457225abfe13f5`.
+The first automatic run is queued for 02:07 UTC and has not yet been observed;
+the completed manual publishing run is the runtime qualification.
+
+| Resource | ID |
+| --- | --- |
+| Original deployment | `c60437fd-04b2-43f0-a63e-94e5d1910076` |
+| HeavyPad deployment | `862675be-a319-4d1f-aeeb-2fa43980be86` |
+| Cloud managed deployment | `46586b47-5a32-4afc-88c8-6c5124924826` |
+| HeavyPad dry-run with artifact | `263f144a-2880-4350-a96e-d40127b03b33` |
+| Cloud dry-run | `06adea89-f3aa-7082-8000-817f18c11ab1` |
+| Cloud real publication | `06adea93-8e7d-7d58-8000-9747ccb4e516` |
+| HeavyPad real publication | `9782727d-aedc-46e1-86eb-2ff5133e2e50` |
+
+The successful runs exercised source `3af4e8f65a0866d2ed4c7650b38b2f55a480f6d8`.
+Both dry-runs produced byte-identical full records after excluding `generatedAt`:
+October 24 = 1227 requests, October 25 = 1164, October 26 = 279 at the observed
+instant. These are historical samples, not current totals. Both publication runs
+completed and wrote three daily records. After each, the public PDS records were
+read back: artifact totals, search/image/5xx counts, all breakdown sums, and a
+generation timestamp inside that run's start/end window matched. The later
+HeavyPad write intentionally replaced the Cloud write, as ordinary hourly upserts
+do. `just verify-bufo-publication TARGET RUN_ID` repeats this proof only while those
+records still belong to that run; a later normal publication will correctly fail
+the old-run timestamp check. Five rollup tests and 28 deployment-contract tests passed.
+
+Runtime dependencies differ deliberately:
+
+- HeavyPad installs the pinned `mps` package from this repo's `packages/mps`
+  subdirectory with `uv --no-project`, avoiding the root project's dbt/atlas set.
+- The existing managed image is Python 3.12, including its `3-latest` tag at test
+  time. The whole `mps` distribution declares Python >=3.13. Cloud instead loads
+  the specific shared modules from the same pinned checkout via a fixed,
+  container-local `PYTHONPATH`, with explicit Prefect/httpx/pydantic/atproto/pdsx
+  dependencies. The exact set imported the real flow in an isolated Python 3.12
+  environment and then passed real Cloud reads and writes. This does not assert
+  that every `mps` module supports Python 3.12.
+- `LOGFIRE_READ_TOKEN` still works for original environment/plugin-based callers;
+  the migrated task falls back to its runtime Secret block when the env var is
+  absent. Neither deployment stores plaintext tokens in job variables.
+- Table artifacts now use the awaited async creation API. The previous async
+  flow did not await creation; its early dry-run completed without an artifact.
+  The corrected runs persisted artifacts on both servers.
+
+Two controlled Cloud bootstrap attempts were unsuccessful and are terminal:
+`06adea77-a9a6-7685-8000-23e94806ee20` (Cancelled after infrastructure explicitly
+reported exit code 2) and `06adea80-e1b9-7bb6-8000-8e96df46ed39` (Crashed, Python
+version mismatch). A spaced Git requirement was split by the managed installer;
+then the single-token form exposed the Python minimum. Neither reached flow
+execution or PDS writes. The first attempt stayed Cancelling despite repeated
+infrastructure-exited reports; its cancellation state was reconciled only after
+that evidence. Startup failure cleanup is not assumed instantaneous in recovery.
+
+The explicitly scoped command `just recovery-secret-blocks TARGET --block NAME`
+checks canonical Secret values in memory; `--apply` repairs missing/drifted copies.
+Targets are `heavypad` and `cloud`; permitted names are only
+`logfire-read-token` and `operator-atproto-creds`. Matching values are not saved
+again. The HeavyPad read-token copy was deliberately drifted while no candidate
+runs were active; the normal check rejected it, canonical sync repaired it, and
+the exact original bytes were verified restored. Existing credentials were not
+rotated. The canonical store README records both consumers and issuer/consumer
+rotation steps. The existing Cloud bot profile's own authentication was not migrated.
+
+Before a real outage takeover, positively fence the normal owner, reconcile
+in-flight writes and keep it stopped until the Cloud run is terminal. An
+unreachable home API is not evidence that a flow process has stopped. If that
+cannot be established, do not blindly run two publishers or claim automatic
+failover is safe. This batch proves standalone remote execution with accessible
+source, secrets and external data; it does not provide an automatic lease/fencing
+service. The default two-day lookback also does not repair arbitrary older gaps;
+Logfire windows are bounded and explicit backfill needs review before retention
+expires.
+
+To invoke the qualified writer manually only after fencing the normal owner:
+
+```
+just cloud-recovery-prefect --no-prompt deployment run bufo-traffic/bufo-traffic-recovery --params '{"config":{"dry_run":false,"days_back":2}}' --watch
+```
+
+Rollback first clears the HeavyPad schedule, cancels queued runs and waits for
+active Cloud/HeavyPad writes to finish. Restore the original :07 source schedule,
+register only that deployment, verify it is the sole recurring owner, and leave
+Cloud manual-only. Source-only `schedules: []` is insufficient: explicitly clear
+and verify the live schedule list. No cursor/volume/DuckDB state is needed for
+this flow; output and source data already live off-host.

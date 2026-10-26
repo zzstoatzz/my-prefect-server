@@ -41,6 +41,9 @@ history remains there. The first automatic backlog run completed at 00:00:02 UTC
 after two successful manual runs. Host diagnostics also runs here hourly at :37,
 with its old schedule cleared. Its notification block and two notification rules
 are copied and verified; automatic failure diagnosis remains on the old server.
+Bufo traffic now publishes hourly at :07 here; its original schedule is cleared.
+Its Cloud counterpart defaults to dry-run and has no schedule, but controlled
+remote reads and real PDS publication have both passed with public readback.
 The canary is manual-only. Other original workloads remain on the original
 server; in particular, the Typeahead publisher remains on its cloud pool.
 See the [migration and Cloud recovery plan](../../docs/migrations/heavypad-cloud-recovery.md)
@@ -123,7 +126,12 @@ was injected into the HeavyPad worker environment; the check detected drift and
 `--apply` restored the canonical bytes. Auth rotation requires render plus HeavyPad server
 API/services/worker restart. PostgreSQL rotation also requires updating the actual
 database role; a Secret change alone cannot rotate an initialized role. No
-existing credential was rotated. The only copied flow block is `github-token`.
+existing credential was rotated. Selected flow blocks are `github-token`,
+`logfire-read-token` and `operator-atproto-creds`; the existing Discord notification
+block is also copied. Only the latter two Secret blocks have Cloud recovery copies.
+Use `just recovery-secret-blocks TARGET --block NAME` to verify those copies and
+append `--apply` to repair drift. Their rotation path is in the canonical store
+README and the migration plan.
 
 ## Rollback and later cutover
 

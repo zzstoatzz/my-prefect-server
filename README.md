@@ -25,10 +25,10 @@ prefect 3 python.
 
 The [isolated HeavyPad server](deploy/heavypad-prefect/README.md) now runs a
 separate k3s control plane behind a private Tailscale HTTPS address. Only the
-FastMCP backlog counter and host diagnostics have moved; the canonical hostname,
+FastMCP backlog counter, host diagnostics and bufo traffic rollups have moved; the canonical hostname,
 critical jobs and Typeahead cloud publisher remain on the original server.
 The [Cloud recovery plan](docs/migrations/heavypad-cloud-recovery.md) records a
-real managed diagnostics run, downtime risks and migration gates.
+real managed diagnostics and bufo publication runs, downtime risks and migration gates.
 
 ## design
 

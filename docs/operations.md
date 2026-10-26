@@ -144,7 +144,7 @@ just init-analytics    # first time: dbt deps, seed, compile
 ## Isolated HeavyPad control plane
 
 The HeavyPad server is live at a separate private Tailscale HTTPS URL, with the
-backlog-count and diagnostics flows migrated. The original server, domain and worker still serve
+backlog-count, diagnostics and bufo traffic flows migrated. The original server, domain and worker still serve
 critical jobs. Use the explicit HeavyPad server CLI and Kubernetes targets; do not change
 the default context. [HeavyPad operations, backups, rollback and cutover prerequisites](../deploy/heavypad-prefect/README.md).
 The [Cloud recovery and downtime inventory](migrations/heavypad-cloud-recovery.md)
