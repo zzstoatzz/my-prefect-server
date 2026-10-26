@@ -33,22 +33,34 @@ SOPS store (`heavypad_prefect`); the original server credential is deliberately
 rejected here. Anonymous API access is rejected. `prefect-server.waow.tech`
 still resolves to the original cloud node; no canonical routing was changed.
 
-The only migrated existing deployment is `fastmcp-backlog/fastmcp-backlog`:
+The first migrated deployment is `fastmcp-backlog/fastmcp-backlog`:
 GitHub reads and small appends to the existing local counts series, with
 `backfill_days=0`. It is active every 30 minutes on the HeavyPad server. The old server has
 no backlog schedule and its three queued scheduled runs were cancelled. Its
 history remains there. The first automatic backlog run completed at 00:00:02 UTC on October 26,
-after two successful manual runs. The HeavyPad server canary is manual-only. All other original
-workloads, automations, alerts and secrets remain on the original server. In
-particular, the Typeahead publisher remains on its cloud pool.
+after two successful manual runs. Host diagnostics also runs here hourly at :37,
+with its old schedule cleared. Its notification block and two notification rules
+are copied and verified; automatic failure diagnosis remains on the old server.
+The canary is manual-only. Other original workloads remain on the original
+server; in particular, the Typeahead publisher remains on its cloud pool.
+See the [migration and Cloud recovery plan](../../docs/migrations/heavypad-cloud-recovery.md)
+for IDs, real run receipts, alerting limits and the complete downtime inventory.
 
-- Pilot backlog deployment: `75c6a70d-2fcb-46c5-adc9-09522f6f2aea`.
+- HeavyPad backlog deployment: `75c6a70d-2fcb-46c5-adc9-09522f6f2aea`.
 - Original backlog deployment: `5089a7a2-d3ed-46c6-99bf-314948792a8b`.
 - HeavyPad pool: `heavypad-pool`, concurrency one; worker
   `prefect-heavypad-worker.service` is a separate user unit.
 - `prefect.heavypad.yaml` owns HeavyPad schedules and pins. The original
-  `prefect.yaml` deliberately has `schedules: []` for backlog, so normal CI
+  `prefect.yaml` deliberately has `schedules: []` for migrated flows, so normal CI
   cannot restore its old recurring schedule.
+
+An empty source schedule does not necessarily clear an existing live schedule.
+Clear it explicitly, then assert the old schedule list is empty and there are
+no queued/pending/running old runs **before** enabling the new owner. For example:
+
+```sh
+just prefect --no-prompt deployment schedule clear diagnostics/diagnostics --accept-yes
+```
 
 Use the separate operations targets:
 

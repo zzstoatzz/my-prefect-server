@@ -95,5 +95,5 @@ run as `stoat` and are not part of this deployment.
 
 The HeavyPad control plane has its own user unit and API credential. It
 does not replace or retarget this system worker. See
-[the HeavyPad runbook](../heavypad-prefect/README.md). Only the FastMCP backlog
-counter has transferred schedule ownership; critical original flows remain here.
+[the HeavyPad runbook](../heavypad-prefect/README.md). The FastMCP backlog counter
+and diagnostics have transferred schedule ownership; critical original flows remain here.
