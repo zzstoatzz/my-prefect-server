@@ -132,6 +132,10 @@ def test_costs_refuses_to_publish_when_any_provider_fails(monkeypatch):
     assert wrote is False
 
 
+async def _census(*_args, **_kwargs):
+    return ["audio-prod", "misc-bucket"]
+
+
 def test_cloudflare_raises_without_account(monkeypatch):
     """An unmeasurable provider must raise, never silently report $0."""
     import asyncio
@@ -165,12 +169,67 @@ def test_cloudflare_degrades_when_r2_unmeasurable(monkeypatch, capsys):
         raise RuntimeError("not authorized for that account")
 
     monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_stored_bytes_by_bucket", boom)
+    monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_buckets", _census)
 
     items = asyncio.run(CloudflareConnector().collect(Period.trailing_month()))
 
     assert [i.service for i in items] == ["domains-and-plans"]
     assert items[0].amount == 100 and items[0].estimated is False
     assert "UNMEASURED" in capsys.readouterr().out
+
+
+def test_cloudflare_r2_census_pages_past_the_default_twenty():
+    """The bucket list endpoint pages (20 by default); every page must be read."""
+    import asyncio
+
+    import httpx
+    from mps.costs.connectors.cloudflare import _r2_buckets
+
+    pages = {
+        None: {
+            "result": {"buckets": [{"name": f"b{i:02}"} for i in range(20)]},
+            "result_info": {"cursor": "next"},
+        },
+        "next": {"result": {"buckets": [{"name": "typeahead-index"}]}, "result_info": {}},
+    }
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(dict(request.url.params))
+        return httpx.Response(200, json=pages[request.url.params.get("cursor")])
+
+    async def run():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            return await _r2_buckets(client, "acct123")
+
+    names = asyncio.run(run())
+    assert len(names) == 21 and "typeahead-index" in names
+    assert seen == [{"per_page": "1000"}, {"per_page": "1000", "cursor": "next"}]
+
+
+def test_cloudflare_r2_unmeasured_names_the_census_and_never_reports_zero(monkeypatch):
+    import asyncio
+
+    from mps.costs.connectors.cloudflare import CloudflareConnector
+
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "dummy")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct123")
+    monkeypatch.delenv("CLOUDFLARE_FIXED_USD", raising=False)
+    monkeypatch.delenv("CLOUDFLARE_FIXED_COSTS_JSON", raising=False)
+
+    async def forbidden(*_args, **_kwargs):
+        raise RuntimeError("authz")
+
+    monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_stored_bytes_by_bucket", forbidden)
+    monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_buckets", _census)
+    connector = CloudflareConnector()
+    assert asyncio.run(connector.collect(Period.trailing_month())) == []
+    assert connector.unmeasured == ["R2 storage, 2 bucket(s) (authz)"]
+
+    monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_buckets", forbidden)
+    connector = CloudflareConnector()
+    asyncio.run(connector.collect(Period.trailing_month()))
+    assert connector.unmeasured == ["R2 storage, unknown bucket count (authz)"]
 
 
 def test_cloudflare_r2_allocates_paid_storage_by_bucket(monkeypatch):
@@ -192,6 +251,7 @@ def test_cloudflare_r2_allocates_paid_storage_by_bucket(monkeypatch):
         }
 
     monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_stored_bytes_by_bucket", fake_buckets)
+    monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_buckets", _census)
 
     items = asyncio.run(CloudflareConnector().collect(Period.trailing_month()))
 
@@ -217,6 +277,7 @@ def test_cloudflare_fixed_costs_json_splits_resources(monkeypatch):
         return {}
 
     monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_stored_bytes_by_bucket", no_buckets)
+    monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_buckets", _census)
 
     items = asyncio.run(CloudflareConnector().collect(Period.trailing_month()))
 
@@ -257,6 +318,8 @@ def test_hetzner_merges_project_tokens_and_dedupes(monkeypatch):
 
     monkeypatch.setattr(hetzner, "_servers", fake_servers)
     monkeypatch.setattr(hetzner, "_volumes", fake_volumes)
+    monkeypatch.setattr(hetzner, "_images", fake_volumes)
+    monkeypatch.setattr(hetzner, "_primary_ips", fake_volumes)
 
     items = asyncio.run(hetzner.HetznerConnector().collect(Period.trailing_month()))
     services = sorted(i.service for i in items)
@@ -286,11 +349,16 @@ def test_hetzner_prices_volumes_at_per_gb_list(monkeypatch):
         ]
 
     async def fake_price(token):
-        return 7.67  # cents per GB-month
+        return hetzner._Prices(volume_gb=7.67, image_gb=1.99, primary_ip={})
+
+    async def nothing(token):
+        return []
 
     monkeypatch.setattr(hetzner, "_servers", fake_servers)
     monkeypatch.setattr(hetzner, "_volumes", fake_volumes)
-    monkeypatch.setattr(hetzner, "_volume_gb_month_cents", fake_price)
+    monkeypatch.setattr(hetzner, "_images", nothing)
+    monkeypatch.setattr(hetzner, "_primary_ips", nothing)
+    monkeypatch.setattr(hetzner, "_pricing", fake_price)
 
     items = asyncio.run(hetzner.HetznerConnector().collect(Period.trailing_month()))
     by_service = {i.service: i for i in items}
@@ -299,6 +367,78 @@ def test_hetzner_prices_volumes_at_per_gb_list(monkeypatch):
     assert archive.project == "stream"
     # auto-named volume falls back to the attached server's project
     assert by_service["volume-hel1-1234:volume"].project == "stream"
+
+
+def test_hetzner_prices_images_and_primary_ipv4_under_the_source_server(monkeypatch):
+    """Snapshot images and primary IPv4s bill separately from servers. Their
+    services carry the source server's name so its costKey owns them; free
+    IPv6 (no price entry) emits nothing."""
+    import asyncio
+
+    from mps.costs.connectors import hetzner
+
+    monkeypatch.setenv("HCLOUD_TOKEN", "tok-a")
+
+    async def fake_servers(token):
+        return [{"id": 9, "name": "zlay", "server_type": {"name": "cx43", "prices": []}}]
+
+    async def nothing(token):
+        return []
+
+    async def fake_images(token):
+        return [
+            {
+                "id": 398275328,
+                "type": "snapshot",
+                "image_size": 96.14,
+                "description": "final archive",
+                "created_from": {"id": 1, "name": "zlay"},
+            }
+        ]
+
+    async def fake_ips(token):
+        return [
+            {
+                "id": 1,
+                "name": "primary_ip-1",
+                "type": "ipv4",
+                "assignee_id": 9,
+                "datacenter": {"location": {"name": "fsn1"}},
+            },
+            {
+                "id": 2,
+                "name": "primary_ip-2",
+                "type": "ipv6",
+                "assignee_id": 9,
+                "datacenter": {"location": {"name": "fsn1"}},
+            },
+            {
+                "id": 3,
+                "name": "spare-ip",
+                "type": "ipv4",
+                "assignee_id": None,
+                "location": {"name": "fsn1"},
+            },
+        ]
+
+    async def fake_price(token):
+        return hetzner._Prices(volume_gb=7.67, image_gb=1.99, primary_ip={("ipv4", "fsn1"): 60.0})
+
+    monkeypatch.setattr(hetzner, "_servers", fake_servers)
+    monkeypatch.setattr(hetzner, "_volumes", nothing)
+    monkeypatch.setattr(hetzner, "_images", fake_images)
+    monkeypatch.setattr(hetzner, "_primary_ips", fake_ips)
+    monkeypatch.setattr(hetzner, "_pricing", fake_price)
+
+    items = asyncio.run(hetzner.HetznerConnector().collect(Period.trailing_month()))
+    by_service = {i.service: i for i in items}
+    assert sorted(by_service) == ["spare-ip:ipv4", "zlay", "zlay:ipv4", "zlay:snapshot-398275328"]
+    snapshot = by_service["zlay:snapshot-398275328"]
+    assert snapshot.amount == round(96.14 * 1.99)
+    assert snapshot.project == "relays"
+    assert snapshot.usage == "96.14GB snapshot image: final archive"
+    assert by_service["zlay:ipv4"].amount == 60
+    assert by_service["spare-ip:ipv4"].usage == "primary ipv4, unassigned"
 
 
 @pytest.mark.parametrize("gap", [None, "R2 storage (not authorized for that account)"])

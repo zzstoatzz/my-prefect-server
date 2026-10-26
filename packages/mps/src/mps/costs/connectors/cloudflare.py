@@ -1,12 +1,16 @@
 """Cloudflare connector.
 
 Most of your Cloudflare usage is free tier; the cost that actually accrues is R2
-storage plus a few fixed subscriptions/registrations. We query stored bytes per
-R2 bucket via the GraphQL analytics API, apply the 10 GB account-level free tier,
-then allocate the paid storage back across buckets. Fixed costs can be supplied
+storage plus a few fixed subscriptions/registrations. We list every R2 bucket
+(the REST endpoint pages at 20 by default, which is why `wrangler r2 bucket list`
+stops there), query stored bytes per bucket via the GraphQL analytics API, apply
+the 10 GB account-level free tier, then allocate the paid storage back across
+buckets. Fixed costs can be supplied
 as resource-shaped JSON so project attribution has something real to match.
 
-Auth: CLOUDFLARE_API_TOKEN (already a secret block in prefect.yaml).
+Auth: CLOUDFLARE_API_TOKEN (already a secret block in prefect.yaml). The bucket
+census needs "Workers R2 Storage: Read" and stored bytes need "Account
+Analytics: Read"; without them R2 is reported unmeasured, never $0.
 Optional: CLOUDFLARE_ACCOUNT_ID (else the first account is used),
           CLOUDFLARE_FIXED_COSTS_JSON, or legacy CLOUDFLARE_FIXED_USD.
 """
@@ -57,6 +61,20 @@ async def _account_id(client: httpx.AsyncClient) -> str | None:
         return None
     accounts = resp.json().get("result") or []
     return accounts[0]["id"] if accounts else None
+
+
+async def _r2_buckets(client: httpx.AsyncClient, account: str) -> list[str]:
+    names: list[str] = []
+    cursor: str | None = None
+    while True:
+        params = {"per_page": "1000", **({"cursor": cursor} if cursor else {})}
+        resp = await client.get(f"{REST}/accounts/{account}/r2/buckets", params=params)
+        resp.raise_for_status()
+        body = resp.json()
+        names += [bucket["name"] for bucket in (body.get("result") or {}).get("buckets", [])]
+        cursor = (body.get("result_info") or {}).get("cursor")
+        if not cursor:
+            return sorted(names)
 
 
 async def _r2_stored_bytes_by_bucket(
@@ -228,17 +246,29 @@ class CloudflareConnector:
                     "could not resolve cloudflare account id; set CLOUDFLARE_ACCOUNT_ID "
                     "(account-scoped tokens can't list /accounts)"
                 )
-            # R2 storage analytics needs "Account Analytics: Read" on the token.
-            # if we can't read it, OMIT r2 (never invent a $0 line) and warn —
+            # if we can't read R2, OMIT it (never invent a $0 line) and warn —
             # but still report the real fixed costs below.
+            try:
+                self.r2_buckets = await _r2_buckets(client, account)
+            except Exception as exc:
+                self.r2_buckets = None
+                print(
+                    f"  cloudflare: R2 bucket census unavailable ({exc}); "
+                    "add 'Workers R2 Storage: Read' to the token"
+                )
             try:
                 items.extend(
                     _r2_line_items(await _r2_stored_bytes_by_bucket(client, account, period))
                 )
             except Exception as exc:
-                self.unmeasured.append(f"R2 storage ({exc})")
+                census = (
+                    f"{len(self.r2_buckets)} bucket(s)"
+                    if self.r2_buckets is not None
+                    else "unknown bucket count"
+                )
+                self.unmeasured.append(f"R2 storage, {census} ({exc})")
                 print(
-                    f"  cloudflare: R2 storage UNMEASURED ({exc}); "
+                    f"  cloudflare: R2 storage UNMEASURED for {census} ({exc}); "
                     "add 'Account Analytics: Read' to the token to include it"
                 )
 

@@ -3,7 +3,9 @@
 Hetzner has no public "current invoice" endpoint, but server inventory carries
 the exact contracted monthly list price per server type/location. For fixed
 servers that's the real recurring charge, so these are billed (not estimated);
-the note records that volumes/traffic overage aren't included.
+the note records that traffic overage isn't included. Volumes, snapshot/backup
+images and primary IPv4 addresses bill separately from the server type, so each
+gets its own line at the /pricing list price.
 
 Hetzner Cloud API tokens are PROJECT-scoped — there is no account-wide token.
 So we accept one token per project: HCLOUD_TOKEN plus any HCLOUD_TOKEN_<suffix>
@@ -18,6 +20,7 @@ are out of scope.)
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 
 import httpx
 
@@ -28,14 +31,14 @@ API = "https://api.hetzner.cloud/v1"
 PROVIDER = "hetzner"
 
 
-async def _paged(token: str, path: str, key: str) -> list[dict]:
+async def _paged(token: str, path: str, key: str, **params: str) -> list[dict]:
     out: list[dict] = []
     async with httpx.AsyncClient(
         base_url=API, headers={"Authorization": f"Bearer {token}"}, timeout=20
     ) as client:
         page = 1
         while True:
-            resp = await client.get(path, params={"page": page, "per_page": 50})
+            resp = await client.get(path, params={**params, "page": page, "per_page": 50})
             resp.raise_for_status()
             body = resp.json()
             out.extend(body.get(key, []))
@@ -54,15 +57,48 @@ async def _volumes(token: str) -> list[dict]:
     return await _paged(token, "/volumes", "volumes")
 
 
-async def _volume_gb_month_cents(token: str) -> float:
-    """Gross per-GB monthly volume price in cents, from /pricing."""
+async def _images(token: str) -> list[dict]:
+    return await _paged(token, "/images", "images", type="snapshot") + await _paged(
+        token, "/images", "images", type="backup"
+    )
+
+
+async def _primary_ips(token: str) -> list[dict]:
+    return await _paged(token, "/primary_ips", "primary_ips")
+
+
+@dataclass
+class _Prices:
+    """Gross monthly list prices in cents. Primary IPs are keyed by
+    (type, location); IPv6 has no price entry because it is free."""
+
+    volume_gb: float
+    image_gb: float
+    primary_ip: dict[tuple[str, str], float]
+
+
+async def _pricing(token: str) -> _Prices:
     async with httpx.AsyncClient(
         base_url=API, headers={"Authorization": f"Bearer {token}"}, timeout=20
     ) as client:
         resp = await client.get("/pricing")
         resp.raise_for_status()
-        gross = resp.json()["pricing"]["volume"]["price_per_gb_month"]["gross"]
-        return float(gross) * 100
+        pricing = resp.json()["pricing"]
+    return _Prices(
+        volume_gb=float(pricing["volume"]["price_per_gb_month"]["gross"]) * 100,
+        image_gb=float(pricing["image"]["price_per_gb_month"]["gross"]) * 100,
+        primary_ip={
+            (ip["type"], price["location"]): float(price["price_monthly"]["gross"]) * 100
+            for ip in pricing.get("primary_ips", [])
+            for price in ip.get("prices", [])
+        },
+    )
+
+
+def _ip_location(ip: dict) -> str | None:
+    return (ip.get("location") or {}).get("name") or (
+        (ip.get("datacenter") or {}).get("location") or {}
+    ).get("name")
 
 
 def _monthly_cents(server: dict) -> int:
@@ -114,11 +150,15 @@ class HetznerConnector:
         items: list[LineItem] = []
         seen: set[int] = set()  # dedupe servers if tokens overlap
         seen_volumes: set[int] = set()
+        seen_images: set[int] = set()
+        seen_ips: set[int] = set()
         for label, token in tokens:
             try:
                 servers = await _servers(token)
                 volumes = await _volumes(token)
-                gb_cents = await _volume_gb_month_cents(token) if volumes else 0.0
+                images = await _images(token)
+                primary_ips = await _primary_ips(token)
+                prices = await _pricing(token) if volumes or images or primary_ips else None
             except httpx.HTTPError as exc:
                 self.unmeasured.append(f"project '{label}' ({exc})")
                 print(
@@ -163,10 +203,55 @@ class HetznerConnector:
                         provider=PROVIDER,
                         project=project,
                         service=f"{vname}:volume",
-                        amount=round(size_gb * gb_cents),
+                        amount=round(size_gb * prices.volume_gb),
                         estimated=False,
                         usage=f"{size_gb}GB block storage",
                         note="provisioned volume at per-GB list price",
+                    )
+                )
+            # images and IPs are named after the server they came from, so the
+            # inventory's server costKey (hetzner:zlay) also owns hetzner:zlay:ipv4
+            # and hetzner:zlay:snapshot-<id> by colon-suffix match.
+            for image in images:
+                iid = image.get("id")
+                if iid is None or iid in seen_images:
+                    continue
+                seen_images.add(iid)
+                source = (image.get("created_from") or {}).get("name") or "image"
+                size_gb = float(image.get("image_size") or 0)
+                kind = image.get("type", "snapshot")
+                description = image.get("description")
+                items.append(
+                    LineItem(
+                        provider=PROVIDER,
+                        project=project_for(source),
+                        service=f"{source}:{kind}-{iid}",
+                        amount=round(size_gb * prices.image_gb),
+                        estimated=False,
+                        usage=f"{size_gb:.2f}GB {kind} image"
+                        + (f": {description}" if description else ""),
+                        note="stored image size at per-GB list price",
+                    )
+                )
+            for ip in primary_ips:
+                pid = ip.get("id")
+                if pid is None or pid in seen_ips:
+                    continue
+                seen_ips.add(pid)
+                cents = prices.primary_ip.get((ip.get("type", ""), _ip_location(ip) or ""))
+                if not cents:
+                    continue
+                owner = server_names.get(ip.get("assignee_id")) or ip.get("name", "unknown")
+                items.append(
+                    LineItem(
+                        provider=PROVIDER,
+                        project=project_for(owner),
+                        service=f"{owner}:{ip['type']}",
+                        amount=round(cents),
+                        estimated=False,
+                        usage=f"primary {ip['type']}"
+                        + ("" if ip.get("assignee_id") else ", unassigned"),
+                        note="primary IP monthly list price; billed separately from the server",
                     )
                 )
         return items
