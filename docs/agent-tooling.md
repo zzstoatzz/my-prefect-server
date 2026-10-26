@@ -1,5 +1,12 @@
 # agent tooling — MCP surfaces and what they actually do
 
+Flow orchestration is centralized here. The MCP Atlas crawl is
+`flows/mcp_atlas/crawl.py`; it uses the Atlas product's pinned `mcp-atlas` library
+for record parsing and layout. This repository owns its original and HeavyPad
+deployment definitions, just as it owns `flows/bisk.py`. The Atlas repository
+continues owning its Worker, website, library and MCP server. It must not register
+another recurring Prefect crawl.
+
 the `mps` plugin in `plugins/mps/` bundles two MCP servers. know what each one
 can do before hand-rolling `curl`, and before claiming something isn't possible.
 

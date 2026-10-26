@@ -19,6 +19,12 @@ from prefect.settings import (
 STORE = Path.home() / "tangled.org/zzstoatzz.io/secrets/prod.yaml"
 CLOUD = "https://api.prefect.cloud/api/accounts/12242a57-9f05-4bf5-8853-9bff595d4bab/workspaces/cafa2ffa-f6cc-4ed6-ab76-eaa4ba1ad40e"
 PROVIDER_BLOCKS = {"fly-api-token", "cloudflare-costs-token", "neon-api-key", "hetzner-tokens"}
+PUBLICATION_BLOCKS = {
+    "mcp-atlas-ingest-token",
+    "bisk-r2-endpoint",
+    "bisk-r2-access-key-id",
+    "bisk-r2-secret-access-key",
+}
 
 
 def extract(path):
@@ -36,7 +42,9 @@ def main():
     parser.add_argument(
         "--block",
         action="append",
-        choices=sorted(PROVIDER_BLOCKS | {"logfire-read-token", "operator-atproto-creds"}),
+        choices=sorted(
+            PROVIDER_BLOCKS | PUBLICATION_BLOCKS | {"logfire-read-token", "operator-atproto-creds"}
+        ),
         required=True,
     )
     parser.add_argument("--apply", action="store_true")

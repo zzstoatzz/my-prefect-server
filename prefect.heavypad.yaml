@@ -9,6 +9,54 @@ pull:
       directory: flow-source
 
 deployments:
+  - name: mcp-atlas
+    entrypoint: flows/mcp_atlas/crawl.py:mcp_atlas
+    tags: [publish, heavypad]
+    work_pool:
+      name: heavypad-pool
+      job_variables:
+        command: >-
+          uv run --no-project --with prefect==3.8.2
+          --with 'mcp-atlas @ git+https://tangled.org/zzstoatzz.io/mcp-atlas.git@238d50fc7b97fd57129f787f1be2460f3c1a1614'
+          prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+      - cron: "45 */6 * * *"
+        timezone: UTC
+        active: false
+
+  - name: bisk-snapshot
+    entrypoint: flows/bisk.py:bisk_snapshot
+    tags: [publish, heavypad]
+    work_pool:
+      name: heavypad-pool
+      job_variables:
+        command: >-
+          uv run --no-project --with prefect==3.8.2
+          --with 'mps @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}#subdirectory=packages/mps'
+          prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
+          PREFECT_PLUGINS_ENABLED: "true"
+          PREFECT_PLUGINS_ALLOW: mps-secrets
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
+          BISK_R2_ENDPOINT: prefect-block://bisk-r2-endpoint
+          BISK_R2_ACCESS_KEY_ID: prefect-block://bisk-r2-access-key-id
+          BISK_R2_SECRET_ACCESS_KEY: prefect-block://bisk-r2-secret-access-key
+          BISK_R2_BUCKET: bisk
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+      - cron: "*/10 * * * *"
+        timezone: UTC
+        active: false
+
   - name: costs
     entrypoint: flows/costs.py:costs
     tags: [watch, heavypad]

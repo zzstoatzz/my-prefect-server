@@ -139,8 +139,15 @@ HeavyPad notification rules while backlog still depends on failure alerts.
 
 ## Next migration candidates
 
-1. `fleet-health` moved to HeavyPad on October 26 (below); `pub-search-snapshot`
-   and `leaflet-atlas` are the next candidates.
+The [October 26 deployment audit](../audits/2026-10-26-deployment-migration-audit.md)
+checks all 46 original deployments against live run history and automations.
+Nate approved omitting `pds-records`, `dep-bump`, and `pi-pr` from the migration;
+retire those deployments with Hetzner. Their source can remain available.
+
+1. `fleet-health` moved to HeavyPad on October 26 (below). The live schedule
+   assessment favors `mcp-atlas` and `bisk-snapshot` next. The existing HeavyPad
+   worker has one flow slot, a 2 GiB cap and one CPU: isolate long builds before
+   moving `pub-search-snapshot` or `leaflet-atlas` into that execution capacity.
 2. Defer DuckDB writers, event-dependent briefs, approvals, other publishing and Gardener
    until their checkpoint, execution and effect ownership are specified.
 
@@ -173,7 +180,7 @@ and its upstream retention/deadlines before each migration.
 | Coding and approval cohort: `watch-tangled-pulls`, `autofix`, `autofix-revise`, `investigate`, `pi-pr`, `pi-agent`, `merge-approved`, `test-pull-patch` | Remediation/reviews stop; running VMs or effects may continue after orchestration disconnect. Paused merge approval and failed-run IDs are not portable by re-registration. | Comment dedup variable, host bridge/wheels/tools, exe VMs, run history, credentials, explicit approval/fencing. |
 | Native build gates: `dep-bump`, `stream-admission` | Build/adoption gates unavailable; do not bypass them or assume CI/deployment progress continues safely. | Native Zig/Docker/toolchains, host build resources, SSH/publishing credentials and external CI callers. |
 | Manual record operations: `pds-records` | Manual actions unavailable; interrupted writes/deletes need reconciliation, not blind retry. | PDS credentials and action parameters; no automatic catch-up. |
-| Unqualified external source: `mcp-atlas` | Deployment points at flows/crawl.py, absent from this repository. Availability and dependencies remain unqualified; block migration. | Recover its actual source/runtime contract before classifying or moving it. |
+| External atlas crawl: `mcp-atlas` | The authoritative relay sweep reconciles deletions and long-tail records; the Worker's five-minute refresh is a separate path. Successful recent runs and source in `zzstoatzz.io/mcp-atlas` were verified in the October 26 audit. | Preserve the external repository and ingest credential; qualify publication and pin source before moving it. |
 
 ## Qualified bufo traffic batch
 

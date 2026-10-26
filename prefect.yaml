@@ -690,11 +690,24 @@ deployments:
           BISK_R2_SECRET_ACCESS_KEY: prefect-block://bisk-r2-secret-access-key
           BISK_R2_BUCKET: bisk
     concurrency_limit: *cancel_new
-    schedules:
-      # every 10 min — the live overlay (spacedust) covers the gaps between
-      # snapshots, so the baseline only needs to be roughly fresh.
-      - cron: "*/10 * * * *"
-        active: true
+    schedules: []  # publication moves to the HeavyPad server
+
+  - name: mcp-atlas
+    pull: *cached_home
+    tags: [publish]
+    entrypoint: flows/mcp_atlas/crawl.py:mcp_atlas
+    work_pool:
+      name: home-pool
+      job_variables:
+        command: >-
+          uv run
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
+          --with 'mcp-atlas @ git+https://tangled.org/zzstoatzz.io/mcp-atlas.git@238d50fc7b97fd57129f787f1be2460f3c1a1614'
+          prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
+    concurrency_limit: *cancel_new
+    schedules: []  # the central flow and HeavyPad schedule replace the external deployment file
 
   - name: phi-curation
     pull: *cached_home
