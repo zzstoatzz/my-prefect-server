@@ -679,3 +679,7 @@ recovery-secret-blocks *args:
 [positional-arguments]
 verify-bufo-publication *args:
     uv run --with prefect==3.8.2 python scripts/verify_bufo_publication.py "$@"
+
+[positional-arguments]
+verify-cost-publication *args:
+    uv run --with prefect==3.8.2 python scripts/verify_cost_publication.py "$@"

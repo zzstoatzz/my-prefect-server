@@ -403,8 +403,7 @@ deployments:
       config:
         dry_run: false
     concurrency_limit: *cancel_new
-    schedules:
-      - cron: "0 8 * * *"  # daily at 08:00 UTC
+    schedules: []  # daily publication moves to the HeavyPad server
 
   - name: bufo-traffic
     pull: *cached_home
