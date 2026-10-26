@@ -24,12 +24,15 @@ deployments:
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
     parameters:
       config:
-        dry_run: true
+        dry_run: false
         days_back: 2
     concurrency_limit:
       limit: 1
       collision_strategy: CANCEL_NEW
-    schedules: []
+    schedules:
+      - cron: '7 * * * *'
+        timezone: UTC
+        active: true
 
   - name: diagnostics
     entrypoint: flows/diagnostics.py:diagnostics

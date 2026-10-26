@@ -675,3 +675,7 @@ cloud-recovery-prefect *args:
 [positional-arguments]
 recovery-secret-blocks *args:
     uv run --with prefect==3.8.2 python scripts/recovery_secret_blocks.py "$@"
+
+[positional-arguments]
+verify-bufo-publication *args:
+    uv run --with prefect==3.8.2 python scripts/verify_bufo_publication.py "$@"
