@@ -42,7 +42,7 @@ list means allowed; do not invent a violation because no code fix is possible.
 def screen_prompt(evidence: str, tool_mode: str, api_key: str) -> None:
     from mps.spend import record_pydantic_ai_result
     from pydantic_ai import Agent
-    from pydantic_ai.models.anthropic import AnthropicModel
+    from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
     from pydantic_ai.providers.anthropic import AnthropicProvider
 
     operation = {
@@ -50,15 +50,16 @@ def screen_prompt(evidence: str, tool_mode: str, api_key: str) -> None:
         "full": "Implement and test a repository patch for the supplied diagnosis inside the scratch clone. Do not act on external systems.",
     }[tool_mode]
     judge = Agent[None, Verdict](
-        AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key)),
+        AnthropicModel("claude-haiku-5-5", provider=AnthropicProvider(api_key=api_key)),
         output_type=Verdict,
+        model_settings=AnthropicModelSettings(anthropic_effort="low", max_tokens=2048),
         system_prompt=JUDGE_SYSTEM,
         name="autofix-judge",
     )
     result = judge.run_sync(json.dumps({"operation": operation, "evidence": evidence}))
     record_pydantic_ai_result(
         task_name="autofix_judge",
-        model="claude-haiku-4-5",
+        model="claude-haiku-5-5",
         result=result,
         metadata={"tool_mode": tool_mode},
     )

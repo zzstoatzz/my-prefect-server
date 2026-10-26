@@ -52,14 +52,15 @@ def screen_prompt(
     run cannot skip it. fails closed — judge errors abort the run.
     """
     from pydantic_ai import Agent
-    from pydantic_ai.models.anthropic import AnthropicModel
+    from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
     from pydantic_ai.providers.anthropic import AnthropicProvider
 
     from mps.spend import record_pydantic_ai_result
 
     judge = Agent[None, Verdict](
-        AnthropicModel("claude-haiku-4-5", provider=AnthropicProvider(api_key=api_key)),
+        AnthropicModel("claude-haiku-5-5", provider=AnthropicProvider(api_key=api_key)),
         output_type=Verdict,
+        model_settings=AnthropicModelSettings(anthropic_effort="low", max_tokens=2048),
         system_prompt=(
             JUDGE_SYSTEM
             if instructions is None
@@ -87,7 +88,7 @@ def screen_prompt(
     )
     record_pydantic_ai_result(
         task_name="pi_judge",
-        model="claude-haiku-4-5",
+        model="claude-haiku-5-5",
         result=result,
         metadata={"tool_mode": tool_mode},
     )

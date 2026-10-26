@@ -53,7 +53,7 @@ class Agent(BaseModel):
     )
     model: str | None = Field(
         default=None,
-        description="model id (e.g. claude-haiku-4-5-20251001); empty = provider default",
+        description="model id (e.g. claude-haiku-5-5); empty = provider default",
         json_schema_extra={"position": 1},
     )
     thinking: THINKING = Field(default="medium", json_schema_extra={"position": 2})
