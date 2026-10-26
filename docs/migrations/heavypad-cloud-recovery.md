@@ -89,8 +89,17 @@ infrastructure. That is an explicit observability limitation, not home recovery.
 `just heavypad-prefect-monitoring --apply` copies the existing `discord-alerts`
 block and only `sustained burn -> discord` and `flow-run failure -> discord`.
 The check mode compares block data by hash and rules/actions against the source;
-notification run links use the HeavyPad URL. No synthetic Discord message was
-sent. End-to-end notification delivery on the new server is not yet qualified.
+notification run links use the HeavyPad URL. After explicit operator approval,
+one clearly labelled test alert exercised the real flow-failure pipeline on
+October 26 at 01:20 UTC. Expected-Failed test run
+`f0b893d9-1f3d-4bc8-ab46-4dd94700fe7c` emitted triggering event
+`181809bb-473b-4a8d-8935-33b4c707acbb`; persisted audit event
+`12836524-ca10-4051-96c8-9b1b45acba8f` recorded one successful
+`prefect.automation.action.executed` with action type `send-notification`.
+The triggering event was independently read back as this exact test run's Failed event. The observed audit window contained one successful action
+and no failed actions; no retry or second synthetic message was sent. This
+qualifies the shared notification transport and failure route. The sustained-burn
+rule was matched against its source configuration, not separately fired.
 The original automatic failure-to-autofix chain is intentionally not copied:
 it would need to read failed runs from their new server and is a separate cohort.
 
