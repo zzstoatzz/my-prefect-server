@@ -112,9 +112,10 @@ deployments:
       name: heavypad-pool
       job_variables:
         command: >-
+          env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets
           uv run --no-project --with prefect==3.8.2
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
-          python -m prefect.engine
+          prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
