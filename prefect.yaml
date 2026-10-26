@@ -144,13 +144,7 @@ deployments:
           prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
-    schedules:
-      # :37 rather than the top of the hour, so the host sample is not taken
-      # while the hourly ingest is spinning up and skewing what it measures.
-      # scan_cache_size stays off — walking tens of GB evicts the dentry cache
-      # this flow reports on. Run it by hand when you want the total.
-      - cron: "37 * * * *"
-        active: true
+    schedules: []
 
   - name: ingest
     pull: *cached_home

@@ -91,7 +91,9 @@ separate `just heavypad-prefect` and `just heavypad-kubectl` target the HeavyPad
 never switch the default profile or kubectl context to operate it. Read
 `deploy/heavypad-prefect/README.md` before migration. `prefect.heavypad.yaml`
 owns HeavyPad server schedules; original CI continues registering `prefect.yaml` only.
-Only the backlog counter is migrated. Keep its original schedule empty, and
-never run two schedulers for the same effects. Publishing, alerts, email,
-Gardener and Typeahead remain outside the HeavyPad server migration scope. Canonical
+The backlog counter and diagnostics are migrated. Keep their original schedules
+empty, and never run two schedulers for the same effects. Diagnostics notification
+dependencies are copied; automatic remediation remains on the original server.
+Cloud recovery deployments are manual-only and must not imply home-host monitoring.
+Publishing, email, Gardener and Typeahead remain outside this migration batch. Canonical
 hostname cutover and node deletion require a later operator decision.

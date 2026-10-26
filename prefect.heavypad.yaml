@@ -21,7 +21,10 @@ deployments:
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
     parameters:
       scan_cache_size: false
-    schedules: []
+    schedules:
+      - cron: '37 * * * *'
+        timezone: UTC
+        active: true
 
   - name: canary
     entrypoint: flows/prefect_home_canary.py:prefect_home_canary

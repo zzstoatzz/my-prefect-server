@@ -66,6 +66,9 @@ def main():
             else:
                 current = existing.get(body["name"])
                 assert current is not None, f"Missing automation: {body['name']}"
+                current_trigger = copy.deepcopy(current["trigger"])
+                current_trigger.pop("id", None)
+                assert current_trigger == body["trigger"], f"Automation trigger drift: {body['name']}"
                 for key in ("enabled", "actions"):
                     assert current[key] == body[key], f"Automation drift: {body['name']} {key}"
             print(f"Verified notification dependency: {body['name']}")
