@@ -1,19 +1,19 @@
-name: heavypad-prefect-pilot
+name: heavypad-prefect
 
 pull:
   - prefect.deployments.steps.run_shell_script:
       stream_output: true
       script: |
-        bash -c 'git clone --quiet https://github.com/zzstoatzz/my-prefect-server.git pilot-source && git -C pilot-source checkout --quiet "${MPS_PIN#@}"'
+        bash -c 'git clone --quiet https://github.com/zzstoatzz/my-prefect-server.git flow-source && git -C flow-source checkout --quiet "${MPS_PIN#@}"'
   - prefect.deployments.steps.set_working_directory:
-      directory: pilot-source
+      directory: flow-source
 
 deployments:
   - name: canary
     entrypoint: flows/prefect_home_canary.py:prefect_home_canary
-    tags: [heavypad-pilot]
-    work_pool: &pilot
-      name: heavypad-pilot-pool
+    tags: [heavypad]
+    work_pool: &heavypad
+      name: heavypad-pool
       job_variables:
         command: >-
           uv run --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
@@ -25,9 +25,9 @@ deployments:
 
   - name: fastmcp-backlog
     entrypoint: flows/fastmcp_backlog.py:fastmcp_backlog
-    tags: [watch, heavypad-pilot]
+    tags: [watch, heavypad]
     work_pool:
-      <<: *pilot
+      <<: *heavypad
       job_variables:
         command: >-
           uv run --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'

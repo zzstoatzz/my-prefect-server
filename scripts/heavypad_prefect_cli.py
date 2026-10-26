@@ -1,4 +1,4 @@
-"""Run the Prefect CLI against the isolated HeavyPad pilot."""
+"""Run the Prefect CLI against the isolated HeavyPad server."""
 
 import json
 import os

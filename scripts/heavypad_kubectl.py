@@ -1,4 +1,4 @@
-"""Forward arguments unchanged to the isolated pilot's embedded kubectl."""
+"""Forward arguments unchanged to the isolated HeavyPad server's embedded kubectl."""
 
 import shlex
 import subprocess

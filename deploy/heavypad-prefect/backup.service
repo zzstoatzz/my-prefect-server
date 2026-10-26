@@ -1,5 +1,5 @@
 [Unit]
-Description=Encrypted backup of isolated HeavyPad Prefect pilot
+Description=Encrypted backup of isolated HeavyPad Prefect
 
 [Service]
 Type=oneshot

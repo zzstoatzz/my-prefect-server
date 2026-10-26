@@ -644,7 +644,7 @@ deploy-bandwidth-watchdog:
 agentic-fastmcp *args:
     bash scripts/agentic_fastmcp.sh "$@"
 
-# Isolated HeavyPad pilot; never changes the original production profile.
+# Isolated HeavyPad server; never changes the original production profile.
 [positional-arguments]
 heavypad-prefect *args:
     uv run scripts/heavypad_prefect_cli.py "$@"
@@ -654,11 +654,11 @@ heavypad-prefect *args:
 heavypad-kubectl *args:
     uv run scripts/heavypad_kubectl.py "$@"
 
-# Create an encrypted pilot backup; the original server is never targeted.
+# Create an encrypted HeavyPad server backup; the original server is never targeted.
 heavypad-prefect-backup:
     ssh -o BatchMode=yes stoat@heavypad '~/.local/share/prefect-home/backup.sh'
 
-# Default verifies hashes only; --apply renders the pilot's secret consumers.
+# Default verifies hashes only; --apply renders the HeavyPad server's secret consumers.
 [positional-arguments]
 heavypad-prefect-secrets *args:
     uv run scripts/heavypad_prefect_secrets.py "$@"

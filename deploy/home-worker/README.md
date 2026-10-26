@@ -91,9 +91,9 @@ grows without bound; `uv cache prune` on the box is the maintenance step. A
 cron (`hub-data-sync.sh`, every 3 min) and a user service (`hydroxide`) also
 run as `stoat` and are not part of this deployment.
 
-## Separate pilot worker
+## Separate HeavyPad worker
 
-The HeavyPad control-plane pilot has its own user unit and API credential. It
+The HeavyPad control plane has its own user unit and API credential. It
 does not replace or retarget this system worker. See
-[the pilot runbook](../heavypad-prefect/README.md). Only the FastMCP backlog
+[the HeavyPad runbook](../heavypad-prefect/README.md). Only the FastMCP backlog
 counter has transferred schedule ownership; critical original flows remain here.

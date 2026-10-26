@@ -1,5 +1,5 @@
 [Unit]
-Description=Daily isolated Prefect pilot backup
+Description=Daily isolated HeavyPad Prefect backup
 
 [Timer]
 OnCalendar=*-*-* 05:45:00 UTC

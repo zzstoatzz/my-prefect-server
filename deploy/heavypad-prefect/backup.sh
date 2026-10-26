@@ -17,4 +17,4 @@ docker exec k3d-prefect-home-server-0 kubectl -n prefect-home exec deployment/po
 test -s "$partial"
 mv "$partial" "$backup_dir/$stamp.dump.age"
 find "$backup_dir" -maxdepth 1 -type f -name '*.dump.age' -mtime +7 -delete
-printf 'Encrypted pilot PostgreSQL backup: %s\n' "$backup_dir/$stamp.dump.age"
+printf 'Encrypted HeavyPad server PostgreSQL backup: %s\n' "$backup_dir/$stamp.dump.age"

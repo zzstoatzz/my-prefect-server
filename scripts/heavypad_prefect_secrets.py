@@ -1,4 +1,4 @@
-"""Render or verify pilot-only consumers of the canonical secret store."""
+"""Render or verify HeavyPad-only consumers of the canonical secret store."""
 
 import argparse
 import base64
@@ -102,12 +102,12 @@ def main() -> None:
             hashlib.sha256(base64.b64decode(actual[name])).digest()
             != hashlib.sha256(value.encode()).digest()
         ):
-            raise RuntimeError(f"Pilot secret drift: {name}")
+            raise RuntimeError(f"HeavyPad secret drift: {name}")
     digest = remote("sha256sum ~/.config/prefect-home/worker.env").split()[0]
     if digest != hashlib.sha256(env.encode()).hexdigest():
-        raise RuntimeError("Pilot worker environment drift")
+        raise RuntimeError("HeavyPad worker environment drift")
     github_block(credentials["api_auth_string"], args.apply)
-    print("Pilot consumers already current; no secret values printed")
+    print("HeavyPad consumers already current; no secret values printed")
 
 
 if __name__ == "__main__":
