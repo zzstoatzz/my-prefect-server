@@ -125,9 +125,7 @@ deployments:
           prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
-    schedules:
-      - cron: "12 * * * *"
-        active: true
+    schedules: []
 
   - name: diagnostics
     pull: *cached_home

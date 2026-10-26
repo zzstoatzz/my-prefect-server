@@ -1,4 +1,4 @@
-"""Copy only diagnostics notification dependencies into HeavyPad; never send a test message."""
+"""Copy selected monitoring notification dependencies into HeavyPad; never send a test message."""
 
 import argparse
 import copy
@@ -13,7 +13,7 @@ from prefect.blocks.notifications import DiscordWebhook
 from prefect.settings import PREFECT_API_AUTH_STRING, PREFECT_API_KEY, PREFECT_API_URL, temporary_settings
 
 TARGET = "https://heavypad.tailb660b6.ts.net:10443/api"
-NAMES = {"sustained burn -> discord", "flow-run failure -> discord"}
+NAMES = {"sustained burn -> discord", "flow-run failure -> discord", "fleet unhealthy -> discord"}
 
 
 def digest(data):
