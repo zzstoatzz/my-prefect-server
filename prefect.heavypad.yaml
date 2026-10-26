@@ -103,7 +103,7 @@ deployments:
     schedules:
       - cron: "45 */6 * * *"
         timezone: UTC
-        active: false
+        active: true
 
   - name: bisk-snapshot
     entrypoint: flows/bisk.py:bisk_snapshot
@@ -131,7 +131,7 @@ deployments:
     schedules:
       - cron: "*/10 * * * *"
         timezone: UTC
-        active: false
+        active: true
 
   - name: costs
     entrypoint: flows/costs.py:costs
