@@ -74,7 +74,7 @@ async def discover(group: ClientGroup) -> tuple[dict[str, int], dict[str, str | 
     return counts, group.protocol_versions
 
 
-@flow(log_prints=True)
+@flow(log_prints=True, timeout_seconds=300)
 async def mcp_fleet_health(
     atlas_url: str = DEFAULT_ATLAS_URL,
     connect_timeout_s: float = 20,

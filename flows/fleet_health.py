@@ -37,6 +37,7 @@ from prefect import flow, get_run_logger, task
 from prefect.artifacts import create_markdown_artifact
 from prefect.events import emit_event
 from prefect.runtime import flow_run
+from prefect.settings import PREFECT_UI_URL
 from prefect.states import Failed, State
 
 from flows.evergreen_checks import INVENTORY_URL, STATUS_URL, check_evergreen
@@ -240,7 +241,10 @@ def summarize(
 
 
 def run_link() -> str:
-    return RUN_URL.format(id=flow_run.id) if flow_run.id else ""
+    if not flow_run.id:
+        return ""
+    base = PREFECT_UI_URL.value()
+    return f"{base.rstrip('/')}/runs/flow-run/{flow_run.id}" if base else RUN_URL.format(id=flow_run.id)
 
 
 def unhealthy_payload(unhealthy: list[str]) -> dict[str, object]:

@@ -78,9 +78,21 @@ def test_unhealthy_event_carries_the_summary_the_discord_automation_renders():
 
 
 def test_unhealthy_summary_links_the_run_inside_a_flow_run(monkeypatch):
+    from prefect.settings import PREFECT_UI_URL, temporary_settings
+
     monkeypatch.setenv("PREFECT__RUNTIME__FLOW_RUN__ID", "948b0104-40f8-479e-9803-08199c870857")
-    summary = unhealthy_payload(["hub: HTTP 503", "y" * 5000])["summary"]
+    with temporary_settings({PREFECT_UI_URL: "https://prefect-server.waow.tech"}):
+        summary = unhealthy_payload(["hub: HTTP 503", "y" * 5000])["summary"]
     assert summary.endswith(
         "\nrun: https://prefect-server.waow.tech/runs/flow-run/948b0104-40f8-479e-9803-08199c870857"
     )
     assert len(summary) <= 1800
+
+
+def test_unhealthy_summary_uses_the_runtime_ui(monkeypatch):
+    from prefect.settings import PREFECT_UI_URL, temporary_settings
+
+    monkeypatch.setenv("PREFECT__RUNTIME__FLOW_RUN__ID", "948b0104-40f8-479e-9803-08199c870857")
+    with temporary_settings({PREFECT_UI_URL: "https://heavypad.tailb660b6.ts.net:10443/"}):
+        summary = unhealthy_payload(["example: HTTP 503"])["summary"]
+    assert summary.endswith("\nrun: https://heavypad.tailb660b6.ts.net:10443/runs/flow-run/948b0104-40f8-479e-9803-08199c870857")
