@@ -54,7 +54,7 @@ deployments:
       # eval's :06/:36 windows or alongside the hourly ingest spin-up
       - cron: '3,18,33,48 * * * *'
         timezone: UTC
-        active: false
+        active: true
 
   - name: mcp-fleet-health
     entrypoint: flows/mcp_fleet_health.py:mcp_fleet_health
