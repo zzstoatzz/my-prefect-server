@@ -6,6 +6,26 @@ pull:
       commit_sha: "{{ $MPS_SHA }}"
 
 deployments:
+  - name: bufo-traffic-recovery
+    entrypoint: flows/bufo_traffic.py:bufo_traffic
+    description: Manual-only recovery; defaults to read-only Logfire rollup.
+    tags: [recovery, manual-only]
+    work_pool:
+      name: managed
+      job_variables:
+        image: prefecthq/prefect:3-latest
+        pip_packages:
+          - prefect==3.8.2
+          - "mps @ git+https://github.com/zzstoatzz/my-prefect-server.git@{{ $MPS_SHA }}#subdirectory=packages/mps"
+    parameters:
+      config:
+        dry_run: true
+        days_back: 2
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules: []
+
   - name: diagnostics-recovery
     entrypoint: flows/diagnostics.py:diagnostics
     description: >-

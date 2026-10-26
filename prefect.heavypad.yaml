@@ -9,6 +9,28 @@ pull:
       directory: flow-source
 
 deployments:
+  - name: bufo-traffic
+    entrypoint: flows/bufo_traffic.py:bufo_traffic
+    tags: [watch, heavypad]
+    work_pool:
+      name: heavypad-pool
+      job_variables:
+        command: >-
+          uv run --no-project
+          --with 'mps @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}#subdirectory=packages/mps'
+          --with prefect==3.8.2 prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
+    parameters:
+      config:
+        dry_run: true
+        days_back: 2
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules: []
+
   - name: diagnostics
     entrypoint: flows/diagnostics.py:diagnostics
     tags: [watch, heavypad]

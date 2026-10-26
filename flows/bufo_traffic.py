@@ -26,7 +26,7 @@ import os
 import httpx
 from atproto import AsyncClient
 from mps.atproto import session_did
-from mps.blocks import secret_mapping
+from mps.blocks import secret, secret_mapping
 from mps.bufo_traffic import COLLECTION, QUERY, DayTraffic, parse_rows, rollup
 from mps.observability import configure_logfire
 from pdsx._internal.auth import login
@@ -56,7 +56,7 @@ class TrafficConfig(BaseModel):
 
 @task(cache_policy=NONE, retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
 async def query_logfire(since: dt.datetime, until: dt.datetime) -> dict[dt.date, DayTraffic]:
-    token = os.environ["LOGFIRE_READ_TOKEN"]
+    token = os.environ.get("LOGFIRE_READ_TOKEN") or await secret("logfire-read-token")
     async with httpx.AsyncClient(timeout=60) as client:
         resp = await client.post(
             LOGFIRE_QUERY_URL,
