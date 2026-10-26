@@ -9,6 +9,81 @@ pull:
       directory: flow-source
 
 deployments:
+  - name: phi-curation
+    entrypoint: flows/phi_trigger.py:phi_trigger
+    tags: [phi, heavypad]
+    work_pool: &heavypad_phi
+      name: heavypad-pool
+      job_variables:
+        command: >-
+          uv run --no-project --with prefect==3.8.2
+          --with 'mps @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}#subdirectory=packages/mps'
+          prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
+    parameters:
+      slot: curation
+    schedules:
+      - cron: "0 3 * * 1"
+        timezone: UTC
+        active: false
+
+  - name: phi-likes-review
+    entrypoint: flows/phi_trigger.py:phi_trigger
+    tags: [phi, heavypad]
+    work_pool: *heavypad_phi
+    parameters:
+      slot: likes-review
+    schedules:
+      - cron: "0 20 * * 0"
+        timezone: UTC
+        active: false
+
+  - name: phi-editorial
+    entrypoint: flows/phi_trigger.py:phi_trigger
+    tags: [phi, heavypad]
+    work_pool: *heavypad_phi
+    parameters:
+      slot: editorial
+    schedules:
+      - cron: "0 15 * * *"
+        timezone: UTC
+        active: false
+
+  - name: phi-character-retro
+    entrypoint: flows/phi_trigger.py:phi_trigger
+    tags: [phi, heavypad]
+    work_pool: *heavypad_phi
+    parameters:
+      slot: character-retro
+    schedules:
+      - cron: "0 17 1 * *"
+        timezone: UTC
+        active: false
+
+  - name: phi-chicken-scout
+    entrypoint: flows/phi_trigger.py:phi_trigger
+    tags: [phi, heavypad]
+    work_pool: *heavypad_phi
+    parameters:
+      slot: chicken-scout
+    schedules:
+      - cron: "0 18 * * *"
+        timezone: UTC
+        active: false
+
+  - name: phi-chicken-precheck
+    entrypoint: flows/phi_trigger.py:phi_trigger
+    tags: [phi, heavypad]
+    work_pool: *heavypad_phi
+    parameters:
+      slot: chicken-precheck
+    schedules:
+      - cron: "0 4 * * *"
+        timezone: UTC
+        active: false
+
   - name: mcp-atlas
     entrypoint: flows/mcp_atlas/crawl.py:mcp_atlas
     tags: [publish, heavypad]
@@ -38,7 +113,7 @@ deployments:
       job_variables:
         command: >-
           uv run --no-project --with prefect==3.8.2
-          --with 'mps @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}#subdirectory=packages/mps'
+          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
