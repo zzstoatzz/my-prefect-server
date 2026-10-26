@@ -988,7 +988,7 @@ deployments:
         command: uv run --with /home/stoat/phi-spike-worker/releases/371b7aaea5e32129e136d7e8743de002ce118606da87fa9c298e7a52118cb84a/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
         env:
           # the wheel is frozen at 9495d61 (pre-Sprite mps); the flow pin may move, see flows/autofix.py.
-          MPS_PIN: "@6eb42821a65e7c2d861051317bb50875404e1815"
+          MPS_PIN: "@34dc208d0278a2ee885c2dd0f2f7fc9e7a6db96f"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
