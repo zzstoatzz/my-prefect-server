@@ -31,7 +31,7 @@ from mps.bufo_traffic import COLLECTION, QUERY, DayTraffic, parse_rows, rollup
 from mps.observability import configure_logfire
 from pdsx._internal.auth import login
 from prefect import flow, task
-from prefect.artifacts import create_table_artifact
+from prefect.artifacts import acreate_table_artifact
 from prefect.cache_policies import NONE
 from pydantic import BaseModel, Field
 
@@ -119,7 +119,7 @@ async def bufo_traffic(config: TrafficConfig | None = None):
         print("no requests in window — nothing to write")
         return []
 
-    create_table_artifact(
+    await acreate_table_artifact(
         key="bufo-traffic",
         table=[
             {

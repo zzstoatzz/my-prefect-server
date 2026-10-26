@@ -671,3 +671,7 @@ heavypad-prefect-monitoring *args:
 [positional-arguments]
 cloud-recovery-prefect *args:
     env -u PREFECT_API_AUTH_STRING -u PREFECT_API_KEY PREFECT_API_URL=https://api.prefect.cloud/api/accounts/12242a57-9f05-4bf5-8853-9bff595d4bab/workspaces/cafa2ffa-f6cc-4ed6-ab76-eaa4ba1ad40e uv run --with prefect==3.8.2 prefect --profile bot "$@"
+
+[positional-arguments]
+recovery-secret-blocks *args:
+    uv run --with prefect==3.8.2 python scripts/recovery_secret_blocks.py "$@"
