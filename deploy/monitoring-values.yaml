@@ -77,6 +77,13 @@ prometheus:
             labels:
               instance: heavypad
               role: home-box
+      # nvidia-smi readings for the rtx 4070, from deploy/heavypad-gpu-exporter.
+      - job_name: heavypad-gpu
+        static_configs:
+          - targets: ["100.96.216.23:9835"]
+            labels:
+              instance: heavypad
+              role: home-box
     storageSpec:
       volumeClaimTemplate:
         spec:
