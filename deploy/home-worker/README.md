@@ -96,6 +96,6 @@ run as `stoat` and are not part of this deployment.
 The HeavyPad control plane has its own user unit and API credential. It
 does not replace or retarget this system worker. See
 [the HeavyPad runbook](../heavypad-prefect/README.md). The FastMCP backlog counter
-plus diagnostics, bufo traffic and public MCP health have transferred schedule
+plus diagnostics, bufo traffic, costs and public MCP health have transferred schedule
 ownership; critical original flows and the broader host-dependent fleet-health
 sweep remain here.

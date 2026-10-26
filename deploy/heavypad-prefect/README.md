@@ -21,8 +21,9 @@ or its storage as an ordinary rollout operation.
 Only low-risk flows qualify at this stage of migration. Verify a real manual run, persistent
 state, backup/restore and authenticated remote access before transferring schedule
 ownership. Pause the old schedule and cancel its queued scheduled runs before
-activating the new one. Do not copy production alerting, Gardener, publishing,
-email or Typeahead jobs as part of this goal. Migration records must identify the
+activating the new one. Only individually qualified notification rules and
+publication flows may move. Gardener, email and Typeahead remain deferred.
+Migration records must identify the
 old/new deployment IDs, source pin, schedule and rollback.
 
 ## Verified operating state
@@ -48,6 +49,10 @@ Public MCP health checks run here hourly at :12. The unhealthy-finding rule is
 copied and verified; the Cloud counterpart has passed the same eight-server
 protocol/discovery sweep without notification automations. The broader
 `fleet-health` job remains original because it also probes a localhost service.
+Costs publish daily at 08:00 UTC here after real Cloud and HeavyPad publication
+and public PDS readback; the old cost schedule is cleared. Cloud is manual-only
+and defaults to dry-run. Known unmeasured Fly root disks and R2 storage remain
+explicitly labelled `Incomplete`; this migration does not make estimates invoices.
 The canary is manual-only. Other original workloads remain on the original
 server; in particular, the Typeahead publisher remains on its cloud pool.
 See the [migration and Cloud recovery plan](../../docs/migrations/heavypad-cloud-recovery.md)
@@ -87,7 +92,7 @@ MPS_PIN="@$(git rev-parse HEAD)" just heavypad-prefect --no-prompt deploy --pref
 ```
 
 The HeavyPad server intentionally has a separate registration path; existing CI registers
-only the original file. Pilot updates require the explicit command above. CLI
+only the original file. HeavyPad updates require the explicit command above. CLI
 wrappers preserve argument boundaries and override endpoint/auth in the child
 process without editing the default Prefect profile.
 

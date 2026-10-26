@@ -77,8 +77,9 @@ Registering the empty original source schedule did not clear its old live schedu
 the explicit CLI clear removed it and its queued jobs. Database readback then
 found no Scheduled/Pending/Running/Cancelling original diagnostics runs.
 HeavyPad queued 01:37, 02:37 and 03:37 UTC runs on its new queue; Cloud had none.
-The first scheduled HeavyPad diagnostics run has not yet been observed; the real
-manual run above is the execution qualification.
+The first scheduled HeavyPad diagnostics run,
+`c624fc2f-6424-4f29-a2ee-3de1ea3020ba`, completed on October 26 at
+01:37:04 UTC in under one second.
 
 A Cloud diagnostics run measures its runtime, **not HeavyPad**. Kernel-wide
 `/proc` measurements need not equal container allocation; cgroup and process
@@ -138,13 +139,14 @@ HeavyPad notification rules while backlog still depends on failure alerts.
 
 ## Next migration candidates
 
-1. `costs`: verify provider block delivery and complete read-only snapshots on
-   both runtimes before transferring the daily publication. It writes PDS records
-   independently of DuckDB; preserve refusal to publish on provider failure.
-2. `fleet-health`: qualify its home-only bridge coverage before moving the sweep.
+1. `fleet-health`: qualify its home-only bridge coverage before moving the sweep.
    Its public-only MCP sibling is already qualified below.
-3. Defer DuckDB writers, event-dependent briefs, approvals, publishing and Gardener
+2. Defer DuckDB writers, event-dependent briefs, approvals, other publishing and Gardener
    until their checkpoint, execution and effect ownership are specified.
+
+Diagnostics, bufo traffic, public MCP health and costs now have real remote
+execution receipts. This closes the selected low-risk portability batch, not
+the remaining host-dependent migration or full home-outage recovery.
 
 ## Downtime inventory
 
@@ -331,3 +333,71 @@ manual-only and preserve artifacts/history. Keep the shared notification rules
 while other migrated jobs still use them. Canonical DNS still resolves to the
 original cloud node, and the Typeahead publisher retains its original cloud pool
 and odd-day 06:00 UTC schedule.
+
+## Qualified costs batch
+
+- Original deployment: `140f6561-de9d-4c82-a230-24da3be1c291`.
+- HeavyPad deployment: `8e8113ce-4d7a-4969-a7b4-08979bb9452c`.
+- Cloud deployment: `e25512e9-5383-491e-947e-38254ec6d3ce`.
+- Source exercised on both runtimes: `8a7284cc992ab3c89e7457de9e5c7652afab0cc3`.
+- Read-only HeavyPad run: `97658650-f5ce-4c45-a2d0-80881190bd02`, $527.85.
+- Read-only Cloud run: `06adeafa-6e87-7adb-8000-c946a316879f`, $527.84.
+  Both returned the same 67 item identities and all five providers. The only
+  amount difference was one cent on `typeahead-search-refresh:compute`, whose
+  trailing-seven-day uptime estimate changes with collection time.
+- Real Cloud publication: `06adeb10-4ce6-7e62-8000-f7247b38a131`, $527.81.
+- Subsequent real HeavyPad publication: `f0550428-2daa-45a4-b648-99035ace9542`,
+  $527.80. Both completed; public PDS readback after each matched every artifact
+  line item, provider/project rollup and run generation timestamp. The latter
+  remains the public `io.zzstoatzz.cost.snapshot/2026-10-26` record.
+
+Each run's state type was `COMPLETED`, named `Incomplete`: existing Fly stopped
+root-disk billing bytes are unavailable, and the existing Cloudflare token cannot
+read R2 storage analytics. The observed stopped-machine count changed from 17
+to 15 between samples. These are explicit measurement gaps, not missing provider
+execution or a fully measured invoice. No token scopes or infrastructure changed.
+Provider exceptions still retry and prevent publication after exhaustion; all
+27 cost/Fly tests passed, including the real artifact path and refusal behavior.
+
+Original source schedules were emptied in `f9b9d4db77974b512fb013190c3cac7ebc041b30`.
+Explicit live schedule clear then removed the old daily schedule and its three
+queued runs. Database readback found zero Scheduled/Pending/Running/Cancelling
+old cost runs before either publication. The two new publishers ran sequentially
+with no recurring cost owner during the qualification window.
+
+HeavyPad alone now owns `0 8 * * *` UTC, default `config.dry_run=false`, from
+`cd1ca07307ce1e714a5da57a99d06c2bd6b386e8`. Cloud has no schedule and defaults to
+`config.dry_run=true`. The first automatic daily run is still future at this
+readback; real manual publication above qualifies execution. Deployment IDs and
+history were preserved. Source changes are on main and both remotes.
+
+The four provider tokens are runtime Secret blocks copied from canonical SOPS:
+`fly-api-token`, `cloudflare-api-token`, `neon-api-key`, `hetzner-tokens`.
+HeavyPad uses canonical names; Cloud aliases them with `recovery-` to avoid
+overwriting unrelated Cloud consumers. `COSTS_PROVIDER_BLOCK_PREFIX` selects
+that namespace. The existing shared `operator-atproto-creds` handles publication.
+Checks compare values without printing them. Controlled HeavyPad Fly-token drift
+with no active cost job was detected, repaired byte-for-byte, and followed by a
+no-op second apply. Issuer rotation remains manual/unperformed; update SOPS,
+sync original and selected target consumers, then verify real collection and
+publication before revoking the old credential. The secret-store README records
+these consumer scopes and the rotation procedure.
+
+```
+just verify-cost-publication cloud CLOUD_RUN_ID
+just verify-cost-publication heavypad HEAVYPAD_RUN_ID
+just recovery-secret-blocks cloud --block fly-api-token
+just recovery-secret-blocks heavypad --block fly-api-token
+```
+
+Read back Cloud publication before a subsequent publisher overwrites the same
+UTC-day record. Before real recovery writes, fence the HeavyPad schedule and
+process, reconcile any in-flight write, then explicitly pass `config.dry_run=false`.
+An unreachable home API alone is not fencing. Roll back by draining/clearing the
+HeavyPad cost owner first, restoring the old daily source schedule and registering
+only that original deployment. Verify one owner; keep Cloud manual-only.
+
+Encrypted PostgreSQL backup `20261026T014934Z.dump.age` was copied to the Mac's
+`~/.local/state/prefect-home-backups/`; source and off-host SHA-256 matched.
+It includes the new provider blocks and schedule state. Automatic off-host
+replication and independent outage alerting remain gates for critical migrations.
