@@ -112,3 +112,7 @@ image, passing `BASE_IMAGE`, the committed `SOURCE_REVISION`, and the expected
 in `/opt/gardener/release/haiku-upgrade.json`. Keep the original image and wheel
 for rollback. Legacy process deployments use the same script on a copy of their
 wheel, published under its new content hash before updating `prefect.yaml`.
+
+Older wheels also receive the existing `_Haiku55Price` implementation from the
+committed spend module, so the new model retains measured cost reporting. The
+migration changes no dependency versions or pricing behavior for other models.

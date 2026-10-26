@@ -68,3 +68,42 @@ def test_installed_upgrade_preserves_bytecode_records_and_rejects_drift(tmp_path
         hashlib.sha256(module_file.read_bytes()).digest()
     ).decode().rstrip("=")
     assert int(rows[0][2]) == len(module_file.read_bytes())
+
+
+def test_older_wheel_gets_haiku_prices_without_changing_other_model_pricing(tmp_path):
+    from decimal import Decimal
+
+    from genai_prices.types import Usage
+
+    wheel = tmp_path / "mps.whl"
+    source = b"""from decimal import Decimal
+from genai_prices.types import Usage
+_FLAT_INPUT_USD_PER_TOKEN = {}
+def _int(value):
+    return int(value or 0)
+def _calc_price(usage, model, provider, ts):
+    if (per_token := _FLAT_INPUT_USD_PER_TOKEN.get(provider)) is not None:
+        return per_token
+    return "existing pricing"
+"""
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("mps/spend.py", source)
+        archive.writestr("mps-0.1.0.dist-info/RECORD", "")
+    root = Path(__file__).resolve().parents[1]
+    report = module.upgrade(wheel, pricing_source=root / "packages/mps/src/mps/spend.py")
+    assert report["modules"] == ["mps/spend.py"]
+    with zipfile.ZipFile(wheel) as archive:
+        namespace = {}
+        exec(compile(archive.read("mps/spend.py"), "mps/spend.py", "exec"), namespace)
+    price = namespace["_calc_price"](
+        Usage(input_tokens=1000, output_tokens=1000), "claude-haiku-5-5", "anthropic", None
+    )
+    assert price.total_price == Decimal("0.0006")
+    long_price = namespace["_calc_price"](
+        Usage(input_tokens=100001, output_tokens=1), "claude-haiku-5-5", "anthropic", None
+    )
+    assert long_price.total_price == Decimal("0.050003")
+    assert (
+        namespace["_calc_price"](Usage(input_tokens=1000), "other-model", "anthropic", None)
+        == "existing pricing"
+    )
