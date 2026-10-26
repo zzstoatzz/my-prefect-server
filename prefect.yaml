@@ -98,11 +98,8 @@ deployments:
           prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
-    schedules:
-      # offset from the top of the hour so it never samples stream during the
-      # eval's :06/:36 windows or alongside the hourly ingest spin-up
-      - cron: "3,18,33,48 * * * *"
-        active: true
+    # HeavyPad owns the :03/:18/:33/:48 schedule (prefect.heavypad.yaml).
+    schedules: []
 
   - name: mcp-fleet-health
     pull: *cached_home

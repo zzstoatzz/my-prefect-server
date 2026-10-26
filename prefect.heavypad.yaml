@@ -35,6 +35,27 @@ deployments:
       - cron: "0 8 * * *"
         timezone: UTC
 
+  - name: fleet-health
+    entrypoint: flows/fleet_health.py:fleet_health
+    tags: [watch, heavypad]
+    work_pool:
+      name: heavypad-pool
+      job_variables:
+        command: uv run --no-project --with prefect==3.8.2 prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+      # offset from the top of the hour so it never samples stream during the
+      # eval's :06/:36 windows or alongside the hourly ingest spin-up
+      - cron: '3,18,33,48 * * * *'
+        timezone: UTC
+        active: false
+
   - name: mcp-fleet-health
     entrypoint: flows/mcp_fleet_health.py:mcp_fleet_health
     tags: [watch, heavypad]
