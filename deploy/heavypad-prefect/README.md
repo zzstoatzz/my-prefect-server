@@ -238,6 +238,14 @@ HeavyPad worker recovered, and the migrated backlog flow subsequently completed.
 Docker is enabled at boot, k3d containers use `unless-stopped`, and the user
 manager has lingering enabled. This is still one host and one disk, not HA.
 
+After the October 26 host reboot, k3s in the running server container twice exited
+within seconds ("failed to find interface with specified node ip"). Docker never
+restarts the container for that, so the API stayed down until a manual restart.
+`prefect-home-k3s-guard.service` (enabled for `default.target`) waits up to two
+minutes for `/readyz` after each boot, restarts the server container at most twice,
+and otherwise fails visibly in `systemctl --user --failed`. It does nothing when k3s
+is healthy.
+
 Credential consumers have an idempotent render/check command. A harmless comment
 was injected into the HeavyPad worker environment; the check detected drift and
 `--apply` restored the canonical bytes. Auth rotation requires render plus HeavyPad server

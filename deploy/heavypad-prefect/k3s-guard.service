@@ -1,0 +1,10 @@
+[Unit]
+Description=Restart the HeavyPad k3d server if k3s fails to come up
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/prefect-home/k3s-guard.sh
+TimeoutStartSec=10min
+
+[Install]
+WantedBy=default.target
