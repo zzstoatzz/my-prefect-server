@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import httpx
 import logfire
 import pytest
-from mps.bandwidth_watchdog import advance, flush, internet_peer, parse_sockets, save
+from mps.bandwidth_watchdog import advance, flush, heat, internet_peer, parse_sockets, save
 
 CONFIG = {
     "alert_bytes_15m": 100,
@@ -17,6 +17,8 @@ CONFIG = {
     "monthly_observed_budget_bytes": 1000,
     "cooldown_seconds": 3600,
     "pause_units": ["download.service"],
+    "heat_alert_celsius": 95,
+    "heat_window_seconds": 300,
 }
 GROUP = (
     f"/user.slice/user-{os.getuid()}.slice/user@{os.getuid()}.service/app.slice/download.service"
@@ -237,3 +239,45 @@ def test_finished_transfer_does_not_freeze_an_inactive_unit():
     advance(state, sockets(0), {}, "boot", 1800000000, CONFIG)
     assert advance(state, sockets(400), {}, "boot", 1800000005, CONFIG)
     assert advance(state, {}, {}, "boot", 1800000010, CONFIG) == []
+
+
+def sustain(state, celsius, start, seconds, throttles=0, step=5):
+    for offset in range(0, seconds + 1, step):
+        heat(state, (celsius, throttles + offset), start + offset, CONFIG)
+
+
+def test_heat_warns_only_after_a_sustained_window():
+    state = {}
+    sustain(state, 99, 1800000000, 200)
+    assert state.get("outbox", []) == []
+    sustain(state, 99, 1800000205, 100, throttles=205)
+    [warning] = state["outbox"]
+    assert warning["event"] == "heat.cpu-hot"
+    assert warning["payload"]["mean_celsius"] == 99
+    assert warning["payload"]["throttle_events_per_minute"] == 60
+    assert "averaged 99.0°C" in warning["payload"]["summary"]
+
+
+def test_heat_below_threshold_and_brief_spikes_stay_quiet():
+    state = {}
+    sustain(state, 93, 1800000000, 600)
+    heat(state, (100, 0), 1800000605, CONFIG)
+    assert state.get("outbox", []) == []
+
+
+def test_heat_cooldown_and_gap_reset():
+    state = {}
+    sustain(state, 97, 1800000000, 300)
+    assert len(state["outbox"]) == 1
+    sustain(state, 97, 1800000305, 1200, throttles=305)
+    assert len(state["outbox"]) == 1
+    state = {"cooldowns": {}}
+    sustain(state, 97, 1800000000, 200)
+    sustain(state, 97, 1800000260, 200, throttles=260)
+    assert state.get("outbox", []) == []
+
+
+def test_heat_without_a_package_sensor_is_a_no_op():
+    state = {}
+    heat(state, None, 1800000000, CONFIG)
+    assert state == {}

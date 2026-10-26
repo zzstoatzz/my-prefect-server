@@ -1,0 +1,11 @@
+{
+  "project": "zig-prefect-server",
+  "name": "heavypad cpu heat",
+  "frequency": "PT5M",
+  "time_window": "PT15M",
+  "notify_when": "starts_having_matches",
+  "channel_ids": [
+    "f22200f9-efdb-4e3a-9141-f0fce6b4c578"
+  ],
+  "query": "SELECT start_timestamp, message FROM records WHERE service_name = 'bandwidth-watchdog' AND attributes->>'watchdog_event' = 'heat.cpu-hot' ORDER BY start_timestamp DESC LIMIT 5"
+}

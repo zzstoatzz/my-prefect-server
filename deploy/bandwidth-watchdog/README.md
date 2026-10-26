@@ -37,6 +37,20 @@ Pending heartbeats coalesce. A file lock prevents concurrent samplers. systemd
 restarts failed samplers. The unit freezes with systemd's cgroup freezer; pausing
 only the parent process would leave its download children consuming bandwidth.
 
+## CPU heat
+
+The same sampler reads the CPU package temperature (`x86_pkg_temp`) and the
+package throttle counter every five seconds. When the package averages at or
+above `heat_alert_celsius` (95°C) over a full `heat_window_seconds` (5 minutes),
+it emits one `heat.cpu-hot` event, then waits out the shared one-hour cooldown.
+Single spikes never warn. The limit is 100°C. In the week before this was added,
+the 5-minute average peaked at 94.4°C and spent 4 minutes at or above 93°C,
+while throttling ran at roughly 1000 events/min under ordinary load. So the
+warning means heat beyond normal, such as a failed fan or blocked vents. The
+throttle rate rides along as evidence only. `heavypad cpu heat -> discord`
+notifies the operator, and the `heavypad cpu heat` Logfire alert
+(`logfire-heat-alert.json`) delivers the evidence to Phi.
+
 ## Measurement limits
 
 Observed Internet TCP is a **lower bound**. Connections that open and close

@@ -5,5 +5,7 @@
   "pause_bytes_1h": 20000000000,
   "monthly_observed_budget_bytes": 100000000000,
   "cooldown_seconds": 3600,
+  "heat_alert_celsius": 95,
+  "heat_window_seconds": 300,
   "pause_units": ["deepseek-v41-download.service"]
 }

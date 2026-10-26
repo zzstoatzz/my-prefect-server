@@ -433,6 +433,21 @@ automations:
         subject: "bandwidth watchdog: {{ resource.name }}"
         body: "{{ payload.summary }}"
 
+  - name: heavypad cpu heat -> discord
+    description: heavypad's CPU package averaged at or above the warning temperature for a whole window; emitted by the host watchdog.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect: [heat.cpu-hot]
+      threshold: 1
+      within: 0
+    actions:
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "heavypad is running hot"
+        body: "{{ payload.summary }}"
+
   - name: bandwidth watchdog missing -> discord
     description: The independent host monitor has stopped reporting for five minutes.
     enabled: true

@@ -85,11 +85,63 @@ def collect(include_local: bool = False) -> tuple[dict, dict]:
     return parse_sockets(output, include_local), interfaces
 
 
-def event(name: str, payload: dict, now: float) -> dict:
+def read_heat() -> tuple[float, int] | None:
+    for zone in Path("/sys/class/thermal").glob("thermal_zone*"):
+        if (zone / "type").read_text().strip() == "x86_pkg_temp":
+            celsius = int((zone / "temp").read_text()) / 1000
+            break
+    else:
+        return None
+    counter = Path("/sys/devices/system/cpu/cpu0/thermal_throttle/package_throttle_count")
+    return celsius, int(counter.read_text()) if counter.exists() else 0
+
+
+def heat(state: dict, reading: tuple[float, int] | None, now: float, config: dict) -> None:
+    """Warn when the CPU package stays hot for a whole window, not on a single spike."""
+    if reading is None:
+        return
+    celsius, throttles = reading
+    window = config["heat_window_seconds"]
+    samples = state.get("heat", [])
+    if samples and (now - samples[-1]["at"] > 30 or throttles < samples[-1]["throttles"]):
+        samples = []
+    samples = [s for s in samples if now - s["at"] <= window]
+    samples.append({"at": now, "c": celsius, "throttles": throttles})
+    state["heat"] = samples
+    span = now - samples[0]["at"]
+    if span < window * 0.9:
+        return
+    mean = sum(s["c"] for s in samples) / len(samples)
+    cooldowns = state.setdefault("cooldowns", {})
+    if (
+        mean < config["heat_alert_celsius"]
+        or now - cooldowns.get("cpu-hot", 0) < config["cooldown_seconds"]
+    ):
+        return
+    cooldowns["cpu-hot"] = now
+    peak = max(s["c"] for s in samples)
+    per_minute = (throttles - samples[0]["throttles"]) / span * 60
+    summary = (
+        f"{socket.gethostname()}: CPU package averaged {mean:.1f}°C over the last "
+        f"{window // 60} minutes (peak {peak:.0f}°C, limit 100°C, warning at "
+        f"{config['heat_alert_celsius']}°C); {per_minute:.0f} package throttle events/min."
+    )
+    payload = {
+        "mean_celsius": round(mean, 1),
+        "peak_celsius": peak,
+        "window_seconds": window,
+        "threshold_celsius": config["heat_alert_celsius"],
+        "throttle_events_per_minute": round(per_minute),
+        "summary": summary,
+    }
+    state.setdefault("outbox", []).append(event("cpu-hot", payload, now, namespace="heat"))
+
+
+def event(name: str, payload: dict, now: float, namespace: str = "bandwidth") -> dict:
     return {
         "id": str(uuid4()),
         "occurred": datetime.fromtimestamp(now, UTC).isoformat(),
-        "event": f"bandwidth.{name}",
+        "event": f"{namespace}.{name}",
         "resource": {
             "prefect.resource.id": f"bandwidth.host.{socket.gethostname()}",
             "prefect.resource.name": socket.gethostname(),
@@ -267,7 +319,9 @@ def main() -> None:
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
-    config = json.loads(args.config.read_text())
+    config = {"heat_alert_celsius": 95, "heat_window_seconds": 300} | json.loads(
+        args.config.read_text()
+    )
     if any(not re.fullmatch(r"[a-zA-Z0-9_.@-]+\.service", unit) for unit in config["pause_units"]):
         raise ValueError("pause_units must contain literal systemd service names")
     args.state.parent.mkdir(parents=True, exist_ok=True)
@@ -285,6 +339,7 @@ def main() -> None:
             now = time.time()
             sockets, interfaces = collect()
             actions = advance(state, sockets, interfaces, boot, now, config)
+            heat(state, read_heat(), now, config)
             save(args.state, state)
             enforce(state, actions, now)
             if now - state.get("heartbeat", 0) >= 60:
