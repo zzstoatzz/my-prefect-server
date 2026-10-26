@@ -434,8 +434,7 @@ deployments:
         dry_run: false
         days_back: 2
     concurrency_limit: *cancel_new
-    schedules:
-      - cron: "7 * * * *"  # hourly, off the hour so it never races ingest
+    schedules: []
 
   - name: typeahead-identity-hourly
     pull: *cached_home
