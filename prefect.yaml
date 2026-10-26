@@ -960,7 +960,7 @@ deployments:
     work_pool:
       name: home-pool
       job_variables:
-        command: uv run --with /home/stoat/phi-spike-worker/releases/e72933ca8b33154b42bbb7d6d88059e3dcb934dddb439e16388252728a27d27b/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
+        command: uv run --with /home/stoat/phi-spike-worker/releases/5bbbdfd07f23548d46c3be004bb4c694d4d45516be3d646105b2e0a11e7962da/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
         env:
           MPS_PIN: "@8a7edeea882095cb82e53e673853a37091188ed8"
           PREFECT_PLUGINS_ENABLED: "true"
@@ -1024,7 +1024,7 @@ deployments:
       job_variables:
         timeout_seconds: 2400
         environment_mode: image
-        image: gardener-registry.exe.xyz/gardener@sha256:6fa8d0c7e3d63f2cff138543b4d4e0294938009f990d9f5e7c38c6871059fbbe
+        image: gardener-registry.exe.xyz/gardener@sha256:6b6d1f1ba308b0e4614e38fb3e319c08002c39b0df3318615c4b796398e31925
         requirements: []
         local_packages: []
 
@@ -1041,7 +1041,7 @@ deployments:
       job_variables:
         timeout_seconds: 2400
         environment_mode: image
-        image: gardener-registry.exe.xyz/gardener@sha256:1127c3ad82eb43408ea34fa66f8bbcbc9ef487d0863ce2fa136252e02297bcc6
+        image: gardener-registry.exe.xyz/gardener@sha256:25e5ea68bf70e96b25e604284f7009ec5f991e6b00bec9a65ab87634660f99da
         requirements: []
         local_packages: []
 
@@ -1055,7 +1055,7 @@ deployments:
       job_variables:
         timeout_seconds: 2400
         environment_mode: image
-        image: gardener-registry.exe.xyz/gardener@sha256:1127c3ad82eb43408ea34fa66f8bbcbc9ef487d0863ce2fa136252e02297bcc6
+        image: gardener-registry.exe.xyz/gardener@sha256:25e5ea68bf70e96b25e604284f7009ec5f991e6b00bec9a65ab87634660f99da
         requirements: []
         local_packages: []
 
@@ -1083,7 +1083,7 @@ deployments:
       job_variables:
         timeout_seconds: 2400
         environment_mode: image
-        image: gardener-registry.exe.xyz/gardener@sha256:a48e919eb0e755662e0b889262335321214a5e769bed3dd4c3fc1524dac7a0d7
+        image: gardener-registry.exe.xyz/gardener@sha256:d5b1526d6c97006804ba972fc6ab613654e3092d704b96be4291fb9ce140aad5
         requirements: []
         local_packages: []
 
