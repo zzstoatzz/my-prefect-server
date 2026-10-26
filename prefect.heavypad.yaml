@@ -27,11 +27,13 @@ deployments:
           CLOUDFLARE_FIXED_COSTS_JSON: '{"plyr.fm":{"amount":1.00,"project":"plyr.fm","note":"plyr.fm domain registration"},"workers-paid-plan":{"amount":4.00,"project":"shared","note":"Cloudflare Workers Paid plan"}}'
     parameters:
       config:
-        dry_run: true
+        dry_run: false
     concurrency_limit:
       limit: 1
       collision_strategy: CANCEL_NEW
-    schedules: []
+    schedules:
+      - cron: "0 8 * * *"
+        timezone: UTC
 
   - name: mcp-fleet-health
     entrypoint: flows/mcp_fleet_health.py:mcp_fleet_health
