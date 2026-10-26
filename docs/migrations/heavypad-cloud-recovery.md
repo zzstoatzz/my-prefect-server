@@ -139,8 +139,8 @@ HeavyPad notification rules while backlog still depends on failure alerts.
 
 ## Next migration candidates
 
-1. `fleet-health`: qualify its home-only bridge coverage before moving the sweep.
-   Its public-only MCP sibling is already qualified below.
+1. `fleet-health` moved to HeavyPad on October 26 (below); `pub-search-snapshot`
+   and `leaflet-atlas` are the next candidates.
 2. Defer DuckDB writers, event-dependent briefs, approvals, other publishing and Gardener
    until their checkpoint, execution and effect ownership are specified.
 
@@ -319,12 +319,12 @@ server bundle, and its sole artifact-reader chunk maps to the Gardener route. He
 are saved Prefect artifacts with backend-correct run links. No Hub API/credential
 retarget was made as part of this batch.
 
-The broader `fleet-health` deployment is deliberately not moved yet: its
+The broader `fleet-health` sweep has no Cloud counterpart: its
 `pull-comment-bridge` check addresses `127.0.0.1:8791` on HeavyPad. Running that
 unchanged on managed infrastructure would probe the wrong machine. A remote
 counterpart needs explicit home-target reachability or an honest coverage model;
-never remove that check and call the resulting sweep equivalent. Its original
-schedule, notification path and home execution remain active.
+never remove that check and call the resulting sweep equivalent. Its schedule
+moved to the HeavyPad server on the same host (see the fleet-health batch).
 
 Rollback this batch by clearing HeavyPad's MCP schedule, cancelling queued runs
 and draining active runs, then restore the original :12 schedule in source and
@@ -399,5 +399,33 @@ only that original deployment. Verify one owner; keep Cloud manual-only.
 
 Encrypted PostgreSQL backup `20261026T014934Z.dump.age` was copied to the Mac's
 `~/.local/state/prefect-home-backups/`; source and off-host SHA-256 matched.
-It includes the new provider blocks and schedule state. Automatic off-host
-replication and independent outage alerting remain gates for critical migrations.
+It includes the new provider blocks and schedule state. Automatic encrypted
+replication to R2 with a weekly restore check has since been enabled (see the
+HeavyPad runbook); independent outage alerting remains a gate for critical migrations.
+
+## Qualified fleet-health batch
+
+`fleet-health` moved to HeavyPad on October 26, 2026. The original home-pool worker already
+ran it on HeavyPad, so the runtime host and the `127.0.0.1:8791` pull-comment-bridge
+vantage are unchanged; only schedule ownership moved. It needs only Prefect and its
+httpx/pydantic dependencies, emits `fleet-health.unhealthy` (resource `fleet-health`)
+and writes artifacts, with no Variables, blocks or cross-run state. HeavyPad's copied
+`fleet unhealthy -> discord` rule already matched this resource; no test message was sent.
+
+| Resource | ID |
+| --- | --- |
+| Original deployment | `fb012d28-b91e-48f9-af2a-e55fc2ce1b4d` |
+| HeavyPad deployment | `c85b78c7-116f-4433-b001-d3bf47d9fefb` |
+| HeavyPad manual run | `c955fa71-ad90-4ed1-abba-50b52b76b212` |
+| First scheduled HeavyPad run | `6aa4e565-7ed8-41b9-8678-4491977f3e37` |
+
+The manual run completed with the bridge check `ok` (HTTP 200). The original source
+schedule was emptied in `0ea9aa4`; the live schedule was then cleared explicitly, and
+readback found no Scheduled/Pending/Running/Cancelling original runs before the HeavyPad
+schedule was activated from `c313bf8` (`3,18,33,48 * * * *` UTC, concurrency one,
+`CANCEL_NEW`). The first scheduled run completed at 20:48:18 UTC in 22 seconds.
+
+The original catch-all `flow-run failure -> autofix` no longer sees fleet-health
+failures, the same accepted gap as diagnostics and backlog. Rollback: clear the HeavyPad
+schedule and cancel its queued runs, wait for an active run to finish, restore the
+original schedule in `prefect.yaml`, register only that deployment, and verify one owner.
