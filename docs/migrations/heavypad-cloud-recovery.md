@@ -260,3 +260,68 @@ register only that deployment, verify it is the sole recurring owner, and leave
 Cloud manual-only. Source-only `schedules: []` is insufficient: explicitly clear
 and verify the live schedule list. No cursor/volume/DuckDB state is needed for
 this flow; output and source data already live off-host.
+
+## Qualified public MCP health batch
+
+`mcp-fleet-health` now runs hourly at :12 UTC on HeavyPad. Its original schedule
+and three future jobs were cleared, and a database readback found no remaining
+Scheduled/Pending/Running/Cancelling original runs before activation. Cloud is
+manual-only with no notification automations or extra credentials.
+
+| Resource | ID |
+| --- | --- |
+| Original deployment | `b356a5ff-8022-4b16-82e1-57e646623190` |
+| HeavyPad deployment | `05b19ef0-225e-4a4e-96af-e28971d5f91a` |
+| Cloud managed deployment | `fd786cae-fabd-448d-9bd0-f8a13c305f90` |
+| HeavyPad successful run | `0becfef1-b95c-41ec-841f-046bd34014f7` |
+| Cloud successful run | `06adeac2-ef79-7626-8000-fc28c57d460f` |
+
+Both runs used source `ef71b407db77697a4c387c6272ce9500646db616` and reported
+8/8 healthy public servers, exercising connection, protocol negotiation,
+ClientGroup routing and tool discovery. The persisted markdown artifacts matched
+exactly after excluding measured connection latency. The matching inventory was
+Atmosphere MCP, Taproot, pdsx, plyrfm, pub-search, semble, streamplace-mcp and
+tangled-mcp, with respective tool counts 44, 27, 9, 13, 7, 2, 2 and 26 at that
+instant. No listed tools were invoked. This is a timed sample, not a guarantee
+of future health or identical future results from different network locations.
+
+Source `2e86006c62a30a46fe820c2d5aa8c1b832d95bae` activated the HeavyPad :12
+schedule only after its old owner was drained and its notification rule was
+installed. First automatic execution is queued for 02:12 UTC; that automatic
+run has not yet been observed. Cloud has `schedules: []`. Concurrency is one and
+the flow has a five-minute execution bound. Prefect 3.8.2 and FastMCP/fastmcp-slim
+4.1.3 are pinned on both runtimes; the previous job upgraded FastMCP every run.
+Future client upgrades are deliberate deployment changes, not silent drift.
+The exact managed dependency set imported the real flow under Python 3.12 before
+the real remote execution. Twenty-eight health semantics/Evergreen tests passed.
+
+`just heavypad-prefect-monitoring` now verifies three rules: the existing failure
+and sustained-burn rules plus `fleet unhealthy -> discord`. The latter matches
+both fleet resource IDs, buckets by resource, and uses the existing copied
+notification block. The previously approved single notification test qualifies
+the common delivery transport. No additional synthetic message was sent for
+this batch. Unhealthy-summary run links now use Prefect's runtime UI setting;
+HeavyPad declares its private browser URL, while Cloud derives its own workspace
+URL. Regression coverage checks the actual settings context rather than assuming
+the original hostname everywhere.
+
+The old automation description saying results live in Hub was stale: the current
+`web/src` has no reader for these health keys/events. Its Prefect artifact reader
+is the separate Gardener view, which remains on the original API. Health reports
+are saved Prefect artifacts with backend-correct run links. No Hub API/credential
+retarget was made as part of this batch.
+
+The broader `fleet-health` deployment is deliberately not moved yet: its
+`pull-comment-bridge` check addresses `127.0.0.1:8791` on HeavyPad. Running that
+unchanged on managed infrastructure would probe the wrong machine. A remote
+counterpart needs explicit home-target reachability or an honest coverage model;
+never remove that check and call the resulting sweep equivalent. Its original
+schedule, notification path and home execution remain active.
+
+Rollback this batch by clearing HeavyPad's MCP schedule, cancelling queued runs
+and draining active runs, then restore the original :12 schedule in source and
+register just that deployment. Verify one schedule owner; keep the Cloud copy
+manual-only and preserve artifacts/history. Keep the shared notification rules
+while other migrated jobs still use them. Canonical DNS still resolves to the
+original cloud node, and the Typeahead publisher retains its original cloud pool
+and odd-day 06:00 UTC schedule.

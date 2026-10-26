@@ -44,6 +44,10 @@ are copied and verified; automatic failure diagnosis remains on the old server.
 Bufo traffic now publishes hourly at :07 here; its original schedule is cleared.
 Its Cloud counterpart defaults to dry-run and has no schedule, but controlled
 remote reads and real PDS publication have both passed with public readback.
+Public MCP health checks run here hourly at :12. The unhealthy-finding rule is
+copied and verified; the Cloud counterpart has passed the same eight-server
+protocol/discovery sweep without notification automations. The broader
+`fleet-health` job remains original because it also probes a localhost service.
 The canary is manual-only. Other original workloads remain on the original
 server; in particular, the Typeahead publisher remains on its cloud pool.
 See the [migration and Cloud recovery plan](../../docs/migrations/heavypad-cloud-recovery.md)
