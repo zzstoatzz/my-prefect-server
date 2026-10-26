@@ -26,7 +26,10 @@ deployments:
     concurrency_limit:
       limit: 1
       collision_strategy: CANCEL_NEW
-    schedules: []
+    schedules:
+      - cron: '12 * * * *'
+        timezone: UTC
+        active: true
 
   - name: bufo-traffic
     entrypoint: flows/bufo_traffic.py:bufo_traffic
