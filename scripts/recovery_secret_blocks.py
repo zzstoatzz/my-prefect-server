@@ -13,7 +13,7 @@ from prefect.context import use_profile
 
 STORE = Path.home() / "tangled.org/zzstoatzz.io/secrets/prod.yaml"
 CLOUD = "https://api.prefect.cloud/api/accounts/12242a57-9f05-4bf5-8853-9bff595d4bab/workspaces/cafa2ffa-f6cc-4ed6-ab76-eaa4ba1ad40e"
-PROVIDER_BLOCKS = {"fly-api-token", "cloudflare-api-token", "neon-api-key", "hetzner-tokens"}
+PROVIDER_BLOCKS = {"fly-api-token", "cloudflare-costs-token", "neon-api-key", "hetzner-tokens"}
 
 
 def extract(path):

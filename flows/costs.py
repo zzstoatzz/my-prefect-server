@@ -53,7 +53,7 @@ async def build_connectors() -> list[Connector]:
     if "COSTS_PROVIDER_BLOCK_PREFIX" in os.environ:
         for variable, block in (
             ("FLY_API_TOKEN", "fly-api-token"),
-            ("CLOUDFLARE_API_TOKEN", "cloudflare-api-token"),
+            ("CLOUDFLARE_API_TOKEN", "cloudflare-costs-token"),
             ("NEON_API_KEY", "neon-api-key"),
         ):
             if not os.environ.get(variable):

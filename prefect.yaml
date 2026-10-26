@@ -383,7 +383,7 @@ deployments:
           MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
-          CLOUDFLARE_API_TOKEN: prefect-block://cloudflare-api-token
+          CLOUDFLARE_API_TOKEN: prefect-block://cloudflare-costs-token
           # account-scoped CF tokens can't list /accounts; account id isn't
           # secret (it's in dashboard URLs / wrangler.jsonc), so inline it.
           CLOUDFLARE_ACCOUNT_ID: "3e9ba01cd687b3c4d29033908177072e"

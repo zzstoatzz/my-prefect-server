@@ -170,6 +170,7 @@ def test_cloudflare_degrades_when_r2_unmeasurable(monkeypatch, capsys):
 
     monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_stored_bytes_by_bucket", boom)
     monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_buckets", _census)
+    monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_account_metrics", boom)
 
     items = asyncio.run(CloudflareConnector().collect(Period.trailing_month()))
 
@@ -207,6 +208,38 @@ def test_cloudflare_r2_census_pages_past_the_default_twenty():
     assert seen == [{"per_page": "1000"}, {"per_page": "1000", "cursor": "next"}]
 
 
+def test_cloudflare_r2_falls_back_to_account_metrics_unattributed(monkeypatch):
+    """Without analytics access, account-level /r2/metrics (R2 read only) still
+    prices total storage as one shared line, and the run stays complete."""
+    import asyncio
+
+    from mps.costs.connectors.cloudflare import CloudflareConnector
+
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "dummy")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct123")
+    monkeypatch.delenv("CLOUDFLARE_FIXED_USD", raising=False)
+    monkeypatch.delenv("CLOUDFLARE_FIXED_COSTS_JSON", raising=False)
+
+    async def forbidden(*_args, **_kwargs):
+        raise RuntimeError("authz")
+
+    async def metrics(*_args, **_kwargs):
+        return {
+            "standard": {"published": {"payloadSize": 584_383_914_038, "metadataSize": 8_412_125}},
+            "infrequentAccess": {"published": {"payloadSize": 0, "metadataSize": 0}},
+        }
+
+    monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_stored_bytes_by_bucket", forbidden)
+    monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_buckets", _census)
+    monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_account_metrics", metrics)
+    connector = CloudflareConnector()
+    items = asyncio.run(connector.collect(Period.trailing_month()))
+    assert [(i.service, i.project, i.amount, i.estimated) for i in items] == [
+        ("r2:account", "shared", 862, True)
+    ]
+    assert connector.unmeasured == []
+
+
 def test_cloudflare_r2_unmeasured_names_the_census_and_never_reports_zero(monkeypatch):
     import asyncio
 
@@ -222,6 +255,7 @@ def test_cloudflare_r2_unmeasured_names_the_census_and_never_reports_zero(monkey
 
     monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_stored_bytes_by_bucket", forbidden)
     monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_buckets", _census)
+    monkeypatch.setattr("mps.costs.connectors.cloudflare._r2_account_metrics", forbidden)
     connector = CloudflareConnector()
     assert asyncio.run(connector.collect(Period.trailing_month())) == []
     assert connector.unmeasured == ["R2 storage, 2 bucket(s) (authz)"]
@@ -256,8 +290,8 @@ def test_cloudflare_r2_allocates_paid_storage_by_bucket(monkeypatch):
     items = asyncio.run(CloudflareConnector().collect(Period.trailing_month()))
 
     assert [(i.service, i.project, i.amount) for i in items] == [
-        ("r2:audio-prod", "plyr.fm", 11),
-        ("r2:misc-bucket", UNATTRIBUTED, 4),
+        ("audio-prod:r2", "plyr.fm", 11),
+        ("misc-bucket:r2", UNATTRIBUTED, 4),
     ]
 
 

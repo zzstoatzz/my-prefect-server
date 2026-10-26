@@ -32,6 +32,7 @@ GRAPHQL = "https://api.cloudflare.com/client/v4/graphql"
 PROVIDER = "cloudflare"
 
 _R2_GB_MONTH_USD = 0.015
+_R2_IA_GB_MONTH_USD = 0.01
 _R2_FREE_GB = 10.0
 
 _R2_STORAGE_QUERY = """
@@ -112,6 +113,45 @@ async def _r2_stored_bytes_by_bucket(
     return buckets
 
 
+async def _r2_account_metrics(client: httpx.AsyncClient, account: str) -> dict:
+    resp = await client.get(f"{REST}/accounts/{account}/r2/metrics")
+    resp.raise_for_status()
+    return resp.json()["result"]
+
+
+def _r2_account_line_items(metrics: dict) -> list[LineItem]:
+    """One account-wide line from /r2/metrics, used when per-bucket analytics is
+    unauthorized. It needs only R2 read, but cannot attribute storage to buckets."""
+
+    def stored_gb(storage_class: str) -> float:
+        published = (metrics.get(storage_class) or {}).get("published") or {}
+        return (
+            int(published.get("payloadSize") or 0) + int(published.get("metadataSize") or 0)
+        ) / 1e9
+
+    standard, infrequent = stored_gb("standard"), stored_gb("infrequentAccess")
+    cents = round(
+        (max(0.0, standard - _R2_FREE_GB) * _R2_GB_MONTH_USD + infrequent * _R2_IA_GB_MONTH_USD)
+        * 100
+    )
+    if standard + infrequent <= 0:
+        return []
+    return [
+        LineItem(
+            provider=PROVIDER,
+            project="shared",
+            service="r2:account",
+            amount=cents,
+            estimated=True,
+            usage=f"{standard:.2f} GB standard, {infrequent:.2f} GB infrequent access",
+            note=(
+                "account-level R2 storage after 10 GB free tier; not attributed to buckets "
+                "(needs Account Analytics: Read); class A/B ops & egress not counted"
+            ),
+        )
+    ]
+
+
 def _allocate_cents(total_cents: int, weights: dict[str, int]) -> dict[str, int]:
     total_weight = sum(weights.values())
     if total_cents <= 0 or total_weight <= 0:
@@ -149,7 +189,7 @@ def _r2_line_items(stored_by_bucket: dict[str, int]) -> list[LineItem]:
             LineItem(
                 provider=PROVIDER,
                 project=project_for(bucket),
-                service=f"r2:{bucket}",
+                service=f"{bucket}:r2",
                 amount=cents,
                 estimated=True,
                 usage=f"{gb:.2f} GB stored",
@@ -261,6 +301,16 @@ class CloudflareConnector:
                     _r2_line_items(await _r2_stored_bytes_by_bucket(client, account, period))
                 )
             except Exception as exc:
+                try:
+                    items.extend(_r2_account_line_items(await _r2_account_metrics(client, account)))
+                    print(
+                        f"  cloudflare: R2 per-bucket analytics unavailable ({exc}); "
+                        "reporting account-level storage unattributed"
+                    )
+                    items.extend(_fixed_line_items())
+                    return items
+                except Exception:
+                    pass
                 census = (
                     f"{len(self.r2_buckets)} bucket(s)"
                     if self.r2_buckets is not None
