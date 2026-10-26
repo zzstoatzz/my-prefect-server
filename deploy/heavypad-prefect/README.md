@@ -37,7 +37,8 @@ The only migrated existing deployment is `fastmcp-backlog/fastmcp-backlog`:
 GitHub reads and small appends to the existing local counts series, with
 `backfill_days=0`. It is active every 30 minutes on the pilot. The old server has
 no backlog schedule and its three queued scheduled runs were cancelled. Its
-history remains there. The pilot canary is manual-only. All other original
+history remains there. The first automatic backlog run completed at 00:00:02 UTC on October 26,
+after two successful manual runs. The pilot canary is manual-only. All other original
 workloads, automations, alerts and secrets remain on the original server. In
 particular, the Typeahead publisher remains on its cloud pool.
 

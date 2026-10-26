@@ -38,7 +38,9 @@ original-instance CI registration cannot reactivate it.
 The pilot deployment `75c6a70d-2fcb-46c5-adc9-09522f6f2aea` owns the 30-minute
 UTC schedule, `backfill_days=0`, with source
 `73681335f5c0a38c24e97a2bf4c3cfbfd90cb7e5`. The first queued recurring runs are
-October 26 at 00:00, 00:30 and 01:00 UTC. The canary is manual-only. No schedules
+October 26 at 00:00, 00:30 and 01:00 UTC. The 00:00 UTC automatic run `6e55d697-e6f1-4530-9bb1-4686db1e7a6c`
+completed at 00:00:02 UTC on October 26, wrote the expected counts and left the
+original counterpart cancelled. The canary is manual-only. No schedules
 or automations were cloned wholesale from the original database.
 
 ## Recovery artifacts and limits

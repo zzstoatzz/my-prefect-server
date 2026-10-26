@@ -221,5 +221,27 @@
   "canary": {
     "id": "cd329e02-5117-4ea5-9575-61c9a9d2545a",
     "state": "COMPLETED"
+  },
+  "original_queued_runs_cancelled": [
+    {
+      "id": "5a4bc98f-0872-4fc6-bce0-74342e3ed6ba",
+      "state": "CANCELLED"
+    },
+    {
+      "id": "6ff128e7-152b-45bf-8997-6b2c5df83de1",
+      "state": "CANCELLED"
+    },
+    {
+      "id": "8d4d49b1-58f9-4d56-9dca-7afcfedc17cc",
+      "state": "CANCELLED"
+    }
+  ],
+  "verified_at": "2026-10-26T00:01:05.885154+00:00",
+  "first_automatic_run": {
+    "id": "6e55d697-e6f1-4530-9bb1-4686db1e7a6c",
+    "state": "COMPLETED",
+    "expected_start_time": "2026-10-26T00:00:00.000000Z",
+    "start_time": "2026-10-25T23:59:58.289711Z",
+    "end_time": "2026-10-26T00:00:02.787468Z"
   }
 }
