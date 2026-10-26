@@ -430,6 +430,12 @@ means the sweep ran; it does not assert every target was healthy. The three
 copied notification rules and block hash were verified without a synthetic alert.
 
 The R2 restore check now requires the HeavyPad fleet-health deployment ID.
+Deployed script SHA-256 `4fb306697d9fd678eef1a7d4d83e112f9c05f16e24c0d58a6d366d4c6e0821c2`
+matched source. Encrypted backup `20261026T215402Z.dump.age` uploaded to R2 and
+restored in the isolated verifier at 21:54:10 UTC on October 26: nine deployments,
+161 flow runs, nine blocks, three automations, and newest completion five minutes
+before the dump. Ciphertext SHA-256:
+`28fc1044676ec163915cb61623dbd24798996cd398531a0d8a223993b441e05f`.
 
 The original catch-all `flow-run failure -> autofix` no longer sees fleet-health
 failures, the same accepted gap as diagnostics and backlog. Rollback: clear the HeavyPad
