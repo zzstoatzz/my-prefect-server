@@ -90,7 +90,7 @@ The original `just prefect` and `kubeconfig.yaml` still target Hetzner. The
 separate `just heavypad-prefect` and `just heavypad-kubectl` target the HeavyPad server;
 never switch the default profile or kubectl context to operate it. Read
 `deploy/heavypad-prefect/README.md` before migration. `prefect.heavypad.yaml`
-owns HeavyPad server schedules; original CI continues registering `prefect.yaml` only.
+owns HeavyPad server schedules; CI registers `prefect.heavypad.yaml` against the HeavyPad API using scoped spindle credentials; `prefect.yaml` retains inactive original-server rollback definitions.
 The backlog counter, diagnostics, bufo-traffic, costs, mcp-fleet-health,
 fleet-health, mcp-atlas and bisk-snapshot are migrated.
 Keep their original schedules

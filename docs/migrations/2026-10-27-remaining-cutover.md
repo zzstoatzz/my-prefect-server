@@ -176,3 +176,26 @@ requires an existing Access session; no gate was bypassed.
 Enable the qualified Pub Search, watch-tangled-pulls, identity-hourly and
 profile-enrichment cadences on HeavyPad only. Leaflet, the cloud index publisher
 and the paused PLC definition stay inactive until their remaining checks pass.
+
+## CI ownership and current validation
+
+MPS CI now registers `prefect.heavypad.yaml` against the HeavyPad API, rather
+than applying original-server rollback definitions through a hostname that will
+later move. Its existing two spindle rows are explicit HeavyPad references in
+canonical SOPS with `_inject_prefect=false`; the global original credential and
+Stream's scoped rows are preserved. Scoped apply and two readbacks were current.
+No pending/running MPS CI jobs remained when changing ownership. The preceding
+CI failures stopped at formatting a concurrent Typeahead controller edit; the
+format-only correction is included here. No failed CI registered deployments.
+
+The full local suite passed 829 tests with seven skipped in 284.38 seconds;
+Ruff checks, formatting, types and both deployment contracts passed. The Hub
+check/lint passed with zero Svelte diagnostics. From the actual new Hub pod,
+read-only requests returned the HeavyPad exe pool, ONLINE worker and expected
+investigation/revision/test deployments. Public dashboard visual verification
+is still limited by the Access login gate. Dagster remains active and unchanged.
+
+The restore checker now requires all fourteen remaining deployment IDs and the
+manual test-boundary canary in addition to the earlier migrated records. Deploy
+that checker, take a final encrypted offsite backup and restore it after the
+last publisher qualification and worker handoff.

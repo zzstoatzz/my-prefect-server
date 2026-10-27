@@ -15,7 +15,7 @@ dependencies:
   - git
 
 environment:
-  PREFECT_API_URL: "https://prefect-server.waow.tech/api"
+  PREFECT_API_URL: "https://heavypad.tailb660b6.ts.net:10443/api"
   UV_PYTHON_PREFERENCE: "only-system"
 
 steps:
@@ -24,7 +24,7 @@ steps:
       set -euo pipefail
       ulimit -n 8192
       for lib in /nix/store/*-gcc-*-lib/lib; do export LD_LIBRARY_PATH="$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; done
-      uv run scripts/validate_deployments.py
+      uv run scripts/validate_deployments.py --config prefect.heavypad.yaml
       uv sync --extra dagster --extra inbox
       ruff check .
       ruff format --check .
@@ -64,5 +64,5 @@ steps:
       fi
       export MPS_PIN="@${SHA}"
       echo "pinning deployments to ${MPS_PIN}"
-      uv run scripts/validate_deployments.py --release
-      uv run --with prefect prefect --no-prompt deploy --all
+      uv run scripts/validate_deployments.py --config prefect.heavypad.yaml --release
+      uv run --with prefect prefect --no-prompt deploy --prefect-file prefect.heavypad.yaml --all

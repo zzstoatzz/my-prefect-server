@@ -96,7 +96,11 @@ class Refresh:
 
     def healthy(self, target: dict, *, require_fresh: bool = True):
         code, health, _ = self.get(target["origin"], "/health")
-        if code != 200 or not health["ready"] or (require_fresh and not 0 <= health["sync_lag_s"] < 600):
+        if (
+            code != 200
+            or not health["ready"]
+            or (require_fresh and not 0 <= health["sync_lag_s"] < 600)
+        ):
             raise RuntimeError("Backend is not fresh and ready")
         code, index, _ = self.get(target["origin"], "/index/status")
         if (
