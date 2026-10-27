@@ -156,3 +156,19 @@ stop new work before it exhausts disk. See the [disk audit](audits/2026-10-25-wo
 ## October 26 monitoring repair
 
 The installer image is pinned to `sha256:37fa2b5ed4cf21c63a1e75fefd0f48d001c2cf3d0635f5ee16441c40cece6525`. It requires a Logfire write token on each managed app before installation and refreshes the native Turso client’s TLS validation clock between requests. Both managed apps have the existing project token staged from the canonical encrypted store. The Typeahead transport marks routed health probes so the sync alert follows the production slot. See the [Typeahead monitoring runbook](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/plans/automatic-snapshot-refresh.md#search-telemetry). The schedule and builder source are unchanged.
+
+## Native image updates on an existing snapshot
+
+Rollout idempotence compares both the snapshot build ID and the active Machine's
+immutable image digest. A changed image reuses the published artifacts, installs
+on the inactive managed app's independent volume, qualifies and restarts that
+candidate at final size, then conditionally switches routing. It does not rebuild
+the corpus or restart the current serving Machine. Prepared-candidate recovery
+also applies to this code-only rollout.
+
+The configured image is now
+`sha256:34c5a61a794674e64802d5d633dd800a2adfab2c0d91f0d8ceb14e5c28a84da3`
+(Typeahead source `06a714c`): response-aware sync watchdog feeding, HTTP-client
+recovery and bounded failure backoff. Deployment verification is recorded in the
+[Typeahead operations record](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/ops/sync-hardening-release-20261026.md).
+The existing builder source and schedule are unchanged.
