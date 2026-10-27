@@ -152,8 +152,7 @@ deployments:
     concurrency_limit: &cancel_new
       limit: 1
       collision_strategy: CANCEL_NEW
-    schedules:
-      - cron: "0 * * * *"  # hourly
+    schedules: []
     parameters:
       only_unread: true
 
@@ -168,6 +167,7 @@ deployments:
     concurrency_limit: *cancel_new
     triggers:
       - type: event
+        enabled: false
         # ingest finishes Completed(name="Degraded") when one source is down,
         # and the event is named after the state NAME. Expecting only
         # Completed stalled classify -> transform -> brief for three days
@@ -196,6 +196,7 @@ deployments:
     concurrency_limit: *cancel_new
     triggers:
       - type: event
+        enabled: false
         expect:
           - "prefect.flow-run.Completed"
         match_related:
@@ -221,9 +222,7 @@ deployments:
     entrypoint: flows/email_triage.py:email_triage
     work_pool: *home
     concurrency_limit: *cancel_new
-    schedules:
-      - cron: "20 13 * * *"
-        active: true
+    schedules: []
 
   - name: brief
     pull: *cached_home
@@ -232,6 +231,7 @@ deployments:
     work_pool: *home
     triggers:
       - type: event
+        enabled: false
         expect:
           - "prefect.flow-run.Completed"
         match_related:
@@ -248,6 +248,7 @@ deployments:
     work_pool: *home
     triggers:
       - type: event
+        enabled: false
         expect:
           - "prefect.flow-run.Completed"
         match_related:
@@ -261,8 +262,7 @@ deployments:
     entrypoint: flows/morning.py:morning
     work_pool: *home
     concurrency_limit: *cancel_new
-    schedules:
-      - cron: "0 13 * * *"  # 8am CT daily
+    schedules: []
 
   - name: phi-atlas
     pull: *cached_home
@@ -285,8 +285,7 @@ deployments:
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
     concurrency_limit: *cancel_new
-    schedules:
-      - cron: "0 13 * * *"  # 8am CT daily, alongside morning
+    schedules: []
 
   - name: docket
     pull: *cached_home
@@ -298,6 +297,7 @@ deployments:
     work_pool: *home
     triggers:
       - type: event
+        enabled: false
         expect:
           - "prefect.flow-run.Completed"
         match_related:
@@ -1114,10 +1114,7 @@ deployments:
           STRATA_STATE_PATH: /home/stoat/prefect-analytics/strata/checkpoint.sqlite
           STRATA_INGEST_TOKEN: prefect-block://strata-ingest-token
           STREAM_ARCHIVE_KEY: prefect-block://stream-archive-key-strata
-    schedules:
-      # Restored 2026-10-11 after HeavyPad checkpoint and R2 cutover verification.
-      - cron: "21 * * * *"
-        active: true
+    schedules: []
     concurrency_limit:
       limit: 1
       collision_strategy: CANCEL_NEW
