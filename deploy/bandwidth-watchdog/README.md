@@ -147,9 +147,11 @@ the final targeted watchdog suite passed all 15 tests.
 The existing **heavypad / host** dashboard includes monthly Internet TCP and
 physical-interface totals, the 1 TB household budget, recent rates, the original
 monitoring start date and sampler freshness. Prometheus scrapes the watchdog's
-loopback-only `127.0.0.1:19815/metrics` endpoint every 30 seconds. Metrics read the
-atomic durable state, preserving totals across exporter and service restarts;
-there is no second accounting process. Missing/corrupt state returns HTTP 503.
+existing node exporter's textfile collector every 30 seconds. The watchdog
+atomically writes `/var/lib/prometheus/bandwidth-watchdog/bandwidth.prom`, with
+a symlink in the default textfile directory. Totals survive service restarts;
+there is no additional listener or accounting process. The sampler timestamp
+makes a stopped watchdog visible even while node exporter remains healthy.
 
 Compare with Xfinity's Data usage page at the same timestamp, using decimal GB
 and its displayed billing window. The watchdog uses UTC calendar months. It

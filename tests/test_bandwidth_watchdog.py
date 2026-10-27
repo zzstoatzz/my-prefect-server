@@ -313,35 +313,43 @@ def test_heat_without_a_package_sensor_is_a_no_op():
     assert state == {}
 
 
-def test_metrics_http_reads_durable_totals_and_reports_missing_state(tmp_path):
+def test_metrics_file_preserves_totals_and_is_atomically_replaced(tmp_path):
     from datetime import UTC, datetime
 
-    from mps.bandwidth_watchdog import metrics_server
+    from mps.bandwidth_watchdog import write_metrics
 
-    path = tmp_path / "state.json"
-    server = metrics_server(path, 0, 1_000_000_000_000)
-    url = f"http://127.0.0.1:{server.server_port}/metrics"
-    try:
-        assert httpx.get(url).status_code == 503
-        now = datetime.now(UTC)
-        save(
-            path,
-            {
-                "sampled_at": now.timestamp(),
-                "started": 1234,
-                "month": now.strftime("%Y-%m"),
-                "month_tcp_bytes": 400,
-                "month_host_bytes": 600,
-            },
-        )
-        response = httpx.get(url)
-        assert response.status_code == 200
-        assert f'bandwidth_watchdog_month_host_bytes{{month="{now:%Y-%m}"}} 600' in response.text
-        assert "1000000000000" in response.text
-        assert "1234" in response.text
-        assert httpx.get(url.replace("/metrics", "/")).status_code == 404
-        path.write_text("{")
-        assert httpx.get(url).status_code == 503
-    finally:
-        server.shutdown()
-        server.server_close()
+    path = tmp_path / "bandwidth.prom"
+    now = datetime.now(UTC)
+    state = {
+        "sampled_at": now.timestamp(),
+        "started": 1234,
+        "month": now.strftime("%Y-%m"),
+        "month_tcp_bytes": 400,
+        "month_host_bytes": 600,
+    }
+    write_metrics(path, state, 1_000_000_000_000)
+    first_inode = path.stat().st_ino
+    assert f'bandwidth_watchdog_month_host_bytes{{month="{now:%Y-%m}"}} 600' in path.read_text()
+    assert path.stat().st_mode & 0o777 == 0o644
+    state["month_host_bytes"] = 900
+    write_metrics(path, state, 1_000_000_000_000)
+    assert path.stat().st_ino != first_inode
+    assert f'bandwidth_watchdog_month_host_bytes{{month="{now:%Y-%m}"}} 900' in path.read_text()
+    assert not path.with_suffix(".tmp").exists()
+
+
+def test_metrics_does_not_present_previous_month_as_current():
+    from datetime import UTC, datetime
+
+    from mps.bandwidth_watchdog import prometheus_metrics
+
+    state = {
+        "sampled_at": datetime.now(UTC).timestamp(),
+        "started": 1234,
+        "month": "2000-01",
+        "month_tcp_bytes": 400,
+        "month_host_bytes": 600,
+    }
+    metrics = prometheus_metrics(state)
+    assert " 600" not in metrics
+    assert " 400" not in metrics

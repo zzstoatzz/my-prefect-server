@@ -201,10 +201,6 @@ def main():
                     }
                 ],
             },
-            {
-                "job_name": "bandwidth-watchdog",
-                "static_configs": [{"targets": ["127.0.0.1:19815"]}],
-            },
             {"job_name": "typeahead-health", "static_configs": [{"targets": ["127.0.0.1:19814"]}]},
             {"job_name": "prometheus", "static_configs": [{"targets": ["127.0.0.1:19090"]}]},
             {"job_name": "grafana", "static_configs": [{"targets": ["127.0.0.1:13003"]}]},

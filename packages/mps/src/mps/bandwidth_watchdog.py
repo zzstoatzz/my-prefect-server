@@ -8,10 +8,8 @@ import os
 import re
 import socket
 import subprocess
-import threading
 import time
 from datetime import UTC, datetime
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from uuid import uuid4
 
@@ -358,29 +356,14 @@ def prometheus_metrics(state: dict, budget: int = 1_000_000_000_000) -> str:
     )
 
 
-def metrics_server(path: Path, port: int, budget: int) -> ThreadingHTTPServer:
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            if self.path != "/metrics":
-                self.send_error(404)
-                return
-            try:
-                body = prometheus_metrics(json.loads(path.read_text()), budget).encode()
-            except (OSError, ValueError, KeyError):
-                self.send_error(503, "Watchdog state unavailable")
-                return
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain; version=0.0.4")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def log_message(self, *_):
-            pass
-
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    threading.Thread(target=server.serve_forever, daemon=True).start()
-    return server
+def write_metrics(path: Path, state: dict, budget: int) -> None:
+    temporary = path.with_suffix(".tmp")
+    with temporary.open("w") as stream:
+        stream.write(prometheus_metrics(state, budget))
+        stream.flush()
+        os.fsync(stream.fileno())
+    temporary.chmod(0o644)
+    temporary.replace(path)
 
 
 def main() -> None:
@@ -400,11 +383,6 @@ def main() -> None:
     lock = args.state.with_suffix(".lock").open("w")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     state = json.loads(args.state.read_text()) if args.state.exists() else {}
-    metrics_server(
-        args.state,
-        config.get("metrics_port", 19815),
-        config.get("isp_budget_bytes", 1_000_000_000_000),
-    )
     boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
     raw_auth = os.environ["PREFECT_API_AUTH_STRING"]
     auth = httpx.BasicAuth(*raw_auth.split(":", 1))
@@ -419,6 +397,16 @@ def main() -> None:
             actions = advance(state, sockets, interfaces, boot, now, config)
             heat(state, read_heat(), now, config)
             save(args.state, state)
+            if metrics_path := config.get("metrics_path"):
+                try:
+                    write_metrics(
+                        Path(metrics_path), state, config.get("isp_budget_bytes", 1_000_000_000_000)
+                    )
+                except OSError:
+                    print(
+                        "Bandwidth metrics export failed; accounting and enforcement continue",
+                        flush=True,
+                    )
             enforce(state, actions, now)
             if now - state.get("heartbeat", 0) >= 60:
                 state["heartbeat"] = now
