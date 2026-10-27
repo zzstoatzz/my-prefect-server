@@ -7,6 +7,7 @@
 
 	// Define the tags which can be applied to devices and by which users.
 	"tagOwners": {
+		"tag:docs-mcp":       ["autogroup:admin"],
 		"tag:gardener-vm":    ["autogroup:admin"],
 		"tag:prefect-server": ["autogroup:admin"],
 	},
@@ -19,6 +20,7 @@
 	// Define grants that govern access for users, groups, autogroups, tags,
 	// Tailscale IP addresses, and subnet ranges.
 	"grants": [
+		{"src": ["tag:docs-mcp"], "dst": ["100.96.216.23"], "ip": ["tcp:8798"]},
 		// nate's own devices reach each other, as before.
 		{"src": ["autogroup:member"], "dst": ["*"], "ip": ["*"]},
 
@@ -82,6 +84,13 @@
 
 	// Test access rules every time they're saved.
 	"tests": [
+		{"src": "tag:docs-mcp", "accept": ["100.96.216.23:8798"], "deny": [
+			"100.96.216.23:22",
+			"100.96.216.23:6555",
+			"100.96.216.23:8797",
+			"prefect-server:4200",
+			"100.123.180.96:22",
+		]},
 		{
 			"src":    "tag:gardener-vm",
 			"accept": ["prefect-server:4200"],

@@ -13,6 +13,9 @@ spec:
       labels:
         app: hub
     spec:
+      hostAliases:
+        - ip: 100.96.216.23
+          hostnames: [heavypad.tailb660b6.ts.net]
       imagePullSecrets:
         - name: atcr-creds
       containers:
