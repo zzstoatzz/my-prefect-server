@@ -9,6 +9,37 @@ pull:
       directory: flow-source
 
 deployments:
+  - name: phone-presence
+    tags: [home, heavypad]
+    entrypoint: flows/presence_lighting.py:report_presence
+    pull:
+      - prefect.deployments.steps.run_shell_script:
+          expand_env_vars: true
+          script: |
+            git clone --quiet "$PRESENCE_SOURCE_URL" presence-source
+            git -C presence-source checkout --quiet --detach "$PRESENCE_SOURCE_REVISION"
+      - prefect.deployments.steps.set_working_directory:
+          directory: presence-source
+    parameters:
+      apply_lighting: true
+    schedules: []
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+    work_pool:
+      name: heavypad-pool
+      job_variables:
+        command: >-
+          uv run --no-project --with prefect==3.8.2
+          --with 'my-prefect-server[lighting] @ git+https://github.com/zzstoatzz/my-prefect-server.git@0706dd46d91c90e50b111cf5ac432a61395b8774'
+          prefect flow-run execute
+        env:
+          PRESENCE_SOURCE_URL: https://github.com/zzstoatzz/my-prefect-server.git
+          PRESENCE_SOURCE_REVISION: 0706dd46d91c90e50b111cf5ac432a61395b8774
+          PRESENCE_CREDENTIAL_FILE: /home/stoat/.config/presence/pds-password
+          PRESENCE_HUE_ENV_FILE: /home/stoat/.config/presence/hue-env.json
+          PRESENCE_LIGHTING_STATE_FILE: /home/stoat/.config/presence/lighting-state
+
   - name: watch-fastmcp
     entrypoint: flows/watch_fastmcp.py:watch_fastmcp
     tags: [watch, heavypad]

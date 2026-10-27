@@ -5,9 +5,9 @@ import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request, fetch }) => {
 	const token = env.PRESENCE_WEBHOOK_TOKEN;
-	const api = env.PREFECT_API_URL;
-	const auth = env.PREFECT_API_AUTH_STRING;
-	const deployment = env.PRESENCE_DEPLOYMENT_ID;
+	const api = env.PRESENCE_PREFECT_API_URL || env.PREFECT_API_URL;
+	const auth = env.PRESENCE_PREFECT_API_AUTH_STRING || env.PREFECT_API_AUTH_STRING;
+	const deployment = env.PRESENCE_PREFECT_DEPLOYMENT_ID || env.PRESENCE_DEPLOYMENT_ID;
 	if (!token || !api || !auth || !deployment) error(503, 'Presence reporting is not configured');
 	if (!authorizedPresenceReport(request.headers.get('authorization'), token)) error(401, 'Unauthorized');
 	const contentType = request.headers.get('content-type')?.split(';')[0].trim();

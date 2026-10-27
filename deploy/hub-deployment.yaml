@@ -38,6 +38,24 @@ spec:
                   name: presence-ingress
                   key: webhook-token
                   optional: true
+            - name: PRESENCE_PREFECT_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: presence-heavypad
+                  key: prefect-api-url
+                  optional: true
+            - name: PRESENCE_PREFECT_API_AUTH_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: presence-heavypad
+                  key: prefect-api-auth
+                  optional: true
+            - name: PRESENCE_PREFECT_DEPLOYMENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: presence-heavypad
+                  key: deployment-id
+                  optional: true
             - name: PREFECT_API_URL
               valueFrom:
                 secretKeyRef:
