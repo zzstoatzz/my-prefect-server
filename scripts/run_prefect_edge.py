@@ -11,13 +11,29 @@ from urllib.parse import urlsplit
 from prefect_target import target_config
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("service", choices=["hub", "push"])
+parser.add_argument("service", choices=["hub", "push", "proxy"])
 args = parser.parse_args()
 root = Path(__file__).resolve().parent.parent
 service = tomllib.loads((root / "deploy/prefect-edge/services.toml").read_text())[args.service]
 home = Path.home()
 config = home / ".config/prefect-edge"
 state = home / ".local/share/prefect-edge"
+os.environ["DOCKER_HOST"] = "unix:///var/run/docker.sock"
+if args.service == "proxy":
+    command = [
+        "docker",
+        "run",
+        "--rm",
+        "--name",
+        "prefect-" + args.service,
+        "--network",
+        "host",
+        "--volume",
+        str(config) + ":/config:ro",
+    ]
+    command += ["--volume", str(config / "nginx.conf") + ":/etc/nginx/nginx.conf:ro"]
+    command += [service["image"]]
+    raise SystemExit(subprocess.run(command, check=False).returncode)
 host = urlsplit(target_config()["api_url"]).hostname
 address = socket.gethostbyname(host)
 command = [

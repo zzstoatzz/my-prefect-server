@@ -10,3 +10,6 @@ source_revision = "2012b1a684da131588ce5ccf721fd8161661a324"
 port = 13001
 container_port = 8080
 memory = "192m"
+
+[proxy]
+image = "nginx@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951"

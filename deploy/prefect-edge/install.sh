@@ -10,8 +10,7 @@ set -euo pipefail
 root="$HOME/prefect-edge"
 release="$root/releases/$1"
 ln -sfn "$release" "$root/current"
-install -m 0644 "$release/deploy/prefect-edge/prefect-hub.service" ~/.config/systemd/user/
-install -m 0644 "$release/deploy/prefect-edge/prefect-push.service" ~/.config/systemd/user/
+install -m 0644 "$release"/deploy/prefect-edge/*.service ~/.config/systemd/user/
 systemctl --user daemon-reload
 systemctl --user enable --now prefect-hub
 systemctl --user is-active prefect-hub

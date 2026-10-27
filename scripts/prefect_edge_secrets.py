@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 import httpx
+from dotenv import dotenv_values
 from prefect_target import target_config
 
 REMOTE = r"""
@@ -73,9 +74,12 @@ def main():
             "apns_key_id": apns["key-id"],
             "apns_team_id": apns["team-id"],
         }
-        if "prefect_edge" in data and data["prefect_edge"] != edge:
+        edge["legacy_api_auth_string"] = dotenv_values(root / ".env")["AUTH_STRING"]
+        existing = data.get("prefect_edge", {})
+        if any(existing.get(k, v) != v for k, v in edge.items()):
             raise RuntimeError("Existing canonical edge credentials disagree; refusing overwrite")
-        if "prefect_edge" not in data:
+        edge = {**existing, **edge}
+        if existing != edge:
             subprocess.run(
                 ["sops", "set", "--value-stdin", str(store), '["prefect_edge"]'],
                 input=json.dumps(edge),
@@ -130,6 +134,11 @@ def main():
         ),
         "apns.p8": edge["apns_key"],
     }
+    if "legacy_api_auth_string" in edge:
+        old = base64.b64encode(edge["legacy_api_auth_string"].encode()).decode()
+        new = base64.b64encode(data["heavypad_prefect"]["api_auth_string"].encode()).decode()
+        template = (root / "deploy/prefect-edge/nginx.conf").read_text()
+        files["nginx.conf"] = template.replace("@OLD_AUTH@", old).replace("@HOME_AUTH@", new)
     result = subprocess.check_output(
         ["ssh", "-o", "BatchMode=yes", target["ssh_host"], "python3 -c " + shlex.quote(REMOTE)],
         input=json.dumps({"files": files, "apply": args.apply}),
