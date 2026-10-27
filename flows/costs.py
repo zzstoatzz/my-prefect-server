@@ -26,6 +26,7 @@ from mps.blocks import secret, secret_mapping
 from mps.costs import Period, Snapshot
 from mps.costs.connectors import (
     CloudflareConnector,
+    CoralApiConnector,
     FlyConnector,
     HetznerConnector,
     NeonConnector,
@@ -48,7 +49,7 @@ async def build_connectors() -> list[Connector]:
     """Assemble connectors. Hetzner is special: its tokens are project-scoped,
     so we load the `hetzner-tokens` Secret block (a dict of {label: token}) and
     hand the values to the connector. Fly, Cloudflare, and Neon read single tokens
-    from env (injected from Secret blocks via prefect.yaml); Turso needs none."""
+    from env (injected from Secret blocks via prefect.yaml); Turso and coral need none."""
     prefix = os.environ.get("COSTS_PROVIDER_BLOCK_PREFIX", "")
     if "COSTS_PROVIDER_BLOCK_PREFIX" in os.environ:
         for variable, block in (
@@ -72,6 +73,7 @@ async def build_connectors() -> list[Connector]:
         HetznerConnector(tokens=hetzner_tokens),
         NeonConnector(),
         TursoConnector(),
+        CoralApiConnector(),
     ]
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from mps.costs.connectors.cloudflare import CloudflareConnector
+from mps.costs.connectors.coral_api import CoralApiConnector
 from mps.costs.connectors.fly import FlyConnector
 from mps.costs.connectors.hetzner import HetznerConnector
 from mps.costs.connectors.neon import NeonConnector
@@ -15,11 +16,13 @@ ALL_CONNECTORS: list[Connector] = [
     HetznerConnector(),
     NeonConnector(),
     TursoConnector(),
+    CoralApiConnector(),
 ]
 
 __all__ = [
     "ALL_CONNECTORS",
     "CloudflareConnector",
+    "CoralApiConnector",
     "FlyConnector",
     "HetznerConnector",
     "NeonConnector",
