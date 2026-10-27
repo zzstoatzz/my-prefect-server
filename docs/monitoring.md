@@ -29,13 +29,18 @@ healthy, warning, critical-byte and critical-inode cases without injecting fake
 production telemetry or sending a test notification. The filesystem collector's
 25 tests passed, including real-filesystem deduplication and missing-path failure.
 
-The watchdog's startup token lookup and event outbox still target the original
-Prefect server. Transfer that client configuration, required Secret block and
-heartbeat/event automations before retiring Hetzner. Once initialized, disk
+The watchdog's startup token lookup and event outbox target the home Prefect
+server through the canonical hostname. Its Logfire write block and host-event
+automations were transferred and verified before Hetzner retirement. Once initialized, disk
 samples are emitted to Logfire before Prefect event delivery and continue when
 that delivery is unavailable. This is capacity monitoring, not automatic cleanup.
 
 ## Grafana and Prometheus
+
+Production uses the home user services in `deploy/prefect-edge/`, with immutable
+images in `services.toml`. Grafana data and Prometheus history were transferred;
+the public metrics hostname now reaches the home tunnel. The Helm instructions
+below describe the archived original cluster, not the current production target.
 
 Apply the monitoring release with `just monitoring`. It first runs
 `just dashboards`, then upgrades the pinned kube-prometheus-stack chart

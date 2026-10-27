@@ -58,8 +58,8 @@ covering `/` and `~/.local/share/prefect-home/storage`. These currently share th
 root filesystem, so they produce one sample. Collection uses available bytes and
 free inodes from `statvfs`, not a recursive disk scan. It does not depend on a
 Prefect flow being scheduled, and disk samples are emitted before queued Prefect
-events are delivered. The existing startup credential lookup still requires the
-original Prefect server; account for that consumer before retiring it.
+events are delivered. Startup credentials and queued events use the canonical
+home Prefect server; the write block and host-event rules moved before retirement.
 
 Thresholds live in the three `logfire-disk-*.json` rules in Logfire, project
 `zig-prefect-server`, using the existing `phi alert watch (push)` channel.

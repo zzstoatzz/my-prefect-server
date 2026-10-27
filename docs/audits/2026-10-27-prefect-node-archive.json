@@ -16,7 +16,7 @@
     "postgres.dump": 484094951
   },
   "offsite_hash_verified": true,
-  "full_restore_verified": false,
+  "full_restore_verified": true,
   "postgres_restore": {
     "verified_at": "2026-10-27T13:44:44Z",
     "deployments": 46,
@@ -27,5 +27,13 @@
   },
   "push_sqlite_integrity_verified": true,
   "results_extraction_verified": true,
-  "redis_restore_verified": false
+  "redis_restore_verified": true,
+  "redis_restore": {
+    "verified_at": "2026-10-27T16:49:18.371926+00:00",
+    "object_key": "retirement/hetzner-prefect/20261027T133554Z.tar.gz.age",
+    "redis_rdb_loaded": true,
+    "network": "none",
+    "database_0_keys": 76548
+  },
+  "restore_scope": "PostgreSQL, Redis, push SQLite and result-file archive; isolated from live schedulers"
 }

@@ -12,8 +12,7 @@ Dagster and deliberately paused/retired workflows retain their agreed state.
 
 Control-plane history, push SQLite, results, monitoring history and retained PDS
 coverage data have encrypted R2 archives. The old PostgreSQL dump restored into
-an isolated database; push integrity and result extraction passed. Redis was
-archived but not separately restored. A fresh home backup restored from R2 at
+an isolated database; push integrity and result extraction passed. Redis also loaded successfully in an isolated container with 76,548 keys. A fresh home backup restored from R2 at
 15:38 UTC with 48 deployments, 880 runs, 44 blocks and 26 automations.
 
 The watchdog was alive: its heartbeats had moved to home while its absence rule
@@ -49,3 +48,31 @@ the dashboard can therefore show a total without the associated warning.
 Builder resource names currently match the generic `prefect` attribution rule,
 although this builder executes Typeahead. A durable ledger should preserve the
 workload owner as well as creation/deletion time and hourly price.
+
+
+## Final workflow checks
+
+The retained dataset archive restored 19,764,846,998 bytes across 1,858 files;
+all nine SQLite integrity checks passed. Storage alert rules remain active in
+Logfire, with fresh minute samples and no query errors or matching warnings.
+
+Nate authorized normal runs of curation, likes review, character retro and chicken
+scout. All four home Prefect dispatches completed with acknowledgements from Phi;
+agent work behind that HTTP API is asynchronous. Existing clocks were preserved.
+The newer email approval remains paused; the previously cancelled approval was
+not resumed. The PLC identity clock remains disabled, and the three retired
+workflows remain absent.
+
+A real Gardener patch test found a stale image and missing sandbox facilities.
+The release now includes CI extras, jq, and private writable temporary and shared
+memory filesystems. The real isolated run passed 832 tests (six existing skips),
+returned `passed: true`, and its VM cleanup was verified. The expanded boundary
+canary passed on the identical image with host files and credentials hidden.
+Source, image digest, qualification IDs and CI status are in the JSON receipt.
+
+The full goal is not yet proven complete: the Typeahead automatic-refresh run
+remains failed at candidate latency admission. Its built optimization image is
+not yet a qualified publisher default; performance qualification is still a
+separate workstream. No serving resource, route or admission threshold was changed
+in this verification. The serving health endpoint remains healthy on its
+previously qualified build.

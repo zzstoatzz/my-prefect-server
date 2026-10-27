@@ -68,6 +68,164 @@
     "unattributed_services": [
       "strata-archive:r2",
       "strata-archive-private:r2"
+    ],
+    "attribution_note": "Unattributed service names above are raw collector project labels; Evergreen already declares the Strata buckets. Prefect backup ownership is now declared there too."
+  },
+  "retained_dataset_restore": {
+    "verified_at": "2026-10-27T16:12:33.952494+00:00",
+    "object_key": "retirement/typeahead/20261027T144342Z-typeahead-retained.tar.zst.age",
+    "sha256": "ded854e76ff4b4aba2c1cea7a50b24d84dc5f6048660622341cf6b2df0758224",
+    "file_count": 1858,
+    "restored_bytes": 19764846998,
+    "sqlite_quick_check": [
+      "pds-coverage-20261020/source-transfer.db",
+      "pds-coverage-20261020/source.db",
+      "pds-coverage-20261020/source-checkpoint.db.budget.db",
+      "pds-coverage-20261020/identity-discovery-probe.db",
+      "pds-coverage-20261020/candidates.db",
+      "pds-coverage-20261020/source-checkpoint-3.db.budget.db",
+      "pds-coverage-20261020/source-checkpoint-2.db.budget.db",
+      "pds-coverage-20261020/bundles/transfer.db",
+      "pds-coverage-20261020/tail-2100/transfer-budget.db"
+    ],
+    "archive_decrypted_and_extracted": true
+  },
+  "normal_phi_dispatches": [
+    {
+      "deployment": "phi-chicken-scout",
+      "deployment_id": "9bc72ce6-5adb-43c5-87ed-9e6a48329176",
+      "run_id": "574a8b85-bfa1-4754-b483-00476123be96",
+      "state_type": "COMPLETED",
+      "state_name": "Completed",
+      "start_time": "2026-10-27T16:16:35.247281Z",
+      "end_time": "2026-10-27T16:16:35.507596Z",
+      "validate_only": false,
+      "accepted_trigger_logs": [
+        "triggered: {'triggered': 'chicken-scout'}"
+      ]
+    },
+    {
+      "deployment": "phi-character-retro",
+      "deployment_id": "cabf0900-4a3f-4137-ae8c-df5bacc46e5d",
+      "run_id": "de4ddb12-0196-42e3-9d23-6fa77bd7132d",
+      "state_type": "COMPLETED",
+      "state_name": "Completed",
+      "start_time": "2026-10-27T16:16:44.302030Z",
+      "end_time": "2026-10-27T16:16:44.496061Z",
+      "validate_only": false,
+      "accepted_trigger_logs": [
+        "triggered: {'triggered': 'character-retro'}"
+      ]
+    },
+    {
+      "deployment": "phi-likes-review",
+      "deployment_id": "ef81bea3-f5f6-4e9e-8d02-616571fdfdd1",
+      "run_id": "8aee0b63-7a19-42b2-8385-47a15e604147",
+      "state_type": "COMPLETED",
+      "state_name": "Completed",
+      "start_time": "2026-10-27T16:17:03.836040Z",
+      "end_time": "2026-10-27T16:17:04.097983Z",
+      "validate_only": false,
+      "accepted_trigger_logs": [
+        "triggered: {'triggered': 'likes-review'}"
+      ]
+    },
+    {
+      "deployment": "phi-curation",
+      "deployment_id": "af3781c0-020f-45eb-90de-801aca6e9786",
+      "run_id": "f6817c41-6710-4063-b611-9de5b0916347",
+      "state_type": "COMPLETED",
+      "state_name": "Completed",
+      "start_time": "2026-10-27T16:17:12.611494Z",
+      "end_time": "2026-10-27T16:17:12.822975Z",
+      "validate_only": false,
+      "accepted_trigger_logs": [
+        "triggered: {'triggered': 'curation'}"
+      ]
+    }
+  ],
+  "gardener_test_boundary": {
+    "verified_at": "2026-10-27T16:45:40.155862+00:00",
+    "image": "gardener-registry.exe.xyz/gardener@sha256:8dec8e5c0b9ec17179ce059b4d193fb2af23aab28d7aaa793580ecd6478f83e1",
+    "boundary_verified": true,
+    "checks": [
+      "private temporary files",
+      "private POSIX semaphores",
+      "Unix sockets",
+      "jq",
+      "unprivileged identity",
+      "no capabilities",
+      "no credential environment",
+      "host filesystem hidden",
+      "public DNS"
+    ],
+    "vm_cleanup_verified": true
+  },
+  "atlas_cost_attribution": {
+    "source_commit": "0a37d24",
+    "project": "prefect",
+    "service": "heavypad-prefect-backups:r2",
+    "amount_cents": 8,
+    "estimated": true,
+    "dedicated_server_charge_cents": 0,
+    "published_and_visually_verified": true
+  },
+  "gardener_patch_test": {
+    "run_id": "277049e6-5291-4e29-869d-4d17ab355f27",
+    "state_type": "COMPLETED",
+    "passed": true,
+    "test_summary": "832 passed, 6 skipped, 9 warnings in 333.44s (0:05:33)",
+    "completed_at": "2026-10-27T16:59:11.196913Z",
+    "image": "gardener-registry.exe.xyz/gardener@sha256:8dec8e5c0b9ec17179ce059b4d193fb2af23aab28d7aaa793580ecd6478f83e1",
+    "release_commit": "12199fdf2a88c7b7ab792021984877bf7c446fba",
+    "full_ci_status": "success",
+    "vm_cleanup_verified": true,
+    "base": "a01b16651c198a55b95641bb44dd0e0b9bfadba9",
+    "patch_sha256": "b01d27263f9ff0453eb0908d4a1c2d32d6eb404995ed70e31f9f0f6b3179a772",
+    "corrected": [
+      "missing CI extras in stale image",
+      "missing jq",
+      "private /tmp permissions",
+      "private /dev/shm permissions"
     ]
+  },
+  "redis_archive_restore": {
+    "verified_at": "2026-10-27T16:49:18.371926+00:00",
+    "object_key": "retirement/hetzner-prefect/20261027T133554Z.tar.gz.age",
+    "redis_rdb_loaded": true,
+    "network": "none",
+    "database_0_keys": 76548
+  },
+  "storage_alerts": {
+    "project": "zig-prefect-server",
+    "rules": [
+      "8a9401ae-3071-4534-9d1e-ee56c6c09cb8",
+      "e5d9cb95-8939-47ed-a703-e8081d3152ca",
+      "178036c5-37b1-4ee1-b9db-44303721201c"
+    ],
+    "active": true,
+    "last_scheduled_evaluation": "2026-10-27T16:36:30.236913Z",
+    "query_errors": false,
+    "matching_conditions": false,
+    "latest_disk_sample": "2026-10-27T16:38:58.739565Z",
+    "grafana_alerts_added": false
+  },
+  "retired_hetzner_project_inventory": {
+    "servers": 0,
+    "volumes": 0,
+    "primary_ips": 0,
+    "snapshots": 0,
+    "backups": 0,
+    "floating_ips": 0,
+    "load_balancers": 0
+  },
+  "completion_gate": {
+    "complete": false,
+    "remaining": [
+      "Typeahead automatic-refresh workflow must pass serving-candidate admission with a qualified release."
+    ],
+    "separate_performance_work_preserved": true,
+    "latest_release_handoff_state": "built, not deployed or publisher-default",
+    "no_serving_changes_in_this_verification": true
   }
 }
