@@ -138,7 +138,7 @@ def _post(event: str, body: str, **payload: object) -> None:
 
 
 @flow(name="email-triage", log_prints=True, timeout_seconds=REPLY_TIMEOUT_SECONDS + 1800)
-def email_triage(post: Literal["discord", "log"] = "discord"):
+def email_triage(post: Literal["discord", "log"] = "discord", validate_only: bool = False):
     logger = get_run_logger()
     run_id = str(flow_run.id)
 
@@ -160,6 +160,11 @@ def email_triage(post: Literal["discord", "log"] = "discord"):
     )
     if not shortlist.items:
         return Completed(name="Quiet", message=shortlist.summary)
+    if validate_only:
+        return Completed(
+            name="Validated",
+            message=f"Prepared {len(shortlist.items)} shortlist items and approval link; no approval requested",
+        )
     if post == "discord":
         _post(
             "hub.email.shortlist", message, items=len(shortlist.items), candidates=len(candidates)
