@@ -19,17 +19,35 @@ import httpx
 from mps.blocks import secret
 from mps.observability import configure_logfire
 from prefect import flow
+from prefect.states import Completed
 
 PHI_BASE = "https://phi.zzstoatzz.io"
 
 
 @flow(name="phi-trigger", log_prints=True, timeout_seconds=120, retries=2)
-async def phi_trigger(slot: str, material: str = ""):
+async def phi_trigger(slot: str, material: str = "", validate_only: bool = False):
     """Trigger phi's named pass `slot` via the bot's control API."""
     configure_logfire("prefect-flow-phi-trigger")
 
     token = await secret("phi-control-token")
     async with httpx.AsyncClient(timeout=30.0) as client:
+        if validate_only:
+            health = await client.get(f"{PHI_BASE}/health")
+            health.raise_for_status()
+            if health.json().get("status") != "healthy":
+                raise RuntimeError("Phi is not healthy")
+            probe = await client.post(
+                f"{PHI_BASE}/api/control/trigger/__prefect_validate__",
+                headers={"authorization": f"Bearer {token}"},
+            )
+            if probe.status_code != 404:
+                probe.raise_for_status()
+                raise RuntimeError("Phi validation probe unexpectedly accepted")
+            if slot not in probe.json().get("slots", []):
+                raise ValueError(f"Phi does not advertise slot {slot!r}")
+            return Completed(
+                name="Validated", message=f"Authenticated Phi slot {slot}; no pass started"
+            )
         r = await client.post(
             f"{PHI_BASE}/api/control/trigger/{slot}",
             headers={"authorization": f"Bearer {token}"},

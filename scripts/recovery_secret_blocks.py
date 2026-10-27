@@ -25,6 +25,7 @@ PUBLICATION_BLOCKS = {
     "bisk-r2-access-key-id",
     "bisk-r2-secret-access-key",
 }
+PHI_BLOCKS = {"phi-control-token"}
 
 
 def extract(path):
@@ -43,7 +44,10 @@ def main():
         "--block",
         action="append",
         choices=sorted(
-            PROVIDER_BLOCKS | PUBLICATION_BLOCKS | {"logfire-read-token", "operator-atproto-creds"}
+            PROVIDER_BLOCKS
+            | PUBLICATION_BLOCKS
+            | PHI_BLOCKS
+            | {"logfire-read-token", "operator-atproto-creds"}
         ),
         required=True,
     )

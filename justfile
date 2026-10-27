@@ -21,9 +21,10 @@ guard-linux optimize="ReleaseSafe":
     zig build --build-file tools/prefect-worker-guard/build.zig -Dtarget=x86_64-linux-gnu -Doptimize={{ optimize }}
 
 # run a prefect CLI command against the remote server
+[positional-arguments]
 prefect *args:
     PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
-        uv run --with prefect prefect {{args}}
+        uv run --with prefect prefect "$@"
 
 # push main to both remotes; github first, since the tangled push triggers
 # CI that installs the package from the github mirror
