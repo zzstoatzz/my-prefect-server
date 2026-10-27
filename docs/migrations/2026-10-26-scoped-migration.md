@@ -7,7 +7,7 @@ reorganization are outside this goal. Preserve existing unrelated checkout work.
 | Batch | Deployments | Status |
 | --- | --- | --- |
 | 1 | phi-curation, phi-likes-review, phi-editorial, phi-character-retro, phi-chicken-scout, phi-chicken-precheck | Migrated: six validation runs passed, all target schedules active, original clocks empty. |
-| 2 | watch-fastmcp, fastmcp-brief | Original owner; preserve both Variables, six-hour recent event window and briefing automations. |
+| 2 | watch-fastmcp, fastmcp-brief | Real HeavyPad runs passed; checkpoints/history transferred; clock activation in progress. |
 | 4 | strata-hourly, phi-tag-maintenance, phi-atlas, docket | Original owner; preserve archive/checkpoint files and shared writer coordination. |
 | 5 | ingest, classify-emails, transform, brief, phi-memory-synthesis | Original owner; transfer as one shared-writer cohort including Dagster's lock client. |
 | 8 | email-backlog, email-triage, phone-presence, stream-admission | Original owner; reconcile paused email approval and interactive callers. |
@@ -59,3 +59,42 @@ Live target readback confirmed all six active UTC cron schedules and future
 automatic runs with ordinary slot parameters (no `validate_only` override).
 The next chicken precheck is run `93f5fccb-5f43-4237-9038-6196bee8ff09` at
 October 27 04:00 UTC. No scheduled pass has fired yet after this cutover.
+
+## FastMCP pair
+
+Original deployments: watch-fastmcp `e6102704-a550-49e3-bfc6-ac1e9d15816f`,
+fastmcp-brief `a2e05fd4-12b9-4388-80c8-c6365cd88258`. HeavyPad targets:
+watch-fastmcp `ad73bd44-c4b6-4c83-9db3-3b4294952e43`,
+fastmcp-brief `0391974c-686d-4332-a051-efb1eb9dc55a`.
+
+Both target definitions were initially registered inactive from `2674e1e`.
+Original schedules were emptied in source and cleared live; both original
+brief-trigger automations were disabled in source and live. The transfer script
+refused writes unless both clocks were fenced, both deployments had no queued
+or active runs on either server, and the original trigger automations were off.
+It transferred `fastmcp_notifications_last_modified`, `fastmcp_briefed_threads`,
+and the complete six-hour window (24 GitHub events), preserving event IDs,
+resources, related resources and payloads. History entered PostgreSQL directly
+in a transaction, without sending it back through the broker or replaying
+notification automations. API readback verified event content and both Variables.
+No plaintext credential entered that history or script.
+
+`just heavypad-prefect-monitoring --fastmcp --apply` remaps both briefing
+automations to the HeavyPad deployment, enables them only after original
+automations are fenced, and copies/verifies the existing brief delivery rule.
+The normal invocation still checks the original three monitoring rules. The
+notification block matches by hash; no synthetic Discord message was sent.
+The existing original brief-delivery rule remains for historical/other producers.
+Both checkpoint consumers and the HeavyPad Anthropic block are canonical.
+
+Real watcher run `8a8a30d5-9a87-4914-9a1c-04e2c1e979aa` completed at
+01:16:50 UTC October 27. Brief run `d626c086-84cc-4148-abc9-916b7126f2e7`
+completed after reading the transferred history. These are real normal runs,
+not validation-only executions. Inspect their logs/results for whether anything
+new needed delivery; completion alone does not assert that a message was sent.
+The original five-minute watcher and four-hour briefing UTC cadences are retained.
+
+Rollback: fence both HeavyPad schedules and event-trigger automations, drain
+active runs, transfer the now-current checkpoints and trailing event window back
+without replay, then restore original schedules and original briefing automations.
+Do not resume with the stale original checkpoint snapshot.

@@ -30,7 +30,7 @@ deployments:
     schedules:
       - cron: "*/5 * * * *"
         timezone: UTC
-        active: false
+        active: true
 
   - name: fastmcp-brief
     entrypoint: flows/fastmcp_brief.py:fastmcp_brief
@@ -44,7 +44,7 @@ deployments:
     schedules:
       - cron: "0 */4 * * *"
         timezone: UTC
-        active: false
+        active: true
 
   - name: phi-curation
     entrypoint: flows/phi_trigger.py:phi_trigger
