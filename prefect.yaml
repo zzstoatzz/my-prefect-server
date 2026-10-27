@@ -721,6 +721,20 @@ deployments:
       slot: likes-review
     schedules: []
 
+  - name: albedo-drift-audit
+    pull: *cached_home
+    tags: [phi]
+    description: DeepSeek, via albedo in a bwrap sandbox, audits heavypad's units against this repo
+    entrypoint: flows/albedo_drift_audit.py:albedo_drift_audit
+    # runs on heavypad because it snapshots heavypad's user units; the
+    # sandbox, prompt and one-time setup are in deploy/albedo-sandbox/
+    work_pool: *home
+    concurrency_limit: *cancel_new
+    schedules:
+      # monday 13:00 UTC (8am CT), the start of the week
+      - cron: "0 13 * * 1"
+        active: true
+
   - name: phi-pull-review
     pull: *cached_home
     tags: [phi]
