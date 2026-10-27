@@ -50,7 +50,7 @@ automations:
       something is happening. The brief flow then reads the entire window back
       off the bus, so it sees the situation rather than the one event that
       tripped the trigger.
-    enabled: true
+    enabled: false
     trigger:
       type: event
       posture: Reactive
@@ -71,7 +71,7 @@ automations:
     description: >-
       Someone is actually blocked on you (review requested, mention, assignment).
       No threshold — one is enough.
-    enabled: true
+    enabled: false
     trigger:
       type: event
       posture: Reactive

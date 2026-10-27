@@ -28,6 +28,7 @@ def digest(data):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--fastmcp", action="store_true")
     args = parser.parse_args()
     original = dotenv_values(Path(__file__).resolve().parent.parent / ".env")
     credentials = json.loads(
@@ -63,11 +64,21 @@ def main():
             response.raise_for_status()
             return response.json() if response.content else None
 
+        names = NAMES | (
+            {"fastmcp activity -> brief", "fastmcp direct ask -> brief", "brief ready -> discord"}
+            if args.fastmcp
+            else set()
+        )
         wanted = [
-            a for a in request(old, "POST", "automations/filter", json={}) if a["name"] in NAMES
+            a for a in request(old, "POST", "automations/filter", json={}) if a["name"] in names
         ]
-        assert {a["name"] for a in wanted} == NAMES
-        block_ids = {action["block_document_id"] for a in wanted for action in a["actions"]}
+        assert {a["name"] for a in wanted} == names
+        block_ids = {
+            action["block_document_id"]
+            for a in wanted
+            for action in a["actions"]
+            if "block_document_id" in action
+        }
         assert len(block_ids) == 1
         block = request(
             old, "GET", f"block_documents/{block_ids.pop()}", params={"include_secrets": "true"}
@@ -90,14 +101,24 @@ def main():
         )
         assert digest(block["data"]) == digest(target["data"]), "Notification block differs"
         existing = {a["name"]: a for a in request(new, "POST", "automations/filter", json={})}
+        target_deployments = {
+            d["name"]: d["id"]
+            for d in request(new, "POST", "deployments/filter", json={"limit": 500})
+        }
         for automation in wanted:
             body = {
                 k: copy.deepcopy(automation[k])
                 for k in ("name", "description", "enabled", "trigger", "actions")
             }
             body["trigger"].pop("id", None)
+            if body["name"] in {"fastmcp activity -> brief", "fastmcp direct ask -> brief"}:
+                assert automation["enabled"] is False, "Fence original briefing automations first"
+                body["enabled"] = True
             for action in body["actions"]:
-                action["block_document_id"] = target["id"]
+                if "block_document_id" in action:
+                    action["block_document_id"] = target["id"]
+                if "deployment_id" in action:
+                    action["deployment_id"] = target_deployments["fastmcp-brief"]
                 for key in ("body", "subject"):
                     if key in action:
                         action[key] = action[key].replace(

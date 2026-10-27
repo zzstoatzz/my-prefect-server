@@ -861,9 +861,7 @@ deployments:
     # 304 don't count against GitHub's rate limit and it returns
     # X-Poll-Interval: 60, so every 5 minutes is well inside its floor.
     work_pool: *home
-    schedules:
-      - cron: "*/5 * * * *"
-        active: true
+    schedules: []
 
   - name: fastmcp-backlog
     pull: *cached_home
@@ -917,9 +915,7 @@ deployments:
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
     parameters:
       window_hours: 6
-    schedules:
-      - cron: "0 */4 * * *"
-        active: true
+    schedules: []
 
   - name: pi-agent
     pull: *cached_legacy_home
