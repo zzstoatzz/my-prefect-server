@@ -56,6 +56,12 @@ and defaults to dry-run. Known unmeasured Fly root disks and R2 storage remain
 explicitly labelled `Incomplete`; this migration does not make estimates invoices.
 The canary is manual-only. Other original workloads remain on the original
 server; in particular, the Typeahead publisher remains on its cloud pool.
+MCP Atlas and Bisk snapshot publication also moved on October 26. Their original
+schedules are cleared, and HeavyPad owns `45 */6 * * *` and `*/10 * * * *` UTC
+respectively. The Atlas flow now lives here at `flows/mcp_atlas/crawl.py`, with a
+pinned Atlas library dependency; the Atlas product repo no longer owns a flow or
+deployment file. Both publishers passed real HeavyPad execution and public
+readback. Their automatic run receipts are recorded in the migration plan.
 See the [migration and Cloud recovery plan](../../docs/migrations/heavypad-cloud-recovery.md)
 for IDs, real run receipts, alerting limits and the complete downtime inventory.
 

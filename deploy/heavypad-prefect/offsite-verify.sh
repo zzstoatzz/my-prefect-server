@@ -18,6 +18,8 @@ expected_deployments="
 05b19ef0-225e-4a4e-96af-e28971d5f91a
 8e8113ce-4d7a-4969-a7b4-08979bb9452c
 c85b78c7-116f-4433-b001-d3bf47d9fefb
+32b67ef3-f639-46aa-8b93-2ab6e0c463f0
+7f0c3fc7-cd6f-4a22-bf83-fb6e606a624d
 787a3105-4c83-428d-a6f5-b4cea00ecbda
 7d1b713b-b283-4662-88b9-9b77dd9c606a"
 max_gap_minutes=120

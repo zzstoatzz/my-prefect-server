@@ -144,8 +144,9 @@ checks all 46 original deployments against live run history and automations.
 Nate approved omitting `pds-records`, `dep-bump`, and `pi-pr` from the migration;
 retire those deployments with Hetzner. Their source can remain available.
 
-1. `fleet-health` moved to HeavyPad on October 26 (below). The live schedule
-   assessment favors `mcp-atlas` and `bisk-snapshot` next. The existing HeavyPad
+1. `fleet-health`, `mcp-atlas` and `bisk-snapshot` moved to HeavyPad on October 26
+   (below). Six Phi clock definitions are prepared inactive in the central
+   HeavyPad file; none were registered or enabled as part of this batch. The existing HeavyPad
    worker has one flow slot, a 2 GiB cap and one CPU: isolate long builds before
    moving `pub-search-snapshot` or `leaflet-atlas` into that execution capacity.
 2. Defer DuckDB writers, event-dependent briefs, approvals, other publishing and Gardener
@@ -448,3 +449,67 @@ The original catch-all `flow-run failure -> autofix` no longer sees fleet-health
 failures, the same accepted gap as diagnostics and backlog. Rollback: clear the HeavyPad
 schedule and cancel its queued runs, wait for an active run to finish, restore the
 original schedule in `prefect.yaml`, register only that deployment, and verify one owner.
+
+## Atlas and Bisk publication batch
+
+MCP Atlas and Bisk snapshot publication transferred to HeavyPad on October 26.
+The central source is my-prefect-server. The crawl moved from the Atlas product
+repo to `flows/mcp_atlas/crawl.py`; both original and HeavyPad deployment targets
+now point there. Atlas keeps its site, Worker, MCP server and record/layout
+library, pinned at `238d50fc7b97fd57129f787f1be2460f3c1a1614`. Its old flow and
+deployment file were removed in Atlas commit `73b7fe2`.
+
+| Resource | MCP Atlas | Bisk snapshot |
+| --- | --- | --- |
+| Original deployment | `2e3b9588-630b-460d-b550-abcc2fe5b76c` | `d55978b9-a057-4aca-a8d3-38068249f592` |
+| HeavyPad deployment | `32b67ef3-f639-46aa-8b93-2ab6e0c463f0` | `7f0c3fc7-cd6f-4a22-bf83-fb6e606a624d` |
+| Completed manual run | `2e2ccc44-2db0-4f9f-a827-36fe58bfb49e` | `f93f797c-3082-43b6-b397-574f4a74eeec` |
+| First queued automatic run | `6471ce1e-ddb2-4ee2-9b56-fe682f74629e` | `f95d0b19-8fd4-41e5-a39e-a01dbd7aa59f` |
+| HeavyPad cron in UTC | `45 */6 * * *` | `*/10 * * * *` |
+
+Both old live schedules were explicitly cleared before HeavyPad publication
+tests. Readback found no Scheduled/Pending/Running/Cancelling old runs. The new
+schedules were activated from `617b0a4`, with one deployment slot and CANCEL_NEW.
+Automatic runs were read back with `auto_scheduled=true`: Bisk at 00:00 UTC and
+Atlas at 00:45 UTC on October 27. At activation these were queued, not completed.
+
+The Atlas run completed at 23:49:58 UTC and published 13 servers from seven DIDs,
+11 live remotes. Public JSON readback returned 13 servers. Bisk's successful
+run completed at 23:57:01 UTC, publishing 330 KB to `bisk/bisk.json`; public R2
+readback showed `generatedAt=2026-10-26T23:56:48.123283+00:00`, 634 pool members,
+673 live entries and 144 crownings.
+
+The first Bisk attempts failed before writing because its Secret-block sentinel
+environment variables were not resolved. Prefect 3.8.2's process Runner merges
+worker settings after the deployment environment, overwriting
+`PREFECT_PLUGINS_ENABLED=true` with the worker's explicit false value. Merely
+restoring the original package or switching to the engine module did not fix
+that precedence. The final command starts with
+`env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets`, after the
+worker merge, and preserves the root package that registers the plugin. Its real
+publication passed. No credential values entered deployment metadata.
+
+The four selected blocks match the canonical SOPS entries and original server.
+The new Atlas token consumer passed an actual drift-detection/repair check, and
+repeated apply was a no-op. Issuer credentials were not rotated.
+
+All three copied notification rules and the Discord block hash matched. The
+failure rule points run links at HeavyPad. Bisk's first failure event
+`1186695c-944c-4324-8c3b-f71c27cc75e8` led to successful send-notification audit
+event `8d1a89f4-60f0-4764-8676-bbcd2f6c1bd0` at 23:51:00 UTC. No synthetic Discord
+test was sent. Automatic diagnosis still remains on the original server and
+must move with the Gardener chain.
+
+Both new deployment IDs are required by the R2 restore checker. The six prepared
+Phi schedules stay inactive and their original schedules remain unchanged.
+
+Rollback: clear the affected HeavyPad schedule, cancel its unstarted queued runs
+and wait for active publication to finish. Restore only that original schedule
+in central `prefect.yaml`, land it, and register only the selected original
+deployment. Its central source path and original Secret blocks remain usable.
+Confirm one scheduled owner before resuming publication. Do not restore the
+Atlas product's removed deployment file as a second owner.
+
+After all remaining deployments and clients are migrated and Hetzner is retired,
+review logical groupings for the central flows directory with Nate before a
+broader folder reorganization.
