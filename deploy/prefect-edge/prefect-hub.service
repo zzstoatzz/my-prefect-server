@@ -1,0 +1,16 @@
+[Unit]
+Description=Prefect hub service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=%h/prefect-edge/current
+ExecStart=/usr/bin/python3 scripts/run_prefect_edge.py hub
+ExecStop=/usr/bin/env DOCKER_HOST=unix:///var/run/docker.sock /usr/bin/docker stop -t 20 prefect-hub
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+
+[Install]
+WantedBy=default.target

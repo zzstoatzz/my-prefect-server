@@ -1,0 +1,12 @@
+[hub]
+image = "sha256:a57ef2a9ad612fad5e045a5a86ffb61c71feec80e95b219784cd33e398f766b4"
+port = 13000
+container_port = 3000
+memory = "384m"
+
+[push]
+image = "oven/bun@sha256:07235578f79ef8c6f97d94aee7938e76f5cdba5f21ae5dbfdd3d3d38058437eb"
+source_revision = "2012b1a684da131588ce5ccf721fd8161661a324"
+port = 13001
+container_port = 8080
+memory = "192m"

@@ -686,3 +686,12 @@ verify-bufo-publication *args:
 [positional-arguments]
 verify-cost-publication *args:
     uv run --with prefect==3.8.2 python scripts/verify_cost_publication.py "$@"
+
+# Install a committed app-service release on the configured production host.
+edge-install revision:
+    bash deploy/prefect-edge/install.sh '{{revision}}'
+
+# Verify app-service credentials; --apply renders existing canonical values.
+[positional-arguments]
+edge-secrets *args:
+    uv run scripts/prefect_edge_secrets.py "$@"
