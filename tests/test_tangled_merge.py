@@ -147,11 +147,29 @@ def test_verdict_requires_matching_cid_in_same_round(monkeypatch):
 
 
 def test_merge_gate_runs_each_repo_suite_as_its_ci_does():
+    import shlex
+    from pathlib import Path
+
+    import yaml
+
     from flows.test_pull_patch import test_script
 
-    assert test_script("my-prefect-server") == (
-        "/usr/local/bin/uv sync --extra dagster && /usr/local/bin/uv run --extra dagster pytest -q"
+    workflow = yaml.safe_load(
+        (Path(__file__).parents[1] / ".tangled/workflows/deploy.yml").read_text()
     )
+    sync = next(
+        line.strip()
+        for line in workflow["steps"][0]["command"].splitlines()
+        if line.strip().startswith("uv sync ")
+    )
+    arguments = shlex.split(sync)
+    extras = [arguments[i + 1] for i, value in enumerate(arguments) if value == "--extra"]
+    assert extras
+    for command in test_script("my-prefect-server").split(" && "):
+        arguments = shlex.split(command)
+        assert "--frozen" in arguments
+        enabled = [arguments[i + 1] for i, value in enumerate(arguments) if value == "--extra"]
+        assert set(extras) <= set(enabled)
     assert test_script("bot").startswith("export PATH=/usr/local/bin:$PATH")
     assert "--frozen" in test_script("bot")
     assert test_script("other") == "/usr/local/bin/uv sync && /usr/local/bin/uv run pytest -q"

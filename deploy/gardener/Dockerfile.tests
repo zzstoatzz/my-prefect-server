@@ -1,7 +1,7 @@
-FROM oven/bun:1.4.0 AS bun
-FROM localhost:8000/gardener@sha256:cf3b12d5bc08960464f3a16ebcab221bb171cfad317ce14fc37dd13fd4a304c3
-COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
-RUN cp /opt/phi-agent/node/bin/node /usr/local/bin/node
+ARG BASE_IMAGE=localhost:8000/gardener@sha256:d5b1526d6c97006804ba972fc6ab613654e3092d704b96be4291fb9ce140aad5
+FROM ${BASE_IMAGE}
+ARG SOURCE_REVISION
+LABEL io.waow.gardener.test-source=$SOURCE_REVISION
 COPY test_pull_patch.py /opt/gardener/venv/lib/python3.13/site-packages/flows/test_pull_patch.py
 RUN /opt/gardener/venv/bin/python -c 'import flows.test_pull_patch' \
     && /usr/local/bin/bun --version && /usr/local/bin/node --version

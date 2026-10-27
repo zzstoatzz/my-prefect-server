@@ -26,9 +26,10 @@ def test_script(repo: str) -> str:
             " && cd web && bun install --frozen-lockfile && bun run check && bun run test"
         )
     if repo == "my-prefect-server":
-        # .tangled/workflows/deploy.yml runs the suite with the dagster extra;
-        # tests/test_dagster_hub.py does not import without it.
-        return "/usr/local/bin/uv sync --extra dagster && /usr/local/bin/uv run --extra dagster pytest -q"
+        return (
+            "/usr/local/bin/uv sync --frozen --extra dagster --extra inbox"
+            " && /usr/local/bin/uv run --frozen --extra dagster --extra inbox pytest -q"
+        )
     return "/usr/local/bin/uv sync && /usr/local/bin/uv run pytest -q"
 
 
