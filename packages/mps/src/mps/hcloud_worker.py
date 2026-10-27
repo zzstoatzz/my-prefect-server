@@ -154,9 +154,16 @@ class BuilderClient(BuilderSSH):
         )
 
     async def list(self, prefix: str = "") -> builtins.list[VM]:
+        servers = await self.hcloud.owned_servers()
+        names = {s["name"] for s in servers}
+        for receipt in self.root.glob("prefect-build-*/resource.json"):
+            server = json.loads(receipt.read_text())["server"]
+            self.vm(server)
+            if server["name"] not in names:
+                await self.destroy(server["name"])
         return [
             self.vm(s)
-            for s in await self.hcloud.owned_servers()
+            for s in servers
             if s["name"].startswith(prefix) and s["labels"].get("pool") == self.ownership
         ]
 
@@ -290,7 +297,12 @@ class HCloudWorker(ExeWorker):
                 ).encode(),
                 timeout=150,
             )
-        return {"PREFECT_API_URL": "http://localhost:18080/api"}
+        return {
+            "PREFECT_API_URL": "http://localhost:18080/api",
+            "HOME": "/root",
+            "XDG_CACHE_HOME": "/root/.cache",
+            "ZIG_GLOBAL_CACHE_DIR": "/root/.cache/zig",
+        }
 
 
 if __name__ == "__main__":

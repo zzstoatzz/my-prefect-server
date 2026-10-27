@@ -101,6 +101,7 @@ class HCloud:
             if len(existing) != 1:
                 raise RuntimeError("Multiple servers claim the same execution")
             self.check_owned(existing[0], run_id)
+            await self.configure_ip(existing[0])
             return existing[0]
         key_name = name + "-key"
         keys = await self.request("GET", "ssh_keys", params={"name": key_name})
@@ -147,7 +148,26 @@ class HCloud:
                 raise RuntimeError("Ambiguous server creation identity") from None
             server = resolved[0]
         self.check_owned(server, run_id)
+        await self.configure_ip(server)
         return server
+
+    async def configure_ip(self, server: dict) -> None:
+        self.check_owned(server)
+        ipv4 = server["public_net"].get("ipv4")
+        if ipv4 is None:
+            raise RuntimeError("Builder has no public SSH address")
+        result = await self.request("GET", f"primary_ips/{ipv4['id']}")
+        if result is None or result["primary_ip"].get("assignee_id") != server["id"]:
+            raise ValueError("Builder IP ownership disagrees")
+        await self.request(
+            "PUT",
+            f"primary_ips/{ipv4['id']}",
+            json={
+                "auto_delete": True,
+                "labels": server["labels"],
+                "name": server["name"] + "-ipv4",
+            },
+        )
 
     async def delete(self, server_id: int, run_id: UUID, receipt: dict | None = None) -> None:
         result = await self.request("GET", f"servers/{server_id}")

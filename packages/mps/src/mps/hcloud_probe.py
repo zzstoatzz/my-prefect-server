@@ -3,7 +3,9 @@
 import os
 import shutil
 import subprocess
+import tempfile
 from contextlib import closing
+from pathlib import Path
 
 import boto3
 import httpx
@@ -44,7 +46,19 @@ async def cloud_builder_probe():
     free = shutil.disk_usage("/var/lib/typeahead-indexer").free
     if free < 104 * 2**30:
         raise RuntimeError("Builder scratch space is below the required reserve")
-    subprocess.run(["/root/.local/opt/zig-x86_64-linux-0.17.0/zig", "version"], check=True)
+    with tempfile.TemporaryDirectory(prefix="builder-compiler-probe-") as directory:
+        source = Path(directory) / "probe.zig"
+        source.write_text("pub fn main() void {}\n")
+        subprocess.run(
+            [
+                "/root/.local/opt/zig-x86_64-linux-0.17.0/zig",
+                "build-exe",
+                str(source),
+                "-femit-bin=" + str(Path(directory) / "probe"),
+            ],
+            check=True,
+            timeout=120,
+        )
     async with get_client() as client:
         pool = await client.read_work_pool("typeahead-ephemeral")
         if pool.type != "hcloud-builder":

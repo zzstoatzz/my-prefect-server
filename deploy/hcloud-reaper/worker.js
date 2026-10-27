@@ -68,6 +68,15 @@ export async function reap(env) {
     await api(env.HCLOUD_TOKEN, "DELETE", `ssh_keys/${key.id}`);
     removed.push({ kind: "ssh_key", id: key.id, name: owned.name });
   }
+  for (const candidate of await inventory(env.HCLOUD_TOKEN, "primary_ips")) {
+    if (identity(candidate, "-ipv4").expires >= now || candidate.assignee_id !== null) continue;
+    const result = await api(env.HCLOUD_TOKEN, "GET", `primary_ips/${candidate.id}`);
+    if (!result) continue;
+    const ip = result.primary_ip;
+    if (identity(ip, "-ipv4").expires >= now || ip.assignee_id !== null) continue;
+    await api(env.HCLOUD_TOKEN, "DELETE", `primary_ips/${ip.id}`);
+    removed.push({ kind: "primary_ip", id: ip.id, name: ip.name });
+  }
   console.log(JSON.stringify({ event: "builder_expiry_cleanup", checked_at: now, removed }));
   return removed;
 }
