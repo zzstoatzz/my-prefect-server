@@ -8,8 +8,10 @@ import os
 import re
 import socket
 import subprocess
+import threading
 import time
 from datetime import UTC, datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from uuid import uuid4
 
@@ -336,6 +338,51 @@ def flush(state: dict, client: httpx.Client, base: str) -> None:
         state["outbox"].pop(0)
 
 
+def prometheus_metrics(state: dict, budget: int = 1_000_000_000_000) -> str:
+    month = datetime.fromtimestamp(state["sampled_at"], UTC).strftime("%Y-%m")
+    # A stopped sampler must not carry last month's totals into a new month.
+    current = state["month"] == datetime.now(UTC).strftime("%Y-%m")
+    values = {
+        "sample_timestamp_seconds": state["sampled_at"],
+        "observed_since_timestamp_seconds": state["started"],
+        "budget_bytes": budget,
+        "month_tcp_bytes": state["month_tcp_bytes"] if current else 0,
+        "month_host_bytes": state["month_host_bytes"] if current else 0,
+        "tcp_bytes_15m": state.get("summary", {}).get("tcp_bytes_15m", 0),
+        "host_bytes_15m": state.get("summary", {}).get("host_bytes_15m", 0),
+    }
+    return "".join(
+        f"# TYPE bandwidth_watchdog_{name} gauge\n"
+        f'bandwidth_watchdog_{name}{{month="{month}"}} {value}\n'
+        for name, value in values.items()
+    )
+
+
+def metrics_server(path: Path, port: int, budget: int) -> ThreadingHTTPServer:
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != "/metrics":
+                self.send_error(404)
+                return
+            try:
+                body = prometheus_metrics(json.loads(path.read_text()), budget).encode()
+            except (OSError, ValueError, KeyError):
+                self.send_error(503, "Watchdog state unavailable")
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; version=0.0.4")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
@@ -353,6 +400,11 @@ def main() -> None:
     lock = args.state.with_suffix(".lock").open("w")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     state = json.loads(args.state.read_text()) if args.state.exists() else {}
+    metrics_server(
+        args.state,
+        config.get("metrics_port", 19815),
+        config.get("isp_budget_bytes", 1_000_000_000_000),
+    )
     boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
     raw_auth = os.environ["PREFECT_API_AUTH_STRING"]
     auth = httpx.BasicAuth(*raw_auth.split(":", 1))

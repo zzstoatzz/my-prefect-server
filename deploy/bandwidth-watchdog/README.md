@@ -141,3 +141,21 @@ matched the test evidence and delivered it to Phi's existing channel at
 2026-10-17 00:57:23 UTC. Phi returned HTTP 200 with `{"ok":true,"opened":true}`.
 The full `just check` passed (717 tests, 3 existing skips, Svelte check and lint);
 the final targeted watchdog suite passed all 15 tests.
+
+## Grafana bandwidth comparison
+
+The existing **heavypad / host** dashboard includes monthly Internet TCP and
+physical-interface totals, the 1 TB household budget, recent rates, the original
+monitoring start date and sampler freshness. Prometheus scrapes the watchdog's
+loopback-only `127.0.0.1:19815/metrics` endpoint every 30 seconds. Metrics read the
+atomic durable state, preserving totals across exporter and service restarts;
+there is no second accounting process. Missing/corrupt state returns HTTP 503.
+
+Compare with Xfinity's Data usage page at the same timestamp, using decimal GB
+and its displayed billing window. The watchdog uses UTC calendar months. It
+covers only HeavyPad: TCP sampling misses some traffic, physical counters also
+include LAN, and neither includes other household devices. Sampling gaps and
+pre-installation traffic cannot be reconstructed. The graph begins at metrics
+installation; October's existing cumulative totals remain visible immediately.
+These panels do not impose a universal bandwidth cutoff. Alert rules remain
+centralized in Logfire and Prefect.

@@ -311,3 +311,37 @@ def test_heat_without_a_package_sensor_is_a_no_op():
     state = {}
     heat(state, None, 1800000000, CONFIG)
     assert state == {}
+
+
+def test_metrics_http_reads_durable_totals_and_reports_missing_state(tmp_path):
+    from datetime import UTC, datetime
+
+    from mps.bandwidth_watchdog import metrics_server
+
+    path = tmp_path / "state.json"
+    server = metrics_server(path, 0, 1_000_000_000_000)
+    url = f"http://127.0.0.1:{server.server_port}/metrics"
+    try:
+        assert httpx.get(url).status_code == 503
+        now = datetime.now(UTC)
+        save(
+            path,
+            {
+                "sampled_at": now.timestamp(),
+                "started": 1234,
+                "month": now.strftime("%Y-%m"),
+                "month_tcp_bytes": 400,
+                "month_host_bytes": 600,
+            },
+        )
+        response = httpx.get(url)
+        assert response.status_code == 200
+        assert f'bandwidth_watchdog_month_host_bytes{{month="{now:%Y-%m}"}} 600' in response.text
+        assert "1000000000000" in response.text
+        assert "1234" in response.text
+        assert httpx.get(url.replace("/metrics", "/")).status_code == 404
+        path.write_text("{")
+        assert httpx.get(url).status_code == 503
+    finally:
+        server.shutdown()
+        server.server_close()

@@ -9,7 +9,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 38,
-  "version": 1,
+  "version": 2,
   "editable": true,
   "graphTooltip": 1,
   "refresh": "1m",
@@ -1665,6 +1665,326 @@
           "refId": "B"
         }
       ]
+    },
+    {
+      "id": 23,
+      "type": "stat",
+      "title": "Observed Internet TCP this UTC month",
+      "description": "Lower bound: sampled public TCP sockets; misses UDP/QUIC, short connections, other namespaces and household devices. Preserves existing watchdog totals.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 56,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(bandwidth_watchdog_month_tcp_bytes)",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decbytes"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 24,
+      "type": "stat",
+      "title": "Host interfaces this UTC month",
+      "description": "Receive plus transmit on physical interfaces. Includes LAN, VPN and all protocols; host-only, not the ISP meter.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 56,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(bandwidth_watchdog_month_host_bytes)",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decbytes"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 25,
+      "type": "stat",
+      "title": "Host usage / 1 TB budget",
+      "description": "Context for the household budget, not measured household usage or guaranteed allowance remaining.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 56,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "100 * max(bandwidth_watchdog_month_host_bytes) / max(bandwidth_watchdog_budget_bytes)",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 26,
+      "type": "stat",
+      "title": "Sampler age",
+      "description": "Normally under 30 seconds. Old samples indicate missing monitoring, not zero traffic.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 56,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "time() - max(bandwidth_watchdog_sample_timestamp_seconds)",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 27,
+      "type": "stat",
+      "title": "Monitoring began",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "1000 * max(bandwidth_watchdog_observed_since_timestamp_seconds)",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeAsIso"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 28,
+      "type": "stat",
+      "title": "Recent Internet TCP rate",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 60,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(bandwidth_watchdog_tcp_bytes_15m) / 900",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 29,
+      "type": "stat",
+      "title": "Recent physical interface rate",
+      "description": "",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 60,
+        "w": 8,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(bandwidth_watchdog_host_bytes_15m) / 900",
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "colorMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Observed usage this UTC month",
+      "description": "Monthly cumulative watchdog totals. Grafana history begins at exporter installation; existing monthly totals are preserved, not reconstructed. Counter resets at UTC month start.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 64,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(bandwidth_watchdog_month_tcp_bytes)",
+          "legendFormat": "Observed Internet TCP"
+        },
+        {
+          "refId": "B",
+          "expr": "max(bandwidth_watchdog_month_host_bytes)",
+          "legendFormat": "Physical interfaces including LAN"
+        },
+        {
+          "refId": "C",
+          "expr": "max(bandwidth_watchdog_budget_bytes)",
+          "legendFormat": "1 TB household budget"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decbytes"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 31,
+      "type": "text",
+      "title": "Compare with Xfinity",
+      "gridPos": {
+        "x": 0,
+        "y": 72,
+        "w": 24,
+        "h": 6
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "Compare these readings with **Xfinity \u2192 Account \u2192 Data usage** at the same time. Use decimal GB (1 TB = 1,000 GB), and check the billing window and timezone shown by Xfinity. These counters use a UTC calendar month.\n\n**Internet TCP** is a lower bound. **Physical interfaces** include LAN transfers and all protocols. Both cover only HeavyPad; Xfinity includes every household device. Neither is a household upper or lower bound. Missing samples and traffic before monitoring began cannot be reconstructed.\n\nExisting October totals are preserved. The graph starts when Prometheus began scraping this exporter. A rising sampler age means coverage is stale. These are monitoring and alerts, not a universal traffic cutoff."
+      }
     }
   ]
 }
