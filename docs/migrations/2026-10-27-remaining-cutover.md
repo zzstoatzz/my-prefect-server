@@ -313,3 +313,41 @@ resources. Dagster stays on HeavyPad, unchanged.
 The safe next routing action is a separately scoped hostname/client cutover,
 with `/push` and mobile verification included. Node deletion requires its own
 remaining-services inventory and data disposition afterward.
+
+
+## Cloud worker handoff received
+
+At 04:29 UTC the Typeahead release owner explicitly released the drained worker
+for migration while retaining ownership of its native candidate and next run.
+This supersedes the earlier wait-for-release-complete sequencing: terminal
+failure alone did not authorize the change; the explicit handoff did.
+The same root systemd worker switched to the private HeavyPad API at 04:30 UTC;
+configuration applied once, then two checks were byte-current (environment hash
+`6120f71529980efb7d1c9eb39232e10d9ef098d17d92daae3fd7763a557a38e9`).
+HeavyPad reports `ProcessWorker 86a4ce11-5bd8-499d-aa58-c74decad3695` ONLINE in
+`typeahead-cloud-pool`, heartbeat 04:30:29.983419 UTC. Deployment
+`a0c0ce9c-5bab-4bdc-8512-39984c322a74` remains inactive. The release owner received
+that handoff and owns its next qualification run. No competing controller,
+Fly candidate modification, serving-route switch or volume transfer occurred.
+
+The native cleanup blocker was a missing `COLLATE NOCASE`, which prevented the
+handle index from being used: corrected query returned 72 actors in 2.4 seconds,
+versus the original 60-second timeout. The release owner is testing/publishing
+that correction and will provide the successor immutable image before the
+active publisher pin/source is updated. Its successful HeavyPad run and index
+clock activation remain the final workload gates.
+
+
+CI revision `1506d7ae8600bc683fb2b3396115df3b6cffe4b3` passed (827 tests,
+six skipped; Svelte/lint zero errors/warnings). The real host registration
+completed successfully against HeavyPad; a second service run reported the same
+SHA already current without registering again. The pending-CI guard had already
+refused the same revision before CI succeeded. No runner isolation change was
+required.
+
+Typeahead successor image from native revision
+`f67005bf6c1c304790199e17bc8253332dddcb05` is
+`registry.fly.io/typeahead-search-refresh@sha256:b0492f07c8237d94c854da8530b3af5eab905506e69ff0104fa1ba5d98449bcd`.
+The publisher's HeavyPad definition and original rollback source use that exact
+image. The release owner retains exclusive control of the inactive candidate
+and next qualification run; the schedule remains inactive pending that result.

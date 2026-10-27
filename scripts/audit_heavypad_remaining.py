@@ -208,7 +208,7 @@ def main():
                     "passed": True,
                 }
             else:
-                pending.append("cloud release handoff/worker qualification")
+                pending.append("typeahead-index qualification")
             records.append(
                 {
                     "name": name,
@@ -233,12 +233,21 @@ def main():
         for name in ("leaflet-atlas", "typeahead-index"):
             if not any(s["active"] for s in new_deployments[name]["schedules"]):
                 pending.append(name + " clock activation")
+        cloud_workers = request(
+            new, "POST", "work_pools/typeahead-cloud-pool/workers/filter", json={}
+        )
+        cloud_workers = [
+            {k: w[k] for k in ("name", "status", "last_heartbeat_time")} for w in cloud_workers
+        ]
+        if not any(w["status"] == "ONLINE" for w in cloud_workers):
+            pending.append("HeavyPad cloud worker heartbeat")
         report = {
             "verified_at": datetime.now(UTC).isoformat(),
             "scope_count": len(SCOPE),
             "complete": not pending,
             "pending": pending,
             "original_live_runs": old_active,
+            "cloud_workers": cloud_workers,
             "deployments": records,
             "gardener_execution_rules_verified": sorted(RULES),
             "canonical_routing_changed": False,
