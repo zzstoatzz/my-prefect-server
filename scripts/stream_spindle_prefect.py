@@ -1,0 +1,68 @@
+"""Check or sync only stream's two Prefect credentials on the existing spindle."""
+
+import argparse
+import importlib.util
+import json
+import shlex
+import subprocess
+from pathlib import Path
+
+STORE = Path.home() / "tangled.org/zzstoatzz.io/secrets"
+REPO = "did:plc:3esqa6ltzsdck6qhsvyusldu"
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--apply", action="store_true")
+    args = parser.parse_args()
+    spec = importlib.util.spec_from_file_location("secret_model", STORE / "bin/model.py")
+    assert spec and spec.loader
+    model = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(model)
+    document = json.loads(
+        subprocess.run(
+            ["sops", "decrypt", "--output-type", "json", str(STORE / "prod.yaml")],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    )
+    wanted = {
+        key: value
+        for repo, key, _, value in model.spindle_rows(document)
+        if repo == REPO and key in {"PREFECT_API_URL", "PREFECT_API_AUTH_STRING"}
+    }
+    assert len(wanted) == 2
+    program = """
+import json,sqlite3,sys
+payload=json.load(sys.stdin)
+with sqlite3.connect('/var/lib/spindle/spindle.db') as db:
+    drift=[]
+    for key,value in payload['wanted'].items():
+        current=db.execute('SELECT value FROM secrets WHERE repo=? AND key=?',(payload['repo'],key)).fetchone()
+        assert current is not None, 'Missing existing spindle consumer: '+key
+        if current[0]!=value:
+            drift.append(key)
+            if payload['apply']:
+                db.execute('UPDATE secrets SET value=? WHERE repo=? AND key=?',(value,payload['repo'],key))
+    if drift and not payload['apply']:
+        print('Stream spindle credential drift: '+', '.join(drift))
+        sys.exit(2)
+    for key,value in payload['wanted'].items():
+        assert db.execute('SELECT value FROM secrets WHERE repo=? AND key=?',(payload['repo'],key)).fetchone()[0]==value
+print('Stream spindle Prefect consumers current; changed='+str(len(drift))+'; no values printed')
+"""
+    result = subprocess.run(
+        ["ssh", "-o", "BatchMode=yes", model.HEAVYPAD, "python3 -c " + shlex.quote(program)],
+        input=json.dumps({"repo": REPO, "wanted": wanted, "apply": args.apply}),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    print(result.stdout.strip())
+    if result.returncode:
+        raise SystemExit(result.returncode)
+
+
+if __name__ == "__main__":
+    main()
