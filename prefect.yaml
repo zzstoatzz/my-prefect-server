@@ -538,7 +538,7 @@ deployments:
           INDEX_MIN_FREE_GIB: "96"
           INDEX_MIN_REMAIN_GIB: "8"
           INDEX_CHANNEL: managed
-          INDEX_REFRESH_IMAGE: registry.fly.io/typeahead-search-refresh@sha256:b0492f07c8237d94c854da8530b3af5eab905506e69ff0104fa1ba5d98449bcd
+          INDEX_REFRESH_IMAGE: registry.fly.io/typeahead-search-refresh@sha256:d4c3111ee8ad058cb08f7ef02ffeb0a2826e1c328b61c12c29a6e9d3e93ca0ed
           FLY_PRIMARY_TOKEN: prefect-block://typeahead-startup-fly-deploy-token
           FLY_REFRESH_TOKEN: prefect-block://typeahead-refresh-fly-deploy-token
           INDEX_ALLOW_PROD: "0"

@@ -177,3 +177,20 @@ Freshness admission also requires a known nonnegative lag below 600 seconds.
 `sync_lag_s=-1` means unknown and cannot qualify a newly attached snapshot.
 Availability-only checks of the existing serving target still allow stale data.
 A real loopback HTTP regression covers unknown, stale and boundary lag values.
+
+
+## October 27 overlay reader performance release — pending qualification
+
+Source configuration now pins `sha256:d4c3111ee8ad058cb08f7ef02ffeb0a2826e1c328b61c12c29a6e9d3e93ca0ed`
+(Typeahead `62266a3`). It disables mapped reads of the mutable SQLite overlay
+on reader connections while retaining the writer and attached-index settings.
+It also includes guarded replay writes and bounded snapshot metadata warming.
+Paired cold diagnostic responses match exactly, with 534–799 ms reduced to
+29–43 ms. Full same-input cold/warm/mixed qualification is running; this source
+pin is not a live deployment claim. The registered deployment and both managed
+Machines still use b0492f07 as of October 27 17:12 UTC.
+
+The existing builder source, cloud pool, parameters and odd-day 06:00 UTC schedule
+are unchanged. Release uses the existing prepared inactive snapshot, conditional
+routing promotion and retained serving backend for rollback. See the
+[Typeahead qualification evidence](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/evals/perf-goal-20261027/plan.md).
