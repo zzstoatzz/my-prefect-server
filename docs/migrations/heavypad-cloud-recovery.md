@@ -523,3 +523,11 @@ Atlas product's removed deployment file as a second owner.
 After all remaining deployments and clients are migrated and Hetzner is retired,
 review logical groupings for the central flows directory with Nate before a
 broader folder reorganization.
+
+HeavyPad disk warnings, critical capacity/inode warnings and missing-sample
+alerts are now centralized in Logfire, with Grafana remaining dashboard-only.
+See [monitoring](../monitoring.md#heavypad-storage-alerts). Include the bandwidth
+watchdog's original-server startup Secret lookup and event/heartbeat delivery in
+the remaining client migration inventory. Before replacing Logfire, run a bounded
+ingest/storage/query comparison against actual volume and retention requirements;
+keep the current service while evaluating a separate Zig/OTel prototype.

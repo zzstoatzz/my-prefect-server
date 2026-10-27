@@ -1,5 +1,42 @@
 # Monitoring on the single-node cluster
 
+## HeavyPad storage alerts
+
+Grafana is a dashboard surface; alert rules for HeavyPad storage live in Logfire,
+project `zig-prefect-server`. No Grafana alert rules or notification contacts were
+created. The host's existing bandwidth watchdog now sends filesystem samples
+once a minute, independent of Prefect flow scheduling. Physical filesystems are
+deduplicated, so `/` and the orchestration Postgres storage path currently produce
+one sample. Available space excludes filesystem-reserved blocks.
+
+On October 27 at 00:11 UTC the shared filesystem had 1,017,106,341,888 available
+bytes, 51.8% free space and 92.3% free inodes. The Postgres database measured
+21 MB. Its `20Gi` local-path PVC is a declaration, not an enforced separate
+filesystem quota; the host filesystem is the capacity boundary to monitor.
+
+| Rule | Condition | Logfire ID |
+| --- | --- | --- |
+| heavypad disk space warning | Below 15% or 100 GiB available, or below 10% free inodes; excludes critical conditions | `8a9401ae-3071-4534-9d1e-ee56c6c09cb8` |
+| heavypad disk space critical | Below 5% or 30 GiB available, or below 2% free inodes | `e5d9cb95-8939-47ed-a703-e8081d3152ca` |
+| heavypad disk telemetry missing | No disk sample in five minutes | `178036c5-37b1-4ee1-b9db-44303721201c` |
+
+Rules evaluate every five minutes and notify on matching-state changes through
+the existing `phi alert watch (push)` channel. Source receipts and queries are
+`deploy/bandwidth-watchdog/logfire-disk-*.json`; update the recorded IDs rather
+than create duplicate rules. Live query checks returned healthy, and all three
+scheduled evaluations completed without query errors. SQL boundary tests exercised
+healthy, warning, critical-byte and critical-inode cases without injecting fake
+production telemetry or sending a test notification. The filesystem collector's
+25 tests passed, including real-filesystem deduplication and missing-path failure.
+
+The watchdog's startup token lookup and event outbox still target the original
+Prefect server. Transfer that client configuration, required Secret block and
+heartbeat/event automations before retiring Hetzner. Once initialized, disk
+samples are emitted to Logfire before Prefect event delivery and continue when
+that delivery is unavailable. This is capacity monitoring, not automatic cleanup.
+
+## Grafana and Prometheus
+
 Apply the monitoring release with `just monitoring`. It first runs
 `just dashboards`, then upgrades the pinned kube-prometheus-stack chart
 87.18.1 and waits for readiness. Values live in

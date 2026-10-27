@@ -1,4 +1,5 @@
 {
+  "id": "178036c5-37b1-4ee1-b9db-44303721201c",
   "name": "heavypad disk telemetry missing",
   "description": "No disk sample from HeavyPad in five minutes. A missing or stopped sampler is unknown disk coverage, not healthy storage.",
   "query": "SELECT 'HeavyPad disk telemetry missing for five minutes; check bandwidth-watchdog and host availability' AS message WHERE NOT EXISTS (SELECT 1 FROM records WHERE service_name = 'bandwidth-watchdog' AND attributes->>'watchdog_event' = 'disk.sample' AND attributes->>'host' = 'heavypad' AND start_timestamp > NOW() - INTERVAL '5 minutes')",
