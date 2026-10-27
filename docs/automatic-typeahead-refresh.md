@@ -166,7 +166,7 @@ candidate at final size, then conditionally switches routing. It does not rebuil
 the corpus or restart the current serving Machine. Prepared-candidate recovery
 also applies to this code-only rollout.
 
-The configured image is now
+The October 26 sync-hardening image was
 `sha256:34c5a61a794674e64802d5d633dd800a2adfab2c0d91f0d8ceb14e5c28a84da3`
 (Typeahead source `06a714c`): response-aware sync watchdog feeding, HTTP-client
 recovery and bounded failure backoff. Deployment verification is recorded in the
@@ -179,18 +179,28 @@ Availability-only checks of the existing serving target still allow stale data.
 A real loopback HTTP regression covers unknown, stale and boundary lag values.
 
 
-## October 27 overlay reader performance release — pending qualification
+## October 27 overlay reader performance release — live
 
-Source configuration now pins `sha256:d4c3111ee8ad058cb08f7ef02ffeb0a2826e1c328b61c12c29a6e9d3e93ca0ed`
-(Typeahead `62266a3`). It disables mapped reads of the mutable SQLite overlay
-on reader connections while retaining the writer and attached-index settings.
-It also includes guarded replay writes and bounded snapshot metadata warming.
-Paired cold diagnostic responses match exactly, with 534–799 ms reduced to
-29–43 ms. Full same-input cold/warm/mixed qualification is running; this source
-pin is not a live deployment claim. The registered deployment and both managed
-Machines still use b0492f07 as of October 27 17:12 UTC.
+Image `sha256:d4c3111ee8ad058cb08f7ef02ffeb0a2826e1c328b61c12c29a6e9d3e93ca0ed`
+(Typeahead `62266a3`) is live on the startup slot after guarded resume run
+`bbcfa61e-2d95-4cf6-9d83-37c1dd088b67` completed October 27, 17:34 UTC.
+It disables mapped reads of the mutable SQLite overlay on reader connections,
+retaining the writer and attached-index settings, and includes guarded replay
+writes and bounded snapshot metadata warming. Independent full-snapshot Fly
+qualification matched all 5,040 candidate responses: cold p99 33.5 ms versus
+4.35 seconds baseline; mixed search/sync p99 25.3 ms with 40 writer batches.
+These are current-input measurements, not universal live latency guarantees.
 
-The existing builder source, cloud pool, parameters and odd-day 06:00 UTC schedule
-are unchanged. Release uses the existing prepared inactive snapshot, conditional
-routing promotion and retained serving backend for rollback. See the
-[Typeahead qualification evidence](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/evals/perf-goal-20261027/plan.md).
+Machine `8e3d79b70dd748` serves build `b1793109259-2b36-px05`; the refresh slot
+Machine `801539a6551778`, build `b1793081565-0228-px05`, remains healthy for
+rollback. Both remain at two shared CPUs / 1 GiB with independent disks.
+Cached restart, semantic/PDS gates, conditional R2 promotion, live smoke and
+ranking acceptance passed. Routed health and successful sync telemetry are
+present for the new serving slot. The registered deployment pins package
+`cd72bcf`; the existing builder, cloud pool, parameters and odd-day 06:00 UTC
+schedule are unchanged. Public latency verification remains in progress with
+the existing transport unchanged. See the
+[Typeahead release evidence](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/evals/perf-goal-20261027/release/overlay-pread-live.json).
+
+README review: the orchestration architecture and usage are unchanged; the
+image-specific verified state belongs in this operations document.
