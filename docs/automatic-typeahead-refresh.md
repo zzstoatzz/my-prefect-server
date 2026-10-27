@@ -34,7 +34,7 @@ backend and its independent overlay provide immediate traffic rollback.
 
 Before traffic moves, the controller checks global/exact/CJK/PDS searches, replica
 lag below 600 seconds, latency within the transport budget, and a cached restart
-at the final two shared CPUs / 2 GiB. It updates the route using `If-Match` on the
+at the final two shared CPUs / 1 GiB. It updates the route using `If-Match` on the
 previous ETag. Public freshness and both aliases are observed after promotion.
 Failures restore the previous route if it still belongs to this operation; an
 ambiguous write outcome is read back before cleanup. Serving resources are never

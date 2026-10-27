@@ -253,7 +253,7 @@ class Refresh:
             except httpx.TransportError:
                 self.logger.warning("Stop response was ambiguous; checking actual machine state")
         stopped = self.wait_machine(app, mid, "stopped")
-        config["guest"] = {"cpu_kind": "shared", "cpus": 2, "memory_mb": 2048}
+        config["guest"] = {"cpu_kind": "shared", "cpus": 2, "memory_mb": 1024}
         self.serving_guard(route, etag, app)
         try:
             self.fly(
