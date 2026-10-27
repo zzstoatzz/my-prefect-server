@@ -122,7 +122,7 @@ def test_pull_boundary() -> dict:
         canary.write_text("not-a-real-secret")
         (workspace / "escape").symlink_to(canary)
         assertions = """
-import os, socket, subprocess, tempfile
+import multiprocessing, os, socket, subprocess, tempfile
 from pathlib import Path
 assert os.getuid() == 2000
 assert os.getgroups() == []
@@ -141,6 +141,9 @@ else:
 assert Path('/etc/resolv.conf').read_text(), 'resolver config must be readable'
 assert socket.getaddrinfo('pypi.org', 443)
 assert Path('/tmp').stat().st_mode & 0o7777 == 0o1777
+assert Path('/dev/shm').stat().st_mode & 0o7777 == 0o1777
+with multiprocessing.Semaphore():
+    pass
 with tempfile.TemporaryDirectory(dir='/tmp') as temp:
     endpoint = socket.socket(socket.AF_UNIX)
     endpoint.bind(str(Path(temp) / 'test.sock'))
