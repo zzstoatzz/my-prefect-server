@@ -7,7 +7,7 @@ reorganization are outside this goal. Preserve existing unrelated checkout work.
 | Batch | Deployments | Status |
 | --- | --- | --- |
 | 1 | phi-curation, phi-likes-review, phi-editorial, phi-character-retro, phi-chicken-scout, phi-chicken-precheck | Migrated: six validation runs passed, all target schedules active, original clocks empty. |
-| 2 | watch-fastmcp, fastmcp-brief | Real HeavyPad runs passed; checkpoints/history transferred; clock activation in progress. |
+| 2 | watch-fastmcp, fastmcp-brief | Migrated: both real runs passed, checkpoints/history transferred, clocks and automations active. |
 | 4 | strata-hourly, phi-tag-maintenance, phi-atlas, docket | Original owner; preserve archive/checkpoint files and shared writer coordination. |
 | 5 | ingest, classify-emails, transform, brief, phi-memory-synthesis | Original owner; transfer as one shared-writer cohort including Dagster's lock client. |
 | 8 | email-backlog, email-triage, phone-presence, stream-admission | Original owner; reconcile paused email approval and interactive callers. |
@@ -98,3 +98,31 @@ Rollback: fence both HeavyPad schedules and event-trigger automations, drain
 active runs, transfer the now-current checkpoints and trailing event window back
 without replay, then restore original schedules and original briefing automations.
 Do not resume with the stale original checkpoint snapshot.
+
+FastMCP publication proof: the first HeavyPad brief read 17 threads, found six
+unbriefed versions, enriched one still-open issue and emitted a one-item brief.
+Notification automation `f5c4dfe5-4236-4262-8ccd-de5233e3ea78` recorded
+`prefect.automation.action.executed` event `11ef272a-eb2b-49ba-ae3b-dda9e217cfc4`
+at 01:17:05.377397 UTC, linked to the real brief event
+`01a17aee-ac69-7ac7-84d3-4cd346007a53`. This qualifies actual Discord action
+execution without a synthetic message. The first watcher used the retained
+watermark and received GitHub HTTP 304. Activation source is
+`d82fcd2eb45550605bad3842b59f26173fc42758`; target schedules were read back
+active and original schedules empty, with zero remaining original live/queued
+runs for this pair. The first natural watcher run is
+`8c5e1c68-a269-4599-93d5-fbad27ad69b2`, due 01:20 UTC October 27.
+
+R2 restore `20261027T011848Z.dump.age` passed at 01:18:56 UTC, with all 19
+target deployments, 259 runs, 15 blocks and six automations present. Ciphertext
+SHA-256 `58857a92d52d437821f7f47948b6921370170e4329f54f569c9c28edb10951b5`.
+The deployment ID checker now requires the eight deployments in batches 1 and 2.
+Local full suite passed 828 tests, seven skipped, plus Ruff/format/type checks.
+
+## Email approval disposition
+
+Nate explicitly instructed cancelling the old triage approval. The cancellation
+command on `aa1e067f-2127-4575-a412-fa8b0f56092c` found it already terminal;
+immediate API readback confirmed type CANCELLED/name Cancelled and message
+"Flow run was cancelled successfully." No approval input was submitted and
+no triage decisions were replayed. This removes the pending approval blocker;
+the email deployment, worker capacity and callers still need migration.
