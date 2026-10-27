@@ -37,6 +37,20 @@ LONG_PUBLISHER_BLOCKS = {
     "leaflet-index-r2-access-key-id",
     "leaflet-index-r2-secret-access-key",
 }
+REMAINING_BLOCKS = {
+    "gardener-handle",
+    "gardener-password",
+    "tangled-merge-ssh-key",
+    "phi-workflow-request-token",
+    "typeahead-turso-url",
+    "typeahead-turso-token",
+    "index-r2-endpoint",
+    "index-r2-bucket",
+    "index-r2-access-key-id",
+    "index-r2-secret-access-key",
+    "typeahead-startup-fly-deploy-token",
+    "typeahead-refresh-fly-deploy-token",
+}
 PHI_BLOCKS = {"phi-control-token", "anthropic-api-key"}
 WORKFLOW_BLOCKS = {
     "openai-api-key",
@@ -70,6 +84,7 @@ def main():
             | PUBLICATION_BLOCKS
             | PHI_BLOCKS
             | LONG_PUBLISHER_BLOCKS
+            | REMAINING_BLOCKS
             | WORKFLOW_BLOCKS
             | {"logfire-read-token", "operator-atproto-creds"}
         ),

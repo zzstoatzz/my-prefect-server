@@ -59,3 +59,41 @@ and only its previous cadence/actions from revision
 `1880ea0ef79d023ae4e334376f1bb4a60b12d221`. Retain all production state;
 never restore an old data snapshot over newer writes. Never enable both owners.
 Record qualification runs, exact output receipts and caller checks below.
+
+## Publisher qualification in progress
+
+Committed source `0df3a36e6e409de8bf9071199b5707e070bdcd31` registered target
+Pub Search `04d53dd8-8567-47dc-bce3-d3c7bca0ae9c` and Leaflet
+`f51119ee-9c9d-4bb4-8a47-6eb4c75bb3b8`, pinned before any run. Original clocks
+were cleared and original Scheduled/Pending/Running/Paused/Cancelling inventory
+returned zero. Canonical and original values matched for all ten credentials;
+the selected target blocks were synced and read back without displaying values.
+Qualification runs: Pub Search `532d5c9b-d743-4bdb-932e-d4c20bbf6d92` and
+Leaflet `792691b2-7a1f-4346-8ec9-957cf7ac9e31`. Both target clocks remain inactive.
+The private Leaflet history backup is
+`~/.local/state/prefect-home/migration-backups/pub-search-atlas-20261027.sqlite3`,
+SHA-256 `b82c6815e8e2f5230888cb02c7e6ffc7e7b48d499679a495091614028da6b8b2`;
+SQLite backup and `quick_check` passed before the new writer.
+
+## Gardener private transport
+
+The old VMs call the public Hetzner API. Existing pinned Gardener images already
+include stock `ts-unplug`; the approved per-run userspace transport plan was not
+wired into the production worker. `mps.exe_tailnet` prepares a supervised proxy
+on each owned VM before its engine starts, using a single-use, preauthorized,
+ten-minute ephemeral `tag:gardener-vm` key minted by the existing tag-scoped
+OAuth client. The OAuth credential remains on HeavyPad. Only the per-run key
+travels privately on SSH stdin into a root-only environment file. The worker
+sets `PREFECT_API_URL=http://localhost:18080/api`; the proxy forwards to
+HeavyPad's private TCP listener at `100.96.216.23:14200`. No public API listener
+is added. The small live-policy edit adds only that tag-to-port grant and tests;
+existing grants remain during handoff. Stop/remove per-attempt enrollment on
+terminal outcomes/cancellation; retained VM proxy service also has a runtime
+limit. Ephemeral node removal after going offline remains Tailscale-managed.
+
+The source still needs live VM qualification before switching Gardener callers.
+`client.env` and `gardener-tailnet.json` are scoped canonical SOPS derivatives,
+separate from the original worker environment; their renderer compares hashes.
+Rotation procedure: edit the existing canonical values, apply the renderer,
+drain/restart the corresponding clients and prove authenticated execution.
+No issuer credential is rotated by this migration.

@@ -768,3 +768,318 @@ deployments:
     schedules:
     - cron: 40 */2 * * *
       active: false
+
+  # Remaining cohorts: clocks inactive until qualification and caller handoff.
+  - name: typeahead-identity-hourly
+    tags:
+    - publish
+    - heavypad
+    entrypoint: flows/typeahead_identity.py:typeahead_identity_hourly
+    concurrency_limit: 1
+    parameters:
+      limit: 6000
+      budget_seconds: 2400
+      dry_run: false
+    schedules:
+    - cron: 20 * * * *
+      active: false
+    work_pool:
+      name: heavypad-typeahead-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage
+          uv run --no-project --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          PREFECT_PLUGINS_ENABLED: 'true'
+          PREFECT_PLUGINS_ALLOW: mps-secrets
+          TURSO_URL: prefect-block://typeahead-turso-url
+          TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+  - name: typeahead-enrich-backfill
+    tags:
+    - publish
+    - heavypad
+    entrypoint: flows/typeahead_enrich_backfill.py:typeahead_enrich_backfill
+    concurrency_limit: 1
+    parameters:
+      limit: null
+      dry_run: false
+    schedules:
+    - cron: 0 20 * * *
+      active: false
+    work_pool:
+      name: heavypad-typeahead-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage
+          uv run --no-project --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          PREFECT_PLUGINS_ENABLED: 'true'
+          PREFECT_PLUGINS_ALLOW: mps-secrets
+          TURSO_URL: prefect-block://typeahead-turso-url
+          TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+  - name: typeahead-index
+    pull:
+    - mps.deployment_steps.cached_checkout:
+        repository: https://tangled.org/zzstoatzz.io/my-prefect-server.git
+        fallback_repository: https://github.com/zzstoatzz/my-prefect-server.git
+        cache_root: /var/lib/typeahead-indexer/.cache/mps/source
+        directory: my-prefect-server
+    tags:
+    - publish
+    - heavypad
+    entrypoint: flows/typeahead_index.py:typeahead_index
+    parameters:
+      ref: pds-compact-31ec142-20261020
+      snapshot_format: compact
+      automatic_refresh: true
+    work_pool:
+      name: typeahead-cloud-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --with 'my-prefect-server
+          @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}' --with prefect==3.8.2 prefect flow-run
+          execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          PREFECT_PLUGINS_ENABLED: 'true'
+          PREFECT_PLUGINS_ALLOW: mps-secrets
+          TURSO_URL: prefect-block://typeahead-turso-url
+          TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
+          INDEX_R2_ENDPOINT: prefect-block://index-r2-endpoint
+          INDEX_R2_BUCKET: prefect-block://index-r2-bucket
+          INDEX_R2_ACCESS_KEY_ID: prefect-block://index-r2-access-key-id
+          INDEX_R2_SECRET_ACCESS_KEY: prefect-block://index-r2-secret-access-key
+          INDEXER_HOME: /var/lib/typeahead-indexer/work
+          INDEX_QUIET: '0'
+          INDEX_BUILD_ROOT: /var/lib/typeahead-indexer/active
+          INDEX_ARCHIVE_ROOT: /var/lib/typeahead-indexer/builds/archive
+          INDEX_MIN_FREE_GIB: '96'
+          INDEX_MIN_REMAIN_GIB: '8'
+          INDEX_CHANNEL: managed
+          INDEX_REFRESH_IMAGE: registry.fly.io/typeahead-search-refresh@sha256:37fa2b5ed4cf21c63a1e75fefd0f48d001c2cf3d0635f5ee16441c40cece6525
+          FLY_PRIMARY_TOKEN: prefect-block://typeahead-startup-fly-deploy-token
+          FLY_REFRESH_TOKEN: prefect-block://typeahead-refresh-fly-deploy-token
+          INDEX_ALLOW_PROD: '0'
+          INDEX_SAMPLE_LIMIT: '0'
+          INDEX_PDS_MAX_ACTORS: '10000'
+          INDEXER_VERSION: hetzner-cloud
+          RCLONE_BWLIMIT: 80M
+          RCLONE_S3_NO_HEAD: 'true'
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+    - cron: 0 6 */2 * *
+      timezone: UTC
+      active: false
+  - name: typeahead-plc-identity
+    tags:
+    - publish
+    - heavypad
+    entrypoint: flows/typeahead_plc_identity.py:typeahead_plc_identity
+    work_pool:
+      name: heavypad-build-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage
+          uv run --no-project --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          PREFECT_PLUGINS_ENABLED: 'true'
+          PREFECT_PLUGINS_ALLOW: mps-secrets
+          TURSO_URL: prefect-block://typeahead-turso-url
+          TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
+          PLC_BUNDLE_DIR: /home/stoat/typeahead-plc
+          PLC_APPLY: '1'
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+    - cron: 0 5 * * 1
+      active: false
+  - name: phi-pull-review
+    tags:
+    - phi
+    - heavypad
+    description: phi reviews a gardener pull and comments a VERDICT line
+    entrypoint: flows/phi_trigger.py:phi_trigger
+    work_pool:
+      name: heavypad-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage
+          uv run --no-project --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+    parameters:
+      slot: pull-review
+    schedules: []
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+  - name: pi-agent
+    pull: &remaining_legacy_pull
+    - prefect.deployments.steps.run_shell_script:
+        stream_output: true
+        script: uv run --no-project --python 3.13 python /home/stoat/.local/share/mps/source-cache/e492776f91b3e330adb08e18596fcb888e5ae855ff160bb4b2d9ed031a7d98ad/deployment_steps.py
+          --repository https://tangled.org/zzstoatzz.io/my-prefect-server.git --fallback-repository https://github.com/zzstoatzz/my-prefect-server.git
+    - prefect.deployments.steps.set_working_directory:
+        directory: my-prefect-server
+    tags:
+    - gardener
+    - heavypad
+    entrypoint: flows/pi_agent_local.py:pi_agent_local
+    parameters:
+      agent:
+        provider: anthropic
+        thinking: medium
+        tool_mode: read-only
+        toolset: null
+    work_pool:
+      name: heavypad-gardener-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage
+          uv run --with /home/stoat/phi-spike-worker/releases/5bbbdfd07f23548d46c3be004bb4c694d4d45516be3d646105b2e0a11e7962da/mps-0.1.0-py3-none-any.whl
+          python -I -m prefect.engine
+        env:
+          MPS_PIN: '@8a7edeea882095cb82e53e673853a37091188ed8'
+          PREFECT_PLUGINS_ENABLED: 'true'
+          PREFECT_PLUGINS_ALLOW: mps-secrets
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          ANTHROPIC_API_KEY: prefect-block://anthropic-api-key
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+    schedules: []
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+  - name: autofix
+    pull: *remaining_legacy_pull
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+    tags:
+    - gardener
+    - heavypad
+    description: pi diagnoses a failed run and, when proposing is on for that deployment, opens a gardener pull
+    entrypoint: flows/autofix.py:autofix
+    work_pool:
+      name: heavypad-gardener-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage
+          uv run --with /home/stoat/phi-spike-worker/releases/371b7aaea5e32129e136d7e8743de002ce118606da87fa9c298e7a52118cb84a/mps-0.1.0-py3-none-any.whl
+          python -I -m prefect.engine
+        env:
+          MPS_PIN: '@34dc208d0278a2ee885c2dd0f2f7fc9e7a6db96f'
+          PREFECT_PLUGINS_ENABLED: 'true'
+          PREFECT_PLUGINS_ALLOW: mps-secrets
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          ANTHROPIC_API_KEY: prefect-block://anthropic-api-key
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+    schedules: []
+  - name: watch-tangled-pulls
+    tags:
+    - gardener
+    - heavypad
+    entrypoint: flows.watch_tangled_pulls.watch_tangled_pulls
+    pull: []
+    work_pool:
+      name: heavypad-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage
+          uv run --with /home/stoat/phi-spike-worker/releases/9bc32712d3dfea7736344dcb98b443523a1eb8459c022483d611519f2a4c9133/mps-0.1.0-py3-none-any.whl
+          python -I -m prefect.engine
+        env:
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          MPS_PIN: '{{ $MPS_PIN }}'
+    schedules:
+    - cron: 17 * * * *
+      active: false
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+  - name: autofix-revise
+    tags:
+    - gardener
+    - heavypad
+    entrypoint: flows.autofix_revise.autofix_revise
+    pull: []
+    work_pool:
+      name: gardener-exe
+      job_variables:
+        timeout_seconds: 2400
+        environment_mode: image
+        image: gardener-registry.exe.xyz/gardener@sha256:6b6d1f1ba308b0e4614e38fb3e319c08002c39b0df3318615c4b796398e31925
+        requirements: []
+        local_packages: []
+        env: {}
+    schedules: []
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+  - name: investigate
+    tags:
+    - gardener
+    - phi
+    - heavypad
+    entrypoint: flows.pi_agent.pi_agent
+    pull: []
+    work_pool:
+      name: gardener-exe
+      job_variables:
+        timeout_seconds: 2400
+        environment_mode: image
+        image: gardener-registry.exe.xyz/gardener@sha256:25e5ea68bf70e96b25e604284f7009ec5f991e6b00bec9a65ab87634660f99da
+        requirements: []
+        local_packages: []
+        env: {}
+    schedules: []
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+  - name: merge-approved
+    tags:
+    - gardener
+    - heavypad
+    entrypoint: flows.merge_approved.merge_approved
+    pull: []
+    work_pool:
+      name: heavypad-gardener-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage
+          uv run --with /home/stoat/gardener-images/releases/merge-15dcb69a/mps-0.1.0-py3-none-any.whl python -I -m
+          prefect.engine
+        env:
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          MPS_PIN: '{{ $MPS_PIN }}'
+    schedules: []
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+  - name: test-pull-patch
+    tags:
+    - gardener
+    - heavypad
+    entrypoint: flows.test_pull_patch.test_pull_patch
+    pull: []
+    work_pool:
+      name: gardener-exe
+      job_variables:
+        timeout_seconds: 2400
+        environment_mode: image
+        image: gardener-registry.exe.xyz/gardener@sha256:d5b1526d6c97006804ba972fc6ab613654e3092d704b96be4291fb9ce140aad5
+        requirements: []
+        local_packages: []
+        env: {}
+    schedules: []
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE

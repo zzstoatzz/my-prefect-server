@@ -20,6 +20,7 @@
 	// Define grants that govern access for users, groups, autogroups, tags,
 	// Tailscale IP addresses, and subnet ranges.
 	"grants": [
+		{"src": ["tag:gardener-vm"], "dst": ["100.96.216.23"], "ip": ["tcp:14200"]},
 		{"src": ["tag:docs-mcp"], "dst": ["100.96.216.23"], "ip": ["tcp:8798"]},
 		// nate's own devices reach each other, as before.
 		{"src": ["autogroup:member"], "dst": ["*"], "ip": ["*"]},
@@ -84,6 +85,7 @@
 
 	// Test access rules every time they're saved.
 	"tests": [
+		{"src": "tag:gardener-vm", "accept": ["100.96.216.23:14200"], "deny": ["100.96.216.23:22", "100.96.216.23:6555", "100.96.216.23:10443"]},
 		{"src": "tag:docs-mcp", "accept": ["100.96.216.23:8798"], "deny": [
 			"100.96.216.23:22",
 			"100.96.216.23:6555",
