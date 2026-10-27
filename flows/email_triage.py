@@ -40,11 +40,11 @@ from prefect.events import emit_event
 from prefect.exceptions import FlowPauseTimeout
 from prefect.flow_runs import pause_flow_run
 from prefect.runtime import flow_run
+from prefect.settings import PREFECT_UI_URL
 from prefect.states import Completed
 from pydantic import BaseModel
 
 MODEL = "gpt-5.6-luna"
-UI_RUN_URL = "https://prefect-server.waow.tech/runs/flow-run/{id}"
 WINDOW_HOURS = 36
 REPLY_TIMEOUT_SECONDS = 12 * 60 * 60
 
@@ -149,7 +149,12 @@ def email_triage(post: Literal["discord", "log"] = "discord"):
 
     api_key = secret_sync("openai-api-key")
     shortlist = shortlist_with_luna(candidates, api_key)
-    message = render_shortlist(shortlist, candidates, len(candidates), UI_RUN_URL.format(id=run_id))
+    ui = PREFECT_UI_URL.value()
+    if not ui:
+        raise RuntimeError("PREFECT_UI_URL is required for the triage approval link")
+    message = render_shortlist(
+        shortlist, candidates, len(candidates), f"{ui.rstrip('/')}/runs/flow-run/{run_id}"
+    )
     logger.info(
         "shortlist: %d of %d candidates\n%s", len(shortlist.items), len(candidates), message
     )

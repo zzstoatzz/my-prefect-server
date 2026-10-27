@@ -353,3 +353,313 @@ deployments:
       - cron: '5 7 * * *'
         timezone: UTC
         active: true
+
+  - name: strata-hourly
+    tags:
+    - watch
+    - heavypad
+    entrypoint: flows/strata.py:ingest_segment_collections
+    schedules:
+    - cron: 21 * * * *
+      active: false
+      timezone: UTC
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    work_pool:
+      name: heavypad-background-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
+          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          PREFECT_PLUGINS_ENABLED: 'true'
+          STRATA_URL: https://strata.zat.dev
+          STRATA_STATE_PATH: /home/stoat/prefect-analytics/strata/checkpoint.sqlite
+          STRATA_INGEST_TOKEN: prefect-block://strata-ingest-token
+          STREAM_ARCHIVE_KEY: prefect-block://stream-archive-key-strata
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+  - name: phi-tag-maintenance
+    tags:
+    - phi
+    - heavypad
+    entrypoint: flows/morning.py:morning
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+    - cron: 0 13 * * *
+      active: false
+      timezone: UTC
+    work_pool:
+      name: heavypad-background-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
+          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+  - name: phi-atlas
+    tags:
+    - phi
+    - heavypad
+    entrypoint: flows/phi_atlas.py:phi_atlas
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+    - cron: 0 13 * * *
+      active: false
+      timezone: UTC
+    work_pool:
+      name: heavypad-background-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
+          --with prefect==3.8.2 --python 3.13.11 --with 'my-prefect-server[atlas] @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+  - name: docket
+    tags:
+    - phi
+    - heavypad
+    entrypoint: flows/docket.py:docket
+    triggers:
+    - type: event
+      expect:
+      - prefect.flow-run.Completed
+      match_related:
+        prefect.resource.name: phi-atlas
+        prefect.resource.role: deployment
+      enabled: false
+    work_pool:
+      name: heavypad-background-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
+          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+  - name: ingest
+    tags:
+    - pipeline
+    - heavypad
+    entrypoint: flows/ingest.py:ingest
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+    - cron: 0 * * * *
+      active: false
+      timezone: UTC
+    parameters:
+      only_unread: true
+    work_pool:
+      name: heavypad-background-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
+          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+  - name: classify-emails
+    tags:
+    - pipeline
+    - heavypad
+    entrypoint: flows/classify_emails.py:classify_emails
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    triggers:
+    - type: event
+      expect:
+      - prefect.flow-run.Completed
+      - prefect.flow-run.Degraded
+      match_related:
+        prefect.resource.name: ingest
+        prefect.resource.role: deployment
+      enabled: false
+    work_pool:
+      name: heavypad-background-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
+          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+  - name: transform
+    tags:
+    - pipeline
+    - heavypad
+    entrypoint: flows/transform.py:transform
+    path: /home/stoat/dagster-hub/current
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    triggers:
+    - type: event
+      expect:
+      - prefect.flow-run.Completed
+      match_related:
+        prefect.resource.name: classify-emails
+        prefect.resource.role: deployment
+      enabled: false
+    pull: []
+    work_pool:
+      name: heavypad-background-pool
+      job_variables:
+        command: /home/stoat/dagster-hub/current/.venv/bin/prefect flow-run execute
+        env:
+          HUB_DAGSTER_ROOT: /home/stoat/dagster-hub/current
+          DAGSTER_HOME: /home/stoat/.local/share/dagster-hub
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+  - name: brief
+    tags:
+    - pipeline
+    - heavypad
+    entrypoint: flows/brief.py:brief
+    triggers:
+    - type: event
+      expect:
+      - prefect.flow-run.Completed
+      match_related:
+        prefect.resource.name: transform
+        prefect.resource.role: deployment
+      enabled: false
+    work_pool:
+      name: heavypad-background-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
+          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+  - name: phi-memory-synthesis
+    tags:
+    - pipeline
+    - heavypad
+    entrypoint: flows/compact.py:compact
+    triggers:
+    - type: event
+      expect:
+      - prefect.flow-run.Completed
+      match_related:
+        prefect.resource.name: transform
+        prefect.resource.role: deployment
+      enabled: false
+    work_pool:
+      name: heavypad-background-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
+          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+  - name: email-backlog
+    entrypoint: flows/email_backlog.py:email_backlog
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+    schedules: []
+    tags:
+    - heavypad
+    work_pool:
+      name: heavypad-background-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
+          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+  - name: email-triage
+    tags:
+    - pipeline
+    - heavypad
+    entrypoint: flows/email_triage.py:email_triage
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+    - cron: 20 13 * * *
+      active: false
+      timezone: UTC
+    work_pool:
+      name: heavypad-interactive-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
+          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+  - name: stream-admission
+    tags:
+    - gardener
+    - heavypad
+    entrypoint: flows/stream_admission.py:stream_admission
+    parameters:
+      only:
+      - unit-debug
+      build_image: false
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+    work_pool:
+      name: heavypad-build-pool
+      job_variables:
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
+          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
