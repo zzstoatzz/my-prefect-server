@@ -84,6 +84,8 @@ def sandbox_command(
         "/proc",
         "--dev",
         "/dev",
+        "--perms",
+        "1777",
         "--tmpfs",
         "/tmp",
         "--perms",

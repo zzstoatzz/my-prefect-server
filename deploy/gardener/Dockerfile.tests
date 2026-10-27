@@ -2,6 +2,9 @@ ARG BASE_IMAGE=localhost:8000/gardener@sha256:d5b1526d6c97006804ba972fc6ab613654
 FROM ${BASE_IMAGE}
 ARG SOURCE_REVISION
 LABEL io.waow.gardener.test-source=$SOURCE_REVISION
+RUN apt-get update && apt-get install -y --no-install-recommends jq \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 COPY test_pull_patch.py /opt/gardener/venv/lib/python3.13/site-packages/flows/test_pull_patch.py
+COPY pi_sandbox.py /opt/gardener/venv/lib/python3.13/site-packages/mps/pi_sandbox.py
 RUN /opt/gardener/venv/bin/python -c 'import flows.test_pull_patch' \
     && /usr/local/bin/bun --version && /usr/local/bin/node --version
