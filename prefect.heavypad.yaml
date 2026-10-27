@@ -9,6 +9,43 @@ pull:
       directory: flow-source
 
 deployments:
+  - name: watch-fastmcp
+    entrypoint: flows/watch_fastmcp.py:watch_fastmcp
+    tags: [watch, heavypad]
+    work_pool: &heavypad_fastmcp
+      name: heavypad-pool
+      job_variables:
+        command: >-
+          uv run --no-project --with prefect==3.8.2
+          --with 'mps @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}#subdirectory=packages/mps'
+          prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+      - cron: "*/5 * * * *"
+        timezone: UTC
+        active: false
+
+  - name: fastmcp-brief
+    entrypoint: flows/fastmcp_brief.py:fastmcp_brief
+    tags: [watch, heavypad]
+    work_pool: *heavypad_fastmcp
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    parameters:
+      window_hours: 6
+    schedules:
+      - cron: "0 */4 * * *"
+        timezone: UTC
+        active: false
+
   - name: phi-curation
     entrypoint: flows/phi_trigger.py:phi_trigger
     tags: [phi, heavypad]

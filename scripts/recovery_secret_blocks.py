@@ -25,7 +25,7 @@ PUBLICATION_BLOCKS = {
     "bisk-r2-access-key-id",
     "bisk-r2-secret-access-key",
 }
-PHI_BLOCKS = {"phi-control-token"}
+PHI_BLOCKS = {"phi-control-token", "anthropic-api-key"}
 
 
 def extract(path):
