@@ -28,8 +28,10 @@ def main() -> int:
         "PREFECT_API_URL": "https://heavypad.tailb660b6.ts.net:10443/api",
         "PREFECT_API_AUTH_STRING": credentials["api_auth_string"],
     }
+    args = sys.argv[1:]
+    command = ["python", *args[1:]] if args[:1] == ["--script"] else ["prefect", *args]
     return subprocess.run(
-        ["uv", "run", "--with", "prefect==3.8.2", "prefect", *sys.argv[1:]],
+        ["uv", "run", "--with", "prefect==3.8.2", *command],
         env=env,
         check=False,
     ).returncode

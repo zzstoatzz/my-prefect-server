@@ -29,6 +29,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--fastmcp", action="store_true")
+    parser.add_argument("--email", action="store_true")
     args = parser.parse_args()
     original = dotenv_values(Path(__file__).resolve().parent.parent / ".env")
     credentials = json.loads(
@@ -69,6 +70,8 @@ def main():
             if args.fastmcp
             else set()
         )
+        if args.email:
+            names |= {"email shortlist -> discord", "email triage done -> discord"}
         wanted = [
             a for a in request(old, "POST", "automations/filter", json={}) if a["name"] in names
         ]

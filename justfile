@@ -600,8 +600,7 @@ coding-jobs output=(env_var('HOME') / '.local/state/mps/coding-jobs') *args:
 # answer the paused email-triage run in your own words (resumes it with the text)
 [positional-arguments]
 triage-reply *text:
-    PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
-        ./scripts/triage_reply.py "$@"
+    uv run scripts/heavypad_prefect_cli.py --script scripts/triage_reply.py "$@"
 
 # Install the immutable stdlib-only source helper for legacy pinned deployments.
 install-source-cache:
