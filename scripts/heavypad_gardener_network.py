@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 import httpx
+import json5
 
 GRANT = '{"src": ["tag:gardener-vm"], "dst": ["100.96.216.23"], "ip": ["tcp:14200"]}'
 TEST = '{"src": "tag:gardener-vm", "accept": ["100.96.216.23:14200"], "deny": ["100.96.216.23:22", "100.96.216.23:6555", "100.96.216.23:10443"]}'
@@ -40,12 +41,13 @@ def main():
         baseline = response.text
         etag = response.headers["etag"]
         updated = baseline
-        if GRANT not in updated:
+        parsed = json5.loads(baseline)
+        if json.loads(GRANT) not in parsed["grants"]:
             updated, count = re.subn(
                 r'("grants"\s*:\s*\[)', lambda m: m[1] + "\n\t\t" + GRANT + ",", updated, count=1
             )
             assert count == 1
-        if TEST not in updated:
+        if json.loads(TEST) not in parsed["tests"]:
             updated, count = re.subn(
                 r'("tests"\s*:\s*\[)', lambda m: m[1] + "\n\t\t" + TEST + ",", updated, count=1
             )
@@ -59,7 +61,9 @@ def main():
             response.raise_for_status()
             current = api.get(endpoint, headers={"Accept": "application/hujson"})
             current.raise_for_status()
-            assert GRANT in current.text and TEST in current.text
+            verified = json5.loads(current.text)
+            assert json.loads(GRANT) in verified["grants"]
+            assert json.loads(TEST) in verified["tests"]
             updated = current.text
         Path("infra/tailnet-policy.hujson").write_text(updated)
         print(

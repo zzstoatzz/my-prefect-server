@@ -1,0 +1,16 @@
+[Unit]
+Description=Tailnet-only Prefect API transport for Gardener runs
+After=network.target
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/python3 %h/.local/share/prefect-home/tailnet-api-proxy.py
+Restart=always
+RestartSec=5
+MemoryMax=128M
+TasksMax=32
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

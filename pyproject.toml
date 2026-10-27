@@ -82,6 +82,7 @@ dev = [
     "prefect-sprites",
     "prefect-exe",
     "mcp-atlas",
+    "json5>=0.17.3",
 ]
 
 [tool.pytest.ini_options]
