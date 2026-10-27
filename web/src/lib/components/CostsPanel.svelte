@@ -77,6 +77,7 @@
 	// ── infra ────────────────────────────────────────────────────────────────
 	const rows = $derived<CostRollup[]>(costs ? (view === 'project' ? costs.byProject : costs.byProvider) : []);
 	const infraMax = $derived(Math.max(1, ...rows.map((r) => r.amount)));
+	const hasMonthToDate = $derived((costs?.lineItems ?? []).some((item) => item.basis === 'month_to_date'));
 	const anyEstimated = $derived((costs?.lineItems ?? []).some((i) => i.estimated));
 	const asOf = $derived(costs ? new Date(costs.generatedAt).toLocaleDateString() : '');
 
@@ -111,7 +112,7 @@
 		<span class="inline-block text-gray-500 transition-transform" class:rotate-90={open}>▶</span>
 		<span class="text-sm font-medium text-gray-200">costs</span>
 		<span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
-			<span class="text-gray-400">infra <span class="font-medium text-gray-200 tabular-nums">{cents(costs?.total ?? 0)}</span>/mo</span>
+			<span class="text-gray-400">infra <span class="font-medium text-gray-200 tabular-nums">{cents(costs?.total ?? 0)}</span>{hasMonthToDate ? ' recorded' : '/mo'}</span>
 			<span aria-hidden="true">·</span>
 			<span class="text-gray-400">llm <span class="font-medium text-gray-200 tabular-nums">{dollars(llmTotal)}</span> ({win})</span>
 		</span>
@@ -124,9 +125,9 @@
 			<div class="border-b border-gray-800 px-4 py-4 sm:px-5 lg:border-b-0 lg:border-r">
 				<div class="flex flex-wrap items-center justify-between gap-2">
 					<div>
-						<p class="text-xs font-medium uppercase tracking-wider text-gray-400">infrastructure · monthly</p>
+						<p class="text-xs font-medium uppercase tracking-wider text-gray-400">infrastructure · {hasMonthToDate ? 'recorded costs' : 'monthly'}</p>
 						<p class="mt-1 text-2xl font-semibold leading-none text-gray-50 tabular-nums">{cents(costs?.total ?? 0)}</p>
-						<p class="mt-1 text-[11px] text-cyan-300/90">estimated{anyEstimated ? ' · ~ partly estimated' : ''}</p>
+						<p class="mt-1 text-[11px] text-cyan-300/90">{hasMonthToDate ? 'monthly rates + month-to-date usage' : 'estimated'}{anyEstimated ? ' · ~ partly estimated' : ''}</p>
 					</div>
 					<div class="flex rounded-md border border-gray-800 bg-gray-950/70 p-0.5">
 						{#each [{ k: 'project', l: 'project' }, { k: 'provider', l: 'provider' }] as o (o.k)}

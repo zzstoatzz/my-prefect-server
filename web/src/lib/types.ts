@@ -84,6 +84,7 @@ export interface CostRollup {
 }
 
 export interface CostLineItem {
+	basis?: 'month_to_date';
 	provider: string;
 	project: string;
 	service: string;
