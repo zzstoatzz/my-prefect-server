@@ -65,4 +65,5 @@ steps:
       export MPS_PIN="@${SHA}"
       echo "pinning deployments to ${MPS_PIN}"
       uv run scripts/validate_deployments.py --config prefect.heavypad.yaml --release
+      uv run scripts/assert_heavypad_target.py
       uv run --with prefect prefect --no-prompt deploy --prefect-file prefect.heavypad.yaml --all

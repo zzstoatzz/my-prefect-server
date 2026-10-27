@@ -223,3 +223,29 @@ The native Typeahead release chat owns the current controller and will provide
 an explicit release-complete handoff. A terminal retry/failure alone is not a
 worker migration gate: retain its prepared candidate and allow that chat to
 finish resumable qualification. Do not start another controller concurrently.
+
+## Final Leaflet qualification and CI credential correction
+
+Leaflet qualification `792691b2-7a1f-4346-8ec9-957cf7ac9e31` completed at
+04:01:54 UTC and published https://cccc98da.leaflet-search-ujy.pages.dev.
+The map and summaries are fresh (643 clusters, 253 regions). The optional facts
+step hit a read timeout and retried before publication; its final task result
+is recorded separately rather than treating the first retry as a flow failure.
+The archive grew to 1,740,005,376 bytes, preserving prior history. Activate the
+original six-hour cadence on HeavyPad only; the original clock stays empty.
+
+The subsequent CI checks passed but registration discovered the job still received
+the original API URL. A malformed SOPS index had created three unintended
+reference keys rather than changing the nested MPS entry. Those exact keys were
+removed, all unrelated decrypted values were compared unchanged, and the intended
+nested entry was updated and read back. Two existing MPS spindle rows changed;
+subsequent MPS and Stream checks reported zero drift. The scoped renderer now
+asserts the resolved URL/auth belong to HeavyPad, rather than merely accepting
+whatever the store happened to contain. CI also asserts its resolved Prefect
+settings and reads the existing HeavyPad pool before registration. A negative
+original-server target check failed before making any API request.
+
+The original home worker is stopped and disabled after its cohort drained;
+only the separately owned original cloud rollout remains active. The actual
+restore checker is installed and its 46 required deployment IDs all exist among
+47 live target records.

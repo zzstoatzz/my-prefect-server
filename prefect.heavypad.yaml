@@ -736,7 +736,7 @@ deployments:
       collision_strategy: CANCEL_NEW
     schedules:
     - cron: 0 */6 * * *
-      active: false
+      active: true
   - name: pub-search-snapshot
     tags:
     - publish

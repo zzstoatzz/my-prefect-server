@@ -1,0 +1,277 @@
+{
+  "verified_at": "2026-10-27T04:02:39.217901+00:00",
+  "scope_count": 14,
+  "complete": false,
+  "pending": [
+    "cloud release handoff/worker qualification",
+    "original live/queued runs",
+    "leaflet-atlas clock activation",
+    "typeahead-index clock activation"
+  ],
+  "original_live_runs": [
+    {
+      "id": "a086bdcf-f093-43aa-a369-307847f46daf",
+      "deployment_id": "5d446811-c098-438e-b16c-f1ccd9da7e97",
+      "state_type": "RUNNING",
+      "state_name": "Running"
+    }
+  ],
+  "deployments": [
+    {
+      "name": "autofix",
+      "old_id": "971d3c02-0581-4f3f-8326-d9af8b54b4b7",
+      "new_id": "216fe6bf-ded2-4dc3-b663-32230ecaa98e",
+      "pool": "heavypad-gardener-pool",
+      "clocks": [],
+      "qualification": {
+        "id": "d47393d5-1e0e-41ff-9d1b-163b095b9b9b",
+        "mode": "read-only diagnostic gathering",
+        "state_type": "COMPLETED",
+        "state_name": "DryRun",
+        "passed": true
+      }
+    },
+    {
+      "name": "autofix-revise",
+      "old_id": "02d90936-9f9b-45f7-97e6-8f18539b0b7e",
+      "new_id": "81b74ecf-4017-467d-b98e-078ad29ffc00",
+      "pool": "gardener-exe",
+      "clocks": [],
+      "qualification": {
+        "id": "1a2c269c-d64d-41cf-9914-84e1e2fa1309",
+        "mode": "untrusted-input refusal; no revision",
+        "state_type": "COMPLETED",
+        "state_name": "Skipped",
+        "passed": true
+      }
+    },
+    {
+      "name": "investigate",
+      "old_id": "2c0ba8f3-7adf-44f8-a96e-8214c1bd8f2f",
+      "new_id": "5f13c194-3287-4b81-974a-e1a538cc62f4",
+      "pool": "gardener-exe",
+      "clocks": [],
+      "qualification": {
+        "id": "06967b7d-9a90-4e51-9d97-d41bb5fa4a4a",
+        "mode": "real isolated agent execution",
+        "state_type": "COMPLETED",
+        "state_name": "Completed",
+        "passed": true
+      }
+    },
+    {
+      "name": "leaflet-atlas",
+      "old_id": "eb95a7d8-0103-499a-bfe8-983ad4580127",
+      "new_id": "f51119ee-9c9d-4bb4-8a47-6eb4c75bb3b8",
+      "pool": "heavypad-build-pool",
+      "clocks": [
+        {
+          "schedule": {
+            "cron": "0 */6 * * *",
+            "timezone": "UTC",
+            "day_or": true
+          },
+          "active": false
+        }
+      ],
+      "qualification": {
+        "id": "792691b2-7a1f-4346-8ec9-957cf7ac9e31",
+        "mode": "production publication",
+        "state_type": "COMPLETED",
+        "state_name": "Completed",
+        "passed": true
+      }
+    },
+    {
+      "name": "merge-approved",
+      "old_id": "39b52f1c-167e-426a-9d51-82ca4bebb544",
+      "new_id": "de0dda96-256f-48d5-b18f-c6082a502e5c",
+      "pool": "heavypad-gardener-pool",
+      "clocks": [],
+      "qualification": {
+        "id": "a0a5c014-9309-4445-b609-01de88a89f42",
+        "mode": "patched-wheel refusal; no approval/merge",
+        "state_type": "COMPLETED",
+        "state_name": "Skipped",
+        "passed": true
+      }
+    },
+    {
+      "name": "phi-pull-review",
+      "old_id": "4108cdc7-b7cb-454f-9d12-00a4fb36cc2f",
+      "new_id": "ad6bb901-47c4-4e79-a417-92c41a673ef3",
+      "pool": "heavypad-pool",
+      "clocks": [],
+      "qualification": {
+        "id": "72410975-77e5-47d3-a9be-b18473a033e0",
+        "mode": "authenticated slot validation; no review request",
+        "state_type": "COMPLETED",
+        "state_name": "Validated",
+        "passed": true
+      }
+    },
+    {
+      "name": "pi-agent",
+      "old_id": "f63100bc-2bab-4917-9393-9955bcd3a023",
+      "new_id": "ffc051a0-40f6-498c-a77e-b66053161eb4",
+      "pool": "heavypad-gardener-pool",
+      "clocks": [],
+      "qualification": {
+        "id": "537c231f-0803-4789-ba4a-6161237e4afd",
+        "mode": "real local agent execution",
+        "state_type": "COMPLETED",
+        "state_name": "Completed",
+        "passed": true
+      }
+    },
+    {
+      "name": "pub-search-snapshot",
+      "old_id": "4ef90900-2e9f-4579-a2ad-b620424ea479",
+      "new_id": "04d53dd8-8567-47dc-bce3-d3c7bca0ae9c",
+      "pool": "heavypad-build-pool",
+      "clocks": [
+        {
+          "schedule": {
+            "cron": "40 */2 * * *",
+            "timezone": "UTC",
+            "day_or": true
+          },
+          "active": true
+        }
+      ],
+      "qualification": {
+        "id": "532d5c9b-d743-4bdb-932e-d4c20bbf6d92",
+        "mode": "production publication",
+        "state_type": "COMPLETED",
+        "state_name": "Completed",
+        "passed": true
+      }
+    },
+    {
+      "name": "test-pull-patch",
+      "old_id": "6f98ab00-3c0a-44ef-b35a-bda13bfb67e2",
+      "new_id": "7a941a6b-3c6a-46b3-a72f-4fa0f38a9750",
+      "pool": "gardener-exe",
+      "clocks": [],
+      "qualification": {
+        "id": "9eec4780-9a47-4721-a423-d80feb751263",
+        "mode": "same immutable image; real sandbox boundary canary, not a production patch test",
+        "passed": true
+      }
+    },
+    {
+      "name": "typeahead-enrich-backfill",
+      "old_id": "7f336f45-0472-4e92-b856-90a6c6468233",
+      "new_id": "cdfbc11a-14c7-42a3-a40a-43230bbac6db",
+      "pool": "heavypad-typeahead-pool",
+      "clocks": [
+        {
+          "schedule": {
+            "cron": "0 20 * * *",
+            "timezone": "UTC",
+            "day_or": true
+          },
+          "active": true
+        }
+      ],
+      "qualification": {
+        "id": "a52d9386-3ece-4ca4-9138-aaf3bb27fe9b",
+        "mode": "three-record real profile update",
+        "state_type": "COMPLETED",
+        "state_name": "Completed",
+        "passed": true
+      }
+    },
+    {
+      "name": "typeahead-identity-hourly",
+      "old_id": "4c740052-1654-4a18-b4ae-2047b6ac1478",
+      "new_id": "774bb7eb-874b-4e92-9048-83926a1ddfdd",
+      "pool": "heavypad-typeahead-pool",
+      "clocks": [
+        {
+          "schedule": {
+            "cron": "20 * * * *",
+            "timezone": "UTC",
+            "day_or": true
+          },
+          "active": true
+        }
+      ],
+      "qualification": {
+        "id": "ad6f61b7-af7c-4aba-92ec-775c8e41bdde",
+        "mode": "three-record real identity update",
+        "state_type": "COMPLETED",
+        "state_name": "Completed",
+        "passed": true
+      }
+    },
+    {
+      "name": "typeahead-index",
+      "old_id": "5d446811-c098-438e-b16c-f1ccd9da7e97",
+      "new_id": "a0c0ce9c-5bab-4bdc-8512-39984c322a74",
+      "pool": "typeahead-cloud-pool",
+      "clocks": [
+        {
+          "schedule": {
+            "cron": "0 6 */2 * *",
+            "timezone": "UTC",
+            "day_or": true
+          },
+          "active": false
+        }
+      ],
+      "qualification": null
+    },
+    {
+      "name": "typeahead-plc-identity",
+      "old_id": "e8d460a1-56c5-4cc0-b31c-b1ead909fcc7",
+      "new_id": "63236f6a-a7de-422d-a3a6-e85a4af5fd1c",
+      "pool": "heavypad-build-pool",
+      "clocks": [
+        {
+          "schedule": {
+            "cron": "0 5 * * 1",
+            "timezone": "UTC",
+            "day_or": true
+          },
+          "active": false
+        }
+      ],
+      "qualification": {
+        "mode": "paused definition and retained 55 GiB cache; no bulk replay or bandwidth incurred",
+        "passed": true
+      }
+    },
+    {
+      "name": "watch-tangled-pulls",
+      "old_id": "57cf73e7-d299-4610-93ce-2111b7c8b214",
+      "new_id": "5c15fb2d-623f-4479-a46b-1430b25a8755",
+      "pool": "heavypad-pool",
+      "clocks": [
+        {
+          "schedule": {
+            "cron": "17 * * * *",
+            "timezone": "UTC",
+            "day_or": true
+          },
+          "active": true
+        }
+      ],
+      "qualification": {
+        "id": "b220b08b-beb7-47c2-bf32-e11e7028cc6c",
+        "mode": "real reconciliation with transferred checkpoint",
+        "state_type": "COMPLETED",
+        "state_name": "Completed",
+        "passed": true
+      }
+    }
+  ],
+  "gardener_execution_rules_verified": [
+    "autofix proposed -> merge-approved",
+    "autofix proposed -> phi review",
+    "autofix revise requested -> autofix-revise",
+    "flow-run failure -> autofix"
+  ],
+  "canonical_routing_changed": false,
+  "hetzner_deleted": false
+}

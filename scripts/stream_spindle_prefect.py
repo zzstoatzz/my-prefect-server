@@ -35,6 +35,15 @@ def main():
         if repo == repo_id and key in {"PREFECT_API_URL", "PREFECT_API_AUTH_STRING"}
     }
     assert len(wanted) == 2
+    assert wanted["PREFECT_API_URL"] == "https://heavypad.tailb660b6.ts.net:10443/api", (
+        "Canonical spindle target must be HeavyPad"
+    )
+    assert wanted["PREFECT_API_AUTH_STRING"] == document["heavypad_prefect"]["api_auth_string"], (
+        "Canonical spindle auth must be HeavyPad"
+    )
+    assert not document["spindle"][repo_id].get("_inject_prefect"), (
+        "Do not inject original credentials"
+    )
     program = """
 import json,sqlite3,sys
 payload=json.load(sys.stdin)

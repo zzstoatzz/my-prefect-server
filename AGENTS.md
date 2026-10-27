@@ -35,7 +35,7 @@ this file is a set of notes for us:
 - push to configured remotes. This repo currently has `origin` (tangled.org);
   if a `github` mirror remote is present in a checkout, push that too.
 - after server restart, re-fetch kubeconfig with `just kubeconfig`
-- **most flow execution runs on the `home-pool` *process* worker on the home box (heavypad)** — a systemd unit polling the server outbound over Tailscale (`deploy/home-worker/`). the `kubernetes-pool` bullets below describe the retained-but-unused k8s fallback path (no k8s worker runs in normal operation), and the analytics paths are hostPaths under `/home/stoat/prefect-analytics`, not a k8s PVC.
+- Active execution uses the HeavyPad API pools documented in `deploy/heavypad-prefect/README.md`. The original `home-pool` worker is stopped and disabled after its runs drained; retain its unit for rollback only. Analytics data remains under `/home/stoat/prefect-analytics`.
 - Git-backed flow code is pulled at runtime; selected Gardener flows instead import modules from pinned mps wheels, including on `gardener-exe`. Preserve the declared loading mode: `pull: []` plus a wheel needs a dotted entrypoint unless files are explicitly supplied by the worker. See `docs/deployments-validation.md`.
 - run `just hooks` once per clone. `just validate-deployments` checks code-delivery contracts; CI repeats it before registration. Never change entrypoint syntax to satisfy documentation formatting. A passing static check does not establish artifact availability or runtime readiness.
 - worker image is `prefecthq/prefect:3-python3.14-kubernetes` (the `-kubernetes` tag matters; uv is pre-installed)
