@@ -28,6 +28,7 @@ deployments:
       collision_strategy: ENQUEUE
     work_pool:
       name: heavypad-pool
+      work_queue_name: presence
       job_variables:
         command: >-
           uv run --no-project --with prefect==3.8.2
