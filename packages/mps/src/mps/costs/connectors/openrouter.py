@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime as dt
 from decimal import Decimal
 
 import httpx
@@ -31,27 +30,15 @@ class OpenRouterConnector:
         usage = Decimal(str(data["usage_monthly"]))
         if not usage.is_finite() or usage < 0:
             raise ValueError("Invalid OpenRouter monthly usage")
-        now = dt.datetime.now(dt.UTC)
-        elapsed = Decimal(
-            str(
-                (
-                    now - now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                ).total_seconds()
-            )
-        )
-        if elapsed < 3600:
-            raise RuntimeError(
-                "OpenRouter monthly window is under one hour; cannot project a stable run-rate"
-            )
-        projected = usage * Decimal(30 * 86400) / elapsed
         return [
             LineItem(
                 provider=self.name,
                 project="shared",
                 service="deepseek:api-key",
-                amount=round(projected * 100),
-                estimated=True,
+                amount=round(usage * 100),
+                estimated=False,
+                basis="month_to_date",
                 usage=f"${usage:f} provider-reported spend this UTC month",
-                note="30-day run-rate scaled from provider-reported UTC month-to-date spend. Current configured key only; Includes all models used by this key; excludes other keys, BYOK upstream charges and credit-purchase fees.",
+                note="Provider-reported current UTC month-to-date spend; not a monthly forecast. Current configured key only; Includes all models used by this key; excludes other keys, BYOK upstream charges and credit-purchase fees.",
             )
         ]

@@ -8,7 +8,7 @@ a Snapshot that mirrors the io.zzstoatzz.cost.snapshot lexicon.
 from __future__ import annotations
 
 import datetime as dt
-from typing import Protocol, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
@@ -36,6 +36,7 @@ class LineItem(BaseModel):
     estimated: bool = Field(
         description="true if derived from a heuristic rather than a billed figure"
     )
+    basis: Literal["month_to_date"] | None = None
     usage: str | None = None
     note: str | None = None
 

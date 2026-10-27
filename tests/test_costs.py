@@ -554,3 +554,26 @@ def test_flow_collects_turso():
 
     connectors = asyncio.run(costs_flow.build_connectors())
     assert "turso" in [c.name for c in connectors]
+
+
+def test_month_to_date_basis_survives_publication_without_monthly_projection():
+    item = LineItem(
+        provider="openrouter",
+        project="shared",
+        service="deepseek:api-key",
+        amount=112,
+        estimated=False,
+        basis="month_to_date",
+    )
+    record = _snapshot([item]).to_record()
+    assert record["lineItems"][0]["basis"] == "month_to_date"
+    assert record["total"] == 112
+    with pytest.raises(ValueError):
+        LineItem(
+            provider="openrouter",
+            project="shared",
+            service="key",
+            amount=112,
+            estimated=False,
+            basis="annual",
+        )

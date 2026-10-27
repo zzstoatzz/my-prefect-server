@@ -37,11 +37,12 @@ derived consumer of canonical `openrouter.api_key`; no new issuer key was made.
 TypeSafe account-wide reconciliation is explicitly deferred at Nate's request;
 Coral's existing Jev meter remains a partial application estimate.
 
-Dashboard amounts remain **30-day run-rates**, so both new connectors scale
-observed spend over their stated coverage windows. Their usage/note fields retain
-actual observed spend and window start. Commissioning probes can inflate the
-builder projection; neither projection is an invoice. The ledger keeps the
-individual evidence for reconciliation rather than discarding deleted resources.
+OpenRouter and builder entries are explicitly tagged **month-to-date** and retain
+their observed spend and window start. Existing infrastructure rows remain
+monthly list-price/run-rate estimates. The UI labels mixed totals as recorded
+costs, not a monthly forecast. Commissioning spend is included once and never
+extrapolated into a recurring charge. The ledger retains individual evidence for
+reconciliation; these estimates are not invoices.
 
 Remaining explicit limits: Fly stopped rootfs sizes, paid IP/network charges,
 provider discounts/taxes/credits, R2 operations beyond available meters, home

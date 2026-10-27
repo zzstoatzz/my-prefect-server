@@ -46,7 +46,7 @@ The manager preserves non-secret lifecycle and rate receipts in
 `hcloud-builder-billing-offsite.timer` copies them to the existing R2 backup
 bucket each minute with immutable/checksum checks. The independent expiry reaper
 also writes R2 receipts. The cost collector merges by server ID and publishes
-a labelled 30-day run-rate with actual observed spend and coverage in its note.
+a labelled month-to-date amount with observed spend and coverage in its note.
 Creation/deletion evidence survives VM, key and primary-IP deletion. A billing
 capture failure does not keep a VM alive; its resource receipt stays for retry.
 

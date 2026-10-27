@@ -73,20 +73,15 @@ class BuilderCostsConnector:
             total += amount_usd(scoped, min(end, now))
             count += 1
             active += record["phase"] != "deleted"
-        seconds = Decimal(str((now - covered_since).total_seconds()))
-        if seconds < 3600:
-            raise RuntimeError(
-                "Builder billing coverage is under one hour; cannot project a stable run-rate"
-            )
-        projected = total * Decimal(30 * 86400) / seconds
         return [
             LineItem(
                 provider="hetzner",
                 project="typeahead",
                 service="typeahead:ephemeral-builds",
-                amount=round(projected * 100),
+                amount=round(total * 100),
                 estimated=True,
+                basis="month_to_date",
                 usage=f"${total:f} observed this UTC month; {count} VM(s), {active} not yet confirmed deleted; coverage since {covered_since.isoformat()}",
-                note="30-day run-rate from durable VM and IPv4 lifecycle receipts over the stated coverage window. Hourly list prices and monthly caps; deletion observation bounds may overestimate time. Commissioning runs can inflate this estimate. Not an invoice. Qualification/backfill coverage is documented in docs/costs.md; excludes traffic overage.",
+                note="Current UTC month-to-date spend from durable VM and IPv4 lifecycle receipts over the stated coverage window. Hourly list prices and monthly caps; deletion observation bounds may overestimate time. Includes commissioning runs; not extrapolated into recurring spend. Not an invoice. Qualification/backfill coverage is documented in docs/costs.md; excludes traffic overage.",
             )
         ]

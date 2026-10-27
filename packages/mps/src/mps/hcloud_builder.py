@@ -153,8 +153,12 @@ class HCloud:
                 raise RuntimeError("Ambiguous server creation identity") from None
             server = resolved[0]
         self.check_owned(server, run_id)
-        await self.bill(server, "created")
-        await self.configure_ip(server)
+        try:
+            await self.bill(server, "created")
+            await self.configure_ip(server)
+        except BaseException:
+            await self.delete(server["id"], run_id, receipt=server)
+            raise
         return server
 
     async def bill(self, server: dict, phase: str) -> None:
