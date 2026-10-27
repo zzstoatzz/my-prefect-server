@@ -26,6 +26,16 @@ PUBLICATION_BLOCKS = {
     "bisk-r2-secret-access-key",
 }
 PHI_BLOCKS = {"phi-control-token", "anthropic-api-key"}
+WORKFLOW_BLOCKS = {
+    "openai-api-key",
+    "typesafe-api-key",
+    "turbopuffer-api-key",
+    "proton-bridge-creds",
+    "atproto-handle",
+    "atproto-password",
+    "strata-ingest-token",
+    "stream-archive-key-strata",
+}
 
 
 def extract(path):
@@ -47,6 +57,7 @@ def main():
             PROVIDER_BLOCKS
             | PUBLICATION_BLOCKS
             | PHI_BLOCKS
+            | WORKFLOW_BLOCKS
             | {"logfire-read-token", "operator-atproto-creds"}
         ),
         required=True,
