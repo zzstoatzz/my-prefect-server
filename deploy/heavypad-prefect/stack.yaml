@@ -159,6 +159,9 @@ spec:
             - name: PREFECT_SERVER_API_AUTH_STRING
               valueFrom:
                 secretKeyRef: {name: server-secrets, key: api-auth}
+            - name: PREFECT_SERVER_API_READONLY_AUTH_STRING
+              valueFrom:
+                secretKeyRef: {name: server-secrets, key: api-auth-readonly}
           volumeMounts: [{name: ui, mountPath: /ui-bundle, readOnly: true}]
           resources:
             requests: {cpu: 100m, memory: 64Mi}
@@ -196,6 +199,9 @@ spec:
             - name: PREFECT_SERVER_API_AUTH_STRING
               valueFrom:
                 secretKeyRef: {name: server-secrets, key: api-auth}
+            - name: PREFECT_SERVER_API_READONLY_AUTH_STRING
+              valueFrom:
+                secretKeyRef: {name: server-secrets, key: api-auth-readonly}
           resources:
             requests: {cpu: 100m, memory: 64Mi}
             limits: {cpu: '1', memory: 512Mi}

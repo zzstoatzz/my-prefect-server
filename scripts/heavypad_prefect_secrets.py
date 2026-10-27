@@ -84,8 +84,25 @@ def main() -> None:
             check=True,
         ).stdout
     )
+    readonly_auth = json.loads(
+        subprocess.run(
+            [
+                "sops",
+                "decrypt",
+                "--output-type",
+                "json",
+                "--extract",
+                '["prefect"]["api_readonly_auth_string"]',
+                str(Path.home() / "tangled.org/zzstoatzz.io/secrets/prod.yaml"),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    )
     values = {
         "api-auth": credentials["api_auth_string"],
+        "api-auth-readonly": readonly_auth,
         "postgres-password": credentials["postgres_password"],
         "database-url": f"postgresql://prefect:{credentials['postgres_password']}@postgres:5432/prefect",
     }

@@ -117,3 +117,30 @@ further rollout. The prepared target preserves refresh image
 and the unknown-freshness rejection. A real original Typeahead refresh run was
 active during preparation, so the cloud worker must not be switched until it
 finishes. Preserve its live results and current served generation.
+
+## Cohort qualification and caller handoff
+
+Six target runs completed: investigation `06967b7d-9a90-4e51-9d97-d41bb5fa4a4a`
+returned `migration-check-ok` through the real exe.dev/Aperture path; its trusted
+engine reached the private API and the worker cleaned up the VM. Local Pi
+`537c231f-0803-4789-ba4a-6161237e4afd` also completed. Autofix
+`d47393d5-1e0e-41ff-9d1b-163b095b9b9b` completed `DryRun` (gather only; no
+proposal). Phi review `72410975-77e5-47d3-a9be-b18473a033e0` completed
+`Validated`, with no review request sent. Small real Typeahead updates completed:
+identity `ad6f61b7-af7c-4aba-92ec-775c8e41bdde` and profile enrichment
+`a52d9386-3ece-4ca4-9138-aaf3bb27fe9b` (limit three each).
+
+Original Gardener execution automations are fenced. Ten retained Gardener/merge
+events and `autofix_handled_comments` transferred transactionally without replay;
+the comment subscriber is stopped during the checkpoint/caller handoff. The
+new exe.dev worker is installed from `fa8bbac` with the same immutable flow images,
+new investigation/revision deployment IDs, and private per-run transport. The
+retired Pi PR route is omitted. Dedicated two-slot Gardener and Typeahead home
+workers are active, each capped at 4 GiB; the cloud builder remains separate.
+
+The Hub requires read-only access to the new API. Reuse the existing canonical
+`prefect.api_readonly_auth_string`, add it to the HeavyPad server's derived
+Secret, and roll only API/services settings; retain the admin credential and
+all state. `GARDENER_API_URL` switches only the dashboard. Presence routing and
+its credential stay as previously qualified. Check read-only queries succeed
+and write/Secret reads remain rejected before switching the dashboard.

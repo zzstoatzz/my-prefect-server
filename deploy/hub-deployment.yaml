@@ -29,6 +29,8 @@ spec:
               value: https://zzstoatzz-io.cloudflareaccess.com
             - name: CF_ACCESS_AUDIENCE
               value: 87f2a109ecc1f5c82749a973ef356cfe89c52a616521a95e5809c4eb5f3922d5
+            - name: GARDENER_API_URL
+              value: https://heavypad.tailb660b6.ts.net:10443/api
             - name: GARDENER_API_AUTH_STRING
               valueFrom:
                 secretKeyRef:

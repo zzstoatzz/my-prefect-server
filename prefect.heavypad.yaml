@@ -1083,3 +1083,20 @@ deployments:
     concurrency_limit:
       limit: 1
       collision_strategy: ENQUEUE
+
+  - name: test-pull-boundary
+    tags: [qualification, heavypad]
+    entrypoint: flows.test_pull_patch.test_pull_boundary
+    pull: []
+    schedules: []
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+    work_pool:
+      name: gardener-exe
+      job_variables:
+        timeout_seconds: 600
+        environment_mode: image
+        image: gardener-registry.exe.xyz/gardener@sha256:d5b1526d6c97006804ba972fc6ab613654e3092d704b96be4291fb9ce140aad5
+        requirements: []
+        local_packages: []
