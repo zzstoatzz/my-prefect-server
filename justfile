@@ -695,3 +695,22 @@ edge-install revision:
 [positional-arguments]
 edge-secrets *args:
     uv run scripts/prefect_edge_secrets.py "$@"
+
+# send the OpenRouter key from the secrets store to the phone albedo sandbox on heavypad over ssh stdin; nothing is printed
+albedo-phone-key:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    sops -d --extract '["openrouter"]["api_key"]' ~/tangled.org/zzstoatzz.io/secrets/prod.yaml \
+      | ssh -o ConnectTimeout=10 -o BatchMode=yes stoat@heavypad 'umask 077; mkdir -p ~/albedo-phone/home/.albedo; jq -Rn --arg key "$(cat)" "{providers: {openrouter: {extension: \"openai\", baseUrl: \"https://openrouter.ai/api/v1\", apiKey: \$key, model: \"deepseek/deepseek-v4.1-flash\", protocol: \"responses\"}}, active: \"openrouter\"}" > ~/albedo-phone/home/.albedo/config.json && echo "config.json written ($(stat -c %s ~/albedo-phone/home/.albedo/config.json) bytes)"'
+
+# install or update the albedo-phone unit on heavypad from this checkout
+albedo-phone-install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    stage="$(ssh -o ConnectTimeout=10 -o BatchMode=yes stoat@heavypad 'mktemp -d')"
+    scp -q -r deploy/albedo-sandbox deploy/albedo-phone "stoat@heavypad:$stage/"
+    ssh -o ConnectTimeout=10 -o BatchMode=yes stoat@heavypad "bash '$stage/albedo-phone/install.sh'; rm -rf '$stage'"
+
+# print the phone's sign-in link (QR code in a terminal); --new-link replaces it
+albedo-phone-link *args:
+    ssh -t -o ConnectTimeout=10 -o BatchMode=yes stoat@heavypad 'ALBEDO_SANDBOX=$HOME/albedo-phone $HOME/.local/share/albedo-phone/sandbox.sh albedo web --no-open --local --port 4317 --public-url https://heavypad.tailb660b6.ts.net:11443 {{args}}'
