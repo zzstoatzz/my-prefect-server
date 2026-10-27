@@ -315,6 +315,13 @@ class Refresh:
                 self.logger.error("Restored previous verified backend after failed promotion")
             raise
 
+    def release_is_current(self, target: dict, manifest: dict) -> bool:
+        if target["build_id"] != manifest["active_build"]:
+            return False
+        app = next(app for app in SLOTS if origin(app) == target["origin"])
+        machine = self.fly("GET", app, "machines/" + target["machine_id"])
+        return machine["config"]["image"] == self.image
+
     def resume_published(self, expected: dict | None = None):
         import tempfile
 
@@ -332,7 +339,7 @@ class Refresh:
         ):
             raise ValueError("Published compact snapshot is not fresh")
         route, etag = self.route()
-        if route["current"]["build_id"] == manifest["active_build"]:
+        if self.release_is_current(route["current"], manifest):
             with tempfile.TemporaryDirectory(prefix="typeahead-resume-") as directory:
                 generation = Path(directory)
                 (generation / "manifest.json").write_bytes(raw)
@@ -420,7 +427,7 @@ class Refresh:
         route, etag = self.route()
         current = route_target(route)
         self.healthy(current, require_fresh=False)
-        if current["build_id"] == manifest["active_build"]:
+        if self.release_is_current(current, manifest):
             return {
                 "idempotent": True,
                 "build_id": current["build_id"],
