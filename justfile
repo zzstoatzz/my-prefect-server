@@ -675,6 +675,10 @@ heavypad-prefect-secrets *args:
 heavypad-prefect-monitoring *args:
     uv run --with prefect==3.8.2 --with python-dotenv python scripts/heavypad_prefect_monitoring.py "$@"
 
+[positional-arguments]
+heavypad-presence-ingress *args:
+    uv run scripts/heavypad_presence_ingress.py "$@"
+
 # Explicit Cloud workspace; never changes the active profile or home schedules.
 [positional-arguments]
 cloud-recovery-prefect *args:
