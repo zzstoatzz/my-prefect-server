@@ -138,3 +138,17 @@ writer lease, processed 157,738 events in 9.607 CPU seconds. Wall time was 136.3
 seconds under the quiet supervisor because other host workloads caused repeated
 thermal pauses. This verified the installed importer and real database replay,
 not a complete new Dagster job. See [live evidence](evidence/live-spend.json).
+
+## Retained architecture decision, October 27
+
+Nate chose to keep Dagster for the Hub analytics assets and defer asset-story
+cleanup. The proposed direct Prefect/dbt replacement was reverted before any
+production deployment or service shutdown. Dagster remains unchanged.
+Six recent live builds succeeded in 35–41 seconds and materialized 16 assets,
+including schema/column lineage and row counts. The two service cgroups used
+about 820 MiB together; a ten-second idle sample consumed 0.295 CPU seconds
+combined. Run/event history occupied 318 MiB. These are point observations,
+not peak-resource or long-term retention measurements.
+Future work should make source freshness, quality checks, provenance and safe
+rebuilds useful to Nate, and bound history retention. That work is separate from
+the Prefect control-plane migration.

@@ -698,3 +698,73 @@ deployments:
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
           PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+
+  # Prepared long-publisher batch. Keep clocks inactive until explicit ownership transfer.
+  - name: leaflet-atlas
+    tags:
+    - publish
+    - heavypad
+    entrypoint: flows/atlas.py:rebuild_atlas
+    work_pool:
+      name: heavypad-build-pool
+      job_variables:
+        command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true
+          PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project --python 3.13.11 --with prefect==3.8.2 --with 'my-prefect-server
+          @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          PREFECT_PLUGINS_ENABLED: 'true'
+          PREFECT_PLUGINS_ALLOW: mps-secrets
+          OMP_NUM_THREADS: '1'
+          OPENBLAS_NUM_THREADS: '1'
+          MKL_NUM_THREADS: '1'
+          VECLIB_MAXIMUM_THREADS: '1'
+          NUMBA_NUM_THREADS: '1'
+          MALLOC_ARENA_MAX: '2'
+          TURBOPUFFER_API_KEY: prefect-block://tpuf-token
+          CLOUDFLARE_API_TOKEN: prefect-block://cloudflare-api-token
+          ANTHROPIC_API_KEY: prefect-block://anthropic-api-key
+          OPENAI_API_KEY: prefect-block://pub-search-atlas-openai-api-key
+          TURSO_URL: prefect-block://turso-url
+          TURSO_TOKEN: prefect-block://turso-token
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+    concurrency_limit: &id001
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+    - cron: 0 */6 * * *
+      active: false
+  - name: pub-search-snapshot
+    tags:
+    - publish
+    - heavypad
+    entrypoint: flows/pub_search_snapshot.py:pub_search_snapshot
+    work_pool:
+      name: heavypad-build-pool
+      job_variables:
+        command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true
+          PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project --with prefect==3.8.2 --with 'my-prefect-server @
+          git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          PREFECT_PLUGINS_ENABLED: 'true'
+          PREFECT_PLUGINS_ALLOW: mps-secrets
+          TURSO_URL: prefect-block://turso-url
+          TURSO_TOKEN: prefect-block://turso-token
+          INDEX_R2_ENDPOINT: prefect-block://leaflet-index-r2-endpoint
+          INDEX_R2_BUCKET: prefect-block://leaflet-index-r2-bucket
+          INDEX_R2_ACCESS_KEY_ID: prefect-block://leaflet-index-r2-access-key-id
+          INDEX_R2_SECRET_ACCESS_KEY: prefect-block://leaflet-index-r2-secret-access-key
+          BUILDER_HOME: /home/stoat/pub-search-snapshot
+          BUILDER_CHANNEL: prod
+          BUILDER_ALLOW_PROD: '1'
+          RCLONE_BWLIMIT: 10M
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+    concurrency_limit: *id001
+    schedules:
+    - cron: 40 */2 * * *
+      active: false

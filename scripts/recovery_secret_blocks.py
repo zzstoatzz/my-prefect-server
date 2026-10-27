@@ -25,6 +25,18 @@ PUBLICATION_BLOCKS = {
     "bisk-r2-access-key-id",
     "bisk-r2-secret-access-key",
 }
+LONG_PUBLISHER_BLOCKS = {
+    "tpuf-token",
+    "cloudflare-api-token",
+    "anthropic-api-key",
+    "pub-search-atlas-openai-api-key",
+    "turso-url",
+    "turso-token",
+    "leaflet-index-r2-endpoint",
+    "leaflet-index-r2-bucket",
+    "leaflet-index-r2-access-key-id",
+    "leaflet-index-r2-secret-access-key",
+}
 PHI_BLOCKS = {"phi-control-token", "anthropic-api-key"}
 WORKFLOW_BLOCKS = {
     "openai-api-key",
@@ -57,6 +69,7 @@ def main():
             PROVIDER_BLOCKS
             | PUBLICATION_BLOCKS
             | PHI_BLOCKS
+            | LONG_PUBLISHER_BLOCKS
             | WORKFLOW_BLOCKS
             | {"logfire-read-token", "operator-atproto-creds"}
         ),

@@ -345,8 +345,7 @@ deployments:
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
     concurrency_limit: *cancel_new
-    schedules:
-      - cron: "0 */6 * * *"  # every 6 hours
+    schedules: []  # Ownership transfers to the HeavyPad build worker.
 
   - name: pds-records
     pull: *cached_home
@@ -651,12 +650,7 @@ deployments:
           # cap the ~600MB upload; tiny next to typeahead's 8.6GB but be polite
           RCLONE_BWLIMIT: "10M"
     concurrency_limit: *cancel_new
-    schedules:
-      # every 2h at :40 — clear of the 6h atlas marks, 09:00 typeahead-index,
-      # and the 13:00 cluster. ~7GB/day upload. relax to daily once the
-      # pub-search live overlay lands (phase 2 of builder-offbox-plan.md).
-      - cron: "40 */2 * * *"
-        active: true
+    schedules: []  # Ownership transfers to the HeavyPad build worker.
 
   - name: bisk-snapshot
     pull: *cached_home
