@@ -1,0 +1,99 @@
+{
+  "verified_at": "2026-10-27T21:01:06.590908+00:00",
+  "cost_publication": {
+    "run_id": "0e81de31-7e94-4028-9d3f-80f582fef77c",
+    "source_revision": "8d0be2b76ae61b8a22da732bb63af83967fd6694",
+    "generated_at": "2026-10-27T20:56:20.196970Z",
+    "state_type": "COMPLETED",
+    "state_name": "Incomplete",
+    "line_items": 85,
+    "recorded_total_cents": 51491,
+    "basis": "mixed monthly list-price/run-rate and explicitly tagged UTC month-to-date usage; not an invoice or a recurring forecast",
+    "month_to_date_items": [
+      {
+        "note": "Provider-reported current UTC month-to-date spend; not a monthly forecast. Current configured key only; Includes all models used by this key; excludes other keys, BYOK upstream charges and credit-purchase fees.",
+        "basis": "month_to_date",
+        "usage": "$1.11902875 provider-reported spend this UTC month",
+        "amount": 112,
+        "project": "shared",
+        "service": "deepseek:api-key",
+        "provider": "openrouter",
+        "estimated": false
+      },
+      {
+        "note": "Current UTC month-to-date spend from durable VM and IPv4 lifecycle receipts over the stated coverage window. Hourly list prices and monthly caps; deletion observation bounds may overestimate time. Includes commissioning runs; not extrapolated into recurring spend. Not an invoice. Qualification/backfill coverage is documented in docs/costs.md; excludes traffic overage.",
+        "basis": "month_to_date",
+        "usage": "$1.0245000000000000 observed this UTC month; 14 VM(s), 0 not yet confirmed deleted; coverage since 2026-10-27T06:46:58+00:00",
+        "amount": 102,
+        "project": "typeahead",
+        "service": "typeahead:ephemeral-builds",
+        "provider": "hetzner",
+        "estimated": true
+      }
+    ],
+    "public_artifact_verification": "scripts/verify_cost_publication.py passed: exact items, amounts, rollups, timestamp"
+  },
+  "builder_billing": {
+    "historical_backfill_vms": 12,
+    "historical_estimate_usd": "0.8879",
+    "total_vms_after_qualification": 14,
+    "total_observed_estimate_usd": "1.0245",
+    "active_vms": 0,
+    "worker_probe_server_id": 172889185,
+    "worker_probe_usd": "0.0683",
+    "independent_reaper_probe_server_id": 172889520,
+    "reaper_receipts_created_and_deleted_in_r2": true,
+    "provider_servers_volumes_primary_ips_absent": true,
+    "worker_revision": "582f6617a8c3fa08c7e6860bbf09c9f170627d10",
+    "reaper_version": "9d14e8f8-9ae8-4219-95a8-e3c98c2114e9",
+    "offsite_timer_result": "success",
+    "receipt_storage": "local ledger retained outside attempt cleanup; offsite R2 copies under billing/hetzner-builders/",
+    "offsite_retention_days": 90,
+    "offsite_retention_source": "Live Cloudflare bucket lifecycle expire-90d, all-object prefix; no claim of permanent offsite retention"
+  },
+  "bandwidth": {
+    "dashboard": "https://prefect-metrics.waow.tech/d/heavypad-host/heavypad-host",
+    "datasource": "existing home Prometheus",
+    "exporter": "existing node exporter textfile collector; no additional listener",
+    "metrics_file": "/var/lib/prometheus/bandwidth-watchdog/bandwidth.prom",
+    "budget_bytes": 1000000000000,
+    "observed_since_utc": "2026-10-17T00:52:47.404644+00:00",
+    "prometheus_retention_days": 90,
+    "existing_host_panel_selectors_repaired": true,
+    "comparison": "Decimal GB; UTC calendar month; compare same timestamp and Xfinity-displayed billing window. HeavyPad only. TCP is sampled lower bound; physical interfaces include LAN. Other household devices and missing history are unmeasured. Not a universal cap or ISP billing meter.",
+    "live_visual_values_approx": {
+      "observed_tcp_gb": 431,
+      "physical_host_gb": 604,
+      "host_budget_percent": 60.4,
+      "sample_age_seconds": 1.89
+    }
+  },
+  "ui": {
+    "evergreen_revision": "635c6ece169a2669f7c02470b6ff4bf605862154",
+    "evergreen_worker_version": "1af415db-836e-441a-88a2-4e31c87fc078",
+    "hub_image": "sha256:fd04b498b790aa60ee55b47a481501314a0b721032a96f74431dd41810577966",
+    "hub_source_revision": "ec38007aaf0c394e26cbd1f5e379586a1bf6488a",
+    "evergreen_live_month_to_date_labels_verified": true,
+    "mixed_period_funding_percentage_suppressed": true,
+    "hub_live_period_labels_verified": true
+  },
+  "validation": {
+    "green_ci_revision": "8d0be2b76ae61b8a22da732bb63af83967fd6694",
+    "ci_python": "840 passed, 6 skipped",
+    "local_full_suite": "838 passed, 7 skipped",
+    "focused_costs_and_billing": "23 passed",
+    "watchdog": "27 passed",
+    "evergreen_js": "54 passed",
+    "evergreen_python": "11 passed, 47 subtests passed",
+    "hub": "svelte-check 0 errors/0 warnings; oxlint passed; immutable Docker build and live deployment verified"
+  },
+  "remaining_coverage_limits": [
+    "15 stopped Fly machine rootfs charges remain unmeasured and publication is explicitly Incomplete",
+    "Provider invoices, credits, taxes, discounts and unmeasured network/operations charges remain authoritative outside these list-price/metred sources",
+    "OpenRouter is the configured key only, not every account/key, BYOK upstream charge or credit-purchase fee",
+    "TypeSafe account-wide reconciliation deferred at Nate's explicit request; existing Coral Jev meter retained",
+    "Historical builder hardware/location inferred from commissioning config; new receipts record provider attributes before deletion",
+    "Local bandwidth is not whole-household WAN or Xfinity billing; pre-installation and sampling gaps cannot be reconstructed",
+    "R2 offsite receipts inherit 90-day bucket lifecycle; local ledger has no eviction rule"
+  ]
+}

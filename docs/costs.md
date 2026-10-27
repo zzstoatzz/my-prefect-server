@@ -17,7 +17,8 @@ Ephemeral builders use a durable ledger, not inventory snapshots. The worker
 retains creation/deletion observations and the project's currency, server and
 IPv4 rates under `~/hcloud-builder/state/billing/`. A minute timer copies these
 non-secret receipts immutably to the existing backup bucket under
-`billing/hetzner-builders/`. The independent Cloudflare expiry reaper writes its
+`billing/hetzner-builders/`. The live bucket lifecycle expires offsite copies after
+90 days; the local ledger has no eviction rule. This is not permanent offsite retention. The independent Cloudflare expiry reaper writes its
 own receipts directly to the same bucket and reconciles asynchronous deletions.
 Worker and reaper receipts deduplicate by provider server ID. Billing telemetry
 failure must not prevent expiry cleanup. Active builders and their IPv4s are
@@ -63,19 +64,20 @@ current monthly cost for this repo from the daily snapshot (collected by
 curl -s https://hub.waow.tech/api/costs.json | jq '{
   as_of: .generatedAt,
   this_repo_monthly_usd: (
-    [ .lineItems[] | select(.service | startswith("prefect-server")) ]
+    [ .lineItems[] | select((.service | startswith("prefect-server")) or (.service | startswith("heavypad-prefect-backups"))) ]
     | (map(.amount) | add // 0) / 100
   ),
-  lines: [ .lineItems[] | select(.service | startswith("prefect-server"))
+  lines: [ .lineItems[] | select((.service | startswith("prefect-server")) or (.service | startswith("heavypad-prefect-backups")))
            | {service, provider, usd: (.amount/100), estimated} ]
 }'
 ```
 
 Or open the costs panel at https://hub.waow.tech and group **by project**.
 
-Services attributed to this repo: `prefect-server`. If that list is
-wrong, fix the mapping in `my-prefect-server`
-(`packages/mps/src/mps/costs/projects.py`) rather than editing numbers here.
+Services attributed to this repo include the retired `prefect-server` resource
+and `heavypad-prefect-backups`. Collector project labels live in
+`packages/mps/src/mps/costs/projects.py`; Evergreen reconciles declared ownership
+through its `site/services.json` costKeys. Fix ownership rather than editing amounts.
 
 ## known-wrong state and where attribution is going
 
@@ -94,10 +96,6 @@ wrong, fix the mapping in `my-prefect-server`
   mis-attributes and nothing fails loudly. the collector's job is to reconcile
   declarations and report conflicts + orphans; ~20 live services are claimed
   by no repo today. the protocol sketch is [docs/cost-declaration.md](cost-declaration.md).
-
-## how we might bring this down
-- biggest line is usually `prefect-server` — check its utilization and right-size before anything else.
-- Hetzner is billed at **EU list price** (already off the US premium); next lever is right-sizing the server type to real utilization.
 
 ## changelog
 - **2026-10-22** — cost tracker: fly compute is priced by each machine's measured uptime over the trailing 7 days instead of extrapolating whatever was started at collection time (cc1c989); `pear` (pear-definitelyarealcompany), `follower-weight` and `porxie` are attributed instead of unattributed (cc1c989, 3732d51); a turso connector adds the org's scaler plan ($29/mo list) under `shared` (cfda92c). Method and caveats are in evergreen's COSTS.md accuracy table.

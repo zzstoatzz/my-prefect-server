@@ -44,7 +44,8 @@ latency admission remains independent of infrastructure qualification. See the
 The manager preserves non-secret lifecycle and rate receipts in
 `~/hcloud-builder/state/billing/`, outside per-attempt cleanup directories.
 `hcloud-builder-billing-offsite.timer` copies them to the existing R2 backup
-bucket each minute with immutable/checksum checks. The independent expiry reaper
+bucket each minute with immutable/checksum checks. Offsite copies inherit the
+bucket's 90-day lifecycle; the local ledger is not evicted. The independent expiry reaper
 also writes R2 receipts. The cost collector merges by server ID and publishes
 a labelled month-to-date amount with observed spend and coverage in its note.
 Creation/deletion evidence survives VM, key and primary-IP deletion. A billing
