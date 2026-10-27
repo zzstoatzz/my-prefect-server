@@ -351,3 +351,33 @@ Typeahead successor image from native revision
 The publisher's HeavyPad definition and original rollback source use that exact
 image. The release owner retains exclusive control of the inactive candidate
 and next qualification run; the schedule remains inactive pending that result.
+
+
+## 04:39 UTC waiting checkpoint
+
+Revision c8e7d03179c20ffbd1d02911dbb52209a9939963 passed CI and was registered
+successfully by the trusted HeavyPad host service. The index clock remains off.
+The live audit is incomplete only for the index qualification and clock.
+
+The offsite restore at 04:39:25 UTC passed using `20261027T043911Z.dump.age`,
+SHA-256 `7e21d88c212fd1866d59f71e51d75a41f42b911a0a53b590ede464aeaacdde75`:
+47 deployments, 440 runs, 43 blocks, 23 automations, 27 tables, three-second
+restore, newest-completion gap two minutes. This is a waiting checkpoint;
+repeat after final index qualification/clock activation.
+
+The release owner measured 12,000 updated rows in 24 successful pages since
+04:34:31, zero query errors, approximately 58 rows/second. Candidate restart
+requires replay from its snapshot watermark (about 167,000 rows on the prior
+pass), despite retaining admitted data and overlay. At 04:38 UTC the estimate
+was 45–65 more minutes, roughly 05:25–05:45 UTC, including cleanup and
+qualification. Do not forge readiness or launch a second controller to avoid
+that wait. The release owner will send measured checkpoints and its HeavyPad
+qualification UUID. Goal stays incomplete; no canonical routing or node deletion.
+
+
+Because CI no longer registers deployments, its two scoped Prefect credentials
+are being retired. `stream_spindle_prefect.py --repo my-prefect-server` now
+requires no canonical CI URL/auth and removes only those two existing rows;
+`_inject_prefect=false` prevents global-original credentials from being restored.
+Stream and the trusted host's separate canonical client environment are preserved.
+Readback and registration-health verification are required after retirement.
