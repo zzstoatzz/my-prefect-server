@@ -65,7 +65,7 @@ if args.service in {"grafana", "prometheus", "health"}:
                 "--config.file=/config/prometheus.yml",
                 "--storage.tsdb.path=/prometheus",
                 "--web.listen-address=127.0.0.1:19090",
-                "--storage.tsdb.retention.time=15d",
+                "--storage.tsdb.retention.time=90d",
             ]
     raise SystemExit(subprocess.run(command, check=False).returncode)
 if args.service == "proxy":

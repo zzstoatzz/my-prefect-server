@@ -161,3 +161,7 @@ pre-installation traffic cannot be reconstructed. The graph begins at metrics
 installation; October's existing cumulative totals remain visible immediately.
 These panels do not impose a universal bandwidth cutoff. Alert rules remain
 centralized in Logfire and Prefect.
+
+Home Prometheus retains 90 days of telemetry, so a full calendar month and the
+following reconciliation window fit without relying on a 15-day rolling graph.
+The original pre-monitoring gap is still unknown.
