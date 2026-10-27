@@ -172,3 +172,8 @@ The configured image is now
 recovery and bounded failure backoff. Deployment verification is recorded in the
 [Typeahead operations record](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/ops/sync-hardening-release-20261026.md).
 The existing builder source and schedule are unchanged.
+
+Freshness admission also requires a known nonnegative lag below 600 seconds.
+`sync_lag_s=-1` means unknown and cannot qualify a newly attached snapshot.
+Availability-only checks of the existing serving target still allow stale data.
+A real loopback HTTP regression covers unknown, stale and boundary lag values.
