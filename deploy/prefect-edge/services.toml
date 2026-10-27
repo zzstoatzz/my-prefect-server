@@ -1,5 +1,6 @@
 [hub]
-image = "sha256:a57ef2a9ad612fad5e045a5a86ffb61c71feec80e95b219784cd33e398f766b4"
+image = "sha256:fd04b498b790aa60ee55b47a481501314a0b721032a96f74431dd41810577966"
+source_revision = "ec38007aaf0c394e26cbd1f5e379586a1bf6488a"
 port = 13000
 container_port = 3000
 memory = "384m"
