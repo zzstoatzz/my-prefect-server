@@ -144,3 +144,35 @@ Secret, and roll only API/services settings; retain the admin credential and
 all state. `GARDENER_API_URL` switches only the dashboard. Presence routing and
 its credential stay as previously qualified. Check read-only queries succeed
 and write/Secret reads remain rejected before switching the dashboard.
+
+## Completed publication and guarded runtime checks
+
+Pub Search qualification completed at 03:22:06 UTC after publishing production
+build `b1793070306-141f`: 152,156 documents, 860,479,488-byte replica, SHA-256
+`21d3153f070d73543552499e03be0ebfd1d14b47bee65e28d439c36b5afb75c0`.
+Canonical bucket readback of `latest.json` matched its production build ID,
+size, checksum and source revision `d581aa57b33ac3a3cdee627e5e2838213cfb97a6`.
+The public search health endpoint returned ok; this alone does not identify the
+backend's adopted build. The builder performed its original integrity/count
+checks before pointer publication.
+
+Test image qualification `9eec4780-9a47-4721-a423-d80feb751263` completed the real
+filesystem/UID/environment/DNS sandbox boundary checks through the new API.
+Revision guard `1a2c269c-d64d-41cf-9914-84e1e2fa1309` and merge guard
+`3ef1c107-cc5e-4ef3-abc0-3fb46f85732a` completed Skipped for a deliberately
+untrusted non-pull identifier. No proposal, approval or merge was fabricated.
+The comment subscriber resumed its retained cursor and returned health 200;
+its inference/workflow caller is active on HeavyPad with the retired proposal
+route omitted. The first HeavyPad watch reconciliation
+`b220b08b-beb7-47c2-bf32-e11e7028cc6c` completed normally.
+
+The canonical read-only credential was installed on the HeavyPad API and services
+without changing their image. Real checks: deployment POST filter 200; write
+and Secret read 401. Hub image `77cefbd` built from a clean committed checkout
+and rolled out with the scoped `GARDENER_API_URL`; browser access still presents
+the Cloudflare Access login gate. Authenticated dashboard visual verification
+requires an existing Access session; no gate was bypassed.
+
+Enable the qualified Pub Search, watch-tangled-pulls, identity-hourly and
+profile-enrichment cadences on HeavyPad only. Leaflet, the cloud index publisher
+and the paused PLC definition stay inactive until their remaining checks pass.

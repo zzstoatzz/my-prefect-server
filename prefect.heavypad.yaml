@@ -767,7 +767,7 @@ deployments:
     concurrency_limit: *id001
     schedules:
     - cron: 40 */2 * * *
-      active: false
+      active: true
 
   # Remaining cohorts: clocks inactive until qualification and caller handoff.
   - name: typeahead-identity-hourly
@@ -782,7 +782,7 @@ deployments:
       dry_run: false
     schedules:
     - cron: 20 * * * *
-      active: false
+      active: true
     work_pool:
       name: heavypad-typeahead-pool
       job_variables:
@@ -807,7 +807,7 @@ deployments:
       dry_run: false
     schedules:
     - cron: 0 20 * * *
-      active: false
+      active: true
     work_pool:
       name: heavypad-typeahead-pool
       job_variables:
@@ -1002,7 +1002,7 @@ deployments:
           MPS_PIN: '{{ $MPS_PIN }}'
     schedules:
     - cron: 17 * * * *
-      active: false
+      active: true
     concurrency_limit:
       limit: 1
       collision_strategy: ENQUEUE
