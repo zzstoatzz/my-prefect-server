@@ -6,6 +6,22 @@ Dagster unchanged; defer its asset-story cleanup. PDS Records, Dep Bump and Pi P
 remain approved retirements. This continuation ends with routing readiness
 assessment; canonical hostname switching and Hetzner deletion are not included.
 
+## Current checkpoint
+
+The remaining cohort has fourteen definitions. Its original clocks are empty;
+five of its six recurring clocks are active on HeavyPad. The cloud index worker is ONLINE
+on HeavyPad. Its real 1 GiB qualification passed; the sixth clock activation
+and final backup/audit receipts are being applied below. PLC remains intentionally
+paused with its cache preserved. The original home worker is disabled; Gardener
+callers, execution rules, state and notifications use the target backend.
+Dagster remains active and unchanged. Canonical routing is unchanged and is
+**not ready for cutover or node deletion**; see the assessment below.
+
+[The generated audit](../audits/2026-10-27-remaining-migration-verification.json)
+records live IDs, clocks, qualification modes and pending gates. Earlier sections
+below preserve chronological preparation/qualification receipts; their inactive
+clock statements describe those checkpoints, not current ownership.
+
 ## Long publishers
 
 `pub-search-snapshot` (original `4ef90900-2e9f-4579-a2ad-b620424ea479`)
@@ -381,3 +397,116 @@ requires no canonical CI URL/auth and removes only those two existing rows;
 `_inject_prefect=false` prevents global-original credentials from being restored.
 Stream and the trusted host's separate canonical client environment are preserved.
 Readback and registration-health verification are required after retirement.
+
+
+## CI credential retirement verified
+
+Revision `31026c05932327abb0f5e1e3cad46a1761d52180` passed CI and the trusted
+host registered it successfully after the unused CI credentials were retired.
+Only the two canonical MPS CI references and their two existing spindle rows
+were removed. Check-only mode first detected both stale rows; apply removed two;
+two subsequent MPS checks and Stream's separate check reported zero drift. The
+canonical trusted-host client and enrollment files remained current by hash;
+a real HeavyPad pool read returned its expected process pool. No credential
+rotation or publisher cadence change occurred. The next newly started CI job
+will also exercise validation without those retired environment values.
+
+## Home traffic observation
+
+At approximately 04:46 UTC existing Prometheus physical-interface counters
+(`enp.*|wlp.*`, instance `heavypad`) reported 11.02 GB received and 2.15 GB sent
+in two hours; 29.88 GB received and 4.57 GB sent in six hours. These are total
+host interface bytes, including other services, CI/dependency downloads and LAN
+traffic, not exact ISP billing or per-task attribution.
+
+The Pub Search qualification uploaded an uncompressed 860,479,488-byte snapshot
+to R2 and read the full Turso corpus inbound (separate wire bytes not recorded).
+Its existing two-hour cadence implies approximately 10.3 GB/day of snapshot
+uploads at this size, before source reads. Leaflet exported vectors from
+Turbopuffer and uploaded seven changed Pages files while reusing 53; exact wire
+bytes are not available. Both publishers already executed on HeavyPad under
+the old worker, so orchestration migration did not relocate their steady-state
+compute; qualification added one real extra publication of each. The checkpoint
+encrypted PostgreSQL dump was 8,541,413 bytes. No new bulk Typeahead/55 GiB PLC
+replay ran at home; its worker compute and volume remain in the cloud.
+
+The Typeahead release thread was given these measured totals and attribution
+limits in response to Nate's bandwidth question. No large transfer was started
+to measure them, and no publisher schedule was altered in response.
+
+
+## First scheduled Pub Search run
+
+Automatic HeavyPad run `cad7990d-5e38-4e21-82e0-16369cb8a87b` started at
+04:40:06 UTC and completed at 04:58:51 UTC. It published production build
+`b1793076097-77aa` with 152,182 documents; snapshot size 860,635,136 bytes,
+SHA-256 `8eb262d39b3ce06f99faa448b5c66a7f8c864a4c1c38a3dd0e38c0367750b278`.
+This independently verifies automatic schedule ownership after manual
+qualification. Leaflet's next six-hour scheduled run is later; its real manual
+publication remains the qualification receipt.
+
+
+## Clean successor replay
+
+The release owner reports a clean pass at 05:36:07 UTC: 171,641 updates,
+133 clearances, 17,897 applied deletions (17,916 returned, 19 skipped), no errors.
+The corrected clearance query completed in about two seconds, and scoped
+`selfhosted.social` search returned actors. The persistent policy marker is the
+guard for cached sizing restarts. The release owner is comparing inactive
+2CPU/1GiB, 2CPU/2GiB and 2CPU/1GiB with a temporarily frozen source; it owns
+restoring original environment/connectivity and selecting any intentional size
+change before launching the HeavyPad controller. The parent does not probe the
+candidate during that experiment or enable its publisher clock.
+
+
+## User hold and scope correction
+
+Nate challenged the scope drift into Typeahead performance work and said
+"hold on". Migration work is held after returning to the original 2CPU/1GiB
+policy. The optional 2GiB controller/docs change was landed in3034641, then
+reverted and pushed as `e263f796697b8be2c17cc6ad1e793582b683bf50`.
+The live publisher runtime now pins that one-GiB source; image b049 is preserved
+and the index clock remains inactive. This is not a completed migration receipt.
+
+The only attempted cloud qualification was
+`c303fd74-bdcb-40d9-a113-5ff9b8ecd285`: started05:58:05 UTC, forcibly CANCELLED
+at05:58:40 UTC. Logs reached source checkout and flow start; no qualification
+success is claimed. The cloud worker was stopped/killed to prevent further
+controller activity, then restored active on the HeavyPad API after the safe
+runtime pin was restored. New worker
+`ProcessWorker6489084e-d724-417a-b1d5-ac85c40a695c` was ONLINE at06:01:44 UTC.
+The retained Fly candidate was observed started at2CPU/1GiB and public freshness
+was healthy (116s lag). The release owner is independently checking the routing
+record/ETag; no routing outcome is inferred solely from flow cancellation.
+
+The RAM comparison completed with normal Turso connectivity and verified quiet
+windows after the attempted URL-freeze was aborted by its isolation guard.
+Across three arms, all2016 response hashes matched, and no sync occurred during
+workload. Warm p99 was31.024/16.393/34.388ms at1/2/1GiB; first-touch p99 remained
+roughly117/131/120ms. This does not establish cause of the historical outage or
+fully reproduce live multi-second spikes. That code/performance investigation
+belongs to the separate Typeahead release thread and must not expand this
+Prefect migration. Remaining migration gates stay index qualification, clock
+activation, final audit/backup and the already-documented routing assessment.
+
+
+## Final migration qualification
+
+Nate explicitly resumed migration with "get it migrated!! stop hedging!" and
+asked that other-session messaging stop. Native performance work is separate.
+The successful HeavyPad qualification is
+`3234d469-2b31-4b5e-8513-b9bce417daed`, started06:04:12 UTC and COMPLETED
+06:07:52 UTC. Runtime was published e263f796697b8be2c17cc6ad1e793582b683bf50,
+with the existing b049 image and original two shared CPUs / 1 GiB. All five
+public verification rounds passed. Artifact cleanup retained both current
+compact and legacy builds; zero objects deleted. Local archival had zero
+outstanding generations and pruned zero bytes. Source checkout/execution and
+post-publication checks ran on the existing cloud worker, using HeavyPad API.
+
+The transferred index cron remains `0 6 */2 * *` UTC. Activation follows that
+success. Today's06:00 slot elapsed during qualification, so one idempotent
+regular catch-up run is queued after the successful controller drains; it uses
+the normal deployment defaults, not another qualification/recovery run. This
+preserves the intended slot rather than silently waiting until October29.
+Canonical Prefect DNS and Hetzner node retirement remain outside this change;
+Dagster is unchanged. PLC stays deliberately paused.

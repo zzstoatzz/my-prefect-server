@@ -875,7 +875,7 @@ deployments:
     schedules:
     - cron: 0 6 */2 * *
       timezone: UTC
-      active: false
+      active: true
   - name: typeahead-plc-identity
     tags:
     - publish

@@ -84,6 +84,9 @@ def main():
     parser.add_argument("--require-complete", action="store_true")
     args = parser.parse_args()
     original = dotenv_values(ROOT / ".env")
+    original_auth = original["AUTH_STRING"]
+    assert original_auth is not None
+    original_user, original_password = original_auth.split(":", 1)
     credentials = json.loads(
         subprocess.check_output(
             [
@@ -107,7 +110,7 @@ def main():
     with (
         httpx.Client(
             base_url=f"https://{original['DOMAIN']}/api/",
-            auth=tuple(original["AUTH_STRING"].split(":", 1)),
+            auth=httpx.BasicAuth(original_user, original_password),
             timeout=30,
         ) as old,
         httpx.Client(
@@ -150,6 +153,11 @@ def main():
             source, target = old_deployments[name], new_deployments[name]
             assert not source["schedules"], f"Original clocks remain: {name}"
             assert target["work_pool_name"] == declared[name]["work_pool"]["name"], name
+            if name == "typeahead-index":
+                assert (
+                    target["job_variables"]["env"]["INDEX_REFRESH_IMAGE"]
+                    == declared[name]["work_pool"]["job_variables"]["env"]["INDEX_REFRESH_IMAGE"]
+                ), "Cloud publisher image/source drift"
 
             def clock(schedule, active):
                 return {
@@ -178,6 +186,10 @@ def main():
                 )
                 run = request(new, "GET", "flow_runs/" + run_id)
                 assert run["deployment_id"] == target["id"], name
+                if name == "typeahead-index":
+                    assert run["parameters"]["resume_rollout"] is True
+                    assert run["parameters"]["automatic_refresh"] is True
+                    assert run["parameters"]["snapshot_format"] == "compact"
                 passed = run["state_type"] == "COMPLETED" and run["state_name"] == state
                 qualification = {
                     "id": run_id,
@@ -185,6 +197,7 @@ def main():
                     "state_type": run["state_type"],
                     "state_name": run["state_name"],
                     "passed": passed,
+                    **({"parameters": run["parameters"]} if name == "typeahead-index" else {}),
                 }
                 if not passed:
                     pending.append(name + " qualification")

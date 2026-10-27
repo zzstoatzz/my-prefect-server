@@ -309,7 +309,52 @@ the Prefect worker settings merge; do not remove it as redundant job env.
 
 Phone ingress uses the scoped backend rendered by
 `just heavypad-presence-ingress --apply` and the Hub's private hostname alias.
-Its public credential/URL and Gardener's old backend are preserved. The normal
+Its public credential/URL are preserved. Gardener now uses the scoped HeavyPad
+client environment and per-run tailnet transport described in the remaining
+migration receipt. The normal
 `just presence-deploy` registers the active HeavyPad definition. Stream's
 spindle routing is checked/repaired by `scripts/stream_spindle_prefect.py`;
 its canonical references are in the existing secret store.
+
+
+## Registering main revisions
+
+Spindle microVMs intentionally block private networks, including Tailscale IPs
+and MagicDNS answers. CI validates source without Prefect credentials. Deployment
+registration runs on the trusted HeavyPad host, using its existing
+`~/.config/prefect-home/client.env` derived from canonical SOPS.
+
+`prefect-home-registration.timer` checks every five minutes. Its oneshot service
+fetches GitHub main into a dedicated clean clone, requires the matching Tangled
+`deploy.yml` push pipeline to be green, verifies the existing HeavyPad process
+pool, then validates and registers `prefect.heavypad.yaml` with the exact
+`MPS_PIN=@<SHA>`. It records success in
+`~/.local/share/prefect-home/registration/registered-sha`. A lock prevents
+concurrent registration; the same successful SHA is a no-op. Failed or pending
+CI leaves the previous deployed revision in place. Keep GitHub and Tangled main
+in sync with `just push`.
+
+Reconcile or inspect from an operator checkout:
+
+```sh
+ssh stoat@heavypad 'systemctl --user start prefect-home-registration.service'
+ssh stoat@heavypad 'journalctl --user -u prefect-home-registration.service -n 12 --no-pager'
+ssh stoat@heavypad 'systemctl --user list-timers prefect-home-registration.timer'
+```
+
+For an intentional manual rollback, stop the registration timer first so it
+does not restore main's declarations. Register only the intended rollback
+revision against the verified target, keep one scheduler owner, then reconcile
+main before re-enabling the timer. Runtime state and secrets are not restored
+by checking out source.
+
+Source and units are `scripts/register_heavypad_main.py`,
+`deploy/heavypad-prefect/prefect-home-registration.service` and its `.timer`.
+The installed script is `~/.local/share/prefect-home/register-main.py`; install
+updated source there after landing it on main, then reload the user manager when
+units change. The oneshot reads freshly rendered credentials on every start.
+
+Current migration, qualification, backup and canonical routing gates are in
+[the remaining migration receipt](../../docs/migrations/2026-10-27-remaining-cutover.md)
+and its linked live audit. Canonical routing and Hetzner retirement remain
+separate work.
