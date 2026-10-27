@@ -104,7 +104,7 @@
                 <section class="reading-pane" aria-label="Work details">
                     <a class="back" href="?view=work">‹ All work</a>
                     {#if selected}
-                        {#key selected.id}<WorkReader run={selected} result={model.result} resultError={model.resultError} {attempt} {stale} {formatDate} />{/key}
+                        {#key selected.id}<WorkReader prefectUiUrl={model.prefectUiUrl} run={selected} result={model.result} resultError={model.resultError} {attempt} {stale} {formatDate} />{/key}
                     {:else}<div class="reader-empty"><h2>Every request has a place to come back to.</h2><p>Choose a request to read its answer and inspect its execution.</p><a href="/gardener">Explore how Gardener works</a></div>{/if}
                 </section>
             </main>

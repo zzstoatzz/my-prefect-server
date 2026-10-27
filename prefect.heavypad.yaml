@@ -1055,7 +1055,7 @@ deployments:
       name: heavypad-gardener-pool
       job_variables:
         command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage
-          uv run --with /home/stoat/gardener-images/releases/merge-15dcb69a/mps-0.1.0-py3-none-any.whl python -I -m
+          uv run --with /home/stoat/gardener-images/releases/merge-ui-20261027/mps-0.1.0-py3-none-any.whl python -I -m
           prefect.engine
         env:
           PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443

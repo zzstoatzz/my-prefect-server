@@ -58,7 +58,8 @@ OPERATOR_DID = "did:plc:xbtmt2zjwlrfegqvch7fboei"
 PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
 KNOT = "git@tangled.org:zzstoatzz.io/{repo}"
 PUBLIC_KNOT = "https://tangled.sh/zzstoatzz.io/{repo}.git"
-UI_RUN_URL = "https://prefect-server.waow.tech/runs/flow-run/{id}"
+UI_BASE_URL = os.environ.get("PREFECT_UI_URL", "https://prefect-server.waow.tech").rstrip("/")
+UI_RUN_URL = UI_BASE_URL + "/runs/flow-run/{id}"
 PAUSE_KEY = "operator-merge-approval"
 APPROVAL_TIMEOUT_SECONDS = 86_400
 
@@ -350,7 +351,7 @@ def merge_approved(pull: str, verdict_wait_seconds: int = 1800) -> State:
                     description="Exact patch, Phi review, and test output",
                     markdown=approval_context(details, repo, pull, base, verdict, tail),
                 )
-                detail_url = f"https://prefect-server.waow.tech/artifacts/artifact/{detail_id}"
+                detail_url = f"{UI_BASE_URL}/artifacts/artifact/{detail_id}"
                 card_id = create_markdown_artifact(
                     key="merge-approval-context",
                     description=f"Approve merging {details['title']} into {repo}/main",
@@ -372,7 +373,7 @@ def merge_approved(pull: str, verdict_wait_seconds: int = 1800) -> State:
                             protected,
                             UI_RUN_URL.format(id=run_id),
                         )
-                        + f"\nreview change: https://prefect-server.waow.tech/artifacts/artifact/{card_id}",
+                        + f"\nreview change: {UI_BASE_URL}/artifacts/artifact/{card_id}",
                     },
                 )
                 suspend_flow_run(timeout=APPROVAL_TIMEOUT_SECONDS, key=pause_key)

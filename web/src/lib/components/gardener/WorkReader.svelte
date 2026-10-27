@@ -1,12 +1,12 @@
 <script lang="ts">
     import { duration, isWorking, repository, requestText, workStatus, workTitle, type Gardener, type Work, type Attempt } from '$lib/gardener';
-    let { run, result, resultError, attempt, stale, formatDate } : {
-        run: Work; result: Gardener['result']; resultError: string | null; attempt?: Attempt;
+    let { prefectUiUrl, run, result, resultError, attempt, stale, formatDate } : {
+        prefectUiUrl: string; run: Work; result: Gardener['result']; resultError: string | null; attempt?: Attempt;
         stale: boolean; formatDate: (value: string) => string;
     } = $props();
     let copied = $state(false);
     const stages = { create: 'Create machine', bootstrap: 'Prepare environment', service_start: 'Start work', artifact_delivery: 'Save diagnostics', delete: 'Remove machine' };
-    const flowUrl = (id: string) => `https://prefect-server.waow.tech/runs/flow-run/${id}`;
+    const flowUrl = (id: string) => `${prefectUiUrl}/runs/flow-run/${id}`;
     async function copyRequest() {
         try { await navigator.clipboard.writeText(requestText(run)); copied = true; }
         catch { copied = false; }

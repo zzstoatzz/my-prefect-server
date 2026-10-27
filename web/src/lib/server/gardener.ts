@@ -136,5 +136,5 @@ export async function loadGardener(api: string, auth: string, request: typeof fe
             resultError = 'The saved result could not be loaded. Try refreshing, or open this run in Prefect.';
         }
     }
-    return { pool, workers, deployments: routed, runs, workInventoryComplete, selected, result, resultError, snapshot, observationError, loadedAt: Date.now() };
+    return { prefectUiUrl: api.replace(/\/api\/?$/, ''), pool, workers, deployments: routed, runs, workInventoryComplete, selected, result, resultError, snapshot, observationError, loadedAt: Date.now() };
 }

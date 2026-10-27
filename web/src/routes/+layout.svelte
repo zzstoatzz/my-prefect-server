@@ -14,7 +14,7 @@
 			<div class="flex items-center gap-1">
                 <a href="/gardener" class="px-3 py-2 text-sm text-gray-400 hover:text-gray-200">gardener</a>
 				<a
-					href="https://prefect-server.waow.tech"
+					href="https://heavypad.tailb660b6.ts.net:10443"
 					target="_blank"
 					rel="noopener noreferrer"
 					class="p-2 text-gray-500 hover:text-gray-300 hover:bg-gray-800/60 rounded-lg transition-colors"

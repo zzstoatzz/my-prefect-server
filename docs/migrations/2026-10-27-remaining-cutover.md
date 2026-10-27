@@ -199,3 +199,27 @@ The restore checker now requires all fourteen remaining deployment IDs and the
 manual test-boundary canary in addition to the earlier migrated records. Deploy
 that checker, take a final encrypted offsite backup and restore it after the
 last publisher qualification and worker handoff.
+
+## Approval and dashboard links
+
+The frozen merge runtime and dashboard components still contained canonical
+old-server links. New run/artifact IDs would not exist there before hostname
+cutover. The flow and dashboard now derive their Prefect UI base from the selected
+backend. The frozen merge wheel is patched with
+`scripts/patch_merge_ui_wheel.py`, guarded by original SHA-256
+`15dcb69ab74c54e1dee674f0600bdc1a7211a8966cbfe7f93d2747f6492106c6`.
+Only `flows/merge_approved.py` and its wheel RECORD change; all other archive
+members are byte-identical. Output wheel SHA-256 is
+`d20c42618e0269a64db514a019e21bbf775211dd4db2aa29ed5ffec001e91a7c`.
+Approval conditions and merge behavior are untouched; the patch honors the
+existing target `PREFECT_UI_URL`. The original wheel remains available.
+Fourteen merge tests passed; frontend checks/lint passed after link changes.
+
+The first new-target CI attempt failed before executing user steps with build-agent
+connection timeout, not a deployment registration failure. Retry the current
+revision and retain an honest CI result in the completion audit.
+
+The native Typeahead release chat owns the current controller and will provide
+an explicit release-complete handoff. A terminal retry/failure alone is not a
+worker migration gate: retain its prepared candidate and allow that chat to
+finish resumable qualification. Do not start another controller concurrently.
