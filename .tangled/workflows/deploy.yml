@@ -15,10 +15,13 @@ dependencies:
   - git
 
 environment:
-  PREFECT_API_URL: "https://heavypad.tailb660b6.ts.net:10443/api"
+  PREFECT_API_URL: "http://100.96.216.23:14200/api"
   UV_PYTHON_PREFERENCE: "only-system"
 
 steps:
+  - name: verify private API path
+    command: uv run scripts/assert_heavypad_target.py
+
   - name: check
     command: |
       set -euo pipefail

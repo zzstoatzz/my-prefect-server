@@ -229,8 +229,8 @@ finish resumable qualification. Do not start another controller concurrently.
 Leaflet qualification `792691b2-7a1f-4346-8ec9-957cf7ac9e31` completed at
 04:01:54 UTC and published https://cccc98da.leaflet-search-ujy.pages.dev.
 The map and summaries are fresh (643 clusters, 253 regions). The optional facts
-step hit a read timeout and retried before publication; its final task result
-is recorded separately rather than treating the first retry as a flow failure.
+step timed out on both attempts; publication used the committed facts fallback.
+Do not treat those facts as freshly regenerated.
 The archive grew to 1,740,005,376 bytes, preserving prior history. Activate the
 original six-hour cadence on HeavyPad only; the original clock stays empty.
 
@@ -249,3 +249,60 @@ The original home worker is stopped and disabled after its cohort drained;
 only the separately owned original cloud rollout remains active. The actual
 restore checker is installed and its 46 required deployment IDs all exist among
 47 live target records.
+
+
+## Latest backup and CI network path
+
+The 04:13:54 UTC offsite restore passed using `20261027T041342Z.dump.age`
+(SHA-256 `2a19e505379b9a1713466293f5e6b869a40cd1f2a5d2dd240675c3369a6ea678`):
+47 deployments, 426 runs, 43 blocks, 23 automations and 27 tables; restore took
+three seconds. All 46 required deployment IDs were present. Repeat after the
+cloud worker handoff.
+
+CI revision a884039 passed its checks but could not resolve the private
+HeavyPad MagicDNS hostname from the spindle guest. The MPS-only CI endpoint now
+uses `http://100.96.216.23:14200/api`, the existing private Tailscale listener.
+Tailscale supplies transport encryption outside the local guest/host link;
+Basic Auth remains required. No public listener or DNS record was added. Stream
+keeps its existing HTTPS endpoint. Canonical scoped SOPS update changed only the
+MPS URL; its existing spindle row changed once and subsequent readback was current.
+The same client/pool preflight passed from the laptop. CI runs that preflight
+before the full suite; actual guest success remains to be verified.
+
+## Canonical routing readiness assessment
+
+**Not ready to switch routing or delete Hetzner.** Workflow ownership and node
+retirement are separate gates. Canonical DNS remains `prefect-server.waow.tech`
+→ `167.233.79.205` (TTL 300); this continuation changes neither it nor TLS.
+
+Before a canonical API hostname switch:
+
+- Complete the separately owned Typeahead native release, receive its explicit
+  handoff, retarget the drained cloud worker, qualify it on HeavyPad, enable the
+  new index clock and repeat the final backup/restore audit. A terminal failed
+  release run is not permission to take its worker or launch another controller.
+- Serve the canonical hostname with a valid certificate on the intended private
+  HeavyPad listener; verify from the laptop, phone, old cluster and CI guest.
+  The native HeavyPad certificate currently serves a different hostname.
+- Resolve remaining old-API consumers: the self-hosted Prefect MCP service,
+  bandwidth watchdog and its event automations, chaos timer, Phi's hosted
+  read-only clients, operator defaults and mobile API/push clients. The watchdog
+  still loads `%h/.config/prod-worker/env`; chaos loads its separate environment.
+  Audit their effective targets and preserve each service's intended behavior.
+  Do not silently retarget the chaos job along with a hostname.
+- Preserve the `/push` service on the canonical hostname: its APNS configuration,
+  source ConfigMap and persistent state still live in the original cluster.
+  Test phone push/presence and direct API access before moving that route.
+- Adjust the off-tailnet public health probes for the private endpoint and verify
+  one scheduler/execution owner, notification links and rollback with both APIs
+  reachable. Keep original credentials/data and rollback routes until accepted.
+
+Before deleting the original node, also relocate or explicitly retire services
+that are not moved by transferring Prefect deployments: the Typeahead cloud
+builder and its large volume, Hub, presence/push, public spindle and Grafana.
+HeavyPad's orchestration migration does not transfer those compute/storage
+resources. Dagster stays on HeavyPad, unchanged.
+
+The safe next routing action is a separately scoped hostname/client cutover,
+with `/push` and mobile verification included. Node deletion requires its own
+remaining-services inventory and data disposition afterward.
