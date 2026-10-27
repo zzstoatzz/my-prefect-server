@@ -471,7 +471,9 @@ Both old live schedules were explicitly cleared before HeavyPad publication
 tests. Readback found no Scheduled/Pending/Running/Cancelling old runs. The new
 schedules were activated from `617b0a4`, with one deployment slot and CANCEL_NEW.
 Automatic runs were read back with `auto_scheduled=true`: Bisk at 00:00 UTC and
-Atlas at 00:45 UTC on October 27. At activation these were queued, not completed.
+Atlas at 00:45 UTC on October 27. Bisk's first automatic run completed at
+00:00:20 UTC, starting at 00:00:12. Atlas's first automatic run remains queued;
+its manual publication is verified, but the six-hour cadence has not yet fired.
 
 The Atlas run completed at 23:49:58 UTC and published 13 servers from seven DIDs,
 11 live remotes. Public JSON readback returned 13 servers. Bisk's successful
@@ -502,6 +504,14 @@ must move with the Gardener chain.
 
 Both new deployment IDs are required by the R2 restore checker. The six prepared
 Phi schedules stay inactive and their original schedules remain unchanged.
+Encrypted backup `20261027T000008Z.dump.age` uploaded and passed the isolated R2
+restore verifier at 00:00:16 UTC: 11 deployments, 196 runs, 13 blocks, three
+automations, and the newest completed run within a minute of the dump. Its
+ciphertext SHA-256 is
+`51d360ae69372e54b517a2e471fbee9e85990d057d9ea5a560ed17b6c824199f`.
+The restore checker includes both new deployment IDs and source/deployed script
+hashes are checked during this rollout. Local validation passed 822 tests with
+seven skipped, Ruff, type checking and deployment contracts; CI runs separately.
 
 Rollback: clear the affected HeavyPad schedule, cancel its unstarted queued runs
 and wait for active publication to finish. Restore only that original schedule

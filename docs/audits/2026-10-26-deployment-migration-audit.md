@@ -1,5 +1,13 @@
 # Deployment audit before HeavyPad migration
 
+Migration update: MCP Atlas and Bisk Snapshot now have active HeavyPad schedules
+and empty original schedules. Bisk's first automatic run completed October 27 at
+00:00:20 UTC. Atlas passed real manual publication and its first automatic run
+is queued for 00:45 UTC. The detailed inventory and schedule measurements below
+describe the earlier audit snapshot; the [migration receipt](../migrations/heavypad-cloud-recovery.md#atlas-and-bisk-publication-batch)
+records the resulting ownership changes. Six Phi clock definitions are prepared
+inactive; their original schedules still own execution.
+
 Checked October 26, 2026 around 22:55 UTC. Keep the active workloads and their
 dependencies, retain the six migrated Hetzner records for history, and omit
 `pds-records`, `dep-bump`, and `pi-pr` from the migration. Nate approved skipping
