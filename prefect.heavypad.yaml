@@ -394,7 +394,7 @@ deployments:
     entrypoint: flows/strata.py:ingest_segment_collections
     schedules:
     - cron: 21 * * * *
-      active: false
+      active: true
       timezone: UTC
     concurrency_limit:
       limit: 1
@@ -423,7 +423,7 @@ deployments:
       collision_strategy: CANCEL_NEW
     schedules:
     - cron: 0 13 * * *
-      active: false
+      active: true
       timezone: UTC
     work_pool:
       name: heavypad-background-pool
@@ -473,7 +473,7 @@ deployments:
       match_related:
         prefect.resource.name: phi-atlas
         prefect.resource.role: deployment
-      enabled: false
+      enabled: true
     work_pool:
       name: heavypad-background-pool
       job_variables:
@@ -499,7 +499,7 @@ deployments:
       collision_strategy: CANCEL_NEW
     schedules:
     - cron: 0 * * * *
-      active: false
+      active: true
       timezone: UTC
     parameters:
       only_unread: true
