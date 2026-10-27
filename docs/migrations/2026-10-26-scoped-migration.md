@@ -8,9 +8,9 @@ reorganization are outside this goal. Preserve existing unrelated checkout work.
 | --- | --- | --- |
 | 1 | phi-curation, phi-likes-review, phi-editorial, phi-character-retro, phi-chicken-scout, phi-chicken-precheck | Migrated: six validation runs passed, all target schedules active, original clocks empty. |
 | 2 | watch-fastmcp, fastmcp-brief | Migrated: both real runs passed, checkpoints/history transferred, clocks and automations active. |
-| 4 | strata-hourly, phi-tag-maintenance, phi-atlas, docket | Strata and tag maintenance passed and own their clocks; Atlas publication and docket qualification remain in progress. |
+| 4 | strata-hourly, phi-tag-maintenance, phi-atlas, docket | Migrated: all four passed real execution/publication, clocks and docket completion trigger transferred. |
 | 5 | ingest, classify-emails, transform, brief, phi-memory-synthesis | Real ingestion, classification, Dagster build, briefing and memory synthesis passed on HeavyPad; clocks and completion chain transferred. |
-| 8 | email-backlog, email-triage, phone-presence, stream-admission | Email read and preparation passed; phone endpoint transferred; stream CI submitted a real HeavyPad build, still running. |
+| 8 | email-backlog, email-triage, phone-presence, stream-admission | Migrated: email read/preparation and public phone ingress passed; stream CI submitted and completed the full build gate. |
 
 ## Phi qualification
 
@@ -243,3 +243,91 @@ HeavyPad run with all 21 suites, no skips and build_image=true. That build must
 be observed terminal and its outcome/receipt checked before final qualification.
 No stream production service or routing was deployed. Preserve unrelated
 `tests/seq_reuse_repro.py` in the stream checkout.
+
+## Completion audit
+
+All 21 approved deployments passed the live ownership audit in
+[the verification snapshot](../audits/2026-10-27-scoped-migration-verification.json).
+It reads both live APIs, compares all target clocks and per-deployment concurrency
+limits/strategies with source, checks each qualification run belongs to its
+expected deployment and is Completed, asserts zero original Scheduled/Pending/
+Running/Paused/Cancelling runs across the scope, checks seven automation
+ownership transfers, notification enablement, both one-slot writer limits,
+worker readiness and the resumed presence queue. This is a bounded operational
+snapshot, not a claim that future runs cannot fail.
+
+Final source activation `797b1d7` enables the Phi atlas clock and preserves
+its daily 13:00 UTC cadence. All thirteen recurring clocks in the scope are
+active on HeavyPad; five completion-triggered and three manual deployments
+retain those execution modes. Original schedule lists are empty. The six bot
+clocks were qualified without replaying off-cadence bot passes; their next
+normal execution remains on the retained cadence. Triage's daily clock is
+active, while validation created no new pending approval.
+
+Phi Atlas publication `547d5309-3352-4648-9d61-ad2263da37d3` completed at
+02:10:08 UTC October 27. Public PDS readback returned 10,226 points, a
+9,721,044-byte blob and record CID
+`bafyreiah57upcke6em33uxekkaab453omyesmqkuennfozjfdm4cwxform`. Its
+completion automatically created docket run
+`01b1be8a-6c55-48db-a699-6d742f046231`, which completed at 02:18:52 UTC.
+Public docket CID `bafyreigczztjuxkevxhny5tolategtauncc5pjcv6z3mwfm7xryhjefyku`
+has ten candidates and references that exact Atlas CID. A read in the installed
+Dagster environment, holding the HeavyPad analytics writer lease, verified the
+matching ten-candidate DuckDB history row. The existing archive remains usable
+by the installed analytics runtime after the new writer's publication.
+
+The next natural analytics cycle created memory run
+`929f5f9e-ff1b-4fe8-b8ee-2e80908120d3` and completed successfully. Its actual
+engine environment read `/home/stoat/prefect-analytics/storage` from the
+command-prefix override, and task records showed 125 Cached summaries and two
+new completions out of 127. This verifies cache preservation through the real
+worker path rather than merely checking job metadata.
+
+The native stream run completed at 02:11:29 UTC. Its receipt at
+`/home/stoat/stream-gate/receipts/923f2ea.json` records all 21 suites pass and
+image ID `sha256:9dc641700985af7b8bb73d20977ad73bed2e77ffede89dbfeb43c069445bbd6c`.
+The image was built locally; its registry digest is null because no publish or
+stream service deployment was requested. The migration moved the gate's caller
+and execution ownership, not the stream service.
+
+The final Python suite passed 828 tests with seven skipped. Ruff, formatting,
+types and both deployment contracts passed; the Hub check/lint and eight
+presence tests passed. Notification rules and their copied Discord block were
+rechecked, as were canonical ingress, spindle and server/worker consumers.
+The Logfire disk warning, critical and missing-sample rules were active and
+evaluating without matches/errors at 02:21 UTC. No Grafana alerting was added.
+
+R2 restore `20261027T020740Z.dump.age` passed at 02:07:50 UTC with all 32
+HeavyPad deployments, 297 runs, 23 blocks and 13 automations present. Its
+ciphertext SHA-256 is
+`70aa6cb100035ade2ebdfc7d578dcdee0a6f5dcc56e6a423df9c36cdcb002529`.
+The deployed restore checker requires all 21 scoped deployment IDs as well as
+the previously migrated workload records. A final post-publication backup and
+restore check follows this audit.
+
+## Coordinated rollback
+
+Drain the selected HeavyPad cohort and fence its schedules, callers and event
+automations before restoring the old owner. Keep the current data, external
+publications, checkpoints and shared caches: restoring a pre-migration DuckDB
+copy would discard later production writes. Transfer current FastMCP Variables
+and its trailing event window back without replay before restoring its clocks.
+For analytics, stop/drain both orchestrators' writers and Dagster runs first;
+remove the two Dagster Prefect environment drop-ins, restart the idle services
+on the old API and only then restore the original clocks/completion triggers.
+The one writer lease must live on one server for all active writers.
+
+For phone rollback, pause the HeavyPad presence queue, remove only the three
+scoped PRESENCE_PREFECT_* environment entries from Hub and wait for rollout;
+its preserved original ingress configuration becomes active. Drain any queued
+new observations before allowing old/new processing; keep observed timestamps
+and the existing lighting marker. For stream rollback, fence the new gate,
+restore only stream's canonical spindle routing to the old API and sync those
+two consumers, then verify name resolution and one gate owner. Never bypass
+the gate or publish an unqualified image. No old history or credentials were
+deleted.
+
+Canonical routing, retiring Hetzner, the long publishers, Gardener/coding and
+Typeahead remain outside the completed goal. The public phone ingress and
+Gardener dashboard still run on Hetzner; only the phone's Prefect backend moved.
+The node remains required until those separate retirement gates are resolved.

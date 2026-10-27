@@ -18,11 +18,13 @@ never commit rendered credentials or dump Kubernetes Secret objects. Persistent
 volumes are under `~/.local/share/prefect-home/storage`. Do not delete the cluster
 or its storage as an ordinary rollout operation.
 
-Only low-risk flows qualify at this stage of migration. Verify a real manual run, persistent
-state, backup/restore and authenticated remote access before transferring schedule
-ownership. Pause the old schedule and cancel its queued scheduled runs before
+The initial pilot has expanded through the approved 21-deployment scoped migration
+in batches 1, 2, 4, 5 and 8; see the [completion and rollback receipt](../../docs/migrations/2026-10-26-scoped-migration.md).
+Verify real execution, persistent state, backup/restore and authenticated remote
+access before transferring additional ownership. Pause the old schedule and cancel its queued scheduled runs before
 activating the new one. Only individually qualified notification rules and
-publication flows may move. Gardener, email and Typeahead remain deferred.
+publication flows may move. Gardener, Typeahead and the long publishers remain deferred; email is included
+in the completed scoped migration.
 Migration records must identify the
 old/new deployment IDs, source pin, schedule and rollback.
 
@@ -287,3 +289,27 @@ The current Hetzner node remains required and billed until that work is complete
 
 Execution receipts are linked from
 [the setup audit](../../docs/audits/2026-10-25-heavypad-prefect-pilot.md).
+
+## Scoped worker capacity
+
+The enabled `prefect-heavypad-worker@background`, `@interactive` and `@build`
+instances use `worker@.service` plus the checked-in instance overrides.
+Their pools are `heavypad-background-pool` (one slot/8 GiB),
+`heavypad-interactive-pool` (two slots/2 GiB), and
+`heavypad-build-pool` (one slot/32 GiB). Monitoring remains on its original
+one-slot/2 GiB HeavyPad worker. The `presence` queue there has one slot and
+can be paused independently for ingress cutover. Pools and worker limits must
+match; a queue alone does not add capacity.
+
+Dagster's two user services have `dagster-prefect.conf` drop-ins pointing at
+the HeavyPad worker environment for the shared analytics writer lease. Change
+that client only while both cohorts and Dagster are drained. Explicit command
+Prefix `PREFECT_LOCAL_STORAGE_PATH` preserves the declared shared cache after
+the Prefect worker settings merge; do not remove it as redundant job env.
+
+Phone ingress uses the scoped backend rendered by
+`just heavypad-presence-ingress --apply` and the Hub's private hostname alias.
+Its public credential/URL and Gardener's old backend are preserved. The normal
+`just presence-deploy` registers the active HeavyPad definition. Stream's
+spindle routing is checked/repaired by `scripts/stream_spindle_prefect.py`;
+its canonical references are in the existing secret store.

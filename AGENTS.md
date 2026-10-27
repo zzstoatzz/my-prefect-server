@@ -100,8 +100,12 @@ Cloud recovery deployments are manual-only and must not imply home-host monitori
 Bufo traffic and cost publication are qualified on HeavyPad and manual-only Cloud recovery;
 Cloud defaults to dry-run. The Atlas crawl is centralized at
 `flows/mcp_atlas/crawl.py`; its product library stays pinned to the Atlas repo.
-The six Phi clock schedules are active on HeavyPad; their original schedules
-are empty. Current authorized scope is in
-`docs/migrations/2026-10-26-scoped-migration.md`: batches 1, 2, 4, 5 and 8.
+The 21-deployment scoped migration (batches 1, 2, 4, 5 and 8) is complete;
+see `docs/migrations/2026-10-26-scoped-migration.md` for the exact inventory,
+verification and rollback. Keep their original clocks empty and completion
+triggers disabled. Dedicated background, interactive and build workers use
+the HeavyPad API; Dagster uses its writer lease too. `just triage-reply` and
+`just presence-deploy` now target HeavyPad. Preserve command-prefix Prefect
+settings: the worker can override deployment env values before launch.
 Gardener, Typeahead and long publishers remain outside that goal. Canonical
 hostname cutover and node deletion require a later operator decision.

@@ -1,5 +1,10 @@
 # Deployment audit before HeavyPad migration
 
+The approved 21-deployment scope has since completed. See the
+[completion receipt](../migrations/2026-10-26-scoped-migration.md) and
+[live verification](2026-10-27-scoped-migration-verification.json). The inventory
+and runtime measurements below remain the original audit snapshot.
+
 Migration update: MCP Atlas and Bisk Snapshot now have active HeavyPad schedules
 and empty original schedules. Bisk's first automatic run completed October 27 at
 00:00:20 UTC. Atlas passed real manual publication and its first automatic run
