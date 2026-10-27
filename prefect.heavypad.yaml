@@ -24,10 +24,13 @@ deployments:
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
     parameters:
       slot: curation
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
     schedules:
       - cron: "0 3 * * 1"
         timezone: UTC
-        active: false
+        active: true
 
   - name: phi-likes-review
     entrypoint: flows/phi_trigger.py:phi_trigger
@@ -35,10 +38,13 @@ deployments:
     work_pool: *heavypad_phi
     parameters:
       slot: likes-review
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
     schedules:
       - cron: "0 20 * * 0"
         timezone: UTC
-        active: false
+        active: true
 
   - name: phi-editorial
     entrypoint: flows/phi_trigger.py:phi_trigger
@@ -46,10 +52,13 @@ deployments:
     work_pool: *heavypad_phi
     parameters:
       slot: editorial
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
     schedules:
       - cron: "0 15 * * *"
         timezone: UTC
-        active: false
+        active: true
 
   - name: phi-character-retro
     entrypoint: flows/phi_trigger.py:phi_trigger
@@ -57,10 +66,13 @@ deployments:
     work_pool: *heavypad_phi
     parameters:
       slot: character-retro
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
     schedules:
       - cron: "0 17 1 * *"
         timezone: UTC
-        active: false
+        active: true
 
   - name: phi-chicken-scout
     entrypoint: flows/phi_trigger.py:phi_trigger
@@ -68,10 +80,13 @@ deployments:
     work_pool: *heavypad_phi
     parameters:
       slot: chicken-scout
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
     schedules:
       - cron: "0 18 * * *"
         timezone: UTC
-        active: false
+        active: true
 
   - name: phi-chicken-precheck
     entrypoint: flows/phi_trigger.py:phi_trigger
@@ -79,10 +94,13 @@ deployments:
     work_pool: *heavypad_phi
     parameters:
       slot: chicken-precheck
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
     schedules:
       - cron: "0 4 * * *"
         timezone: UTC
-        active: false
+        active: true
 
   - name: mcp-atlas
     entrypoint: flows/mcp_atlas/crawl.py:mcp_atlas
