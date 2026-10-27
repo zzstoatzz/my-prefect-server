@@ -28,7 +28,7 @@ can do before hand-rolling `curl`, and before claiming something isn't possible.
     Claude plugin or repository-level MCP configuration.
   - the Prefect MCP uses `DOMAIN` and `AUTH_STRING` from the operator environment.
     Confirm its endpoint with `get_identity`; the hosted Prefect Cloud MCP is
-    a different service. Use `just heavypad-prefect` for home-server operations.
+    a different service. Use `just prefect` for home-server operations.
   - it makes a decent API fuzzer: it sends filter shapes the UI never does.
     every gap fixed in prefect-server v0.0.19–v0.0.21 (flow-run time filters,
     `GET /api/version`, tags/labels/parameters persistence, a real PATCH, the

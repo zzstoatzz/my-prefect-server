@@ -6,10 +6,11 @@
   Do not infer missing access from an empty shell environment. Runtime flow
   credentials are Prefect Secret blocks, resolved by `mps.secrets_plugin` or
   loaded through `mps.blocks`. Never commit or print credential values.
-- `just heavypad-prefect` and `just heavypad-kubectl` target the home control
-  plane. `just prefect` and root `kubeconfig.yaml` still target the original
-  Hetzner server during migration. Never silently change the default Prefect
-  profile or Kubernetes context. Ambient OrbStack Kubernetes is not production.
+- `just prefect` and `just kubectl` target production through `deploy/targets.toml`.
+  `just prefect-legacy` explicitly targets the retiring server. Root
+  `kubeconfig.yaml` still belongs to that legacy cluster; ambient OrbStack
+  Kubernetes is not production. Never silently change global client profiles
+  or Kubernetes context. `PREFECT_TARGET` selects a configured CLI target.
 - Read `deploy/heavypad-prefect/README.md` before operating the home stack.
   Confirm current runtime and deployment ownership from live state; dated
   migration records in `docs/migrations/` are evidence, not standing policy.

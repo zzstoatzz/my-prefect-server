@@ -1,8 +1,12 @@
-"""Forward arguments unchanged to the isolated HeavyPad server's embedded kubectl."""
+"""Forward arguments unchanged to the configured production cluster."""
 
 import shlex
 import subprocess
 import sys
+
+from prefect_target import target_config
+
+target = target_config()
 
 command = [
     "env",
@@ -10,13 +14,13 @@ command = [
     "docker",
     "exec",
     "-i",
-    "k3d-prefect-home-server-0",
+    target["kubectl_container"],
     "kubectl",
     *sys.argv[1:],
 ]
 raise SystemExit(
     subprocess.run(
-        ["ssh", "-o", "BatchMode=yes", "stoat@heavypad", shlex.join(command)],
+        ["ssh", "-o", "BatchMode=yes", target["ssh_host"], shlex.join(command)],
         check=False,
     ).returncode
 )

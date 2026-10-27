@@ -20,11 +20,15 @@ guard optimize="ReleaseSafe":
 guard-linux optimize="ReleaseSafe":
     zig build --build-file tools/prefect-worker-guard/build.zig -Dtarget=x86_64-linux-gnu -Doptimize={{ optimize }}
 
-# run a prefect CLI command against the remote server
+# Run the CLI against the configured production server.
 [positional-arguments]
 prefect *args:
-    PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
-        uv run --with prefect prefect "$@"
+    uv run scripts/prefect_cli.py "$@"
+
+# Explicit access to the original server during retirement.
+[positional-arguments]
+prefect-legacy *args:
+    PREFECT_TARGET=legacy uv run scripts/prefect_cli.py "$@"
 
 # push main to both remotes; github first, since the tangled push triggers
 # CI that installs the package from the github mirror
@@ -574,7 +578,7 @@ heavypad-status:
 
 # Register the preserved presence revision on its active HeavyPad owner.
 presence-deploy:
-    uv run scripts/heavypad_prefect_cli.py --no-prompt deploy --prefect-file prefect.heavypad.yaml --name phone-presence
+    uv run scripts/prefect_cli.py --no-prompt deploy --prefect-file prefect.heavypad.yaml --name phone-presence
 
 # Fast, read-only deployment contracts (also enforced in CI).
 validate-deployments *args:
@@ -592,7 +596,7 @@ coding-jobs output=(env_var('HOME') / '.local/state/mps/coding-jobs') *args:
 # answer the paused email-triage run in your own words (resumes it with the text)
 [positional-arguments]
 triage-reply *text:
-    uv run scripts/heavypad_prefect_cli.py --script scripts/triage_reply.py "$@"
+    uv run scripts/prefect_cli.py --script scripts/triage_reply.py "$@"
 
 # Install the immutable stdlib-only source helper for legacy pinned deployments.
 install-source-cache:
@@ -636,39 +640,34 @@ deploy-bandwidth-watchdog:
 agentic-fastmcp *args:
     bash scripts/agentic_fastmcp.sh "$@"
 
-# Isolated HeavyPad server; never changes the original production profile.
-[positional-arguments]
-heavypad-prefect *args:
-    uv run scripts/heavypad_prefect_cli.py "$@"
-
 # Explicit cluster target; never uses the laptop's current kubectl context.
 [positional-arguments]
-heavypad-kubectl *args:
-    uv run scripts/heavypad_kubectl.py "$@"
+kubectl *args:
+    uv run scripts/prefect_kubectl.py "$@"
 
-# Create an encrypted HeavyPad server backup; the original server is never targeted.
-heavypad-prefect-backup:
-    ssh -o BatchMode=yes stoat@heavypad '~/.local/share/prefect-home/backup.sh'
+# Create an encrypted production server backup.
+prefect-backup:
+    uv run scripts/prefect_remote.py backup
 
-# Copy HeavyPad's encrypted backups to R2; never deletes or overwrites.
-heavypad-prefect-offsite:
-    ssh -o BatchMode=yes stoat@heavypad 'systemctl --user start --wait prefect-home-offsite.service'
+# Copy encrypted backups to R2; never deletes or overwrites.
+prefect-offsite:
+    uv run scripts/prefect_remote.py offsite
 
-# Restore the newest R2 copy into a throwaway network-less PostgreSQL on HeavyPad.
-heavypad-prefect-offsite-verify:
-    ssh -o BatchMode=yes stoat@heavypad 'systemctl --user start --wait prefect-home-offsite-verify.service && tail -n 1 ~/.local/state/prefect-home/restore-verifications.log'
+# Verify an offsite backup in an isolated PostgreSQL.
+prefect-offsite-verify:
+    uv run scripts/prefect_remote.py offsite-verify
 
-# Default verifies hashes only; --apply renders the HeavyPad server's secret consumers.
+# Verify secret consumers; --apply renders changes.
 [positional-arguments]
-heavypad-prefect-secrets *args:
+prefect-secrets *args:
     uv run scripts/heavypad_prefect_secrets.py "$@"
 
 [positional-arguments]
-heavypad-prefect-monitoring *args:
+prefect-monitoring *args:
     uv run --with prefect==3.8.2 --with python-dotenv python scripts/heavypad_prefect_monitoring.py "$@"
 
 [positional-arguments]
-heavypad-presence-ingress *args:
+presence-ingress *args:
     uv run scripts/heavypad_presence_ingress.py "$@"
 
 # Explicit Cloud workspace; never changes the active profile or home schedules.

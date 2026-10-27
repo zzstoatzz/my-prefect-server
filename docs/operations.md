@@ -1,3 +1,6 @@
+> Legacy Hetzner infrastructure runbook. CLI examples below explicitly target
+> the retiring server; current production targets are in `deploy/targets.toml`.
+
 # operations
 
 standing the system up, and the recipes that run it day to day. every command
@@ -10,7 +13,7 @@ copy `.env.example` to `.env` and fill in `HCLOUD_TOKEN`, `POSTGRES_PASSWORD`,
 `AUTH_STRING`, `DOMAIN`, `LETSENCRYPT_EMAIL`, and optionally `GRAFANA_DOMAIN`.
 
 - `AUTH_STRING` (`user:pass`) is the Prefect API admin credential. the server
-  enforces basic auth on `/api/*`; `just prefect <args>` injects it for the CLI.
+  enforces basic auth on `/api/*`; `just prefect-legacy <args>` injects it for the CLI.
 - flow runtime secrets (`ANTHROPIC_API_KEY`, `TURBOPUFFER_API_KEY`,
   `CLOUDFLARE_API_TOKEN`, `TURSO_*`) are Prefect Secret blocks, not `.env`.
   `prefect.yaml` references them as `prefect-block://` values in
@@ -101,8 +104,8 @@ The static [validator](deployments-validation.md) runs before registration.
 ```sh
 just check                                       # what CI runs before it deploys
 MPS_PIN="@$(git rev-parse HEAD)" just validate-deployments --release # check the intended pin
-# Use the same MPS_PIN with just prefect deploy for manual registration.
-just prefect deployment run 'diagnostics/diagnostics' --watch   # exercise the real worker
+# Use the same MPS_PIN with just prefect-legacy deploy for manual registration.
+just prefect-legacy deployment run 'diagnostics/diagnostics' --watch   # exercise the real worker
 just automations                                 # apply deploy/automations.yaml (idempotent)
 just work-pool                                   # apply deploy/work-pools templates
 ```
@@ -117,7 +120,7 @@ run-deployment triggers bound to a deployment.
 just health            # /api/health
 just status            # node + pod resource usage
 just logs              # tail prefect-server; `just logs <component>` for others
-just prefect flow-run ls
+just prefect-legacy flow-run ls
 just ssh               # the VM
 just dashboards        # reload grafana from deploy/dashboards/
 ```

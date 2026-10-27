@@ -86,24 +86,24 @@ just prefect --no-prompt deployment schedule clear diagnostics/diagnostics --acc
 Use the separate operations targets:
 
 ```sh
-just heavypad-prefect version
-just heavypad-prefect config view
-just heavypad-prefect deployment inspect fastmcp-backlog/fastmcp-backlog -o json
-just heavypad-kubectl -n prefect-home get pods
-just heavypad-prefect-secrets
-just heavypad-prefect-backup
+just prefect version
+just prefect config view
+just prefect deployment inspect fastmcp-backlog/fastmcp-backlog -o json
+just kubectl -n prefect-home get pods
+just prefect-secrets
+just prefect-backup
 ```
 
 Register only the HeavyPad server file with an actual committed source pin:
 
 ```sh
-MPS_PIN="@$(git rev-parse HEAD)" just heavypad-prefect --no-prompt deploy --prefect-file prefect.heavypad.yaml --all
+MPS_PIN="@$(git rev-parse HEAD)" just prefect --no-prompt deploy --prefect-file prefect.heavypad.yaml --all
 ```
 
-The HeavyPad server intentionally has a separate registration path; existing CI registers
-only the original file. HeavyPad updates require the explicit command above. CLI
-wrappers preserve argument boundaries and override endpoint/auth in the child
-process without editing the default Prefect profile.
+Operator commands select their endpoint from `deploy/targets.toml`.
+`just prefect` targets production; `just prefect-legacy` targets the retiring
+server. `PREFECT_TARGET` selects another configured target. Credentials stay
+in their existing secret stores; wrappers never alter the global profile.
 
 ## Persistence and recovery
 
@@ -153,7 +153,7 @@ protected against a stolen upload token; older copies are not. The token is scop
 to Object Read & Write on this one bucket. Its S3 credentials, endpoint and bucket name
 live in the canonical store as `heavypad_prefect.r2_backup_access_key_id`,
 `r2_backup_secret_access_key`, `r2_backup_endpoint` and `r2_backup_bucket`;
-`just heavypad-prefect-secrets` renders `~/.config/prefect-home/r2.env` (mode 600) and
+`just prefect-secrets` renders `~/.config/prefect-home/r2.env` (mode 600) and
 checks it by hash.
 
 All three timers use `FixedRandomDelay=true`. Without it, a user-manager daemon-reload
@@ -190,7 +190,7 @@ Run in order from a clean main checkout; stop at the first failed check. Each st
 its rollback. Prerequisite: the `heavypad_prefect.r2_backup_*` keys exist in the store.
 
 1. Land source. Merge this work to main and `just push`. Rollback: revert the commits.
-2. Render the R2 credential. `just heavypad-prefect-secrets --apply`, then the plain check
+2. Render the R2 credential. `just prefect-secrets --apply`, then the plain check
    must print "already current"; other consumers re-render byte-identically. Rollback:
    `ssh stoat@heavypad 'rm ~/.config/prefect-home/r2.env'`.
 3. Fix the backup timer delay. Compare first, then install and reload:
@@ -214,10 +214,10 @@ its rollback. Prerequisite: the `heavypad_prefect.r2_backup_*` keys exist in the
    ```
 
    Rollback: remove those four unit files and two scripts, then reload.
-5. First upload: `just heavypad-prefect-offsite`. Uploaded objects stay locked for seven days.
+5. First upload: `just prefect-offsite`. Uploaded objects stay locked for seven days.
    Readback: `offsite.json` names the newest local dump. Rollback: none needed;
    objects expire through the lifecycle rule.
-6. First restore check: `just heavypad-prefect-offsite-verify` prints an `ok` line. Rollback:
+6. First restore check: `just prefect-offsite-verify` prints an `ok` line. Rollback:
    none; it only reads R2 and removes its own container and files.
 7. Chain uploads to backups and start the timers:
 
@@ -231,13 +231,13 @@ its rollback. Prerequisite: the `heavypad_prefect.r2_backup_*` keys exist in the
 8. Register freshness inactive, then prove it:
 
    ```sh
-   MPS_PIN="@$(git rev-parse HEAD)" just heavypad-prefect --no-prompt deploy --prefect-file prefect.heavypad.yaml --name backup-freshness
-   just heavypad-prefect deployment run backup-freshness/backup-freshness --watch
+   MPS_PIN="@$(git rev-parse HEAD)" just prefect --no-prompt deploy --prefect-file prefect.heavypad.yaml --name backup-freshness
+   just prefect deployment run backup-freshness/backup-freshness --watch
    ```
 
    It must complete. Then set its schedule `active: true`, land that on main, and register
    it again with the new pin. Rollback: set `active: false` and register again, or
-   `just heavypad-prefect deployment delete backup-freshness/backup-freshness`.
+   `just prefect deployment delete backup-freshness/backup-freshness`.
 
 Locked objects remain until their lock expires; change the lock rule only by explicit decision.
 
@@ -308,7 +308,7 @@ Prefix `PREFECT_LOCAL_STORAGE_PATH` preserves the declared shared cache after
 the Prefect worker settings merge; do not remove it as redundant job env.
 
 Phone ingress uses the scoped backend rendered by
-`just heavypad-presence-ingress --apply` and the Hub's private hostname alias.
+`just presence-ingress --apply` and the Hub's private hostname alias.
 Its public credential/URL are preserved. Gardener now uses the scoped HeavyPad
 client environment and per-run tailnet transport described in the remaining
 migration receipt. The normal

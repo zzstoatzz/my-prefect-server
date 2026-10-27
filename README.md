@@ -20,8 +20,8 @@ just hooks
 ## use
 
 ```sh
-just heavypad-prefect flow-run ls
-just heavypad-prefect deployment run 'diagnostics/diagnostics' --watch
+just prefect flow-run ls
+just prefect deployment run 'diagnostics/diagnostics' --watch
 ```
 
 ## design
