@@ -37,6 +37,7 @@ deployments:
         env:
           PRESENCE_SOURCE_URL: https://github.com/zzstoatzz/my-prefect-server.git
           PRESENCE_SOURCE_REVISION: 0706dd46d91c90e50b111cf5ac432a61395b8774
+          MPS_PIN: '@0706dd46d91c90e50b111cf5ac432a61395b8774'
           PRESENCE_CREDENTIAL_FILE: /home/stoat/.config/presence/pds-password
           PRESENCE_HUE_ENV_FILE: /home/stoat/.config/presence/hue-env.json
           PRESENCE_LIGHTING_STATE_FILE: /home/stoat/.config/presence/lighting-state
