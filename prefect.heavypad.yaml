@@ -447,7 +447,7 @@ deployments:
       collision_strategy: CANCEL_NEW
     schedules:
     - cron: 0 13 * * *
-      active: false
+      active: true
       timezone: UTC
     work_pool:
       name: heavypad-background-pool
