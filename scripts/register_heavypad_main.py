@@ -37,7 +37,10 @@ def main():
         query = urllib.parse.urlencode(
             {"repo": REPO_DID, "commits": sha, "kinds": "push", "limit": 1}
         )
-        with urllib.request.urlopen(CI + "?" + query, timeout=30) as response:
+        request = urllib.request.Request(
+            CI + "?" + query, headers={"User-Agent": "mps-registration/1"}
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
             pipelines = json.load(response)["pipelines"]
         if not pipelines:
             print("Waiting for main CI:", sha)
