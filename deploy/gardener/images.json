@@ -137,13 +137,13 @@
     "test-pull-patch": {
       "id": "6f98ab00-3c0a-44ef-b35a-bda13bfb67e2",
       "wheel_sha256": "b85808604cf5894b75e23592a236c73cb52090f18461955d76d1feca6eb863fd",
-      "image": "gardener-registry.exe.xyz/gardener@sha256:9b1bd743def23e7199f2f218c99cf0918a1f3b6086a16644295071371c13176f",
+      "image": "gardener-registry.exe.xyz/gardener@sha256:8dec8e5c0b9ec17179ce059b4d193fb2af23aab28d7aaa793580ecd6478f83e1",
       "inference_backend": "exe",
       "flow_override": {
-        "source_revision": "6181d6d1a4ba04494820f97c80c1e575b7a1f8a8",
+        "source_revision": "07e732c6e826cff2be836604b4c530d8ff4e6449",
         "path": "flows/test_pull_patch.py",
-        "sha256": "b775bf5cfd2a3c468136d8e1f67aa5e7af0a0286395b0d457c63a2c4904479d7",
-        "previous_image": "gardener-registry.exe.xyz/gardener@sha256:33ae7e6afc6b4433492ee0ee272955e97c27d5844f3d525b93e96854eaa2188f"
+        "sha256": "ad2e585c1a0cf6352e9d1f2a39ae5c6c9c6f4afe251869272287f0fe6decb474",
+        "previous_image": "gardener-registry.exe.xyz/gardener@sha256:9b1bd743def23e7199f2f218c99cf0918a1f3b6086a16644295071371c13176f"
       },
       "skills_mcp": {
         "change_revision": "1eea775177acc157e426d8433753f11c2077dfa9",
@@ -175,9 +175,9 @@
       },
       "module_overrides": [
         {
-          "source_revision": "6181d6d1a4ba04494820f97c80c1e575b7a1f8a8",
+          "source_revision": "07e732c6e826cff2be836604b4c530d8ff4e6449",
           "path": "packages/mps/src/mps/pi_sandbox.py",
-          "sha256": "e4010f5f33787bc9eebab5f2461ce57ca1edbf91eb71d74f9b3fc3a403c5d75d"
+          "sha256": "fc69bfc1cd1679884f9ce82cf8c5b875bc1c3d69f4bee3481d2b0aca7da45219"
         }
       ]
     },
