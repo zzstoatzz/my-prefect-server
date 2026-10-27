@@ -498,7 +498,7 @@ deployments:
       match_related:
         prefect.resource.name: ingest
         prefect.resource.role: deployment
-      enabled: false
+      enabled: true
     work_pool:
       name: heavypad-background-pool
       job_variables:
@@ -527,7 +527,7 @@ deployments:
       match_related:
         prefect.resource.name: classify-emails
         prefect.resource.role: deployment
-      enabled: false
+      enabled: true
     pull: []
     work_pool:
       name: heavypad-background-pool
@@ -551,7 +551,7 @@ deployments:
       match_related:
         prefect.resource.name: transform
         prefect.resource.role: deployment
-      enabled: false
+      enabled: true
     work_pool:
       name: heavypad-background-pool
       job_variables:
@@ -579,7 +579,7 @@ deployments:
       match_related:
         prefect.resource.name: transform
         prefect.resource.role: deployment
-      enabled: false
+      enabled: true
     work_pool:
       name: heavypad-background-pool
       job_variables:
