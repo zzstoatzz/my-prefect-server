@@ -1,4 +1,9 @@
-# Isolated HeavyPad Prefect
+# Home Prefect operations
+
+> Current state (October 27): the original Hetzner node and its volume/IPs are
+> deleted. Production is `https://prefect-server.waow.tech`, routed to this home
+> stack. Use `just prefect` and `just kubectl`; the pilot chronology below is
+> historical. See the [retirement receipt](../../docs/audits/2026-10-27-prefect-retirement.md).
 
 The HeavyPad server is a separate k3s cluster inside Docker (k3d), with its own PostgreSQL,
 durable Redis, credentials, worker and deployment file. It uses the same immutable

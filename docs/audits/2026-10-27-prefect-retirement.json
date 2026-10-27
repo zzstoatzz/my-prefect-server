@@ -1,0 +1,73 @@
+{
+  "verified_at": "2026-10-27T15:43:10.476240+00:00",
+  "deleted": [
+    {
+      "kind": "servers",
+      "id": 142141293
+    },
+    {
+      "kind": "volumes",
+      "id": 107263158
+    },
+    {
+      "kind": "primary_ips",
+      "id": 136160585
+    },
+    {
+      "kind": "primary_ips",
+      "id": 136160586
+    }
+  ],
+  "absence_verified": true,
+  "home_backup": {
+    "object": "20261027T153744Z.dump.age",
+    "sha256": "ca6e4e7d5fa8543b1f1d2183278aeebc2f1df1a2f1c60394167f2250fb7d7b51",
+    "offsite_restore_verified_at": "2026-10-27T15:38:17Z",
+    "deployments": 48,
+    "flow_runs": 880,
+    "blocks": 44,
+    "automations": 26
+  },
+  "retained_dataset_archive": {
+    "object_key": "retirement/typeahead/20261027T144342Z-typeahead-retained.tar.zst.age",
+    "encrypted_bytes": 4211559447,
+    "sha256": "ded854e76ff4b4aba2c1cea7a50b24d84dc5f6048660622341cf6b2df0758224",
+    "offsite_hash_verified": true
+  },
+  "monitoring_archive": {
+    "object_key": "retirement/monitoring/20261027T151418Z-monitoring.tar.zst.age",
+    "encrypted_bytes": 460770050,
+    "sha256": "48d79bde5e4f974f82cef3f27cf40a98df8d4f7bfb32eef912e2bac7f923c626",
+    "offsite_hash_verified": true
+  },
+  "post_deletion_canary": {
+    "id": "339046e8-c4fa-4b4c-9a55-c7efddc3e9f4",
+    "state": "Completed",
+    "end_time": "2026-10-27T15:43:48.091374Z"
+  },
+  "typeahead_ephemeral_run": {
+    "id": "9770e846-b789-4d8c-9cd2-53069daa84d2",
+    "state": "Failed",
+    "build_published": "b1793109259-2b36-px05",
+    "failure": "Candidate latency exceeds transport budget",
+    "cleanup_verified": true,
+    "serving_guard_preserved": true
+  },
+  "cost_audit": {
+    "run_id": "06a78f19-fb6b-45b7-ba64-68bad1fdf3e0",
+    "state_name": "Incomplete",
+    "generated_at": "2026-10-27T15:43:38.130766Z",
+    "snapshot_total_cents": 49394,
+    "currency": "USD",
+    "retired_resource_lines_present": false,
+    "missing": [
+      "deleted ephemeral builder usage history",
+      "15 stopped Fly machine rootfs costs",
+      "Coral API usage window under 60 minutes"
+    ],
+    "unattributed_services": [
+      "strata-archive:r2",
+      "strata-archive-private:r2"
+    ]
+  }
+}

@@ -16,5 +16,16 @@
     "postgres.dump": 484094951
   },
   "offsite_hash_verified": true,
-  "full_restore_verified": false
+  "full_restore_verified": false,
+  "postgres_restore": {
+    "verified_at": "2026-10-27T13:44:44Z",
+    "deployments": 46,
+    "flow_runs": 14949,
+    "blocks": 47,
+    "automations": 28,
+    "isolated_network": true
+  },
+  "push_sqlite_integrity_verified": true,
+  "results_extraction_verified": true,
+  "redis_restore_verified": false
 }
