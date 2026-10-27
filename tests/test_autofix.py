@@ -13,6 +13,17 @@ from prefect.testing.utilities import prefect_test_harness
 from flows import autofix
 
 
+def test_ui_links_ignore_internal_api_address(monkeypatch):
+    monkeypatch.setenv("PREFECT_API_URL", "http://127.0.0.1:14200/api")
+    monkeypatch.delenv("PREFECT_UI_URL", raising=False)
+    run_id = uuid4()
+    assert autofix.ui_url("flow-runs", run_id) == (
+        f"https://prefect-server.waow.tech/runs/flow-run/{run_id}"
+    )
+    monkeypatch.setenv("PREFECT_UI_URL", "https://prefect.example/")
+    assert autofix.ui_url("flow-runs", run_id) == f"https://prefect.example/runs/flow-run/{run_id}"
+
+
 class FakeState:
     def __init__(self, name, message):
         self.name, self.message = name, message

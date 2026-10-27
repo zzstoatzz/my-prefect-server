@@ -5,10 +5,10 @@ import tomllib
 from pathlib import Path
 
 
-def target_config():
+def target_config(name=None):
     path = Path(__file__).resolve().parent.parent / "deploy/targets.toml"
     config = tomllib.loads(path.read_text())
-    name = os.environ.get("PREFECT_TARGET", config["default_target"])
+    name = name or os.environ.get("PREFECT_TARGET", config["default_target"])
     if name not in config["targets"]:
         raise ValueError("Unknown Prefect target: " + name)
     return config["targets"][name]

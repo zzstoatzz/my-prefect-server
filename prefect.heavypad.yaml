@@ -256,7 +256,7 @@ deployments:
         command: uv run --no-project --with prefect==3.8.2 prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
     concurrency_limit:
       limit: 1
@@ -280,7 +280,7 @@ deployments:
           prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
     concurrency_limit:
       limit: 1
@@ -412,7 +412,7 @@ deployments:
           STRATA_STATE_PATH: /home/stoat/prefect-analytics/strata/checkpoint.sqlite
           STRATA_INGEST_TOKEN: prefect-block://strata-ingest-token
           STREAM_ARCHIVE_KEY: prefect-block://stream-archive-key-strata
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
   - name: phi-tag-maintenance
     tags:
     - phi
@@ -436,7 +436,7 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
   - name: phi-atlas
     tags:
     - phi
@@ -460,7 +460,7 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
   - name: docket
     tags:
     - phi
@@ -485,7 +485,7 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
     concurrency_limit:
       limit: 1
       collision_strategy: CANCEL_NEW
@@ -514,7 +514,7 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
   - name: classify-emails
     tags:
     - pipeline
@@ -543,7 +543,7 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
   - name: transform
     tags:
     - pipeline
@@ -573,7 +573,7 @@ deployments:
           DAGSTER_HOME: /home/stoat/.local/share/dagster-hub
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
   - name: brief
     tags:
     - pipeline
@@ -598,7 +598,7 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
     concurrency_limit:
       limit: 1
       collision_strategy: CANCEL_NEW
@@ -626,7 +626,7 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
     concurrency_limit:
       limit: 1
       collision_strategy: CANCEL_NEW
@@ -649,7 +649,7 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
   - name: email-triage
     tags:
     - pipeline
@@ -673,7 +673,7 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
   - name: stream-admission
     tags:
     - gardener
@@ -697,7 +697,7 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
 
   # Prepared long-publisher batch. Keep clocks inactive until explicit ownership transfer.
   - name: leaflet-atlas
@@ -730,7 +730,7 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
     concurrency_limit: &id001
       limit: 1
       collision_strategy: CANCEL_NEW
@@ -763,7 +763,7 @@ deployments:
           BUILDER_ALLOW_PROD: '1'
           RCLONE_BWLIMIT: 10M
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
     concurrency_limit: *id001
     schedules:
     - cron: 40 */2 * * *
@@ -795,7 +795,7 @@ deployments:
           PREFECT_PLUGINS_ALLOW: mps-secrets
           TURSO_URL: prefect-block://typeahead-turso-url
           TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
   - name: typeahead-enrich-backfill
     tags:
     - publish
@@ -820,7 +820,7 @@ deployments:
           PREFECT_PLUGINS_ALLOW: mps-secrets
           TURSO_URL: prefect-block://typeahead-turso-url
           TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
   - name: typeahead-index
     pull:
     - mps.deployment_steps.cached_checkout:
@@ -872,7 +872,7 @@ deployments:
           INDEXER_VERSION: hetzner-cloud
           RCLONE_BWLIMIT: 80M
           RCLONE_S3_NO_HEAD: 'true'
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
     concurrency_limit:
       limit: 1
       collision_strategy: CANCEL_NEW
@@ -899,7 +899,7 @@ deployments:
           TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
           PLC_BUNDLE_DIR: /home/stoat/typeahead-plc
           PLC_APPLY: '1'
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
     concurrency_limit:
       limit: 1
       collision_strategy: CANCEL_NEW
@@ -920,7 +920,7 @@ deployments:
           $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
     parameters:
       slot: pull-review
     schedules: []
@@ -959,7 +959,7 @@ deployments:
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
           ANTHROPIC_API_KEY: prefect-block://anthropic-api-key
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
     schedules: []
     concurrency_limit:
       limit: 1
@@ -981,13 +981,13 @@ deployments:
           uv run --with /home/stoat/phi-spike-worker/releases/371b7aaea5e32129e136d7e8743de002ce118606da87fa9c298e7a52118cb84a/mps-0.1.0-py3-none-any.whl
           python -I -m prefect.engine
         env:
-          MPS_PIN: '@34dc208d0278a2ee885c2dd0f2f7fc9e7a6db96f'
+          MPS_PIN: '{{ $MPS_PIN }}'
           PREFECT_PLUGINS_ENABLED: 'true'
           PREFECT_PLUGINS_ALLOW: mps-secrets
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
           ANTHROPIC_API_KEY: prefect-block://anthropic-api-key
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
     schedules: []
   - name: watch-tangled-pulls
     tags:
@@ -1002,7 +1002,7 @@ deployments:
           uv run --with /home/stoat/phi-spike-worker/releases/9bc32712d3dfea7736344dcb98b443523a1eb8459c022483d611519f2a4c9133/mps-0.1.0-py3-none-any.whl
           python -I -m prefect.engine
         env:
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
           MPS_PIN: '{{ $MPS_PIN }}'
     schedules:
     - cron: 17 * * * *
@@ -1062,7 +1062,7 @@ deployments:
           uv run --with /home/stoat/gardener-images/releases/merge-ui-20261027/mps-0.1.0-py3-none-any.whl python -I -m
           prefect.engine
         env:
-          PREFECT_UI_URL: https://heavypad.tailb660b6.ts.net:10443
+          PREFECT_UI_URL: https://prefect-server.waow.tech
           MPS_PIN: '{{ $MPS_PIN }}'
     schedules: []
     concurrency_limit:

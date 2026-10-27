@@ -243,8 +243,10 @@ async def prior_attempt(key: str) -> str | None:
 
 
 def ui_url(kind: str, id_: UUID) -> str:
-    base = os.environ.get("PREFECT_API_URL", "").removesuffix("/api")
-    return f"{base}/{kind}/{kind[:-1]}/{id_}"
+    base = os.environ.get("PREFECT_UI_URL", "https://prefect-server.waow.tech").rstrip("/")
+    if kind != "flow-runs":
+        raise ValueError(f"Unsupported UI resource: {kind}")
+    return f"{base}/runs/flow-run/{id_}"
 
 
 def checkout_as_of(cwd: str, when) -> str:

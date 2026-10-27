@@ -16,6 +16,7 @@ from prefect.settings import (
     PREFECT_API_URL,
     temporary_settings,
 )
+from prefect_target import target_config
 
 TARGET = "https://heavypad.tailb660b6.ts.net:10443/api"
 NAMES = {"sustained burn -> discord", "flow-run failure -> discord", "fleet unhealthy -> discord"}
@@ -32,6 +33,7 @@ def main():
     parser.add_argument("--email", action="store_true")
     parser.add_argument("--gardener", action="store_true")
     parser.add_argument("--gardener-active", action="store_true")
+    parser.add_argument("--host-monitoring", action="store_true")
     args = parser.parse_args()
     assert not args.gardener_active or args.gardener
     original = dotenv_values(Path(__file__).resolve().parent.parent / ".env")
@@ -53,7 +55,7 @@ def main():
     )
     with (
         httpx.Client(
-            base_url=f"https://{original['DOMAIN']}/api/",
+            base_url=target_config("legacy")["api_url"].rstrip("/") + "/",
             auth=tuple(original["AUTH_STRING"].split(":", 1)),
         ) as old,
         httpx.Client(
@@ -75,6 +77,12 @@ def main():
         )
         if args.email:
             names |= {"email shortlist -> discord", "email triage done -> discord"}
+        if args.host_monitoring:
+            names = {
+                "bandwidth warning -> discord",
+                "bandwidth watchdog missing -> discord",
+                "heavypad cpu heat -> discord",
+            }
         gardener_names = {
             "autofix diagnosed -> discord",
             "autofix proposed -> discord",
