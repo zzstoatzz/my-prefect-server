@@ -3,7 +3,7 @@
 from prefect.client.orchestration import get_client
 from prefect.settings import PREFECT_API_URL
 
-TARGET = "http://100.96.216.23:14200/api"
+TARGET = "https://heavypad.tailb660b6.ts.net:10443/api"
 
 
 def main():

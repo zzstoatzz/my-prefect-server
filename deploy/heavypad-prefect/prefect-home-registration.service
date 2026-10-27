@@ -1,0 +1,12 @@
+[Unit]
+Description=Register green MPS main revisions on the private HeavyPad API
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/prefect-home/client.env
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/python3 %h/.local/share/prefect-home/register-main.py --apply
+TimeoutStartSec=15min
+UMask=0077
+MemoryMax=2G

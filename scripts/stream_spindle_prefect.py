@@ -35,12 +35,9 @@ def main():
         if repo == repo_id and key in {"PREFECT_API_URL", "PREFECT_API_AUTH_STRING"}
     }
     assert len(wanted) == 2
-    target = (
-        "http://100.96.216.23:14200/api"
-        if args.repo == "my-prefect-server"
-        else "https://heavypad.tailb660b6.ts.net:10443/api"
+    assert wanted["PREFECT_API_URL"] == "https://heavypad.tailb660b6.ts.net:10443/api", (
+        "Canonical spindle target must be HeavyPad"
     )
-    assert wanted["PREFECT_API_URL"] == target, "Canonical spindle target must be HeavyPad"
     assert wanted["PREFECT_API_AUTH_STRING"] == document["heavypad_prefect"]["api_auth_string"], (
         "Canonical spindle auth must be HeavyPad"
     )

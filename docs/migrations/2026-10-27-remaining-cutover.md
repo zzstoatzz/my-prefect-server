@@ -259,15 +259,22 @@ The 04:13:54 UTC offsite restore passed using `20261027T041342Z.dump.age`
 three seconds. All 46 required deployment IDs were present. Repeat after the
 cloud worker handoff.
 
-CI revision a884039 passed its checks but could not resolve the private
-HeavyPad MagicDNS hostname from the spindle guest. The MPS-only CI endpoint now
-uses `http://100.96.216.23:14200/api`, the existing private Tailscale listener.
-Tailscale supplies transport encryption outside the local guest/host link;
-Basic Auth remains required. No public listener or DNS record was added. Stream
-keeps its existing HTTPS endpoint. Canonical scoped SOPS update changed only the
-MPS URL; its existing spindle row changed once and subsequent readback was current.
-The same client/pool preflight passed from the laptop. CI runs that preflight
-before the full suite; actual guest success remains to be verified.
+CI revision a884039 passed checks but private hostname resolution failed. The
+follow-up direct private IP probe failed with `Network is unreachable`.
+Spindle's guest networking intentionally rejects private/special-purpose ranges
+and filters their DNS answers; this is an isolation boundary, not a DNS bug.
+Neither the boundary nor the public API exposure is changed.
+
+Registration therefore runs on the trusted HeavyPad host. The user service
+`prefect-home-registration.service` checks every five minutes, requires a green
+`deploy.yml` push pipeline for the exact current GitHub main SHA, checks out that
+SHA in its own clean clone, verifies the existing private HeavyPad pool, validates
+the release and registers `prefect.heavypad.yaml` with `MPS_PIN=@<SHA>`. A lock
+prevents overlap; the successful SHA receipt makes repeats a no-op. Failed or
+pending CI cannot authorize registration. The CI workflow keeps its full suite
+and frontend checks, without trying to cross the runner's private network boundary.
+Canonical scoped CI credentials retain the HTTPS native HeavyPad target; no
+credential rotation occurred. Host service qualification and CI result follow.
 
 ## Canonical routing readiness assessment
 

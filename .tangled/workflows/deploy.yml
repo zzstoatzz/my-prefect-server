@@ -15,13 +15,9 @@ dependencies:
   - git
 
 environment:
-  PREFECT_API_URL: "http://100.96.216.23:14200/api"
   UV_PYTHON_PREFERENCE: "only-system"
 
 steps:
-  - name: verify private API path
-    command: uv run scripts/assert_heavypad_target.py
-
   - name: check
     command: |
       set -euo pipefail
@@ -38,35 +34,3 @@ steps:
       bun run check
       bun run lint
 
-  # MPS_PIN pins the tracking deployments' `uv run --with ...` to this exact commit
-  # (see the header comment in prefect.yaml). Without it the install falls back
-  # to unpinned main and uv may serve a stale cached commit, so fail loudly
-  # rather than register deployments that quietly install the wrong code.
-  #
-  # The pinned sha must exist on GitHub, since that is where the package
-  # installs from, while this workflow triggers on the tangled push. Push
-  # github first.
-  - name: register flows
-    command: |
-      set -euo pipefail
-      SHA="$(git rev-parse HEAD)"
-      # ls-remote matches ref names, not object ids — querying the sha directly
-      # reports "no match" even when the commit is present. Compare main instead.
-      # The two pushes race (tangled triggers this workflow, github serves the
-      # install), so give the mirror a couple of minutes to catch up before
-      # failing.
-      for i in $(seq 1 12); do
-        MIRROR="$(git ls-remote https://github.com/zzstoatzz/my-prefect-server.git refs/heads/main | cut -f1)"
-        [ "$MIRROR" = "$SHA" ] && break
-        echo "github mirror main is ${MIRROR:-missing}, want ${SHA} — waiting (${i}/12)" >&2
-        sleep 10
-      done
-      if [ "$MIRROR" != "$SHA" ]; then
-        echo "github mirror main is ${MIRROR:-missing}, deploying ${SHA} — push github first" >&2
-        exit 1
-      fi
-      export MPS_PIN="@${SHA}"
-      echo "pinning deployments to ${MPS_PIN}"
-      uv run scripts/validate_deployments.py --config prefect.heavypad.yaml --release
-      uv run scripts/assert_heavypad_target.py
-      uv run --with prefect prefect --no-prompt deploy --prefect-file prefect.heavypad.yaml --all
