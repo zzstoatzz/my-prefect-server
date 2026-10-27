@@ -3,6 +3,7 @@
 import os
 import shutil
 import subprocess
+from contextlib import closing
 
 import boto3
 import httpx
@@ -23,12 +24,14 @@ def check_sources() -> dict:
         result = response.json()["results"][0]
         if result["type"] != "ok":
             raise RuntimeError("Source database rejected the read-only probe")
-    with boto3.client(
-        "s3",
-        endpoint_url=os.environ["INDEX_R2_ENDPOINT"],
-        region_name="auto",
-        aws_access_key_id=os.environ["INDEX_R2_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["INDEX_R2_SECRET_ACCESS_KEY"],
+    with closing(
+        boto3.client(
+            "s3",
+            endpoint_url=os.environ["INDEX_R2_ENDPOINT"],
+            region_name="auto",
+            aws_access_key_id=os.environ["INDEX_R2_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["INDEX_R2_SECRET_ACCESS_KEY"],
+        )
     ) as s3:
         pointer = s3.head_object(
             Bucket=os.environ["INDEX_R2_BUCKET"], Key="control/builds/latest.json"
