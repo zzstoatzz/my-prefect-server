@@ -83,7 +83,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "up{instance=\"heavypad\"}",
+          "expr": "up{job=\"heavypad\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -143,7 +143,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "time() - node_boot_time_seconds{instance=\"heavypad\"}",
+          "expr": "time() - node_boot_time_seconds{job=\"heavypad\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -211,7 +211,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "100 - (avg(irate(node_cpu_seconds_total{instance=\"heavypad\",mode=\"idle\"}[5m])) * 100)",
+          "expr": "100 - (avg(irate(node_cpu_seconds_total{job=\"heavypad\",mode=\"idle\"}[5m])) * 100)",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -279,7 +279,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "node_memory_MemAvailable_bytes{instance=\"heavypad\"}",
+          "expr": "node_memory_MemAvailable_bytes{job=\"heavypad\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -347,7 +347,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "node_filesystem_avail_bytes{instance=\"heavypad\",mountpoint=\"/\"}",
+          "expr": "node_filesystem_avail_bytes{job=\"heavypad\",mountpoint=\"/\"}",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -415,7 +415,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "max(node_hwmon_temp_celsius{instance=\"heavypad\",chip=\"platform_coretemp_0\"})",
+          "expr": "max(node_hwmon_temp_celsius{job=\"heavypad\",chip=\"platform_coretemp_0\"})",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -487,7 +487,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "100 - (avg(irate(node_cpu_seconds_total{instance=\"heavypad\",mode=\"idle\"}[5m])) * 100)",
+          "expr": "100 - (avg(irate(node_cpu_seconds_total{job=\"heavypad\",mode=\"idle\"}[5m])) * 100)",
           "legendFormat": "busy %",
           "range": true,
           "refId": "A"
@@ -557,7 +557,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "node_load1{instance=\"heavypad\"}",
+          "expr": "node_load1{job=\"heavypad\"}",
           "legendFormat": "1m",
           "range": true,
           "refId": "A"
@@ -568,7 +568,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "node_load5{instance=\"heavypad\"}",
+          "expr": "node_load5{job=\"heavypad\"}",
           "legendFormat": "5m",
           "range": true,
           "refId": "B"
@@ -579,7 +579,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "node_load15{instance=\"heavypad\"}",
+          "expr": "node_load15{job=\"heavypad\"}",
           "legendFormat": "15m",
           "range": true,
           "refId": "C"
@@ -590,7 +590,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "count(node_cpu_seconds_total{instance=\"heavypad\",mode=\"idle\"})",
+          "expr": "count(node_cpu_seconds_total{job=\"heavypad\",mode=\"idle\"})",
           "legendFormat": "cores",
           "range": true,
           "refId": "D"
@@ -660,7 +660,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "node_memory_MemTotal_bytes{instance=\"heavypad\"} - node_memory_MemAvailable_bytes{instance=\"heavypad\"}",
+          "expr": "node_memory_MemTotal_bytes{job=\"heavypad\"} - node_memory_MemAvailable_bytes{job=\"heavypad\"}",
           "legendFormat": "used",
           "range": true,
           "refId": "A"
@@ -671,7 +671,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "node_memory_MemAvailable_bytes{instance=\"heavypad\"}",
+          "expr": "node_memory_MemAvailable_bytes{job=\"heavypad\"}",
           "legendFormat": "available",
           "range": true,
           "refId": "B"
@@ -682,7 +682,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "node_memory_SwapTotal_bytes{instance=\"heavypad\"} - node_memory_SwapFree_bytes{instance=\"heavypad\"}",
+          "expr": "node_memory_SwapTotal_bytes{job=\"heavypad\"} - node_memory_SwapFree_bytes{job=\"heavypad\"}",
           "legendFormat": "swap used",
           "range": true,
           "refId": "C"
@@ -752,7 +752,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(node_pressure_cpu_waiting_seconds_total{instance=\"heavypad\"}[5m]) * 100",
+          "expr": "rate(node_pressure_cpu_waiting_seconds_total{job=\"heavypad\"}[5m]) * 100",
           "legendFormat": "cpu",
           "range": true,
           "refId": "A"
@@ -763,7 +763,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(node_pressure_memory_waiting_seconds_total{instance=\"heavypad\"}[5m]) * 100",
+          "expr": "rate(node_pressure_memory_waiting_seconds_total{job=\"heavypad\"}[5m]) * 100",
           "legendFormat": "memory",
           "range": true,
           "refId": "B"
@@ -774,7 +774,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(node_pressure_io_waiting_seconds_total{instance=\"heavypad\"}[5m]) * 100",
+          "expr": "rate(node_pressure_io_waiting_seconds_total{job=\"heavypad\"}[5m]) * 100",
           "legendFormat": "io",
           "range": true,
           "refId": "C"
@@ -844,7 +844,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "node_filesystem_avail_bytes{instance=\"heavypad\",fstype!~\"tmpfs|devtmpfs|overlay|squashfs|iso9660\"}",
+          "expr": "node_filesystem_avail_bytes{job=\"heavypad\",fstype!~\"tmpfs|devtmpfs|overlay|squashfs|iso9660\"}",
           "legendFormat": "{{mountpoint}}",
           "range": true,
           "refId": "A"
@@ -914,7 +914,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(node_disk_io_time_seconds_total{instance=\"heavypad\",device=~\"nvme[0-9]+n[0-9]+\"}[5m]) * 100",
+          "expr": "rate(node_disk_io_time_seconds_total{job=\"heavypad\",device=~\"nvme[0-9]+n[0-9]+\"}[5m]) * 100",
           "legendFormat": "{{device}}",
           "range": true,
           "refId": "A"
@@ -984,7 +984,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(node_network_receive_bytes_total{instance=\"heavypad\",device=~\"enp.*|wlp.*|tailscale0\"}[5m])",
+          "expr": "rate(node_network_receive_bytes_total{job=\"heavypad\",device=~\"enp.*|wlp.*|tailscale0\"}[5m])",
           "legendFormat": "rx {{device}}",
           "range": true,
           "refId": "A"
@@ -995,7 +995,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "rate(node_network_transmit_bytes_total{instance=\"heavypad\",device=~\"enp.*|wlp.*|tailscale0\"}[5m])",
+          "expr": "rate(node_network_transmit_bytes_total{job=\"heavypad\",device=~\"enp.*|wlp.*|tailscale0\"}[5m])",
           "legendFormat": "tx {{device}}",
           "range": true,
           "refId": "B"
@@ -1065,7 +1065,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "max by (chip) (node_hwmon_temp_celsius{instance=\"heavypad\",chip=~\"platform_coretemp_0|nvme_nvme.*|thermal_thermal_zone0\"})",
+          "expr": "max by (chip) (node_hwmon_temp_celsius{job=\"heavypad\",chip=~\"platform_coretemp_0|nvme_nvme.*|thermal_thermal_zone0\"})",
           "legendFormat": "{{chip}}",
           "range": true,
           "refId": "A"
@@ -1133,7 +1133,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "max(nvidia_gpu_temperature_celsius{instance=\"heavypad\",job=\"heavypad-gpu\"})",
+          "expr": "max(nvidia_gpu_temperature_celsius{job=\"heavypad-gpu\",job=\"heavypad-gpu\"})",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -1197,7 +1197,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "max(nvidia_gpu_utilization_ratio{instance=\"heavypad\",job=\"heavypad-gpu\"})",
+          "expr": "max(nvidia_gpu_utilization_ratio{job=\"heavypad-gpu\",job=\"heavypad-gpu\"})",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -1265,7 +1265,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(nvidia_gpu_memory_used_bytes{instance=\"heavypad\",job=\"heavypad-gpu\"}) / sum(nvidia_gpu_memory_total_bytes{instance=\"heavypad\",job=\"heavypad-gpu\"})",
+          "expr": "sum(nvidia_gpu_memory_used_bytes{job=\"heavypad-gpu\",job=\"heavypad-gpu\"}) / sum(nvidia_gpu_memory_total_bytes{job=\"heavypad-gpu\",job=\"heavypad-gpu\"})",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -1333,7 +1333,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(nvidia_gpu_power_draw_watts{instance=\"heavypad\",job=\"heavypad-gpu\"})",
+          "expr": "sum(nvidia_gpu_power_draw_watts{job=\"heavypad-gpu\",job=\"heavypad-gpu\"})",
           "legendFormat": "__auto",
           "range": true,
           "refId": "A"
@@ -1403,7 +1403,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "max(nvidia_gpu_temperature_celsius{instance=\"heavypad\",job=\"heavypad-gpu\"})",
+          "expr": "max(nvidia_gpu_temperature_celsius{job=\"heavypad-gpu\",job=\"heavypad-gpu\"})",
           "legendFormat": "gpu",
           "range": true,
           "refId": "A"
@@ -1414,7 +1414,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "max(node_hwmon_temp_celsius{instance=\"heavypad\",chip=\"platform_coretemp_0\"})",
+          "expr": "max(node_hwmon_temp_celsius{job=\"heavypad\",chip=\"platform_coretemp_0\"})",
           "legendFormat": "cpu package",
           "range": true,
           "refId": "B"
@@ -1486,7 +1486,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "max(nvidia_gpu_utilization_ratio{instance=\"heavypad\",job=\"heavypad-gpu\"})",
+          "expr": "max(nvidia_gpu_utilization_ratio{job=\"heavypad-gpu\",job=\"heavypad-gpu\"})",
           "legendFormat": "compute",
           "range": true,
           "refId": "A"
@@ -1497,7 +1497,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(nvidia_gpu_memory_used_bytes{instance=\"heavypad\",job=\"heavypad-gpu\"}) / sum(nvidia_gpu_memory_total_bytes{instance=\"heavypad\",job=\"heavypad-gpu\"})",
+          "expr": "sum(nvidia_gpu_memory_used_bytes{job=\"heavypad-gpu\",job=\"heavypad-gpu\"}) / sum(nvidia_gpu_memory_total_bytes{job=\"heavypad-gpu\",job=\"heavypad-gpu\"})",
           "legendFormat": "vram used",
           "range": true,
           "refId": "B"
@@ -1567,7 +1567,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(nvidia_gpu_power_draw_watts{instance=\"heavypad\",job=\"heavypad-gpu\"})",
+          "expr": "sum(nvidia_gpu_power_draw_watts{job=\"heavypad-gpu\",job=\"heavypad-gpu\"})",
           "legendFormat": "power (W)",
           "range": true,
           "refId": "A"
@@ -1578,7 +1578,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "max(nvidia_gpu_sm_clock_hertz{instance=\"heavypad\",job=\"heavypad-gpu\"}) / 1e7",
+          "expr": "max(nvidia_gpu_sm_clock_hertz{job=\"heavypad-gpu\",job=\"heavypad-gpu\"}) / 1e7",
           "legendFormat": "sm clock (\u00d710 MHz)",
           "range": true,
           "refId": "B"
@@ -1648,7 +1648,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "60 * sum(rate(node_cpu_package_throttles_total{instance=\"heavypad\"}[5m]))",
+          "expr": "60 * sum(rate(node_cpu_package_throttles_total{job=\"heavypad\"}[5m]))",
           "legendFormat": "cpu package events/min",
           "range": true,
           "refId": "A"
@@ -1659,7 +1659,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "60 * max(nvidia_gpu_thermal_slowdown_hw{instance=\"heavypad\",job=\"heavypad-gpu\"} + nvidia_gpu_thermal_slowdown_sw{instance=\"heavypad\",job=\"heavypad-gpu\"})",
+          "expr": "60 * max(nvidia_gpu_thermal_slowdown_hw{job=\"heavypad-gpu\",job=\"heavypad-gpu\"} + nvidia_gpu_thermal_slowdown_sw{job=\"heavypad-gpu\",job=\"heavypad-gpu\"})",
           "legendFormat": "gpu thermal slowdown (60 = active)",
           "range": true,
           "refId": "B"
