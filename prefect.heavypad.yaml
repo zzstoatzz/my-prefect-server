@@ -639,7 +639,7 @@ deployments:
     tags:
     - heavypad
     work_pool:
-      name: heavypad-background-pool
+      name: heavypad-interactive-pool
       job_variables:
         command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
           --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{

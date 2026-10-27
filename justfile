@@ -572,17 +572,9 @@ heavypad-status:
       echo "env file keys: $(cut -d= -f1 /home/stoat/.config/prod-worker/env | sort | tr "\n" " ")"
       echo "disk:         $(df -h / | awk "NR==2{print \$5\" used of \"\$2}")"'
 
-# Register only the presence flow, using an explicitly published source revision.
+# Register the preserved presence revision on its active HeavyPad owner.
 presence-deploy:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    : "${PRESENCE_SOURCE_URL:?set the HTTPS Git source URL}"
-    : "${PRESENCE_SOURCE_REVISION:?set the full Git commit SHA}"
-    : "${PRESENCE_CREDENTIAL_FILE:?set the worker PDS credential path}"
-    : "${PRESENCE_HUE_ENV_FILE:?set the worker Hue configuration path}"
-    : "${PRESENCE_LIGHTING_STATE_FILE:?set the persistent worker marker path}"
-    PREFECT_API_URL="https://$DOMAIN/api" PREFECT_API_AUTH_STRING="$AUTH_STRING" \
-        uv run --with prefect prefect deploy --prefect-file deploy/presence.yaml --name phone-presence
+    uv run scripts/heavypad_prefect_cli.py --no-prompt deploy --prefect-file prefect.heavypad.yaml --name phone-presence
 
 # Fast, read-only deployment contracts (also enforced in CI).
 validate-deployments *args:
