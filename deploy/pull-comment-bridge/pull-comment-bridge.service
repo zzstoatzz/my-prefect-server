@@ -4,7 +4,7 @@ Description=Stream subscriber turning gardener pull review comments into autofix
 [Service]
 WorkingDirectory=%h
 Environment=PREFECT_LOGGING_LEVEL=INFO
-EnvironmentFile=%h/.config/prod-worker/env
+EnvironmentFile=%h/.config/prefect-home/client.env
 StateDirectory=pull-comment-bridge
 ExecStart=%h/pull-comment-bridge/current/venv/bin/python -m mps.pull_comment_bridge --state %h/.local/state/pull-comment-bridge/cursor
 Restart=on-failure

@@ -199,7 +199,7 @@ automations:
       with a fix. Each failed run gets an attempt; autofix deduplicates matching
       failures for the same deployment and revision for 24 hours.
       autofix itself never reaches Failed, so it cannot re-trigger this.
-    enabled: true
+    enabled: false
     trigger:
       type: event
       posture: Reactive
@@ -225,7 +225,7 @@ automations:
       Every gardener pull gets phi's review before the operator looks. She
       reads the whole change and comments a VERDICT line on the pull; the
       operator still merges. Stage one of handing review off to her.
-    enabled: true
+    enabled: false
     trigger:
       type: event
       posture: Reactive
@@ -323,7 +323,7 @@ automations:
       Every gardener pull also starts the merge flow, which waits for phi's
       verdict, tests the round, and then suspends until the operator resumes
       it. Nothing merges without that resume.
-    enabled: true
+    enabled: false
     trigger:
       type: event
       posture: Reactive
@@ -343,7 +343,7 @@ automations:
       A review comment on a gardener pull asks for a new round. Emitted by
       mps.pull_comment_bridge on heavypad within seconds of the comment, and by
       watch-tangled-pulls' hourly reconcile for anything the bridge missed.
-    enabled: true
+    enabled: false
     trigger:
       type: event
       posture: Reactive

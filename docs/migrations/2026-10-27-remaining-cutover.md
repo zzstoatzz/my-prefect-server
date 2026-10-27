@@ -97,3 +97,23 @@ separate from the original worker environment; their renderer compares hashes.
 Rotation procedure: edit the existing canonical values, apply the renderer,
 drain/restart the corresponding clients and prove authenticated execution.
 No issuer credential is rotated by this migration.
+
+## Private transport qualification
+
+Disposable real VM `gardener-tailnet-probe-7d1ac481`, using the unchanged pinned
+investigate image, enrolled through stock ts-unplug and reached the HeavyPad
+API over the tag-scoped private listener. Anonymous deployment-list POST returned
+401; authenticated POST returned 200 and all 34 then-present deployments. The
+VM and supervised proxy were stopped/deleted afterward. The HeavyPad listener
+is the unprivileged `prefect-home-tailnet-api` user service, bound specifically
+to `100.96.216.23:14200`, forwarding raw TCP to `127.0.0.1:14200` (including
+WebSocket traffic). Its process uses about 9 MiB. Existing Serve/Funnel listeners
+were unchanged. The live policy now contains the additional narrow grant and
+accept/deny tests; the original grant is retained during handoff.
+
+Concurrent upstream Typeahead changes `e45a792` and `79be9aa` were merged before
+further rollout. The prepared target preserves refresh image
+`sha256:34c5a61a794674e64802d5d633dd800a2adfab2c0d91f0d8ceb14e5c28a84da3`
+and the unknown-freshness rejection. A real original Typeahead refresh run was
+active during preparation, so the cloud worker must not be switched until it
+finishes. Preserve its live results and current served generation.

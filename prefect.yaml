@@ -443,8 +443,8 @@ deployments:
       limit: 6000
       budget_seconds: 2400
       dry_run: false
-    schedules:
-      - cron: "20 * * * *"
+    schedules: []  # Owned by HeavyPad after migration.
+
     work_pool:
       name: home-pool
       job_variables:
@@ -477,8 +477,8 @@ deployments:
     parameters:
       limit: null
       dry_run: false
-    schedules:
-      - cron: "0 20 * * *"
+    schedules: []  # Owned by HeavyPad after migration.
+
     work_pool:
       name: home-pool
       job_variables:
@@ -552,14 +552,7 @@ deployments:
           RCLONE_BWLIMIT: "80M"
           RCLONE_S3_NO_HEAD: "true"
     concurrency_limit: *cancel_new
-    schedules:
-      # Leave a day before the installer's 3-day admission limit (public alerts at 4).
-      # Fixed calendar times survive registration. This server's interval scheduler
-      # ignores anchor_date and would push the next run out on each registration.
-      # Odd days at 06:00 UTC: at most 48h apart, sometimes 24h at a month boundary.
-      - cron: "0 6 */2 * *"
-        timezone: UTC
-        active: true
+    schedules: []  # Owned by HeavyPad after migration.
 
   - name: typeahead-plc-identity
     pull: *cached_home
@@ -590,24 +583,7 @@ deployments:
           PLC_BUNDLE_DIR: /home/stoat/typeahead-plc
           PLC_APPLY: "1"
     concurrency_limit: *cancel_new
-    schedules:
-      # weekly, matching the bundle cadence — Allegedly stops ~73h short of now
-      # (PLC ops can still be invalidated inside that window) and the relay
-      # firehose's #identity events cover the remainder, so there is nothing to
-      # gain from running more often. 05:00 UTC Monday sits clear of
-      # typeahead-index (09:00) and the 13:00 cluster.
-      - cron: "0 5 * * 1"
-        # ACTIVE since 2026-07-30, after a clean end-to-end run: 319,888
-        # identity updates applied, handle backlog 1,311,817 -> 14,680.
-        #
-        # This file IS authoritative for the schedule. Verified 2026-07-30 on
-        # prefect 3.7.3 by changing the cron and by flipping this flag: each
-        # `prefect deploy` REPLACES the schedule (its id changes) and both the
-        # cron expression and `active` are applied. The older note claiming
-        # deploy won't overwrite an existing schedule, and that activating needs
-        # delete+recreate, was wrong on both counts.
-        # Paused 2026-10-20: home ISP overages; qualify cloud replacement first.
-        active: false
+    schedules: []  # Owned by HeavyPad after migration.
 
   - name: pub-search-snapshot
     pull: *cached_home
@@ -976,9 +952,7 @@ deployments:
       name: home-pool
       job_variables:
         command: uv run --with /home/stoat/phi-spike-worker/releases/9bc32712d3dfea7736344dcb98b443523a1eb8459c022483d611519f2a4c9133/mps-0.1.0-py3-none-any.whl python -I -m prefect.engine
-    schedules:
-      - cron: "17 * * * *"
-        active: true
+    schedules: []  # Owned by HeavyPad after migration.
 
   - name: autofix-revise
     tags: [gardener]

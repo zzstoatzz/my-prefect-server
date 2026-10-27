@@ -30,7 +30,10 @@ def main():
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--fastmcp", action="store_true")
     parser.add_argument("--email", action="store_true")
+    parser.add_argument("--gardener", action="store_true")
+    parser.add_argument("--gardener-active", action="store_true")
     args = parser.parse_args()
+    assert not args.gardener_active or args.gardener
     original = dotenv_values(Path(__file__).resolve().parent.parent / ".env")
     credentials = json.loads(
         subprocess.run(
@@ -72,6 +75,20 @@ def main():
         )
         if args.email:
             names |= {"email shortlist -> discord", "email triage done -> discord"}
+        gardener_names = {
+            "autofix diagnosed -> discord",
+            "autofix proposed -> discord",
+            "autofix proposed -> merge-approved",
+            "autofix proposed -> phi review",
+            "autofix revise requested -> autofix-revise",
+            "autofix revised -> discord",
+            "flow-run failure -> autofix",
+            "merge awaiting approval -> discord",
+            "merge merged -> discord",
+            "merge tests failed -> discord",
+        }
+        if args.gardener:
+            names |= gardener_names
         wanted = [
             a for a in request(old, "POST", "automations/filter", json={}) if a["name"] in names
         ]
@@ -108,6 +125,10 @@ def main():
             d["name"]: d["id"]
             for d in request(new, "POST", "deployments/filter", json={"limit": 500})
         }
+        original_deployments = {
+            d["id"]: d["name"]
+            for d in request(old, "POST", "deployments/filter", json={"limit": 500})
+        }
         for automation in wanted:
             body = {
                 k: copy.deepcopy(automation[k])
@@ -117,11 +138,17 @@ def main():
             if body["name"] in {"fastmcp activity -> brief", "fastmcp direct ask -> brief"}:
                 assert automation["enabled"] is False, "Fence original briefing automations first"
                 body["enabled"] = True
+            if body["name"] in gardener_names and args.gardener:
+                if any(a.get("type") == "run-deployment" for a in body["actions"]):
+                    assert automation["enabled"] is False, "Fence original Gardener triggers first"
+                body["enabled"] = args.gardener_active
             for action in body["actions"]:
                 if "block_document_id" in action:
                     action["block_document_id"] = target["id"]
                 if "deployment_id" in action:
-                    action["deployment_id"] = target_deployments["fastmcp-brief"]
+                    action["deployment_id"] = target_deployments[
+                        original_deployments[action["deployment_id"]]
+                    ]
                 for key in ("body", "subject"):
                     if key in action:
                         action[key] = action[key].replace(
