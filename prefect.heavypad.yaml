@@ -560,7 +560,9 @@ deployments:
         prefect.resource.name: classify-emails
         prefect.resource.role: deployment
       enabled: true
-    pull: []
+    pull:
+    - prefect.deployments.steps.set_working_directory:
+        directory: /home/stoat/dagster-hub/current
     work_pool:
       name: heavypad-background-pool
       job_variables:
