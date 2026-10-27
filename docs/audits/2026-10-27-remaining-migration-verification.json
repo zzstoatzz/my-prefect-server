@@ -1,17 +1,19 @@
 {
-  "verified_at": "2026-10-27T05:13:29.096048+00:00",
+  "verified_at": "2026-10-27T06:10:07.397390+00:00",
   "scope_count": 14,
-  "complete": false,
-  "pending": [
-    "typeahead-index qualification",
-    "typeahead-index clock activation"
-  ],
+  "complete": true,
+  "pending": [],
   "original_live_runs": [],
   "cloud_workers": [
     {
-      "name": "ProcessWorker 86a4ce11-5bd8-499d-aa58-c74decad3695",
+      "name": "ProcessWorker 6489084e-d724-417a-b1d5-ac85c40a695c",
       "status": "ONLINE",
-      "last_heartbeat_time": "2026-10-27T05:13:01.240739Z"
+      "last_heartbeat_time": "2026-10-27T06:09:39.479745Z"
+    },
+    {
+      "name": "ProcessWorker 86a4ce11-5bd8-499d-aa58-c74decad3695",
+      "status": "OFFLINE",
+      "last_heartbeat_time": "2026-10-27T05:58:02.846448Z"
     }
   ],
   "deployments": [
@@ -215,10 +217,22 @@
             "timezone": "UTC",
             "day_or": true
           },
-          "active": false
+          "active": true
         }
       ],
-      "qualification": null
+      "qualification": {
+        "id": "3234d469-2b31-4b5e-8513-b9bce417daed",
+        "mode": "cloud worker qualification after native release handoff",
+        "state_type": "COMPLETED",
+        "state_name": "Completed",
+        "passed": true,
+        "parameters": {
+          "ref": "pds-compact-31ec142-20261020",
+          "resume_rollout": true,
+          "snapshot_format": "compact",
+          "automatic_refresh": true
+        }
+      }
     },
     {
       "name": "typeahead-plc-identity",

@@ -8,19 +8,22 @@ assessment; canonical hostname switching and Hetzner deletion are not included.
 
 ## Current checkpoint
 
-The remaining cohort has fourteen definitions. Its original clocks are empty;
-five of its six recurring clocks are active on HeavyPad. The cloud index worker is ONLINE
-on HeavyPad. Its real 1 GiB qualification passed; the sixth clock activation
-and final backup/audit receipts are being applied below. PLC remains intentionally
-paused with its cache preserved. The original home worker is disabled; Gardener
-callers, execution rules, state and notifications use the target backend.
-Dagster remains active and unchanged. Canonical routing is unchanged and is
-**not ready for cutover or node deletion**; see the assessment below.
+All fourteen remaining definitions passed the live migration audit. All six
+recurring clocks in this cohort are active on HeavyPad; original clocks are
+empty across all46 original deployment records. The cloud builder worker polls
+HeavyPad; original home worker is disabled. Gardener caller routing, state,
+execution rules and notifications are transferred. PLC deliberately stays
+paused; Dagster stays active and unchanged. Qualification modes and evidence
+are explicit in [the generated audit](../audits/2026-10-27-remaining-migration-verification.json).
 
-[The generated audit](../audits/2026-10-27-remaining-migration-verification.json)
-records live IDs, clocks, qualification modes and pending gates. Earlier sections
-below preserve chronological preparation/qualification receipts; their inactive
-clock statements describe those checkpoints, not current ownership.
+Canonical Prefect DNS is unchanged. Routing and node deletion were assessed as
+not ready because of the remaining ingress/services/builder dependencies below.
+Nate has now expanded the next goal to remove those dependencies, move the
+builder to ephemeral cloud, verify all jobs with home orchestration, safely
+delete the old node, then audit the cost dashboard.
+
+Earlier sections preserve chronological checkpoints; their inactive-clock or
+hold statements describe those checkpoints, not current ownership.
 
 ## Long publishers
 
@@ -510,3 +513,22 @@ the normal deployment defaults, not another qualification/recovery run. This
 preserves the intended slot rather than silently waiting until October29.
 Canonical Prefect DNS and Hetzner node retirement remain outside this change;
 Dagster is unchanged. PLC stays deliberately paused.
+
+
+## Completed migration checkpoint
+
+The live audit returned `scope=14`, `complete=true`, `pending=[]` after index
+schedule activation. Original server inventory has46 records and zero active
+clocks. The index's normal06:00 catch-up is
+`a21b0b8e-892b-4fce-b06d-7bee9ebfe784`, observed RUNNING with normal compact /
+automatic-refresh defaults and no resume_rollout flag. Its successful recovery
+qualification remains `3234d469-2b31-4b5e-8513-b9bce417daed`.
+
+Final offsite restore passed06:10:38 UTC using `20261027T061024Z.dump.age`,
+SHA-256 `36eacc04845fca23bdf7b2797be9f84cad782e6f70f8c8a046a9ab10b92ebf0a`:
+47 deployments,505 flow runs,43 blocks,23 automations,27 tables, four-second
+restore, newest-completion gap zero minutes. All46 required deployment IDs were
+present. CI for source/config revision
+`a4b463fb4bfa7b1a55807bd33357a065985e945b` passed. This closes the previous
+migration-and-readiness goal; physical node retirement and full normal-job
+verification now belong to Nate's explicitly expanded goal.
