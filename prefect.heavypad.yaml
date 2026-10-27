@@ -837,8 +837,12 @@ deployments:
       snapshot_format: compact
       automatic_refresh: true
     work_pool:
-      name: typeahead-cloud-pool
+      name: typeahead-ephemeral
       job_variables:
+        server_type: cpx32
+        location: fsn1
+        timeout_seconds: 43200
+        working_dir: /var/lib/typeahead-indexer
         command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --with 'my-prefect-server
           @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}' --with prefect==3.8.2 prefect flow-run
           execute

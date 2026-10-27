@@ -563,3 +563,25 @@ private canonical Prefect routing and legacy clients, old historical storage
 and backup preservation, the attached builder volume, and final restore and
 single-owner checks. No DNS cutover, old-node deletion, or cost-audit completion
 is claimed by this infrastructure checkpoint.
+
+The disposable worker is now installed on HeavyPad from immutable revision
+`84cade2bfde6ec7000f66e248ea1e30f9fba885a`, with the existing canonical project
+credential (drift detection/repair tested). Initial probe submission found and
+fixed Prefect's zero-based infrastructure attempt numbering. A subsequent
+probe found and fixed an S3 client context-manager error in the probe itself.
+The corrected real Prefect run `e9f9e63f-ee37-45f9-a90f-8880f2818399` completed:
+138.89 GiB free, Zig present, private home API connected, Turso SELECT 1 and R2
+pointer HEAD succeeded. Its VM outcome was delivered before automatic deletion
+completed at13:30:25 UTC.
+
+Independent cloud cleanup is deployed as `prefect-builder-reaper`, version
+`6ce112c6-3c1d-4b1b-b656-f93a3eb96d90`, with a five-minute cron. An actual
+scheduled invocation at13:36 UTC removed expired canary VM172816749, its SSH key
+and primary IP; the original server remained running. Cloudflare telemetry
+reported scheduled outcome `ok`. This proves the expiry fallback independently
+of the home worker. Manual provider qualification also covered repeat cleanup.
+
+The next index registration transfers the existing deployment to
+`typeahead-ephemeral`, retaining its single cron and existing build/publication
+parameters. A complete index run and manager-restart recovery are still required;
+probe success alone does not qualify the production build.
