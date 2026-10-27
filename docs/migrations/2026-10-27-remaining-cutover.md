@@ -532,3 +532,34 @@ present. CI for source/config revision
 `a4b463fb4bfa7b1a55807bd33357a065985e945b` passed. This closes the previous
 migration-and-readiness goal; physical node retirement and full normal-job
 verification now belong to Nate's explicitly expanded goal.
+
+## Expanded retirement goal and ephemeral builder qualification
+
+The regular index catch-up `a21b0b8e-892b-4fce-b06d-7bee9ebfe784` completed
+successfully at 08:03:05 UTC, after 6,759 seconds, using the home API and the
+existing cloud process worker. This proves the normal publication path on the
+home control plane; it does not prove ephemeral replacement yet.
+
+Nate expanded the goal to physical Hetzner retirement, ephemeral cloud builds,
+all retained normal jobs verified, restoration/cutover and a subsequent cost
+dashboard audit. Dagster stays. Home traffic has a 1 TB/month combined cap:
+bulk source exports, build scratch and artifacts must stay cloud-to-cloud.
+No home filesystem mount is planned for the cloud builder.
+
+The disposable cpx32 qualification used run identity
+`3b20d63e-0980-4285-a953-ba5865c56ef7`: clean pinned bootstrap including Zig,
+140.36 GiB available scratch, supervisor exits 0/37/124/143 for success, failure,
+timeout and cancellation, restart without replay for every outcome, and
+verified deletion of VM, SSH key and primary IP. See the JSON audit receipt.
+A separate clean-bootstrap canary verified that the production server is
+rejected by the ownership guard and was also completely removed.
+Existing supervisor/worker tests: 66 passed. Ruff, configured type checks and
+shell syntax checks passed. The worker implementation is separate from the
+currently scheduled publisher; its deployment is still pending real private
+API/source access and independent expiry cleanup qualification.
+
+Remaining retirement dependencies include public Hub/push/monitoring ingress,
+private canonical Prefect routing and legacy clients, old historical storage
+and backup preservation, the attached builder volume, and final restore and
+single-owner checks. No DNS cutover, old-node deletion, or cost-audit completion
+is claimed by this infrastructure checkpoint.

@@ -1,0 +1,19 @@
+[Unit]
+Description=Ephemeral cloud builder worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/home/stoat/hcloud-builder/current
+EnvironmentFile=/home/stoat/.config/prefect-home/client.env
+EnvironmentFile=/home/stoat/.config/prefect-home/hcloud-builder.env
+ExecStart=/home/stoat/hcloud-builder/current/venv/bin/python -m mps.hcloud_worker --pool typeahead-ephemeral --state-directory /home/stoat/hcloud-builder/state --tailnet-config /home/stoat/.config/prefect-home/gardener-tailnet.json
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=90
+UMask=0077
+NoNewPrivileges=true
+MemoryMax=1G
+
+[Install]
+WantedBy=default.target

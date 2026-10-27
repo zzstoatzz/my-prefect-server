@@ -68,6 +68,7 @@ class ExeWorkerResult(BaseWorkerResult):
 
 
 class ExeWorker(BaseWorker):
+    bootstrap_grace_seconds = 600
     type = "exe"
     job_configuration = ExeJobConfiguration
     _description = "Execute each flow run in a dedicated exe.dev VM."
@@ -215,6 +216,9 @@ class ExeWorker(BaseWorker):
     def vm_prefix(self) -> str:
         return f"prefect-{hashlib.sha256(self.ownership.encode()).hexdigest()[:8]}-"
 
+    def provider_client(self, configuration: ExeJobConfiguration) -> ExeClient:
+        return ExeClient(configuration.credentials.identity_file)
+
     async def setup(self) -> None:
         await super().setup()
         self._observer_task = asyncio.create_task(self._observe_forever())
@@ -243,7 +247,7 @@ class ExeWorker(BaseWorker):
             image=configuration.image,
             timeout_seconds=configuration.timeout_seconds,
         )
-        async with ExeClient(configuration.credentials.identity_file) as client:
+        async with self.provider_client(configuration) as client:
             try:
                 vm = await self._measure_stage(
                     name,
@@ -323,7 +327,7 @@ class ExeWorker(BaseWorker):
             await anyio.sleep(10)
 
     async def observe_pool(self, configuration: ExeJobConfiguration) -> None:
-        async with ExeClient(configuration.credentials.identity_file) as client:
+        async with self.provider_client(configuration) as client:
             inventory_started = time.time()
             vms = await client.list(self.vm_prefix)
             if self._observations is not None:
@@ -425,7 +429,7 @@ class ExeWorker(BaseWorker):
             age = time.time() - vm.created_at.timestamp()
             # Allow the bounded (300s) environment installation to finish before
             # interpreting a missing service as abandoned submission.
-            if age < 600:
+            if age < self.bootstrap_grace_seconds:
                 return
             if await provider.service_status(client, vm) in {"running", "starting"}:
                 return
@@ -516,7 +520,7 @@ class ExeWorker(BaseWorker):
         configuration: ExeJobConfiguration,
         grace_seconds: int = 30,
     ) -> None:
-        async with ExeClient(configuration.credentials.identity_file) as client:
+        async with self.provider_client(configuration) as client:
             try:
                 vm = await client.get(infrastructure_pid)
             except NotFound as exc:

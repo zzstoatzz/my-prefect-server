@@ -1,0 +1,24 @@
+{
+  "run_id": "3b20d63e-0980-4285-a953-ba5865c56ef7",
+  "name": "prefect-build-3b20d63e09804285a953ba5865c56ef7-r1",
+  "outcomes": {
+    "success": {
+      "exit_code": 0,
+      "restart_did_not_replay": true
+    },
+    "failure": {
+      "exit_code": 37,
+      "restart_did_not_replay": true
+    },
+    "timeout": {
+      "exit_code": 124,
+      "restart_did_not_replay": true
+    },
+    "cancel": {
+      "exit_code": 143,
+      "restart_did_not_replay": true
+    }
+  },
+  "scratch_free_gib": 140.36,
+  "cleanup_verified": true
+}
