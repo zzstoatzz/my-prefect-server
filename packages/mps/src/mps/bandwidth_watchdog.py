@@ -96,6 +96,29 @@ def read_heat() -> tuple[float, int] | None:
     return celsius, int(counter.read_text()) if counter.exists() else 0
 
 
+def read_disks(paths: list[str]) -> list[dict]:
+    devices: dict[int, dict] = {}
+    for path in paths:
+        device = os.stat(path).st_dev
+        if device in devices:
+            devices[device]["disk_paths"].append(path)
+            continue
+        stat = os.statvfs(path)
+        total = stat.f_blocks * stat.f_frsize
+        available = stat.f_bavail * stat.f_frsize
+        devices[device] = {
+            "host": socket.gethostname(),
+            "disk_paths": [path],
+            "disk_free_bytes": available,
+            "disk_total_bytes": total,
+            "disk_free_ratio": available / total if total else None,
+            "disk_free_inodes": stat.f_favail,
+            "disk_total_inodes": stat.f_files,
+            "disk_free_inode_ratio": stat.f_favail / stat.f_files if stat.f_files else None,
+        }
+    return list(devices.values())
+
+
 def heat(state: dict, reading: tuple[float, int] | None, now: float, config: dict) -> None:
     """Warn when the CPU package stays hot for a whole window, not on a single spike."""
     if reading is None:
@@ -319,9 +342,11 @@ def main() -> None:
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
-    config = {"heat_alert_celsius": 95, "heat_window_seconds": 300} | json.loads(
-        args.config.read_text()
-    )
+    config = {
+        "heat_alert_celsius": 95,
+        "heat_window_seconds": 300,
+        "disk_paths": ["/", str(Path.home() / ".local/share/prefect-home/storage")],
+    } | json.loads(args.config.read_text())
     if any(not re.fullmatch(r"[a-zA-Z0-9_.@-]+\.service", unit) for unit in config["pause_units"]):
         raise ValueError("pause_units must contain literal systemd service names")
     args.state.parent.mkdir(parents=True, exist_ok=True)
@@ -334,6 +359,7 @@ def main() -> None:
     base = os.environ["PREFECT_API_URL"].rstrip("/")
     with httpx.Client(auth=auth, timeout=5) as client:
         telemetry_ready = False
+        last_disk_sample = 0
         while True:
             started = time.monotonic()
             now = time.time()
@@ -364,6 +390,24 @@ def main() -> None:
                         console=False,
                     )
                     telemetry_ready = True
+                if now - last_disk_sample >= 60:
+                    import logfire
+
+                    try:
+                        for sample in read_disks(config["disk_paths"]):
+                            logfire.info(
+                                "heavypad disk sample",
+                                watchdog_event="disk.sample",
+                                **sample,
+                            )
+                    except OSError as error:
+                        logfire.error(
+                            "heavypad disk sample unavailable",
+                            watchdog_event="disk.sample_error",
+                            error_type=type(error).__name__,
+                        )
+                    logfire.force_flush()
+                    last_disk_sample = now
                 flush(state, client, base)
                 save(args.state, state)
             except (httpx.HTTPError, KeyError):

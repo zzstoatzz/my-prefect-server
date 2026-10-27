@@ -8,7 +8,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import httpx
 import logfire
 import pytest
-from mps.bandwidth_watchdog import advance, flush, heat, internet_peer, parse_sockets, save
+from mps.bandwidth_watchdog import (
+    advance,
+    flush,
+    heat,
+    internet_peer,
+    parse_sockets,
+    read_disks,
+    save,
+)
 
 CONFIG = {
     "alert_bytes_15m": 100,
@@ -20,6 +28,28 @@ CONFIG = {
     "heat_alert_celsius": 95,
     "heat_window_seconds": 300,
 }
+
+
+def test_disk_sampling_uses_available_space_and_deduplicates_filesystems(tmp_path):
+    other = tmp_path / "postgres"
+    other.mkdir()
+    samples = read_disks([str(tmp_path), str(other)])
+    assert len(samples) == 1
+    sample = samples[0]
+    stat = os.statvfs(tmp_path)
+    assert sample["disk_paths"] == [str(tmp_path), str(other)]
+    assert sample["disk_total_bytes"] == stat.f_blocks * stat.f_frsize
+    assert 0 <= sample["disk_free_bytes"] <= sample["disk_total_bytes"]
+    assert 0 <= sample["disk_free_ratio"] <= 1
+    if stat.f_files:
+        assert 0 <= sample["disk_free_inode_ratio"] <= 1
+
+
+def test_missing_disk_path_is_not_reported_healthy(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        read_disks([str(tmp_path / "missing")])
+
+
 GROUP = (
     f"/user.slice/user-{os.getuid()}.slice/user@{os.getuid()}.service/app.slice/download.service"
 )

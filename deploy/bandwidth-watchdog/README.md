@@ -51,6 +51,25 @@ throttle rate rides along as evidence only. `heavypad cpu heat -> discord`
 notifies the operator, and the `heavypad cpu heat` Logfire alert
 (`logfire-heat-alert.json`) delivers the evidence to Phi.
 
+## Disk samples and centralized alerts
+
+The sampler sends one Logfire `disk.sample` per physical filesystem each minute,
+covering `/` and `~/.local/share/prefect-home/storage`. These currently share the
+root filesystem, so they produce one sample. Collection uses available bytes and
+free inodes from `statvfs`, not a recursive disk scan. It does not depend on a
+Prefect flow being scheduled, and disk samples are emitted before queued Prefect
+events are delivered. The existing startup credential lookup still requires the
+original Prefect server; account for that consumer before retiring it.
+
+Thresholds live in the three `logfire-disk-*.json` rules in Logfire, project
+`zig-prefect-server`, using the existing `phi alert watch (push)` channel.
+Warning means under 15% or 100 GiB available, or under 10% free inodes. Critical
+means under 5% or 30 GiB available, or under 2% free inodes. Warning excludes
+critical conditions. The missing-sample rule detects five minutes without disk
+telemetry. All evaluate every five minutes and notify on state changes.
+Grafana continues receiving metrics for dashboards; no Grafana alerts or
+notification contacts are created.
+
 ## Measurement limits
 
 Observed Internet TCP is a **lower bound**. Connections that open and close

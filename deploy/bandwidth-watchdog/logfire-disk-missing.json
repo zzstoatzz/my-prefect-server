@@ -1,0 +1,12 @@
+{
+  "name": "heavypad disk telemetry missing",
+  "description": "No disk sample from HeavyPad in five minutes. A missing or stopped sampler is unknown disk coverage, not healthy storage.",
+  "query": "SELECT 'HeavyPad disk telemetry missing for five minutes; check bandwidth-watchdog and host availability' AS message WHERE NOT EXISTS (SELECT 1 FROM records WHERE service_name = 'bandwidth-watchdog' AND attributes->>'watchdog_event' = 'disk.sample' AND attributes->>'host' = 'heavypad' AND start_timestamp > NOW() - INTERVAL '5 minutes')",
+  "project": "zig-prefect-server",
+  "frequency": "PT5M",
+  "time_window": "PT15M",
+  "notify_when": "has_matches_changed",
+  "channel_ids": [
+    "f22200f9-efdb-4e3a-9141-f0fce6b4c578"
+  ]
+}
