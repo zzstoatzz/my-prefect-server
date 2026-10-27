@@ -728,13 +728,7 @@ deployments:
           MPS_PIN: "{{ $MPS_PIN }}"
     parameters:
       slot: curation
-    schedules:
-      # sunday 10pm central = 03:00 UTC monday. explicit UTC because the
-      # server computed run times in UTC despite a stored timezone field
-      # (queued runs came out at 22:00Z) — revisit if that gets fixed.
-      # note: drifts to 9pm central when CST returns.
-      - cron: "0 3 * * 1"
-        active: true
+    schedules: []
 
   - name: phi-likes-review
     pull: *cached_home
@@ -755,11 +749,7 @@ deployments:
           MPS_PIN: "{{ $MPS_PIN }}"
     parameters:
       slot: likes-review
-    schedules:
-      # sunday 20:00 UTC (3pm CT) — end of the week, ahead of the sunday
-      # night curation pass so a like that earned a real read can feed it
-      - cron: "0 20 * * 0"
-        active: true
+    schedules: []
 
   - name: phi-pull-review
     pull: *cached_home
@@ -801,11 +791,7 @@ deployments:
           MPS_PIN: "{{ $MPS_PIN }}"
     parameters:
       slot: editorial
-    schedules:
-      # daily 15:00 UTC (10am CT) — after the morning flows, when the
-      # overnight firehose has settled into a legible trending picture
-      - cron: "0 15 * * *"
-        active: true
+    schedules: []
 
   - name: phi-character-retro
     pull: *cached_home
@@ -826,10 +812,7 @@ deployments:
           MPS_PIN: "{{ $MPS_PIN }}"
     parameters:
       slot: character-retro
-    schedules:
-      # first of the month, 17:00 UTC (noon CT)
-      - cron: "0 17 1 * *"
-        active: true
+    schedules: []
 
   - name: phi-chicken-scout
     pull: *cached_home
@@ -848,9 +831,7 @@ deployments:
           MPS_PIN: "{{ $MPS_PIN }}"
     parameters:
       slot: chicken-scout
-    schedules:
-      - cron: "0 18 * * *"
-        active: true
+    schedules: []
 
   - name: phi-chicken-precheck
     pull: *cached_home
@@ -870,9 +851,7 @@ deployments:
           MPS_PIN: "{{ $MPS_PIN }}"
     parameters:
       slot: chicken-precheck
-    schedules:
-      - cron: "0 4 * * *"
-        active: true
+    schedules: []
 
   - name: watch-fastmcp
     pull: *cached_home
