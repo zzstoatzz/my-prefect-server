@@ -8,5 +8,5 @@ ssh_host = "stoat@heavypad"
 kubectl_container = "k3d-prefect-home-server-0"
 
 [targets.legacy]
-api_url = "https://prefect-server.waow.tech/api"
+api_url = "http://hetzner-edge.tailb660b6.ts.net:4200/api"
 auth_environment = "AUTH_STRING"
