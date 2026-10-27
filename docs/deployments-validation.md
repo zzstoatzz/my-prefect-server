@@ -73,7 +73,7 @@ recipes, inventory rendering, tests, and operator documentation.
 | Registration | CI still registers all deployments on a main push. Selecting changed deployments, comparing live state, preserving a rollback snapshot, and verifying completion need a separate rollout change. |
 | Separate presence config | `deploy/presence.yaml` has its own source variables and `just presence-deploy` guard. This first validator gates the main manifest; it does not yet establish presence revision binding. |
 | Automation writes | `scripts/apply_automations.py` is a separate mutation path. Static deployment validation does not check notification routing, recursive autofix triggers, or automation diffs. |
-| Historical notes | `HANDOFF.local.md` and archived build logs describe past snapshots. Use current configuration and live state for operational decisions. |
+| Historical notes | Local operator notes outside the checkout and archived build logs describe past snapshots. Use current configuration and live state for operational decisions. |
 | Runtime tests | Unit tests and successful registration do not certify artifact imports or successful worker execution. Artifact and worker preflight remain the highest-priority follow-ups. |
 
 General entrypoint/storage preflight may belong in Prefect. This repository owns

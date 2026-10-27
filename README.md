@@ -1,176 +1,55 @@
 # my-prefect-server
 
-a personal data pipeline and the prefect deployment that runs it. flows digest
-github, [tangled.org](https://tangled.org), and bluesky activity into a scored
-briefing, keep [phi](https://bsky.app/profile/phi.zzstoatzz.io)'s long-term
-memory, publish snapshots for other products, and let pi propose and land
-fixes as a coding agent. the control plane is
-[prefect-server](https://tangled.org/zzstoatzz.io/prefect-server), a zig port
-of [prefect](https://github.com/prefecthq/prefect); the flows are ordinary
-prefect 3 python.
+Personal workflows for activity briefings, agent jobs, analytics, and published
+snapshots. Python flows use [Prefect](https://github.com/PrefectHQ/prefect), backed
+by a self-hosted [Zig control plane](https://tangled.org/zzstoatzz.io/prefect-server).
 
-**live:** [hub.waow.tech](https://hub.waow.tech) ·
-[grafana](https://prefect-metrics.waow.tech/d/executive-overview/executive-overview?orgId=1&from=now-6h&to=now&timezone=browser)
+**live:** [hub.waow.tech](https://hub.waow.tech)
 
-```
-  heavypad (home, tailscale)               hetzner VM (k3s, EU)
-  ────────────────────────────             ─────────────────────────────
-  home-pool process worker      ── poll ─► prefect-server (zig) + postgres
-  runs home-pool flows          ◄─ runs ── + redis
-                                          Typeahead cloud publisher (qualification)
-  Dagster runs hub dbt locally
-  owns analytics.duckdb,
-  llm-spend.jsonl               ── rsync ► hub.waow.tech + grafana (public)
+## install
+
+Requires Python 3.13+, [uv](https://docs.astral.sh/uv/), and
+[just](https://just.systems/). Copy `.env.example` to `.env` and configure operator
+access before using the server commands.
+
+```sh
+uv sync --locked
+just hooks
 ```
 
-The [isolated HeavyPad server](deploy/heavypad-prefect/README.md) now runs a
-separate k3s control plane behind a private Tailscale HTTPS address. Only the
-FastMCP backlog counter, host diagnostics, bufo traffic rollups, cost snapshots and
-public MCP health checks have moved; the canonical hostname,
-critical jobs and Typeahead cloud publisher remain on the original server.
-The [Cloud recovery plan](docs/migrations/heavypad-cloud-recovery.md) records a
-real managed diagnostics, health checks and publication runs, downtime risks and migration gates.
+## use
+
+```sh
+just heavypad-prefect flow-run ls
+just heavypad-prefect deployment run 'diagnostics/diagnostics' --watch
+```
 
 ## design
 
-- **home computes, the edge serves** — home-pool flows run on the home box, which
-  polls outbound. selected gardener jobs run in exe.dev VMs, managed from home.
-  the VM holds the control plane and
-  serves bytes. the hub reads a copy of the analytics synced every few
-  minutes, so a public page never waits on a trip home.
-- **prefect.yaml is the source of truth** — schedules, triggers, tags,
-  parameters, and job variables live in one file. a push to `main` registers
-  all of it, preserving explicit legacy pins and wheel routes.
-- **code delivery is explicit** — Git-backed runs install and check out the
-  same revision; wheel-backed runs import packaged flow modules.
-  [deployment validation](docs/deployments-validation.md) checks these contracts
-  before registration.
-- **degraded is a state name, not a boolean** — a run whose upstream was dead
-  but that did its job returns `Completed(name="Degraded")`. it stays visible
-  and filterable and does not page. retries sit on every task that touches
-  the network; nothing catches a transient error where the engine could have
-  retried it. [prefect-patterns.md](docs/prefect-patterns.md) has the mechanism.
-  Typeahead's index-builder task retries failures after 30, 120, and 300 seconds,
-  within the flow's twelve-hour limit. Process errors include the last 50 output
-  lines (up to 2,000 characters each), preserving the underlying Zig error.
-- **one writer for the analytics** — `analytics.duckdb` opens read-write only
-  under a global concurrency limit of one; readers snapshot the file.
-- **secrets are blocks** — runtime credentials are Prefect Secret blocks named
-  in `prefect.yaml` and resolved when a run starts, or loaded through
-  `mps.blocks` by flows that need typed access. `.env` holds operator tooling.
-- **the agent needs the operator to land a change** — pi diagnoses failures
-  and opens pulls as gardener, phi reviews, and the merge credential stays
-  behind a human Resume. [autofix.md](docs/autofix.md) is the ladder.
-
-The hub dbt models run in [Dagster on HeavyPad](deploy/dagster/README.md). Prefect
-retains ingestion/classification and a success-gated handoff to downstream flows.
-
-Typeahead snapshot builds have moved from the home publisher to the
-resource-limited cloud pool. The [automatic refresh](docs/automatic-typeahead-refresh.md)
-prepares an independent idle backend, verifies it, then conditionally changes
-routing while retaining the previous backend. Full rollout, rollback and prepared-candidate recovery passed October 25.
-Local build retention keeps two logical generations plus the serving one;
-[the disk audit](docs/audits/2026-10-25-worker-disk-cleanup.md) records cleanup and failure handling.
-The index runs at 06:00 UTC on odd-numbered days, at most 48 hours apart. Live
-registration and queued parameters are verified; the next run is October 27 at
-06:00 UTC. The separate PLC
-identity deployment remains paused. See the [cloud worker](deploy/typeahead-cloud-worker/README.md)
-for resource limits and recovery, and the [historical bandwidth hold](docs/archive/typeahead-home-bandwidth-hold-20261020.md)
-for the home migration context.
-
-## gardener
-
-[gardener](https://hub.waow.tech/gardener) opens on a spatial execution map:
-Prefect and heavypad, current exe.dev machines, and recent outcomes. Counts show
-workers online, machines, active work, and requests needing attention. Select an
-object to inspect it; Work history opens the original request and saved answer.
-Execution timings and cleanup remain available inside each request. Sign in through the hub’s existing
-Cloudflare Access login; the origin verifies its signed application token. The hub queries
-with `GARDENER_API_AUTH_STRING` when configured; production uses the read-only API
-credential. No execution depends on an open page.
-
-The worker keeps bounded attempt observations in SQLite on heavypad and publishes
-one replaceable Prefect artifact. Missing or stale observations remain visible.
-Flow completion and verified VM deletion are separate outcomes.
-
-```sh
-just gardener-status                       # inspect the installed release
-just gardener-image                        # build the locked runtime image
-just gardener-probe --image REGISTRY/IMAGE --prepare-agent  # time startup and test two VMs
-just gardener-install COMMIT               # install a committed worker release
-```
-
-`investigate`, `autofix-revise`, and `test-pull-patch` use digest-pinned images
-from the private `gardener-registry.exe.xyz` registry. Each image preserves its
-deployment's flow code and locked dependencies. Job variables use `environment_mode: image` and
-empty `requirements` / `local_packages`, so jobs do not install dependencies.
-The dedicated `gardener-exe` worker on heavypad manages these VMs; it is separate
-from the `home-pool` process worker. The registry is a persistent infrastructure
-VM, outside the worker's disposable-job inventory. Each job VM receives the
-`llm` integration. Pi uses a local sandbox relay to call Exe directly: OpenAI
-Responses uses the connected ChatGPT account; Anthropic Messages uses Exe credits.
-The Exe worker no longer issues remote inference grants. Execution timeouts,
-model selection, isolated agent files/network, and cleanup remain enforced.
-Cleanup detaches model access before deleting the VM. The old gateway still
-serves Phi workflow requests and the retained Sprites path.
-See the [registry and rollback guide](deploy/gardener/REGISTRY.md) and
-[verified rollout](docs/archive/2026-10-08-gardener-images.md).
-The [startup investigation](docs/spikes/gardener-startup.md) separates image
-preparation, worker placement, and job isolation, with live probe measurements.
-
-The design borrows durable execution and detachable clients from
-[Albedo](https://tangled.org/okami.mom/albedo), and separation of orchestration from
-runtime observation from Nebula. Prefect remains the scheduler; neither an agent
-graph engine nor another dashboard database is needed. The image follows
-[uv's Docker guidance](https://docs.astral.sh/uv/guides/integration/docker/): pinned
-uv, a locked non-editable environment, and dependency layers before source.
+- **centralized workflows** — flow code and deployment definitions stay together;
+  product repositories own the applications those flows support.
+- **durable orchestration** — Prefect tracks execution; workers run jobs at home
+  or in disposable cloud VMs according to their data and resource needs.
+- **asset ownership** — Dagster owns dbt assets; Prefect coordinates ingestion
+  and downstream work.
+- **runtime credentials** — deployments name Secret blocks rather than embedding
+  credentials in configuration.
 
 ## develop
 
 ```sh
-uv sync                                   # workspace: flows + packages/mps
-just hooks                                # install staged deployment validation
-just check                                # ruff, ty, pytest, the hub's svelte-check and oxlint; what CI runs before deploying
-just prefect flow-run ls                  # any prefect CLI command against the live server
-just prefect deployment run 'diagnostics/diagnostics' --watch   # a run on the real worker
-just push                                 # github first (installs come from there), then tangled (CI deploys)
+just check  # deployment validation, lint, types, tests, and web checks
+just push   # GitHub mirror first, then Tangled
 ```
+
+Web checks require [Bun](https://bun.sh/). Read [AGENTS.md](AGENTS.md) for repository
+conventions and operational constraints.
 
 ## docs
 
-| | |
-|---|---|
-| [operations.md](docs/operations.md) | standing up the VM and the home worker; the recipes that run the system |
-| [tailnet-only.md](docs/tailnet-only.md) | plan for serving prefect-server only to tailnet devices: constraints, steps, and every consumer that has to move first |
-| [hub.md](docs/hub.md) | the ingest → classify → transform → brief pipeline and the hub it feeds |
-| [fastmcp-attention.md](docs/fastmcp-attention.md) | when fastmcp briefs fire, what "seen" means, and the staged plan for laptop triage and operator acks |
-| [agentic-fastmcp.md](docs/agentic-fastmcp.md) | Cloud issue eligibility and draft-PR experiment, commands and empirical results |
-| [autofix.md](docs/autofix.md) | the gardener: failed run → pi diagnosis → pull → phi review → operator merge |
-| [coding-jobs.md](docs/coding-jobs.md) | audit retained coding jobs, outputs, reviews, and telemetry coverage |
-| [prefect-patterns.md](docs/prefect-patterns.md) | the mechanism behind the conventions in `AGENTS.md`, with citations |
-| [agent-tooling.md](docs/agent-tooling.md) | the two MCP servers in `plugins/mps/` and what each can do |
-| [prompt-caching.md](docs/prompt-caching.md) | why thousands of LLM calls cost a few dollars |
-| [cost-declaration.md](docs/cost-declaration.md) | a sketch of declaring infrastructure costs on atproto |
-| [audits/](docs/audits/) | point-in-time reviews of the live deployments, with a dated status of what is still open |
-| [incidents/](docs/incidents/) | post-mortems |
-| [archive/](docs/archive/) | shipped design notes and build logs, kept for the why; none describes the present |
-| [repository consolidation](docs/archive/2026-10-17-repository-consolidation.md) | archived worktrees, retained production changes, and how to recover old work |
-
-[COSTS.md](COSTS.md) is the running record of what this deployment spends.
+[docs/](docs/) contains operations, design notes, migration records, and audits.
+Service-specific installation and recovery instructions live with [deploy/](deploy/).
 
 ## license
 
 [MIT](LICENSE)
-
-Typeahead publisher configuration selects compact format and immutable source tag
-`pds-compact-31ec142-20261020`, with a 10,000-actor cutoff for PDS scopes. The
-managed channel verifies compact artifacts and their same-watermark SQLite twin,
-then prepares the inactive backend before changing a separate routing record.
-It leaves the historical root pointer unchanged. See the
-[automatic refresh runbook](docs/automatic-typeahead-refresh.md) for current
-qualification, schedule and rollback state. The flow defaults to SQLite for
-callers without deployment parameters.
-
-CI runs the full check and deployment registration workflow in a Spindle NixOS
-microVM. See [deployment validation](docs/deployments-validation.md#ci-execution-environment)
-for the execution environment and required gates.

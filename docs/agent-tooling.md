@@ -22,13 +22,13 @@ can do before hand-rolling `curl`, and before claiming something isn't possible.
   diagnostics. this one genuinely is read-only, but that's a *scope* decision
   about a very large API, not a principle about MCP. do not generalize it to
   other servers. mutations go through `just prefect ...`.
-  - configured at **local** scope for this project (`claude mcp list` →
-    `prefect`), pointed at `https://$DOMAIN/api` with `PREFECT_API_AUTH_STRING`
-    from `.env`, so the credential stays out of the repo. it reads our server,
-    not Cloud — `get_identity` returns our `api_url` and version.
-  - there is *also* a `claude.ai Prefect` connector (`prefect.fastmcp.app`)
-    in the client list. that one is the hosted **Cloud** MCP and is unrelated
-    to this server; don't confuse the two when reading tool output.
+  - the Codex catalog in `.agents/plugins/marketplace.json` points to the single
+    plugin package at `plugins/mps/`. Its `.mcp.json` configures the servers;
+    `.codex-plugin/plugin.json` describes the package. There is no separate
+    Claude plugin or repository-level MCP configuration.
+  - the Prefect MCP uses `DOMAIN` and `AUTH_STRING` from the operator environment.
+    Confirm its endpoint with `get_identity`; the hosted Prefect Cloud MCP is
+    a different service. Use `just heavypad-prefect` for home-server operations.
   - it makes a decent API fuzzer: it sends filter shapes the UI never does.
     every gap fixed in prefect-server v0.0.19–v0.0.21 (flow-run time filters,
     `GET /api/version`, tags/labels/parameters persistence, a real PATCH, the

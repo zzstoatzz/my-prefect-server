@@ -1,4 +1,4 @@
-# COSTS.md
+# costs
 
 > **Mandate.** This file tracks the infrastructure costs attributed to **my-prefect-server** and
 > what we're doing to bring them down. It is the running record of what this project
@@ -15,10 +15,10 @@ current monthly cost for this repo from the daily snapshot (collected by
 curl -s https://hub.waow.tech/api/costs.json | jq '{
   as_of: .generatedAt,
   this_repo_monthly_usd: (
-    [ .lineItems[] | select(.service as $s | ["prefect-server"] | index($s)) ]
+    [ .lineItems[] | select(.service | startswith("prefect-server")) ]
     | (map(.amount) | add // 0) / 100
   ),
-  lines: [ .lineItems[] | select(.service as $s | ["prefect-server"] | index($s))
+  lines: [ .lineItems[] | select(.service | startswith("prefect-server"))
            | {service, provider, usd: (.amount/100), estimated} ]
 }'
 ```
@@ -45,7 +45,7 @@ wrong, fix the mapping in `my-prefect-server`
   collide (bare `relay` vs plyr's `relay-api`), so inference silently
   mis-attributes and nothing fails loudly. the collector's job is to reconcile
   declarations and report conflicts + orphans; ~20 live services are claimed
-  by no repo today. the protocol sketch is [docs/cost-declaration.md](docs/cost-declaration.md).
+  by no repo today. the protocol sketch is [docs/cost-declaration.md](cost-declaration.md).
 
 ## how we might bring this down
 - biggest line is usually `prefect-server` — check its utilization and right-size before anything else.

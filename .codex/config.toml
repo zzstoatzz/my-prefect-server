@@ -1,3 +1,0 @@
-[mcp_servers.prefect]
-command = "uvx"
-args = ["--from", "prefect-mcp", "prefect-mcp-server"]

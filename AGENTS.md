@@ -1,111 +1,81 @@
-this file is a set of notes for us:
+# repository instructions
 
-## credentials — read this before assuming you have no access
+## access and targets
 
-- local tooling secrets live in `.env` at the repo root (gitignored, never committed). copy `.env.example` and fill it in. the justfile has `set dotenv-load`, so every `just` recipe picks `.env` up automatically — you do NOT have "no credentials" just because nothing is exported in your shell.
-- `.env` keys: `HCLOUD_TOKEN`, `POSTGRES_PASSWORD`, `AUTH_STRING`, `DOMAIN`, `LETSENCRYPT_EMAIL` (+ optional `GRAFANA_DOMAIN`). the live server is `DOMAIN=prefect-server.waow.tech`.
-- `AUTH_STRING` (`user:pass`) is the Prefect API admin credential. The Zig server's Prefect-compatible BasicAuth is enabled via the `prefect-auth` secret; unauthenticated `/api/*` calls return `Unauthorized`, while `/ui-settings` reports `auth: "BASIC"` for the bundled Prefect v2 UI login flow. Use `AUTH_STRING` for CLI/API queries.
-- query the live server with `just prefect <args>` (e.g. `just prefect flow-run ls`); it injects `PREFECT_API_URL`/`PREFECT_API_AUTH_STRING` from `.env`. raw API: `curl -H "Authorization: Basic $(printf "$AUTH_STRING" | base64)" https://$DOMAIN/api/...`.
-- flow *runtime* secrets (`ANTHROPIC_API_KEY`, `TURBOPUFFER_API_KEY`, `CLOUDFLARE_API_TOKEN`, `TURSO_*`) are NOT in `.env` — they're Prefect Secret blocks, injected into flow runs via `job_variables.env` in `prefect.yaml`, resolved at worker startup by `mps.secrets_plugin`. flows needing explicit typed block access use `mps.blocks`.
+- Operator credentials are in the gitignored root `.env`; `just` loads it.
+  Do not infer missing access from an empty shell environment. Runtime flow
+  credentials are Prefect Secret blocks, resolved by `mps.secrets_plugin` or
+  loaded through `mps.blocks`. Never commit or print credential values.
+- `just heavypad-prefect` and `just heavypad-kubectl` target the home control
+  plane. `just prefect` and root `kubeconfig.yaml` still target the original
+  Hetzner server during migration. Never silently change the default Prefect
+  profile or Kubernetes context. Ambient OrbStack Kubernetes is not production.
+- Read `deploy/heavypad-prefect/README.md` before operating the home stack.
+  Confirm current runtime and deployment ownership from live state; dated
+  migration records in `docs/migrations/` are evidence, not standing policy.
+- Missing kubeconfig must be recovered out of band. `just kubeconfig` depends
+  on local Terraform state and is not a universal recovery path. Refresh it
+  after a server restart. Check local operator notes for SSH access; do not
+  commit host addresses or keys.
 
-## cluster access
+## development and releases
 
-- the prod stack runs on a single-node k3s cluster in the `prefect` namespace. the local orbstack k8s context is not prod — verify context before acting.
-- kubectl uses `kubeconfig.yaml` at the repo root (gitignored). the justfile exports `KUBECONFIG := source_directory()/kubeconfig.yaml`, so `just status` / `just logs` / deploy recipes target prod only once that file exists.
-- if `kubeconfig.yaml` is missing, restore it out-of-band rather than relying on ambient kubectl context. `just kubeconfig` currently depends on local terraform state, which may not be present.
-- node SSH access exists out-of-band. avoid committing host/IP/key details; check local operator notes or ask the user when needed.
+- Keep the primary checkout on `main`. Reconcile temporary branches/worktrees
+  and remove them when finished; preserve unfinished work in recoverable
+  archives or project docs.
+- Land production source and configuration on `main` before rollout. Use
+  immutable release pins and wheels, not abandoned branch checkouts.
+- Use `just` recipes for established operations. Never use `pip` or `uv pip`;
+  use `uv add`, `uv sync`, or `uv run --with`.
+- Push GitHub first, then Tangled with `just push`; runtime installs use the
+  mirror. Run `just hooks` once per clone and the appropriate checks from
+  `just check` before shipping.
+- Prefect documentation is at `~/github.com/prefecthq/prefect/docs`. Read it
+  before guessing API or CLI behavior. Python support starts at 3.13 so dbt
+  flows can select a compatible interpreter.
 
-## conventions
+## deployment contracts
 
-- keep the primary checkout on `main`. Temporary task branches/worktrees must be reconciled and removed when the task finishes; preserve unfinished ideas in docs and recoverable archives rather than leaving permanent sibling checkouts.
-- land production service source and configuration on `main` before rollout. Immutable release pins and wheels are expected; running code that exists only on an abandoned branch is not.
-- never use `pip` or `uv pip` — use `uv add`, `uv sync`, or `uv run --with`
-- use `jq` for JSON processing, not python
-- prefect docs are on disk at `~/github.com/prefecthq/prefect/docs` — read before guessing
-- use justfile recipes instead of ad-hoc commands
-- **a state's `name` is independent of its `type`** — return
-  `Completed(name="Degraded", message=...)` from a flow whose run did its job
-  with a dead upstream, instead of a boolean or a silent swallow. it stays
-  visible and filterable, and does not page. `docs/prefect-patterns.md`
-- retries belong on every task that touches the network:
-  `retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1`. never
-  `try/except` a transient error inside the task — catching it means the engine
-  never retries. let it raise; decide at the join point whether a dead source
-  degrades the run or fails it
-- push to configured remotes. This repo currently has `origin` (tangled.org);
-  if a `github` mirror remote is present in a checkout, push that too.
-- after server restart, re-fetch kubeconfig with `just kubeconfig`
-- Active execution uses the HeavyPad API pools documented in `deploy/heavypad-prefect/README.md`. The original `home-pool` worker is stopped and disabled after its runs drained; retain its unit for rollback only. Analytics data remains under `/home/stoat/prefect-analytics`.
-- Git-backed flow code is pulled at runtime; selected Gardener flows instead import modules from pinned mps wheels, including on `gardener-exe`. Preserve the declared loading mode: `pull: []` plus a wheel needs a dotted entrypoint unless files are explicitly supplied by the worker. See `docs/deployments-validation.md`.
-- run `just hooks` once per clone. `just validate-deployments` checks code-delivery contracts; CI repeats it before registration. Never change entrypoint syntax to satisfy documentation formatting. A passing static check does not establish artifact availability or runtime readiness.
-- worker image is `prefecthq/prefect:3-python3.14-kubernetes` (the `-kubernetes` tag matters; uv is pre-installed)
-- `PREFECT_INTEGRATIONS_KUBERNETES_OBSERVER_NAMESPACES=prefect` is what makes namespace-scoped RBAC work
-- kubernetes work pool base job template defaults namespace to `default` — must be `prefect`
-- flow pods install deps via `uv run --with 'my-prefect-server @ git+https://github.com/...'` in the `command` job variable — this creates an ephemeral venv before pull steps run
-- per-deployment overrides (e.g. `--python 3.13` for dbt compat) go in `work_pool.job_variables.command`, not at the deployment root
-- requires-python is >=3.13 (not 3.14) so the transform flow can run dbt under python 3.13
-- the hub dbt project runs in Dagster on HeavyPad (`deploy/dagster/`); Prefect's transform flow only submits and awaits the Dagster run. Keep dbt asset execution and metadata in Dagster.
-- `analytics.duckdb` is single-writer: every RW open must hold the `analytics-duckdb-writer` global concurrency limit (limit=1) via `mps.lock.analytics_write_slot` — new write paths go through `mps.db._write_conn` or wrap the slot themselves. readers snapshot the file to `/tmp` instead of locking
+- `prefect.heavypad.yaml` owns home-server deployments, schedules and triggers.
+  `prefect.yaml` retains inactive original-server rollback definitions.
+  Never enable two schedulers for the same effects or silently resume a
+  deliberately paused deployment.
+- Preserve the declared code-delivery mode: Git runs pull their source;
+  wheel-backed runs with `pull: []` import dotted module entrypoints unless
+  the worker supplies files. Read `docs/deployments-validation.md`.
+- `just validate-deployments` checks static contracts, not artifact availability
+  or runtime readiness. Verify the real worker and run after deployment.
+- Preserve command-prefix Prefect settings: workers may override deployment
+  environment values before launching a process.
+- HeavyPad registration runs on the trusted host after green CI for the exact
+  main revision. Follow the registration runbook rather than injecting home
+  credentials into Spindle microVMs.
+- Legacy Kubernetes workers require the `-kubernetes` Prefect image variant,
+  namespace `prefect` in the pool template, and
+  `PREFECT_INTEGRATIONS_KUBERNETES_OBSERVER_NAMESPACES=prefect` for scoped RBAC.
+  Interpreter/dependency overrides belong in `work_pool.job_variables.command`.
 
-## agent tooling
+## workflow behavior
 
-before hand-rolling `curl` — or saying "the MCP can't do X" and offering to
-build a tool — grep the tool list of the two MCP servers in `plugins/mps/`.
-pdsx does full record CRUD (not read-only); the prefect one is read-only by
-scope, and mutations go through `just prefect ...`. details and the
-Cloud-vs-ours confusion: `docs/agent-tooling.md`.
+- Dagster owns hub dbt asset execution and metadata on HeavyPad. Prefect's
+  transform flow submits and awaits Dagster; do not duplicate dbt execution.
+- Every read-write open of `analytics.duckdb` holds the single-writer
+  `analytics-duckdb-writer` lease through `mps.db._write_conn` or
+  `mps.lock.analytics_write_slot`. Readers snapshot to `/tmp`.
+- Network tasks use retries with delays `[2, 5, 10]` and jitter. Let transient
+  errors reach the task engine; decide degraded versus failed at the join.
+- A state's name is independent of its type. Use a named `Completed` state
+  when work completed with an unavailable upstream; see `docs/prefect-patterns.md`.
+- Direct flow execution can use different storage and credentials from the
+  production worker. Use a deployment run to verify production behavior.
 
-## costs
+## tooling and documentation
 
-`COSTS.md` figures are mostly wrong today — prefix-match the service name, and
-prefer declared ownership over inferred. background: the "known-wrong state" section of `COSTS.md`.
-
-## running flows ad hoc
-
-- Flow files under `flows/` are ordinary Python modules. Most have an
-  `if __name__ == "__main__"` entrypoint, so they can be run directly for
-  local/debug execution, e.g. `uv run python flows/diagnostics.py` or
-  `uv run python flows/phi_atlas.py --dry-run`.
-- Direct local execution is useful for debugging pure Python behavior, but be
-  careful with write paths: default local storage may be `/tmp`, not the
-  production analytics dir (`/home/stoat/prefect-analytics` on the home box), and flow code that calls `Secret.load(...)` still
-  needs `PREFECT_API_URL`/`PREFECT_API_AUTH_STRING` pointed at the live server.
-- To exercise the real production worker (home-pool), pull steps, job variables,
-  and injected secret-block values, run deployments through the
-  Prefect API: `just prefect deployment run 'diagnostics/diagnostics' --watch`
-  or `just prefect deployment run 'ingest/ingest' --watch`.
-- `prefect.yaml` is the source of truth for deployment schedules, triggers,
-  parameters, and per-deployment job variables. Re-register with
-  `just prefect deploy --all` after dependency or flow changes.
-
-## docs
-
-- reference material lives in `docs/`; the README's docs table is the index. post-mortems
-  go in `docs/incidents/`; shipped design notes and build logs go in `docs/archive/`, never the
-  repo root or this file
-
-## isolated HeavyPad server
-
-The original `just prefect` and `kubeconfig.yaml` still target Hetzner. The
-separate `just heavypad-prefect` and `just heavypad-kubectl` target the HeavyPad server;
-never switch the default profile or kubectl context to operate it. Read
-`deploy/heavypad-prefect/README.md` before migration. `prefect.heavypad.yaml`
-owns HeavyPad server schedules; CI registers `prefect.heavypad.yaml` against the HeavyPad API using scoped spindle credentials; `prefect.yaml` retains inactive original-server rollback definitions.
-The backlog counter, diagnostics, bufo-traffic, costs, mcp-fleet-health,
-fleet-health, mcp-atlas and bisk-snapshot are migrated.
-Keep their original schedules
-empty, and never run two schedulers for the same effects. Diagnostics notification
-dependencies and the fleet-unhealthy rule are copied; automatic remediation remains on the original server.
-Cloud recovery deployments are manual-only and must not imply home-host monitoring.
-Bufo traffic and cost publication are qualified on HeavyPad and manual-only Cloud recovery;
-Cloud defaults to dry-run. The Atlas crawl is centralized at
-`flows/mcp_atlas/crawl.py`; its product library stays pinned to the Atlas repo.
-The 21-deployment scoped migration (batches 1, 2, 4, 5 and 8) is complete;
-see `docs/migrations/2026-10-26-scoped-migration.md` for the exact inventory,
-verification and rollback. Keep their original clocks empty and completion
-triggers disabled. Dedicated background, interactive and build workers use
-the HeavyPad API; Dagster uses its writer lease too. `just triage-reply` and
-`just presence-deploy` now target HeavyPad. Preserve command-prefix Prefect
-settings: the worker can override deployment env values before launch.
-Gardener, Typeahead and long publishers remain outside that goal. Canonical
-hostname cutover and node deletion require a later operator decision.
+- Inspect the MCP tools in `plugins/mps/` before inventing a new client or
+  claiming a capability is unavailable. PDSX supports record CRUD; the Prefect
+  MCP is read-only. Mutations use the explicitly targeted CLI.
+- Cost snapshots have known coverage and attribution gaps. Prefer declared
+  ownership and prefix-match service names; see `docs/costs.md`.
+- Keep README focused on purpose, setup and use. Operations and design belong
+  in `docs/` or beside their deployment. Incidents go in `docs/incidents/`;
+  shipped design notes and build logs go in `docs/archive/`.
