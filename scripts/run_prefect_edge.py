@@ -11,7 +11,7 @@ from urllib.parse import urlsplit
 from prefect_target import target_config
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("service", choices=["hub", "push", "proxy"])
+parser.add_argument("service", choices=["hub", "push", "proxy", "grafana", "prometheus", "health"])
 args = parser.parse_args()
 root = Path(__file__).resolve().parent.parent
 service = tomllib.loads((root / "deploy/prefect-edge/services.toml").read_text())[args.service]
@@ -19,6 +19,55 @@ home = Path.home()
 config = home / ".config/prefect-edge"
 state = home / ".local/share/prefect-edge"
 os.environ["DOCKER_HOST"] = "unix:///var/run/docker.sock"
+monitoring = state / "monitoring"
+if args.service in {"grafana", "prometheus", "health"}:
+    command = ["docker", "run", "--rm", "--name", "prefect-" + args.service]
+    if args.service == "health":
+        command += [
+            "--publish",
+            "127.0.0.1:19814:9814",
+            "--memory",
+            "96m",
+            "--volume",
+            str(root / "deploy/prefect-edge/typeahead_health.py") + ":/app/exporter.py:ro",
+            service["image"],
+            "python",
+            "-B",
+            "/app/exporter.py",
+        ]
+    else:
+        command += ["--network", "host", "--user", str(os.getuid()) + ":" + str(os.getgid())]
+        if args.service == "grafana":
+            command += [
+                "--env-file",
+                str(config / "grafana.env"),
+                "--memory",
+                "384m",
+                "--volume",
+                str(monitoring / "grafana/data") + ":/var/lib/grafana",
+                "--volume",
+                str(monitoring / "grafana/provisioning") + ":/etc/grafana/provisioning:ro",
+                "--volume",
+                str(monitoring / "grafana/grafana.ini") + ":/etc/grafana/grafana.ini:ro",
+                "--volume",
+                str(monitoring / "analytics") + ":/analytics:ro",
+                service["image"],
+            ]
+        else:
+            command += [
+                "--memory",
+                "1g",
+                "--volume",
+                str(monitoring / "prometheus") + ":/prometheus",
+                "--volume",
+                str(config / "prometheus.yml") + ":/config/prometheus.yml:ro",
+                service["image"],
+                "--config.file=/config/prometheus.yml",
+                "--storage.tsdb.path=/prometheus",
+                "--web.listen-address=127.0.0.1:19090",
+                "--storage.tsdb.retention.time=15d",
+            ]
+    raise SystemExit(subprocess.run(command, check=False).returncode)
 if args.service == "proxy":
     command = [
         "docker",
@@ -34,7 +83,8 @@ if args.service == "proxy":
     command += ["--volume", str(config / "nginx.conf") + ":/etc/nginx/nginx.conf:ro"]
     command += [service["image"]]
     raise SystemExit(subprocess.run(command, check=False).returncode)
-host = urlsplit(target_config()["api_url"]).hostname
+target = target_config()
+host = urlsplit(target.get("internal_api_url", target["api_url"])).hostname
 address = socket.gethostbyname(host)
 command = [
     "docker",

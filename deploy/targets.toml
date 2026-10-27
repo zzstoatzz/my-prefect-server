@@ -1,7 +1,8 @@
 default_target = "production"
 
 [targets.production]
-api_url = "https://heavypad.tailb660b6.ts.net:10443/api"
+api_url = "https://prefect-server.waow.tech/api"
+internal_api_url = "https://heavypad.tailb660b6.ts.net:10443/api"
 auth_sops_section = "heavypad_prefect"
 auth_sops_field = "api_auth_string"
 ssh_host = "stoat@heavypad"

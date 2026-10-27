@@ -1,0 +1,16 @@
+[Unit]
+Description=Prefect grafana service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=%h/prefect-edge/current
+ExecStart=%h/.local/bin/uv run --no-project --python 3.13 python scripts/run_prefect_edge.py grafana
+ExecStop=/usr/bin/env DOCKER_HOST=unix:///var/run/docker.sock /usr/bin/docker stop -t 20 prefect-grafana
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+
+[Install]
+WantedBy=default.target

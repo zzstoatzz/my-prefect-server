@@ -5,10 +5,13 @@ import base64
 import hashlib
 import json
 import shlex
+import socket
 import subprocess
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
+import yaml
 from dotenv import dotenv_values
 from prefect_target import target_config
 
@@ -75,6 +78,31 @@ def main():
             "apns_team_id": apns["team-id"],
         }
         edge["legacy_api_auth_string"] = dotenv_values(root / ".env")["AUTH_STRING"]
+        result = json.loads(
+            subprocess.check_output(
+                [
+                    "kubectl",
+                    "--kubeconfig",
+                    str(root / "kubeconfig.yaml"),
+                    "-n",
+                    "monitoring",
+                    "get",
+                    "secret",
+                    "grafana-admin",
+                    "-o",
+                    "json",
+                ],
+                text=True,
+            )
+        )
+        edge.update(
+            {
+                "grafana_admin_user": base64.b64decode(result["data"]["admin-user"]).decode(),
+                "grafana_admin_password": base64.b64decode(
+                    result["data"]["admin-password"]
+                ).decode(),
+            }
+        )
         existing = data.get("prefect_edge", {})
         if any(existing.get(k, v) != v for k, v in edge.items()):
             raise RuntimeError("Existing canonical edge credentials disagree; refusing overwrite")
@@ -90,7 +118,7 @@ def main():
         print("Existing edge credentials match canonical source; values withheld")
     edge = data["prefect_edge"]
     target = target_config()
-    api = target["api_url"]
+    api = target.get("internal_api_url", target["api_url"])
     with httpx.Client(
         base_url=api + "/", auth=tuple(edge["readonly_auth_string"].split(":", 1)), timeout=30
     ) as client:
@@ -139,6 +167,47 @@ def main():
         new = base64.b64encode(data["heavypad_prefect"]["api_auth_string"].encode()).decode()
         template = (root / "deploy/prefect-edge/nginx.conf").read_text()
         files["nginx.conf"] = template.replace("@OLD_AUTH@", old).replace("@HOME_AUTH@", new)
+    if "grafana_admin_user" in edge:
+        files["grafana.env"] = env(
+            {
+                "GF_SECURITY_ADMIN_USER": edge["grafana_admin_user"],
+                "GF_SECURITY_ADMIN_PASSWORD": edge["grafana_admin_password"],
+                "GF_SERVER_HTTP_ADDR": "127.0.0.1",
+                "GF_SERVER_HTTP_PORT": "13003",
+                "GF_SERVER_DOMAIN": "prefect-metrics.waow.tech",
+                "GF_SERVER_ROOT_URL": "https://prefect-metrics.waow.tech/",
+                "GF_PATHS_DATA": "/var/lib/grafana",
+                "GF_PATHS_LOGS": "/var/lib/grafana/logs",
+                "GF_PATHS_PLUGINS": "/var/lib/grafana/plugins",
+                "GF_PATHS_PROVISIONING": "/etc/grafana/provisioning",
+                "GF_UNIFIED_STORAGE_INDEX_PATH": "/var/lib/grafana/search",
+            }
+        )
+        node = socket.gethostbyname(target["ssh_host"].split("@")[-1])
+        endpoint = urlsplit(api)
+        user, password = edge["readonly_auth_string"].split(":", 1)
+        jobs = [
+            {"job_name": "heavypad", "static_configs": [{"targets": [node + ":9100"]}]},
+            {"job_name": "heavypad-gpu", "static_configs": [{"targets": [node + ":9835"]}]},
+            {
+                "job_name": "prefect-server",
+                "scheme": endpoint.scheme,
+                "metrics_path": "/api/metrics",
+                "basic_auth": {"username": user, "password": password},
+                "static_configs": [
+                    {
+                        "targets": [endpoint.netloc],
+                        "labels": {"namespace": "prefect-home", "pod": "api"},
+                    }
+                ],
+            },
+            {"job_name": "typeahead-health", "static_configs": [{"targets": ["127.0.0.1:19814"]}]},
+            {"job_name": "prometheus", "static_configs": [{"targets": ["127.0.0.1:19090"]}]},
+            {"job_name": "grafana", "static_configs": [{"targets": ["127.0.0.1:13003"]}]},
+        ]
+        files["prometheus.yml"] = yaml.safe_dump(
+            {"global": {"scrape_interval": "30s", "scrape_timeout": "10s"}, "scrape_configs": jobs}
+        )
     result = subprocess.check_output(
         ["ssh", "-o", "BatchMode=yes", target["ssh_host"], "python3 -c " + shlex.quote(REMOTE)],
         input=json.dumps({"files": files, "apply": args.apply}),

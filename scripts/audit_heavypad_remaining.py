@@ -3,6 +3,7 @@
 import argparse
 import json
 import subprocess
+import tomllib
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -109,7 +110,10 @@ def main():
     assert set(declared) == SCOPE
     with (
         httpx.Client(
-            base_url=f"https://{original['DOMAIN']}/api/",
+            base_url=tomllib.loads((ROOT / "deploy/targets.toml").read_text())["targets"]["legacy"][
+                "api_url"
+            ]
+            + "/",
             auth=httpx.BasicAuth(original_user, original_password),
             timeout=30,
         ) as old,

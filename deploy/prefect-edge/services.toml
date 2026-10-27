@@ -13,3 +13,12 @@ memory = "192m"
 
 [proxy]
 image = "nginx@sha256:47928bf67eb62a1863cb08d9ecb52d3e704304ba614eaee17884204677702951"
+
+[grafana]
+image = "grafana/grafana@sha256:06d0bf32de77a7cf32eb8c705332c8f573fc07441d95f29f26f39e4deb98e48f"
+
+[prometheus]
+image = "quay.io/prometheus/prometheus@sha256:214f8427c8fba80c327bb94a75feb802ae12f2d6ca30812aa6e7d22f09bbea80"
+
+[health]
+image = "python@sha256:7415fbc3c9e4979cc717d92377ab2bc7b2b4a2af1ac03cc52b5f3f88efedaf3a"

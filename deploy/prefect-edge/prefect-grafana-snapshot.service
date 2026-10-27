@@ -1,0 +1,8 @@
+[Unit]
+Description=Snapshot analytics for Grafana readers
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/prefect-edge/current
+ExecStart=%h/.local/bin/uv run --no-project --python 3.13 python scripts/snapshot_grafana_analytics.py
+UMask=0077
