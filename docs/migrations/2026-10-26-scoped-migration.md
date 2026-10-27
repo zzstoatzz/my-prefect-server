@@ -8,9 +8,9 @@ reorganization are outside this goal. Preserve existing unrelated checkout work.
 | --- | --- | --- |
 | 1 | phi-curation, phi-likes-review, phi-editorial, phi-character-retro, phi-chicken-scout, phi-chicken-precheck | Migrated: six validation runs passed, all target schedules active, original clocks empty. |
 | 2 | watch-fastmcp, fastmcp-brief | Migrated: both real runs passed, checkpoints/history transferred, clocks and automations active. |
-| 4 | strata-hourly, phi-tag-maintenance, phi-atlas, docket | Original owner; preserve archive/checkpoint files and shared writer coordination. |
-| 5 | ingest, classify-emails, transform, brief, phi-memory-synthesis | Original owner; transfer as one shared-writer cohort including Dagster's lock client. |
-| 8 | email-backlog, email-triage, phone-presence, stream-admission | Original owner; reconcile paused email approval and interactive callers. |
+| 4 | strata-hourly, phi-tag-maintenance, phi-atlas, docket | Strata and tag maintenance passed and own their clocks; Atlas publication and docket qualification remain in progress. |
+| 5 | ingest, classify-emails, transform, brief, phi-memory-synthesis | Real ingestion, classification, Dagster build, briefing and memory synthesis passed on HeavyPad; clocks and completion chain transferred. |
+| 8 | email-backlog, email-triage, phone-presence, stream-admission | Email read and preparation passed; phone endpoint transferred; stream CI submitted a real HeavyPad build, still running. |
 
 ## Phi qualification
 
@@ -126,3 +126,120 @@ immediate API readback confirmed type CANCELLED/name Cancelled and message
 "Flow run was cancelled successfully." No approval input was submitted and
 no triage decisions were replayed. This removes the pending approval blocker;
 the email deployment, worker capacity and callers still need migration.
+
+## Stateful and interactive handoff
+
+Original clocks for strata, tag maintenance, Phi atlas, ingest and triage were
+cleared in source (`70f3472`) and live. Five original completion automations
+(classify, transform, brief, memory synthesis, docket) were disabled in source
+and live. No old Running/Pending/Paused/Cancelling runs remained at transfer.
+The previously paused email approval stayed Cancelled.
+
+HeavyPad has three additional systemd worker instances from `84aeb58` and
+`worker@.service`: background (one slot, 8 GiB), build (one slot, 32 GiB), and
+interactive (two slots, 2 GiB). Monitoring retains its separate one-slot worker.
+The interactive override and pool both allow two slots so an approval wait does
+not block mailbox review. All units are enabled at boot; resource limits are
+per-service, not guaranteed reservations. Actual background memory accounting
+showed about 0.6 GiB anonymous/5.5 GiB reclaimable file cache and zero OOM kills
+during the memory-synthesis qualification. Build and background work can run
+independently; the original worker remains for excluded workloads.
+
+The new `analytics-duckdb-writer` limit is
+`43131bae-b0be-4ce9-bc4d-0f6048cae013`, one slot. Dagster was idle before
+both services received `dagster-prefect.conf` and restarted. Live process
+environments confirmed both target the HeavyPad API. All transferred readers
+and writers retain `/home/stoat/prefect-analytics/analytics.duckdb`, append-only
+spend logs and existing archive/result paths. The private pre-cutover DuckDB
+copy SHA-256 is `4547af3dc4620488a8392681aed8b437ab4a248116633ea5d4cfe09c08885fd7`.
+The 69,402,624-byte Strata SQLite backup passed quick_check. Neither backup
+is a license to overwrite subsequent production writes during rollback.
+
+| Deployment | HeavyPad ID | Qualification run |
+| --- | --- | --- |
+| strata-hourly | 25b8694f-c057-4c1c-8555-2357bf47d2f0 | 0687d7a7-68db-4034-80cf-60d789d3c877 |
+| phi-tag-maintenance | fab797b2-e506-4651-9935-4ea2c7255917 | 3494c436-0035-45d9-8401-cd174cc4d576 |
+| phi-atlas | b35e93ef-44a9-40eb-917d-66711669d485 | dry run c3e6030f-1691-4a96-98e6-c2cf38deb7d9; publication 547d5309-3352-4648-9d61-ad2263da37d3 in progress |
+| docket | 7242289f-3822-4073-8acb-1673062c78ef | completion-triggered qualification pending |
+| ingest | f5959783-a226-4734-abb7-66096c305649 | 02e049e7-a875-43c5-8119-543bde89896d |
+| classify-emails | 9e5a00f0-751d-46b9-93b2-8a9c224879c0 | 91e9a3a1-f30d-41d2-9ded-193093831501 |
+| transform | 94738309-b61e-43fa-8713-b610c2604a63 | 9c86ac51-939c-4ab7-8588-ea09200b4f0b |
+| brief | c004d049-278a-40d5-bfd0-1de1b2d5dfc8 | ece5248e-3c56-44b5-a6fe-19952d55ffcb |
+| phi-memory-synthesis | a3d785e9-a88f-421d-837f-81e4eb7f535d | 940d5575-5e3b-4983-ae7b-d8e34c94cdcc |
+| email-backlog | b3f1e43e-451c-4587-bb47-eaf63f45e777 | 1a2bf8aa-39bc-4493-b917-f52de2c86b37 |
+| email-triage | f952bb35-d8eb-4a81-a0a5-94fb4f0b08eb | a0c967a6-a3f0-473f-9a97-17098e7f4018 |
+| phone-presence | d4ec52ed-6085-4d94-b56f-27a7713e2336 | public ingress be1537a8-f130-4bb0-a6b7-1dd8e4dc9aac |
+| stream-admission | 583bb4f9-89b2-4c8c-8436-5fd5c11ac5a5 | 3592a7e7-b697-4df7-9b0d-49338c702b63 in progress |
+
+Strata ingested 353 of 353 changed/new segments and published ten changed
+content-addressed objects with no D1 writes, using the existing checkpoint
+and filesystem lock. Tag maintenance stored 141 relationships. The Atlas dry
+run computed 10,221 points and 8 coarse/329 fine clusters, without publication;
+normal publication and docket must still finish before that sub-batch is complete.
+
+Ingest completion triggered classification on HeavyPad. The first transform
+failed before loading its flow because `path` plus `pull: []` did not establish
+the working directory for its installed Prefect runner. `94f4d39` adds an explicit
+set_working_directory pull step for `/home/stoat/dagster-hub/current`. The retry
+above passed; the matching Dagster run is SUCCESS with 16 asset materializations.
+It triggered briefing and memory synthesis on HeavyPad. Memory synthesis completed
+at 02:02:39 UTC October 27: all 127 users processed, 41 liked-post observations
+extracted, eight actionable, and one superseded row. No code/workflow replacement
+of Dagster was performed. Its existing installed release remains in place.
+
+`b9d0523` corrects another Prefect runner environment precedence issue: worker
+PREFECT_LOCAL_STORAGE_PATH overrides a deployment job environment. The first
+new memory pass populated 127 cache files in the worker's new results directory
+while the original shared directory held 7,552. Explicit command-prefix env now
+preserves the declared shared result path after the worker merge, like the earlier
+plugin fix. This retains cached material for future runs. Verification of the
+updated runtime must accompany completion; source configuration alone is insufficient.
+
+The email-backlog probe first supplied an invalid body_chars=0 and failed its
+existing validation before reading mail. The corrected one-message/one-character
+read above completed on the interactive worker. The earlier queued corrected
+probe `e946fd33-25af-4452-860d-4b44c7beff1d` was cancelled before moving queues.
+Triage `validate_only=true` prepared two shortlist items and the correct private
+HeavyPad approval link, then completed Validated without emitting a shortlist,
+pausing, submitting instructions or writing decisions. Seven local triage tests
+passed. `just triage-reply` now addresses HeavyPad; no test reply was submitted.
+
+### Phone ingress
+
+The phone's public URL and bearer credential remain the same. Its new scoped
+PRESENCE_PREFECT_* settings target HeavyPad; Gardener's PREFECT_API_URL remains
+`http://prefect-server.prefect.svc:4200/api`. Hub image `28df734` was built from
+a clean committed clone and deployed without unrelated local checkout changes.
+The backend renderer `just heavypad-presence-ingress --apply` derives API auth
+from canonical SOPS and the target deployment by name, without changing the
+original ingress/Gardener secret. Apply/check are idempotent.
+
+The Hetzner host resolves HeavyPad's shared Serve/Funnel hostname to public
+Funnel IPs; its private 10443 listener is unreachable there. A Hub-only hostAliases
+entry now resolves that name to the private tailnet IP. TLS health returned 200
+from the actual Hub pod afterward. No Tailscale access policy was changed; the
+checked-in policy copy was refreshed verbatim from the live API.
+
+The new presence queue was paused during routing changes. After rollout and
+old-run drain it was resumed. The public endpoint rejected anonymous reports
+with 401 and accepted an authenticated 1970 stale report with 202; the recorded
+HeavyPad run above completed on the presence queue. Its timestamp cannot update
+current presence or actuate lights. The private credential files, writer limit
+and lighting marker are reused, and source/package revision `0706dd46` is preserved.
+A real arrival/departure was not simulated. `just presence-deploy` now registers
+the HeavyPad definition; the separate original deployment file is rollback material.
+
+### Stream caller
+
+Stream commit `923f2eae50a49c98b47fdff26ec45849e7ac2d09` resolves its deployment
+by name instead of hardcoding an old UUID. Its existing spindle entries now
+reference HeavyPad API/auth; `_inject_prefect` is false for this repository only.
+The original global Prefect credentials and other spindle entries are preserved.
+`uv run scripts/stream_spindle_prefect.py --apply` repairs only the two routing
+consumers; two subsequent checks reported zero changes. A real Nixery container
+reached the private API. Four CA contract tests passed. Actual spindle workflow
+`admission.yml` succeeded on pipeline `3myt472pd6622`, submitting the tracked
+HeavyPad run with all 21 suites, no skips and build_image=true. That build must
+be observed terminal and its outcome/receipt checked before final qualification.
+No stream production service or routing was deployed. Preserve unrelated
+`tests/seq_reuse_repro.py` in the stream checkout.
