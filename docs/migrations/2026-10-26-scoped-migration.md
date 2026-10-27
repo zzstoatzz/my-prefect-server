@@ -287,7 +287,9 @@ The native stream run completed at 02:11:29 UTC. Its receipt at
 `/home/stoat/stream-gate/receipts/923f2ea.json` records all 21 suites pass and
 image ID `sha256:9dc641700985af7b8bb73d20977ad73bed2e77ffede89dbfeb43c069445bbd6c`.
 The image was built locally; its registry digest is null because no publish or
-stream service deployment was requested. The migration moved the gate's caller
+stream service deployment was requested. A negative check passed a local image ID
+to `admit verify`, which rejected it: that command requires a published registry
+digest matched by a receipt. The existing publication gate remains in force. The migration moved the gate's caller
 and execution ownership, not the stream service.
 
 The final Python suite passed 828 tests with seven skipped. Ruff, formatting,
@@ -302,8 +304,12 @@ HeavyPad deployments, 297 runs, 23 blocks and 13 automations present. Its
 ciphertext SHA-256 is
 `70aa6cb100035ade2ebdfc7d578dcdee0a6f5dcc56e6a423df9c36cdcb002529`.
 The deployed restore checker requires all 21 scoped deployment IDs as well as
-the previously migrated workload records. A final post-publication backup and
-restore check follows this audit.
+the previously migrated workload records. The final post-publication R2 backup
+`20261027T022939Z.dump.age` restored successfully at 02:29:48 UTC, with all 32
+deployments, 330 runs, 23 blocks and 13 automations. Its ciphertext SHA-256 is
+`6da052843446416063f8daa41c2834788d09aeb161f318d4ad84dea124a617bd`; the
+newest completion was four minutes before the dump. No required qualification
+or migration work remains in this scope.
 
 ## Coordinated rollback
 
