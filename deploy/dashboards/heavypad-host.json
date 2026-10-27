@@ -1669,7 +1669,7 @@
     {
       "id": 23,
       "type": "stat",
-      "title": "Observed Internet TCP this UTC month",
+      "title": "Internet TCP",
       "description": "Lower bound: sampled public TCP sockets; misses UDP/QUIC, short connections, other namespaces and household devices. Preserves existing watchdog totals.",
       "datasource": {
         "type": "prometheus",
@@ -1707,7 +1707,7 @@
     {
       "id": 24,
       "type": "stat",
-      "title": "Host interfaces this UTC month",
+      "title": "Host interfaces",
       "description": "Receive plus transmit on physical interfaces. Includes LAN, VPN and all protocols; host-only, not the ISP meter.",
       "datasource": {
         "type": "prometheus",
@@ -1745,7 +1745,7 @@
     {
       "id": 25,
       "type": "stat",
-      "title": "Host usage / 1 TB budget",
+      "title": "Host / 1 TB",
       "description": "Context for the household budget, not measured household usage or guaranteed allowance remaining.",
       "datasource": {
         "type": "prometheus",

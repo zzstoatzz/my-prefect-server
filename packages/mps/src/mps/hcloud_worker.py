@@ -137,7 +137,7 @@ class BuilderClient(BuilderSSH):
         self.root = root
         self.ownership = ownership
         self.configuration = config
-        self.hcloud = HCloud(os.environ["HCLOUD_TOKEN"])
+        self.hcloud = HCloud(os.environ["HCLOUD_TOKEN"], billing_directory=root / "billing")
 
     async def __aexit__(self, *_):
         await self.hcloud.__aexit__()

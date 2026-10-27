@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import time
+from pathlib import Path
 from uuid import UUID
 
 import httpx
+
+from mps.builder_billing import record
 
 OWNER = "my-prefect-server"
 PURPOSE = "ephemeral-builder"
@@ -29,7 +32,9 @@ def resource_name(run_id: UUID, attempt: int) -> str:
 
 
 class HCloud:
-    def __init__(self, token: str):
+    def __init__(self, token: str, billing_directory: Path | None = None):
+        self.billing_directory = billing_directory
+        self.pricing = None
         self.http = httpx.AsyncClient(
             base_url="https://api.hetzner.cloud/v1/",
             headers={"Authorization": "Bearer " + token},
@@ -148,8 +153,17 @@ class HCloud:
                 raise RuntimeError("Ambiguous server creation identity") from None
             server = resolved[0]
         self.check_owned(server, run_id)
+        await self.bill(server, "created")
         await self.configure_ip(server)
         return server
+
+    async def bill(self, server: dict, phase: str) -> None:
+        if self.billing_directory is None:
+            return
+        if self.pricing is None:
+            result = await self.request("GET", "pricing")
+            self.pricing = result["pricing"]
+        record(self.billing_directory, server, self.pricing, phase)
 
     async def configure_ip(self, server: dict) -> None:
         self.check_owned(server)
@@ -182,6 +196,13 @@ class HCloud:
         self.check_owned(server, run_id)
         ipv4 = server["public_net"].get("ipv4")
         ip_id = ipv4.get("id") if ipv4 else None
+        # Preserve lifecycle and prices before inventory disappears. A telemetry
+        # failure must never keep a billable VM alive.
+        billing_error = None
+        try:
+            await self.bill(server, "created")
+        except Exception as error:
+            billing_error = error
         if result is not None:
             await self.request("DELETE", f"servers/{server_id}")
         for _ in range(60):
@@ -209,3 +230,12 @@ class HCloud:
                 await asyncio.sleep(2)
             else:
                 raise RuntimeError("Builder IP cleanup is still pending; retain cleanup receipt")
+
+        try:
+            await self.bill(server, "deleted")
+        except Exception as error:
+            billing_error = error
+        if billing_error is not None:
+            raise RuntimeError(
+                "Builder cleaned up; billing receipt unavailable, retaining local resource receipt for retry"
+            ) from billing_error

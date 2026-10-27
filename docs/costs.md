@@ -5,6 +5,53 @@
 > spends, why, and a changelog of changes that moved the number. If the spend here is
 > unjustified, that's a signal to clean up — not to ignore it.
 
+## Home migration accounting (October 27)
+
+The original Hetzner server, 150 GB volume and both primary IPs are deleted.
+They have no continuing inventory charge. That does not erase usage already
+accrued on the October invoice. The retirement receipt records their removed
+monthly list-price run-rate; provider invoices remain authoritative for final
+charges, taxes, credits, and proration.
+
+Ephemeral builders use a durable ledger, not inventory snapshots. The worker
+retains creation/deletion observations and the project's currency, server and
+IPv4 rates under `~/hcloud-builder/state/billing/`. A minute timer copies these
+non-secret receipts immutably to the existing backup bucket under
+`billing/hetzner-builders/`. The independent Cloudflare expiry reaper writes its
+own receipts directly to the same bucket and reconciles asynchronous deletions.
+Worker and reaper receipts deduplicate by provider server ID. Billing telemetry
+failure must not prevent expiry cleanup. Active builders and their IPv4s are
+excluded from the fixed-inventory collector to prevent double charging.
+
+The [commissioning backfill](audits/2026-10-27-builder-billing-backfill.json)
+covers all twelve provider create/delete pairs visible in this project's action
+history, beginning 06:46:58 UTC on October 27. Their conservative list-price
+estimate is $0.8879, including hourly rounding and IPv4. Historical size/location
+are inferred from the commissioning source (cpx32/fsn1), not recovered from a
+provider invoice. New receipts capture those properties before deletion.
+
+OpenRouter's `/api/v1/key` supplies actual usage for the configured key's current
+UTC month, including DeepSeek and any other models using that key. It excludes
+other keys, credit-purchase fees and upstream BYOK charges. The cost block is a
+derived consumer of canonical `openrouter.api_key`; no new issuer key was made.
+TypeSafe account-wide reconciliation is explicitly deferred at Nate's request;
+Coral's existing Jev meter remains a partial application estimate.
+
+Dashboard amounts remain **30-day run-rates**, so both new connectors scale
+observed spend over their stated coverage windows. Their usage/note fields retain
+actual observed spend and window start. Commissioning probes can inflate the
+builder projection; neither projection is an invoice. The ledger keeps the
+individual evidence for reconciliation rather than discarding deleted resources.
+
+Remaining explicit limits: Fly stopped rootfs sizes, paid IP/network charges,
+provider discounts/taxes/credits, R2 operations beyond available meters, home
+power/network, and uninstrumented third-party usage are not a complete invoice.
+Do not describe a successful snapshot as account-wide billing completeness.
+
+Bandwidth is on the existing [HeavyPad host dashboard](https://prefect-metrics.waow.tech/d/heavypad-host/heavypad-host).
+The watchdog writes numeric textfile metrics for the existing node exporter;
+there is no separate listener. See the [measurement limits and Xfinity comparison](../deploy/bandwidth-watchdog/README.md#grafana-bandwidth-comparison).
+
 ## current cost — fetch it live, never hardcode
 
 Costs drift, so this file deliberately does **not** hardcode a dollar figure. Get the

@@ -31,7 +31,12 @@ printf '%s\n' "$revision" > "$release/SOURCE_REVISION"
 if [ -L "$root/current" ]; then readlink "$root/current" > "$root/previous-release"; fi
 ln -sfn "$release" "$root/current"
 install -m 0644 deploy/hcloud-builder/hcloud-builder.service /home/stoat/.config/systemd/user/hcloud-builder.service
+mkdir -p "$root/state/billing"
+for type in service timer; do
+    install -m 0644 "deploy/hcloud-builder/billing-offsite.$type" "/home/stoat/.config/systemd/user/hcloud-builder-billing-offsite.$type"
+done
 systemctl --user daemon-reload
+systemctl --user enable --now hcloud-builder-billing-offsite.timer
 systemctl --user enable --now hcloud-builder
 systemctl --user restart hcloud-builder
 systemctl --user is-active hcloud-builder

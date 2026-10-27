@@ -25,3 +25,12 @@ it through a private temporary file, and removes that file on return. No
 credential is embedded in configuration, source, argv, or the builder VM.
 Consumer rotation is rerunning this deployment after canonical token update;
 issuer revocation/creation remains a Hetzner console operation.
+
+
+The existing `heavypad-prefect-backups` R2 bucket is bound as `BILLING`.
+Each owned VM gets durable creation/rate evidence before deletion and a deletion
+observation after provider absence. Later invocations reconcile asynchronous
+removals. Records are under `billing/hetzner-builders/` and contain no credentials
+or command payloads. They are separate from worker receipts and deduplicate by
+server ID. Billing failures are reported after cleanup, never used to keep an
+expired VM alive.

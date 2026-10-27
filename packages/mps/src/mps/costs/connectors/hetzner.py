@@ -167,6 +167,11 @@ class HetznerConnector:
                 )
                 continue
             for server in servers:
+                if (
+                    server.get("labels", {}).get("purpose") == "ephemeral-builder"
+                    and server.get("labels", {}).get("owner") == "my-prefect-server"
+                ):
+                    continue
                 sid = server.get("id")
                 if sid is None or sid in seen:
                     continue
@@ -236,6 +241,11 @@ class HetznerConnector:
                     )
                 )
             for ip in primary_ips:
+                if (
+                    ip.get("labels", {}).get("purpose") == "ephemeral-builder"
+                    and ip.get("labels", {}).get("owner") == "my-prefect-server"
+                ):
+                    continue
                 pid = ip.get("id")
                 if pid is None or pid in seen_ips:
                     continue

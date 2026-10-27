@@ -1,0 +1,9 @@
+[Unit]
+Description=Archive durable cloud builder billing receipts
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/prefect-home/r2.env
+ExecStart=/usr/bin/bash %h/hcloud-builder/current/deploy/hcloud-builder/billing-offsite.sh
+UMask=0077

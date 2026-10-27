@@ -1,0 +1,542 @@
+[
+  {
+    "schema": 1,
+    "id": 172862533,
+    "name": "historical-builder-172862533",
+    "flow_run_id": null,
+    "project": "typeahead",
+    "created_at": "2026-10-27T17:28:54Z",
+    "observed_at": "2026-10-27T17:34:57Z",
+    "phase": "deleted",
+    "currency": "USD",
+    "server_type": "cpx32",
+    "location": "fsn1",
+    "server_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0673000000",
+        "gross": "0.0673000000000000"
+      },
+      "price_monthly": {
+        "net": "41.9900000000",
+        "gross": "41.9900000000000000"
+      },
+      "included_traffic": 21990232555520,
+      "price_per_tb_traffic": {
+        "net": "1.2000000000",
+        "gross": "1.2000000000000000"
+      }
+    },
+    "ipv4_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0010000000",
+        "gross": "0.0010000000000000"
+      },
+      "price_monthly": {
+        "net": "0.6000000000",
+        "gross": "0.6000000000000000"
+      }
+    },
+    "method": "Backfilled provider create/delete actions; cpx32/fsn1 and IPv4 based on commissioning source/config, not an invoice; current provider rates; creation request start to deletion completion is conservative",
+    "source_action_ids": [
+      664182338900149,
+      664182338903858
+    ]
+  },
+  {
+    "schema": 1,
+    "id": 172822258,
+    "name": "historical-builder-172822258",
+    "flow_run_id": null,
+    "project": "typeahead",
+    "created_at": "2026-10-27T13:48:10Z",
+    "observed_at": "2026-10-27T15:21:55Z",
+    "phase": "deleted",
+    "currency": "USD",
+    "server_type": "cpx32",
+    "location": "fsn1",
+    "server_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0673000000",
+        "gross": "0.0673000000000000"
+      },
+      "price_monthly": {
+        "net": "41.9900000000",
+        "gross": "41.9900000000000000"
+      },
+      "included_traffic": 21990232555520,
+      "price_per_tb_traffic": {
+        "net": "1.2000000000",
+        "gross": "1.2000000000000000"
+      }
+    },
+    "ipv4_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0010000000",
+        "gross": "0.0010000000000000"
+      },
+      "price_monthly": {
+        "net": "0.6000000000",
+        "gross": "0.6000000000000000"
+      }
+    },
+    "method": "Backfilled provider create/delete actions; cpx32/fsn1 and IPv4 based on commissioning source/config, not an invoice; current provider rates; creation request start to deletion completion is conservative",
+    "source_action_ids": [
+      664147979994546,
+      664165159987967
+    ]
+  },
+  {
+    "schema": 1,
+    "id": 172821551,
+    "name": "historical-builder-172821551",
+    "flow_run_id": null,
+    "project": "typeahead",
+    "created_at": "2026-10-27T13:44:47Z",
+    "observed_at": "2026-10-27T13:45:08Z",
+    "phase": "deleted",
+    "currency": "USD",
+    "server_type": "cpx32",
+    "location": "fsn1",
+    "server_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0673000000",
+        "gross": "0.0673000000000000"
+      },
+      "price_monthly": {
+        "net": "41.9900000000",
+        "gross": "41.9900000000000000"
+      },
+      "included_traffic": 21990232555520,
+      "price_per_tb_traffic": {
+        "net": "1.2000000000",
+        "gross": "1.2000000000000000"
+      }
+    },
+    "ipv4_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0010000000",
+        "gross": "0.0010000000000000"
+      },
+      "price_monthly": {
+        "net": "0.6000000000",
+        "gross": "0.6000000000000000"
+      }
+    },
+    "method": "Backfilled provider create/delete actions; cpx32/fsn1 and IPv4 based on commissioning source/config, not an invoice; current provider rates; creation request start to deletion completion is conservative",
+    "source_action_ids": [
+      664147979991495,
+      664147979991611
+    ]
+  },
+  {
+    "schema": 1,
+    "id": 172820427,
+    "name": "historical-builder-172820427",
+    "flow_run_id": null,
+    "project": "typeahead",
+    "created_at": "2026-10-27T13:39:15Z",
+    "observed_at": "2026-10-27T13:42:45Z",
+    "phase": "deleted",
+    "currency": "USD",
+    "server_type": "cpx32",
+    "location": "fsn1",
+    "server_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0673000000",
+        "gross": "0.0673000000000000"
+      },
+      "price_monthly": {
+        "net": "41.9900000000",
+        "gross": "41.9900000000000000"
+      },
+      "included_traffic": 21990232555520,
+      "price_per_tb_traffic": {
+        "net": "1.2000000000",
+        "gross": "1.2000000000000000"
+      }
+    },
+    "ipv4_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0010000000",
+        "gross": "0.0010000000000000"
+      },
+      "price_monthly": {
+        "net": "0.6000000000",
+        "gross": "0.6000000000000000"
+      }
+    },
+    "method": "Backfilled provider create/delete actions; cpx32/fsn1 and IPv4 based on commissioning source/config, not an invoice; current provider rates; creation request start to deletion completion is conservative",
+    "source_action_ids": [
+      664147979987683,
+      664147979990031
+    ]
+  },
+  {
+    "schema": 1,
+    "id": 172816749,
+    "name": "historical-builder-172816749",
+    "flow_run_id": null,
+    "project": "typeahead",
+    "created_at": "2026-10-27T13:28:39Z",
+    "observed_at": "2026-10-27T13:36:13Z",
+    "phase": "deleted",
+    "currency": "USD",
+    "server_type": "cpx32",
+    "location": "fsn1",
+    "server_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0673000000",
+        "gross": "0.0673000000000000"
+      },
+      "price_monthly": {
+        "net": "41.9900000000",
+        "gross": "41.9900000000000000"
+      },
+      "included_traffic": 21990232555520,
+      "price_per_tb_traffic": {
+        "net": "1.2000000000",
+        "gross": "1.2000000000000000"
+      }
+    },
+    "ipv4_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0010000000",
+        "gross": "0.0010000000000000"
+      },
+      "price_monthly": {
+        "net": "0.6000000000",
+        "gross": "0.6000000000000000"
+      }
+    },
+    "method": "Backfilled provider create/delete actions; cpx32/fsn1 and IPv4 based on commissioning source/config, not an invoice; current provider rates; creation request start to deletion completion is conservative",
+    "source_action_ids": [
+      664147979979611,
+      664147979985568
+    ]
+  },
+  {
+    "schema": 1,
+    "id": 172816269,
+    "name": "historical-builder-172816269",
+    "flow_run_id": null,
+    "project": "typeahead",
+    "created_at": "2026-10-27T13:27:53Z",
+    "observed_at": "2026-10-27T13:30:30Z",
+    "phase": "deleted",
+    "currency": "USD",
+    "server_type": "cpx32",
+    "location": "fsn1",
+    "server_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0673000000",
+        "gross": "0.0673000000000000"
+      },
+      "price_monthly": {
+        "net": "41.9900000000",
+        "gross": "41.9900000000000000"
+      },
+      "included_traffic": 21990232555520,
+      "price_per_tb_traffic": {
+        "net": "1.2000000000",
+        "gross": "1.2000000000000000"
+      }
+    },
+    "ipv4_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0010000000",
+        "gross": "0.0010000000000000"
+      },
+      "price_monthly": {
+        "net": "0.6000000000",
+        "gross": "0.6000000000000000"
+      }
+    },
+    "method": "Backfilled provider create/delete actions; cpx32/fsn1 and IPv4 based on commissioning source/config, not an invoice; current provider rates; creation request start to deletion completion is conservative",
+    "source_action_ids": [
+      664147979978875,
+      664147979981299
+    ]
+  },
+  {
+    "schema": 1,
+    "id": 172815976,
+    "name": "historical-builder-172815976",
+    "flow_run_id": null,
+    "project": "typeahead",
+    "created_at": "2026-10-27T13:26:22Z",
+    "observed_at": "2026-10-27T13:26:45Z",
+    "phase": "deleted",
+    "currency": "USD",
+    "server_type": "cpx32",
+    "location": "fsn1",
+    "server_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0673000000",
+        "gross": "0.0673000000000000"
+      },
+      "price_monthly": {
+        "net": "41.9900000000",
+        "gross": "41.9900000000000000"
+      },
+      "included_traffic": 21990232555520,
+      "price_per_tb_traffic": {
+        "net": "1.2000000000",
+        "gross": "1.2000000000000000"
+      }
+    },
+    "ipv4_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0010000000",
+        "gross": "0.0010000000000000"
+      },
+      "price_monthly": {
+        "net": "0.6000000000",
+        "gross": "0.6000000000000000"
+      }
+    },
+    "method": "Backfilled provider create/delete actions; cpx32/fsn1 and IPv4 based on commissioning source/config, not an invoice; current provider rates; creation request start to deletion completion is conservative",
+    "source_action_ids": [
+      664147979977754,
+      664147979977955
+    ]
+  },
+  {
+    "schema": 1,
+    "id": 172815844,
+    "name": "historical-builder-172815844",
+    "flow_run_id": null,
+    "project": "typeahead",
+    "created_at": "2026-10-27T13:25:45Z",
+    "observed_at": "2026-10-27T13:26:06Z",
+    "phase": "deleted",
+    "currency": "USD",
+    "server_type": "cpx32",
+    "location": "fsn1",
+    "server_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0673000000",
+        "gross": "0.0673000000000000"
+      },
+      "price_monthly": {
+        "net": "41.9900000000",
+        "gross": "41.9900000000000000"
+      },
+      "included_traffic": 21990232555520,
+      "price_per_tb_traffic": {
+        "net": "1.2000000000",
+        "gross": "1.2000000000000000"
+      }
+    },
+    "ipv4_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0010000000",
+        "gross": "0.0010000000000000"
+      },
+      "price_monthly": {
+        "net": "0.6000000000",
+        "gross": "0.6000000000000000"
+      }
+    },
+    "method": "Backfilled provider create/delete actions; cpx32/fsn1 and IPv4 based on commissioning source/config, not an invoice; current provider rates; creation request start to deletion completion is conservative",
+    "source_action_ids": [
+      664147979977342,
+      664147979977457
+    ]
+  },
+  {
+    "schema": 1,
+    "id": 172815368,
+    "name": "historical-builder-172815368",
+    "flow_run_id": null,
+    "project": "typeahead",
+    "created_at": "2026-10-27T13:22:58Z",
+    "observed_at": "2026-10-27T13:26:18Z",
+    "phase": "deleted",
+    "currency": "USD",
+    "server_type": "cpx32",
+    "location": "fsn1",
+    "server_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0673000000",
+        "gross": "0.0673000000000000"
+      },
+      "price_monthly": {
+        "net": "41.9900000000",
+        "gross": "41.9900000000000000"
+      },
+      "included_traffic": 21990232555520,
+      "price_per_tb_traffic": {
+        "net": "1.2000000000",
+        "gross": "1.2000000000000000"
+      }
+    },
+    "ipv4_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0010000000",
+        "gross": "0.0010000000000000"
+      },
+      "price_monthly": {
+        "net": "0.6000000000",
+        "gross": "0.6000000000000000"
+      }
+    },
+    "method": "Backfilled provider create/delete actions; cpx32/fsn1 and IPv4 based on commissioning source/config, not an invoice; current provider rates; creation request start to deletion completion is conservative",
+    "source_action_ids": [
+      664147979975742,
+      664147979977537
+    ]
+  },
+  {
+    "schema": 1,
+    "id": 172814081,
+    "name": "historical-builder-172814081",
+    "flow_run_id": null,
+    "project": "typeahead",
+    "created_at": "2026-10-27T13:16:53Z",
+    "observed_at": "2026-10-27T13:18:48Z",
+    "phase": "deleted",
+    "currency": "USD",
+    "server_type": "cpx32",
+    "location": "fsn1",
+    "server_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0673000000",
+        "gross": "0.0673000000000000"
+      },
+      "price_monthly": {
+        "net": "41.9900000000",
+        "gross": "41.9900000000000000"
+      },
+      "included_traffic": 21990232555520,
+      "price_per_tb_traffic": {
+        "net": "1.2000000000",
+        "gross": "1.2000000000000000"
+      }
+    },
+    "ipv4_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0010000000",
+        "gross": "0.0010000000000000"
+      },
+      "price_monthly": {
+        "net": "0.6000000000",
+        "gross": "0.6000000000000000"
+      }
+    },
+    "method": "Backfilled provider create/delete actions; cpx32/fsn1 and IPv4 based on commissioning source/config, not an invoice; current provider rates; creation request start to deletion completion is conservative",
+    "source_action_ids": [
+      664147979971275,
+      664147979972717
+    ]
+  },
+  {
+    "schema": 1,
+    "id": 172813564,
+    "name": "historical-builder-172813564",
+    "flow_run_id": null,
+    "project": "typeahead",
+    "created_at": "2026-10-27T13:15:00Z",
+    "observed_at": "2026-10-27T13:17:20Z",
+    "phase": "deleted",
+    "currency": "USD",
+    "server_type": "cpx32",
+    "location": "fsn1",
+    "server_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0673000000",
+        "gross": "0.0673000000000000"
+      },
+      "price_monthly": {
+        "net": "41.9900000000",
+        "gross": "41.9900000000000000"
+      },
+      "included_traffic": 21990232555520,
+      "price_per_tb_traffic": {
+        "net": "1.2000000000",
+        "gross": "1.2000000000000000"
+      }
+    },
+    "ipv4_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0010000000",
+        "gross": "0.0010000000000000"
+      },
+      "price_monthly": {
+        "net": "0.6000000000",
+        "gross": "0.6000000000000000"
+      }
+    },
+    "method": "Backfilled provider create/delete actions; cpx32/fsn1 and IPv4 based on commissioning source/config, not an invoice; current provider rates; creation request start to deletion completion is conservative",
+    "source_action_ids": [
+      664147979969772,
+      664147979971485
+    ]
+  },
+  {
+    "schema": 1,
+    "id": 172742662,
+    "name": "historical-builder-172742662",
+    "flow_run_id": null,
+    "project": "typeahead",
+    "created_at": "2026-10-27T06:46:58Z",
+    "observed_at": "2026-10-27T06:59:27Z",
+    "phase": "deleted",
+    "currency": "USD",
+    "server_type": "cpx32",
+    "location": "fsn1",
+    "server_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0673000000",
+        "gross": "0.0673000000000000"
+      },
+      "price_monthly": {
+        "net": "41.9900000000",
+        "gross": "41.9900000000000000"
+      },
+      "included_traffic": 21990232555520,
+      "price_per_tb_traffic": {
+        "net": "1.2000000000",
+        "gross": "1.2000000000000000"
+      }
+    },
+    "ipv4_price": {
+      "location": "fsn1",
+      "price_hourly": {
+        "net": "0.0010000000",
+        "gross": "0.0010000000000000"
+      },
+      "price_monthly": {
+        "net": "0.6000000000",
+        "gross": "0.6000000000000000"
+      }
+    },
+    "method": "Backfilled provider create/delete actions; cpx32/fsn1 and IPv4 based on commissioning source/config, not an invoice; current provider rates; creation request start to deletion completion is conservative",
+    "source_action_ids": [
+      664087850061629,
+      664087850078628
+    ]
+  }
+]

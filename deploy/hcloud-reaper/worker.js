@@ -38,12 +38,39 @@ async function inventory(token, kind) {
   throw new Error("Resource inventory exceeded safety limit");
 }
 
+async function bill(env, server, pricing, phase) {
+  const location = server.location?.name ?? server.datacenter.location.name;
+  const serverPrice = pricing.server_types.find(type => type.id === server.server_type.id)
+    ?.prices.find(price => price.location === location);
+  const ipPrice = pricing.primary_ips.find(ip => ip.type === "ipv4")
+    ?.prices.find(price => price.location === location);
+  if (!serverPrice || !ipPrice || pricing.currency !== "USD") throw new Error("Builder pricing unavailable");
+  const key = `billing/hetzner-builders/${server.id}-reaper-${phase}.json`;
+  if (await env.BILLING.head(key)) return;
+  await env.BILLING.put(key, JSON.stringify({
+    schema: 1, id: server.id, name: server.name, flow_run_id: server.labels["flow-run"],
+    project: "typeahead", created_at: server.created, observed_at: new Date().toISOString(),
+    phase, currency: pricing.currency, server_type: server.server_type.name, location,
+    server_price: serverPrice, ipv4_price: ipPrice,
+    method: "Independent reaper lifecycle observation; hourly list prices, excludes traffic overage",
+  }));
+}
+
 export async function reap(env) {
   if (!env.HCLOUD_TOKEN) throw new Error("Missing project credential");
   const now = Math.floor(Date.now() / 1000);
   const removed = [];
+  let pricing;
+  const billingErrors = [];
+  try { pricing = (await api(env.HCLOUD_TOKEN, "GET", "pricing")).pricing; }
+  catch { billingErrors.push("pricing unavailable"); }
+  async function safeBill(server, phase) {
+    try { await bill(env, server, pricing, phase); }
+    catch { billingErrors.push(`receipt unavailable for ${server.id} ${phase}`); }
+  }
   for (const candidate of await inventory(env.HCLOUD_TOKEN, "servers")) {
     const owned = identity(candidate);
+    await safeBill(candidate, "created");
     if (owned.expires >= now) continue;
     const current = await api(env.HCLOUD_TOKEN, "GET", `servers/${candidate.id}`);
     if (!current) continue;
@@ -56,6 +83,8 @@ export async function reap(env) {
       await api(env.HCLOUD_TOKEN, "PUT", `primary_ips/${ipId}`, { auto_delete: true });
     }
     await api(env.HCLOUD_TOKEN, "DELETE", `servers/${server.id}`);
+    const after = await api(env.HCLOUD_TOKEN, "GET", `servers/${server.id}`);
+    if (!after) await safeBill(server, "deleted");
     removed.push({ kind: "server", id: server.id, name: owned.name, created: server.created });
   }
   for (const key of await inventory(env.HCLOUD_TOKEN, "ssh_keys")) {
@@ -77,7 +106,21 @@ export async function reap(env) {
     await api(env.HCLOUD_TOKEN, "DELETE", `primary_ips/${ip.id}`);
     removed.push({ kind: "primary_ip", id: ip.id, name: ip.name });
   }
+  let cursor;
+  try { do {
+    const page = await env.BILLING.list({ prefix: "billing/hetzner-builders/", cursor });
+    for (const object of page.objects) {
+      if (!object.key.endsWith("-reaper-created.json")) continue;
+      const receipt = await (await env.BILLING.get(object.key)).json();
+      const deletedKey = `billing/hetzner-builders/${receipt.id}-reaper-deleted.json`;
+      if (await env.BILLING.head(deletedKey)) continue;
+      if (await api(env.HCLOUD_TOKEN, "GET", `servers/${receipt.id}`)) continue;
+      await env.BILLING.put(deletedKey, JSON.stringify({ ...receipt, phase: "deleted", observed_at: new Date().toISOString() }));
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor); } catch { billingErrors.push("billing reconciliation unavailable"); }
   console.log(JSON.stringify({ event: "builder_expiry_cleanup", checked_at: now, removed }));
+  if (billingErrors.length) throw new Error("Builder cleanup completed; " + billingErrors.join("; "));
   return removed;
 }
 

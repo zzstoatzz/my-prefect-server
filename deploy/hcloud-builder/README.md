@@ -34,7 +34,24 @@ probe and independent expiry cleanup are verified. Then move the index
 deployment's pool and retain its one existing schedule; never register a
 second live publisher clock.
 
-Current qualification covers the infrastructure and supervisor. Private API,
-Turso/R2 access through a real flow, worker-restart reconciliation, independent
-cloud expiry cleanup, and a full publication on this worker remain required
-before retiring the old builder.
+Infrastructure qualification, private API access, real publication and cleanup
+passed before the original node was retired. Typeahead's separate serving
+latency admission remains independent of infrastructure qualification. See the
+[retirement audit](../../docs/audits/2026-10-27-prefect-retirement.md).
+
+## Billing evidence
+
+The manager preserves non-secret lifecycle and rate receipts in
+`~/hcloud-builder/state/billing/`, outside per-attempt cleanup directories.
+`hcloud-builder-billing-offsite.timer` copies them to the existing R2 backup
+bucket each minute with immutable/checksum checks. The independent expiry reaper
+also writes R2 receipts. The cost collector merges by server ID and publishes
+a labelled 30-day run-rate with actual observed spend and coverage in its note.
+Creation/deletion evidence survives VM, key and primary-IP deletion. A billing
+capture failure does not keep a VM alive; its resource receipt stays for retry.
+
+Inspect `systemctl --user status hcloud-builder-billing-offsite.timer` and
+`journalctl --user -u hcloud-builder-billing-offsite.service` for archive health.
+The timer reuses the existing canonical `~/.config/prefect-home/r2.env` consumer;
+no credentials are sent to builder VMs or embedded in billing evidence. Rotation
+uses the existing R2 render/check command and the next timer invocation.

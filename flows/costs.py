@@ -25,11 +25,13 @@ from mps.atproto import session_did
 from mps.blocks import secret, secret_mapping
 from mps.costs import Period, Snapshot
 from mps.costs.connectors import (
+    BuilderCostsConnector,
     CloudflareConnector,
     CoralApiConnector,
     FlyConnector,
     HetznerConnector,
     NeonConnector,
+    OpenRouterConnector,
     TursoConnector,
 )
 from mps.costs.types import Connector, LineItem
@@ -74,6 +76,8 @@ async def build_connectors() -> list[Connector]:
         NeonConnector(),
         TursoConnector(),
         CoralApiConnector(),
+        OpenRouterConnector(block_name=prefix + "openrouter-api-key"),
+        BuilderCostsConnector(),
     ]
 
 
