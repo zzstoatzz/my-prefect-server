@@ -228,7 +228,7 @@ class BuilderClient(BuilderSSH):
             return await ssh.run(vm, command, stdin=stdin, timeout=timeout)
 
     async def destroy(self, name: str) -> None:
-        if not re.fullmatch(r"prefect-build-[0-9a-f]{32}-r[1-9][0-9]*", name):
+        if not re.fullmatch(r"prefect-build-[0-9a-f]{32}-r(?:0|[1-9][0-9]*)", name):
             raise ValueError("Invalid builder resource name")
         root = self.root / name
         receipt = root / "resource.json"

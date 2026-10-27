@@ -13,7 +13,7 @@ PURPOSE = "ephemeral-builder"
 
 
 def labels_for(run_id: UUID, attempt: int, timeout: int) -> dict[str, str]:
-    if not 60 <= timeout <= 46800 or attempt < 1:
+    if not 60 <= timeout <= 46800 or attempt < 0:
         raise ValueError("Invalid builder lifetime or attempt")
     return {
         "owner": OWNER,
