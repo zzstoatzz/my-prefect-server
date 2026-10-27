@@ -1,0 +1,20 @@
+{
+  "created": "20261027T133554Z",
+  "object_key": "retirement/hetzner-prefect/20261027T133554Z.tar.gz.age",
+  "sha256": "707a7b9ee86a81935e509061199b7e6de8a10636fd1717a37a1f7daf2989ac83",
+  "encrypted_bytes": 526287183,
+  "files": {
+    "postgres.contents": 11845,
+    "prefect-push.db": 36864,
+    "results.tar.gz": 40835226,
+    "ingressroutes.yaml": 68,
+    "issuers.yaml": 2792,
+    "monitoring.yaml": 7235837,
+    "redis.rdb": 51193831,
+    "prefect.yaml": 526169,
+    "cert-manager.yaml": 635881,
+    "postgres.dump": 484094951
+  },
+  "offsite_hash_verified": true,
+  "full_restore_verified": false
+}

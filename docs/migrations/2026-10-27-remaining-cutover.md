@@ -585,3 +585,21 @@ The next index registration transfers the existing deployment to
 `typeahead-ephemeral`, retaining its single cron and existing build/publication
 parameters. A complete index run and manager-restart recovery are still required;
 probe success alone does not qualify the production build.
+
+At13:39 UTC, the existing index deployment ID was re-registered on
+`typeahead-ephemeral` using source `bd1cec50928e7cc6593ee80a074bdf85c34b19b6`.
+No publisher was active before transfer, and no old-queue future occurrences
+required cancellation. The cron remains unchanged. Full publication run
+`bb26120e-e5d8-4f12-ae8a-a52a25cdda27` was created with an idempotency key.
+Its completion and worker-restart recovery remain outstanding.
+
+The original control-plane snapshot was encrypted on the cloud host and copied
+directly to R2, then downloaded/hash-checked on that same cloud host:
+`retirement/hetzner-prefect/20261027T133554Z.tar.gz.age`, 526287183 bytes,
+SHA-256 `707a7b9ee86a81935e509061199b7e6de8a10636fd1717a37a1f7daf2989ac83`.
+It contains a 484094951-byte PostgreSQL custom dump (TOC verified), consistent
+push SQLite backup, Redis RDB snapshot, result files, namespace configuration
+including secrets, and certificate issuers. Recipients are the existing laptop
+and HeavyPad backup identities. No archive bytes traversed home during creation
+or verification. Full restoration is explicitly not yet verified. Prometheus
+history and the builder volume still need their final preservation decision.
