@@ -17,6 +17,7 @@ PUBLIC = "https://typeahead.waow.tech"
 OWNER = "typeahead-snapshot-refresh"
 ARTIFACT_PREFIX = "releases/search/"
 TANTIVY_ORIGIN = "https://typeahead-tantivy-dev.fly.dev"
+TANTIVY_SLOTS = ("typeahead-tantivy-a", "typeahead-tantivy-b")
 TANTIVY_FORMAT = "tantivy-0.27-f32-did-expiry-v4"
 BUILD_PATTERN = r"b[0-9]{10}-[A-Za-z0-9_-]+"
 
@@ -46,7 +47,8 @@ def route_target(route: dict) -> dict:
         if target["origin"] not in [origin(slot) for slot in SLOTS]:
             raise ValueError("Unmanaged routing target")
     elif (
-        target.get("origin") != TANTIVY_ORIGIN
+        target.get("origin")
+        not in (TANTIVY_ORIGIN, *(f"https://{app}.fly.dev" for app in TANTIVY_SLOTS))
         or target.get("format") != TANTIVY_FORMAT
         or target.get("retrieval_strategy") not in ("per-segment", "global-merge")
         or any(

@@ -658,6 +658,138 @@ def archive_builds() -> list[str]:
     return [str(path) for path in archived]
 
 
+@task(retries=0, timeout_seconds=10800)
+def prepare_tantivy_generation(repo: Path, generation: Path, resume: bool = False) -> Path:
+    source = generation.resolve()
+    roots = [
+        Path(os.environ[name]).resolve() for name in ("INDEX_BUILD_ROOT", "INDEX_ARCHIVE_ROOT")
+    ]
+    if not any(source.is_relative_to(root) for root in roots):
+        raise ValueError("Tantivy source must belong to the existing cloud publisher")
+    manifest = json.loads((source / "manifest.json").read_bytes())
+    if (
+        manifest.get("manifest_version") != 2
+        or manifest.get("format_version") != 5
+        or not isinstance(manifest.get("active_build"), str)
+        or not re.fullmatch(r"b[0-9]{10}-[A-Za-z0-9_-]+", manifest["active_build"])
+    ):
+        raise ValueError("Tantivy preparation requires the published compact native source")
+    binary = Path(os.environ["INDEX_TANTIVY_BINARY"]).resolve()
+    workspace = INDEXER_HOME / "tantivy-builds" / ("build-" + manifest["active_build"])
+    _stream(
+        [
+            sys.executable,
+            "-m",
+            "mps.typeahead_tantivy",
+            "--repository",
+            str(repo),
+            "--source",
+            str(source),
+            "--workspace",
+            str(workspace),
+            "--binary",
+            str(binary),
+        ]
+        + (["--resume"] if resume else []),
+        repo,
+        dict(os.environ),
+        timeout=10800,
+    )
+    return workspace / "publication"
+
+
+def tantivy_workspace(generation: Path) -> Path:
+    workspace = generation.parent
+    if (
+        workspace.parent != INDEXER_HOME / "tantivy-builds"
+        or workspace.resolve() != workspace
+        or generation.name != "publication"
+        or generation.resolve() != generation
+        or (workspace / "owner").read_text() != "typeahead-index-tantivy-v1\n"
+    ):
+        raise ValueError("Tantivy publication workspace ownership mismatch")
+    return workspace
+
+
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
+def publish_tantivy_generation(
+    repo: Path, generation: Path, source: Path, config: Path | None = None
+) -> Path:
+    from mps.typeahead_tantivy import durable_receipt
+
+    tantivy_workspace(generation)
+
+    verify_only = not (generation / "index.tar").is_file()
+    if verify_only:
+        published = json.loads((generation.parent / "published.json").read_bytes())
+        if (
+            published.get("remote_readback_passed") is not True
+            or published.get("manifest_sha256")
+            != hashlib.sha256((generation / "manifest.json").read_bytes()).hexdigest()
+        ):
+            raise ValueError("Retired local payload lacks a verified publication receipt")
+
+    _stream(
+        [
+            sys.executable,
+            str(repo / "scripts/snapshot_compaction/publish.py"),
+            "--engine",
+            "tantivy",
+            "--generation",
+            str(generation),
+            "--source-manifest",
+            str(source / "manifest.json"),
+        ]
+        + (["--verify-only"] if verify_only else [])
+        + (["--config", str(config)] if config is not None else []),
+        repo,
+        dict(os.environ),
+        timeout=7200,
+    )
+    manifest_raw = (generation / "manifest.json").read_bytes()
+    durable_receipt(
+        generation.parent / "published.json",
+        {
+            "engine": "tantivy",
+            "build_id": json.loads(manifest_raw)["active_build"],
+            "manifest_sha256": hashlib.sha256(manifest_raw).hexdigest(),
+            "remote_readback_passed": True,
+        },
+    )
+    return generation
+
+
+@task(retries=0)
+def retire_tantivy_generation(generation: Path) -> Path:
+    from mps.typeahead_tantivy import durable_receipt
+
+    workspace = tantivy_workspace(generation)
+    published = json.loads((workspace / "published.json").read_bytes())
+    if (
+        published.get("remote_readback_passed") is not True
+        or published.get("manifest_sha256")
+        != hashlib.sha256((generation / "manifest.json").read_bytes()).hexdigest()
+    ):
+        raise ValueError("Verified publication receipt required before retirement")
+    payloads = (workspace / "data", generation / "index.tar")
+    if any(path.is_symlink() for path in payloads):
+        raise ValueError("Tantivy publication cleanup refuses symlinks")
+    for path in payloads:
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink(missing_ok=True)
+    durable_receipt(
+        workspace / "retired.json",
+        {
+            "engine": "tantivy",
+            "manifest_sha256": published["manifest_sha256"],
+            "local_payloads_retired": True,
+        },
+    )
+    return generation
+
+
 @flow(name="typeahead-index", log_prints=True, timeout_seconds=43200)
 def typeahead_index(
     ref: str | None = None,
@@ -667,7 +799,25 @@ def typeahead_index(
     resume_generation: str | None = None,
     rollback: bool = False,
     resume_rollout: bool = False,
+    snapshot_engine: Literal["native", "tantivy"] = "native",
 ):
+    if snapshot_engine not in ("native", "tantivy"):
+        raise ValueError("Unsupported snapshot engine")
+    if snapshot_engine == "tantivy" and (
+        snapshot_format != "compact" or automatic_refresh or rollback or resume_rollout
+    ):
+        raise ValueError(
+            "Tantivy supports isolated compact publication only; automatic installation remains fenced pending slot lifecycle qualification"
+        )
+    if snapshot_engine == "tantivy" and resume_generation is not None:
+        if reuse_source is not None:
+            raise ValueError("Tantivy preparation resume cannot rebuild its source")
+        repo = clone_repo(ref)
+        generation = Path(resume_generation)
+        prepared = prepare_tantivy_generation(repo, generation, resume=True)
+        publish_tantivy_generation(repo, prepared, generation)
+        retire_tantivy_generation(prepared)
+        return
     if rollback:
         if resume_generation is not None or reuse_source is not None or resume_rollout:
             raise ValueError("Rollback does not build or install a generation")
@@ -753,6 +903,10 @@ def typeahead_index(
         if source is None:
             raise RuntimeError("local index build did not return a source generation")
         generation = publish_compact(repo, source)
+        if snapshot_engine == "tantivy":
+            prepared = prepare_tantivy_generation(repo, generation)
+            publish_tantivy_generation(repo, prepared, generation)
+            retire_tantivy_generation(prepared)
         if automatic_refresh:
             if os.environ.get("INDEX_CHANNEL") != "managed":
                 raise ValueError("Automatic rollout requires the managed publication channel")

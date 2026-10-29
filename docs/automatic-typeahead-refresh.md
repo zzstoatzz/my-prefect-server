@@ -67,6 +67,72 @@ This includes a real local Rust import, source/policy commit, portable directory
 installation, separate-process restart, HTTP identity and search verification.
 Loopback provider evidence stays explicitly test-only and cannot qualify production.
 
+### Optional cloud Tantivy publication
+
+`typeahead-index(snapshot_engine="tantivy", snapshot_format="compact")` adds an
+isolated publication stage after the existing native source/twin publication.
+The default `snapshot_engine="native"` invocation is unchanged. Tantivy automatic
+installation, rollback/recovery combinations and source-format mismatches fail
+before preparation; route promotion is not enabled by this parameter.
+
+This stage requires an exact `INDEX_TANTIVY_SOURCE_REVISION` (40 hex characters),
+`INDEX_TANTIVY_ADAPTER_SHA256`, and existing executable
+`INDEX_TANTIVY_BINARY`/`INDEX_TANTIVY_BINARY_SHA256`. It verifies the checked-out
+producer revision and clean producer paths before execution. Preparation uses a
+new owned `INDEXER_HOME/tantivy-builds/build-<source-build-id>` directory; a failed
+attempt is retained for inspection rather than overwritten or retried with a new
+source-byte allowance.
+
+The existing compact exporter pipes actors directly to the Rust importer. It does
+not create another full JSONL corpus. An isolated loopback Rust process and one
+bounded source-sync process must then pass the actual polling, policy and completed
+reconciliation-round gates. Missing source credentials, exhausted accounted bytes
+or a deadline fail preparation. The source process is never restarted to bypass
+its allowance. `INDEX_TANTIVY_PREPARE_SECONDS` may tighten each supervised
+10,800-second job; `INDEX_TANTIVY_MAX_SOURCE_BYTES` may tighten the explicit 8 GiB
+offline initial-preparation allowance. Its 25% polling reserve leaves 6 GiB for
+sweep work, based on the measured packed backend pass of approximately 3.85 GiB
+plus identity/polling headroom. Serving's existing 512 MiB process allowance is
+unchanged. Profile batches remain 500, and the initial-preparation worker limits
+source SELECTs to two per second with five-second bulk slices.
+
+`source-budget.json` is a single-writer, fsynced accounting ledger. Before each
+SELECT it reserves the maximum possible response bytes across that SELECT's
+bounded retries, then settles actual consumed bytes. An interrupted reservation
+stays charged; a resumed process restores cumulative poll/sweep counters rather
+than receiving another allowance. This can conservatively overcharge an interrupted
+request, but cannot reset the budget. A deadline or budget failure retains the
+checkpoint and accounting without publishing.
+Charged counters after recovery are conservative bounds, not exact historical wire
+bytes; `recovered_reservation_bytes` exposes the unresolved reservations.
+
+An explicit `snapshot_engine="tantivy", snapshot_format="compact",
+resume_generation="<existing native compact generation>"` resumes only a completed
+initial import with matching producer/binary/adapter/source/budget identity. It
+does not re-export or re-import the corpus. Durable round start/completion clocks
+remain unchanged across job boundaries, so the actual one-day admission bound
+still applies. An incomplete initial import requires inspection and a separate
+owned attempt; it cannot masquerade as a resumable source checkpoint. No incomplete
+checkpoint may be published.
+
+After stopping both child processes, the pinned installer freezes the checkpoint.
+The existing Typeahead `scripts/snapshot_compaction/publish.py --engine tantivy`
+verifies the already-published native source manifest, uploads the immutable bundle
+and publishes its manifest last. It changes no pointer. Only after successful remote
+readback are the owned local index and duplicate tar retired; small manifests,
+receipts and logs remain. R2 keeps the routed current/previous bundles and native
+rollback source/twin through the guarded retention code.
+Retirement is a separate task after the retried publisher has returned and fsynced
+its receipt. A lost handoff can retry publication while the tar is still present.
+After retirement, an explicit resume uses the same publisher's `--verify-only`
+operation to read back exact remote source/bundle/manifest identities; it neither
+re-imports the corpus nor grants another source allowance.
+
+`typeahead-tantivy-a` and `typeahead-tantivy-b` are the approved route identities
+for future independent slots; listing them creates no apps, machines or volumes.
+Actual slot installation, restart, recurring swap and compensating rollback must
+be qualified before the explicit automatic-installation fence is removed.
+
 ## Data and deployment sequence
 
 The existing cloud publisher builds the full corpus on local SSD using the
