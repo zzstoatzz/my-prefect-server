@@ -733,6 +733,16 @@ class Refresh:
             route_target({"version": 1, "current": entry})
             source = entry["build_id"]
             if target_engine(entry) == "tantivy":
+                published = self.tantivy_publication(entry)
+                if published is not None:
+                    keep.update(
+                        [
+                            entry["build_id"],
+                            published["source_build_id"],
+                            published["legacy_build_id"],
+                        ]
+                    )
+                    continue
                 index = self.healthy(entry, require_fresh=False)["index"]
                 source = index.get("source_build_id")
                 manifest = index.get("source_manifest") or {}
@@ -752,22 +762,97 @@ class Refresh:
             keep.update([entry["build_id"], source, source.removesuffix("-px05"), twin])
         return keep
 
+    def tantivy_adapter(self):
+        from mps.typeahead_tantivy import TantivyAdapter
+
+        return TantivyAdapter(
+            Path(os.environ["INDEX_TANTIVY_ADAPTER_PATH"]),
+            os.environ["INDEX_TANTIVY_ADAPTER_SHA256"],
+        )
+
+    def tantivy_publication(self, target: dict) -> dict | None:
+        from botocore.exceptions import ClientError
+
+        key = f"releases/search-tantivy/{target['build_id']}/manifest.json"
+        try:
+            result = self.s3.get_object(Bucket=self.bucket, Key=key)
+        except FileNotFoundError:
+            return None
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] in ("NoSuchKey", "404"):
+                return None
+            raise
+        raw = result["Body"].read(32 * 1024 * 1024 + 1)
+        if len(raw) > 32 * 1024 * 1024:
+            raise ValueError("Tantivy publication manifest too large")
+        manifest = json.loads(raw)
+        adapter = self.tantivy_adapter()
+        adapter.validate_manifest(manifest)
+        if manifest["active_build"] != target["build_id"] or any(
+            target[key] != manifest[field]
+            for key, field in (
+                ("format", "backend_format"),
+                ("binary_sha256", "binary_sha256"),
+                ("retrieval_strategy", "retrieval_strategy"),
+            )
+        ):
+            raise ValueError("Routed Tantivy publication identity mismatch")
+        source = self.tantivy_source_manifest(manifest)
+        adapter.validate_source(manifest, source)
+        return manifest
+
+    def tantivy_source_manifest(self, manifest: dict) -> bytes:
+        self.tantivy_adapter().validate_manifest(manifest)
+        return self.s3.get_object(
+            Bucket=self.bucket,
+            Key=f"releases/search/{manifest['source_build_id']}/manifest.json",
+        )["Body"].read(1024 * 1024 + 1)
+
+    def install_tantivy_bundle(
+        self, bundle: Path, destination: Path, manifest: dict, binary: Path
+    ) -> dict:
+        return self.tantivy_adapter().install(
+            bundle, destination, manifest, binary, self.tantivy_source_manifest(manifest)
+        )
+
+    def freeze_tantivy_bundle(
+        self, data: Path, destination: Path, manifest: dict, binary: Path
+    ) -> dict:
+        return self.tantivy_adapter().freeze(
+            data, destination, manifest, binary, self.tantivy_source_manifest(manifest)
+        )
+
+    def qualify_tantivy_candidate(
+        self, url: str, manifest: dict, installation: dict, provider_attestation: dict
+    ) -> dict:
+        return self.tantivy_adapter().qualify(
+            url,
+            manifest,
+            installation,
+            provider_attestation,
+            self.tantivy_source_manifest(manifest),
+        )
+
     def prune_artifacts(self):
         route, etag = self.route()
         keep = self.retained_build_ids(route)
         victims = []
-        for page in self.s3.get_paginator("list_objects_v2").paginate(
-            Bucket=self.bucket, Prefix=ARTIFACT_PREFIX
+        for prefix, names in (
+            (ARTIFACT_PREFIX, ("index.db", "index.db.prefix", "manifest.json")),
+            ("releases/search-tantivy/", ("index.tar", "manifest.json")),
         ):
-            for item in page.get("Contents", []):
-                parts = item["Key"].split("/")
-                if (
-                    len(parts) == 4
-                    and re.fullmatch(r"b[0-9]{10}-[A-Za-z0-9_-]+", parts[2])
-                    and parts[2] not in keep
-                    and parts[3] in ("index.db", "index.db.prefix", "manifest.json")
-                ):
-                    victims.append(item)
+            for page in self.s3.get_paginator("list_objects_v2").paginate(
+                Bucket=self.bucket, Prefix=prefix
+            ):
+                for item in page.get("Contents", []):
+                    parts = item["Key"].split("/")
+                    if (
+                        len(parts) == 4
+                        and re.fullmatch(r"b[0-9]{10}-[A-Za-z0-9_-]+", parts[2])
+                        and parts[2] not in keep
+                        and parts[3] in names
+                    ):
+                        victims.append(item)
         for start in range(0, len(victims), 1000):
             current, actual_etag = self.route()
             if actual_etag != etag or current != route:

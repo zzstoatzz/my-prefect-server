@@ -2,16 +2,21 @@
 
 import hashlib
 import http.server
+import importlib.util
 import io
 import json
 import logging
+import os
+import subprocess
 import threading
+import time
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
 from mps import typeahead_refresh as refresh
+from mps.typeahead_tantivy import TantivyAdapter
 
 from flows.typeahead_index import builds_to_prune, prune_builds
 
@@ -436,6 +441,266 @@ def test_retention_protects_native_anchor_even_without_previous_native(controlle
         controller.s3.seed(f"releases/search/{bid}/index.db", b"fixture")
     assert controller.prune_artifacts()["deleted_objects"] == 1
     assert controller.s3.path(f"releases/search/{NATIVE['build_id']}/index.db").exists()
+
+
+@pytest.fixture
+def pinned_adapter(monkeypatch):
+    repository = os.environ.get("TA_REPOSITORY")
+    if not repository:
+        pytest.skip("requires the actual pinned Typeahead installer checkout")
+    script = Path(repository) / "scripts/snapshot_refresh/tantivy_install.py"
+    sha = os.environ.get("TA_ADAPTER_SHA256") or hashlib.sha256(script.read_bytes()).hexdigest()
+    monkeypatch.setenv("INDEX_TANTIVY_ADAPTER_PATH", str(script))
+    monkeypatch.setenv("INDEX_TANTIVY_ADAPTER_SHA256", sha)
+    return TantivyAdapter(script, sha)
+
+
+def seed_tantivy_publication(controller, target, source_build):
+    native = {
+        "manifest_version": 2,
+        "format_version": 5,
+        "active_build": source_build,
+        "source_watermark": 1792950000,
+        "actor_count": 1,
+        "normalize_version": "v2-cjk-bigram",
+        "sha256": "2" * 64,
+        "prefix_map": {"sha256": "3" * 64},
+        "legacy_twin": {
+            "build_id": source_build.removesuffix("-px05"),
+            "source_watermark": 1792950000,
+        },
+    }
+    raw = json.dumps(native).encode()
+    manifest = {
+        "engine": "tantivy",
+        "manifest_version": 1,
+        "artifact_format": "tantivy-directory-tar-v1",
+        "backend_format": refresh.TANTIVY_FORMAT,
+        "active_build": target["build_id"],
+        "normalize_version": "v2-cjk-bigram",
+        "plan_version": "complete-prefix-groups-v1",
+        "source_policy": "turso-authoritative-observations-v2",
+        "sha256": "a" * 64,
+        "binary_sha256": target["binary_sha256"],
+        "canonical_rules_source_sha256": "c" * 64,
+        "retrieval_strategy": target["retrieval_strategy"],
+        "byte_size": 10240,
+        "source_actor_count": 1,
+        "source_build_id": source_build,
+        "legacy_build_id": native["legacy_twin"]["build_id"],
+        "source_manifest_sha256": hashlib.sha256(raw).hexdigest(),
+        "source_watermark": native["source_watermark"],
+        "source_database_sha256": native["sha256"],
+        "source_prefix_sha256": native["prefix_map"]["sha256"],
+        "source_actors_sha256": "f" * 64,
+        "object_key": f"releases/search-tantivy/{target['build_id']}/index.tar",
+        "files": [{"path": "index/meta.json", "byte_size": 1, "sha256": "a" * 64}],
+    }
+    controller.s3.seed(f"releases/search/{source_build}/manifest.json", raw)
+    controller.s3.seed(
+        f"releases/search-tantivy/{target['build_id']}/manifest.json", json.dumps(manifest).encode()
+    )
+    return manifest
+
+
+def test_portable_retention_resolves_two_tantivy_generations_without_old_endpoint(
+    controller, pinned_adapter
+):
+    route = anchored_route()
+    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
+    current = seed_tantivy_publication(controller, route["current"], SOURCE)
+    previous = seed_tantivy_publication(
+        controller, route["previous"], "b1792940000-previous-source-px05"
+    )
+    controller.source_unknown = True
+    retained = controller.retained_build_ids()
+    assert {
+        NATIVE["build_id"],
+        current["active_build"],
+        current["source_build_id"],
+        current["legacy_build_id"],
+        previous["active_build"],
+        previous["source_build_id"],
+        previous["legacy_build_id"],
+    } <= retained
+    for entry in (route["current"], route["previous"]):
+        controller.s3.seed(f"releases/search-tantivy/{entry['build_id']}/index.tar", b"retained")
+    controller.s3.seed("releases/search-tantivy/b1792000000-disposable/index.tar", b"disposable")
+    assert controller.prune_artifacts()["deleted_objects"] == 1
+    assert all(
+        controller.s3.path(f"releases/search-tantivy/{entry['build_id']}/index.tar").exists()
+        for entry in (route["current"], route["previous"])
+    )
+
+
+def test_source_manifest_byte_tamper_blocks_retention_before_deletion(controller, pinned_adapter):
+    manifest = seed_tantivy_publication(controller, TANTIVY, SOURCE)
+    key = f"releases/search/{SOURCE}/manifest.json"
+    controller.s3.seed(key, controller.s3.path(key).read_bytes() + b" ")
+    with pytest.raises(ValueError, match="byte identity"):
+        controller.prune_artifacts()
+    assert controller.s3.deletions == []
+    assert manifest["source_build_id"] == SOURCE
+
+
+def test_installer_checksum_mismatch_is_rejected_before_source_execution(tmp_path, pinned_adapter):
+    marker = tmp_path / "executed"
+    script = tmp_path / "changed.py"
+    script.write_text(f"from pathlib import Path\nPath({str(marker)!r}).touch()\n")
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        TantivyAdapter(script, pinned_adapter.source_sha256)
+    assert not marker.exists()
+
+
+def test_actual_bundle_install_restart_and_http_qualification_through_adapter(
+    tmp_path, pinned_adapter
+):
+    repository = Path(os.environ["TA_REPOSITORY"])
+    binary = Path(
+        os.environ.get(
+            "TA_BINARY", repository / "services/tantivy/target/release/typeahead-tantivy"
+        )
+    )
+    if not binary.is_file():
+        pytest.skip("requires the actual prebuilt Rust backend; no build performed")
+    spec = importlib.util.spec_from_file_location(
+        "typeahead_admission_fixtures",
+        repository / "scripts/snapshot_refresh/test_tantivy_install.py",
+    )
+    fixtures = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fixtures)
+    reference = fixtures.AdmissionTests()
+    manifest = reference.manifest()
+    native = {
+        "manifest_version": 2,
+        "format_version": 5,
+        "active_build": manifest["source_build_id"],
+        "actor_count": 1,
+        "source_watermark": manifest["source_watermark"],
+        "normalize_version": manifest["normalize_version"],
+        "sha256": manifest["source_database_sha256"],
+        "prefix_map": {"sha256": manifest["source_prefix_sha256"]},
+        "legacy_twin": {
+            "build_id": manifest["legacy_build_id"],
+            "source_watermark": manifest["source_watermark"],
+        },
+    }
+    source = json.dumps(native).encode()
+    manifest["source_manifest_sha256"] = hashlib.sha256(source).hexdigest()
+    actor = fixtures.smoke.actor(1, "real.test", "Real Actor")
+    lines = json.dumps(actor, separators=(",", ":")).encode() + b"\n"
+    manifest["source_actors_sha256"] = hashlib.sha256(lines).hexdigest()
+    header = {
+        "type": "manifest",
+        "build_id": manifest["source_build_id"],
+        "source_watermark": 100,
+        "actor_count": 1,
+        "source_actor_count": 1,
+        "partial": False,
+        "normalize_version": manifest["normalize_version"],
+        "source_database_sha256": manifest["source_database_sha256"],
+        "source_prefix_sha256": manifest["source_prefix_sha256"],
+    }
+    seed = tmp_path / "seed.jsonl"
+    seed.write_bytes(
+        json.dumps(header).encode()
+        + b"\n"
+        + lines
+        + json.dumps(
+            {
+                "type": "end",
+                "build_id": header["build_id"],
+                "actor_count": 1,
+                "actors_sha256": manifest["source_actors_sha256"],
+            }
+        ).encode()
+        + b"\n"
+    )
+    data = tmp_path / "original"
+    subprocess.run(
+        [str(binary), "import", "--data", str(data), "--input", str(seed)],
+        check=True,
+        capture_output=True,
+        timeout=30,
+    )
+    secret = "local-companion-adapter-fixture"
+    now = int(time.time())
+    with (tmp_path / "server.log").open("wb") as log:
+        child, public, admin = fixtures.start_strict(binary, data, log, secret)
+        try:
+            state = fixtures.smoke.request(admin, "/admin/source-state", {"dids": []}, secret)[2]
+            cursor = reference.status()["source_cursor"]
+            cursor.update(
+                through=now,
+                actors={"updated_at": now, "did": ""},
+                tombstones={"deleted_at": now, "did": ""},
+                lookback_seconds=300,
+            )
+            cursor["reconciliation"].update(
+                last_completed_at=now - 1, last_completed_started_at=now - 10
+            )
+            body = {
+                "actors": [],
+                "expected_documents": [],
+                "expected_source_cursor": state["source_cursor"],
+                "source_cursor": cursor,
+                "expected_observation_revision": state["source_observation_revision"],
+                "batch_id": hashlib.sha256(b"mps-adapter-fixture").hexdigest(),
+                "watermark": now,
+                "policy_snapshot": {
+                    "schema_version": 1,
+                    "source_observed_at": now,
+                    "complete": True,
+                    "overrides": [],
+                    "blocked_domains": [],
+                },
+            }
+            assert fixtures.smoke.request(admin, "/admin/source-reconcile", body, secret)[0] == 200
+        finally:
+            fixtures.smoke.stop(child)
+    manifest["binary_sha256"] = hashlib.sha256(binary.read_bytes()).hexdigest()
+    published = tmp_path / "publication"
+    portable = pinned_adapter.freeze(data, published, manifest, binary, source)
+    assert "volume_id" not in portable and "provider_app" not in portable
+    bundle = published / "index.tar"
+    manifest.update(portable)
+    destination = tmp_path / "installed"
+    receipt = pinned_adapter.install(bundle, destination, manifest, binary, source)
+    assert receipt["passed"] and receipt["runtime_qualified"] is False
+    with (tmp_path / "restart.log").open("wb") as log:
+        child, public, _ = fixtures.start_strict(
+            binary, destination, log, secret, fixture_identity=True
+        )
+        try:
+            qualified = pinned_adapter.qualify(
+                public,
+                manifest,
+                receipt,
+                reference.provider(int(time.time())),
+                source,
+                allow_loopback=True,
+            )
+            assert qualified["admission"]["test_only"] is True
+            assert qualified["admission"]["runtime_http_verified"] is False
+            assert qualified["admission"]["provider_runtime_instance_bound"] is True
+            assert (
+                fixtures.smoke.request(public, "/search?q=real")[2]["actors"][0]["did"]
+                == actor["did"]
+            )
+            bad = {**receipt, "manifest_sha256": "0" * 64}
+            with pytest.raises(ValueError, match="immutable installation receipt"):
+                pinned_adapter.qualify(
+                    public,
+                    manifest,
+                    bad,
+                    reference.provider(int(time.time())),
+                    source,
+                    allow_loopback=True,
+                )
+        finally:
+            fixtures.smoke.stop(child)
+    assert (destination / "index/meta.json").is_file()
+    assert not (destination / "index.db").exists()
 
 
 def test_failed_anchored_rollback_restores_exact_entire_prior_route(controller):

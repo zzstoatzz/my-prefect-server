@@ -31,15 +31,41 @@ or rollback into a previous Tantivy target. Native-to-native rollback is unchang
 R2 artifact cleanup and local build retention protect current, previous and native
 anchor source builds and their native/compact twins. A Tantivy engine build can differ from its
 source build, so retention reads the source identity from the binary-bound status
-and source manifest. Unknown identity preserves data and blocks retention when the
+and source manifest for older records. Portable generations instead resolve the
+immutable `releases/search-tantivy/<build-id>/manifest.json`, validate it through
+the checksum-pinned Typeahead installer, and verify the exact native source
+manifest bytes, source database/prefix hashes and legacy twin. This preserves an
+older Tantivy generation without querying an origin that now serves its successor.
+Native source/twin artifacts and both referenced Tantivy bundles are retained.
+Unknown identity preserves data and blocks retention when the
 existing backlog limit is exceeded. Directories outside the managed build root
 are unaffected.
+
+The companion `mps.typeahead_tantivy` adapter loads the existing Typeahead
+`scripts/snapshot_refresh/tantivy_install.py`, pinned by
+`INDEX_TANTIVY_ADAPTER_PATH` and `INDEX_TANTIVY_ADAPTER_SHA256`. It delegates portable
+manifest/source validation, stopped-checkpoint freezing, directory installation and runtime qualification to
+that implementation. Installation and qualification require the exact published
+native source manifest; a valid tar alone cannot bypass source linkage. There is
+no second installer or publisher. These entry points do not authorize a route CAS;
+the promotion fence remains until engine-specific cloud orchestration and its
+qualification evidence are complete.
 
 Offline tests exercise real loopback HTTP and owned filesystem CAS/artifact/build
 operations; they do not qualify provider CAS, live routing or deployment. A complete
 engine-specific installer, refresh/recovery policy and production qualification
 remain open gates. Do not remove the native-refresh fence merely because route
 validation or these compatibility tests pass.
+
+Run the cross-repository integration against the intended Typeahead revision:
+
+```sh
+TA_REPOSITORY=/path/to/typeahead TA_ADAPTER_SHA256=<approved-source-sha256> uv run pytest tests/test_typeahead_engine_compatibility.py
+```
+
+This includes a real local Rust import, source/policy commit, portable directory
+installation, separate-process restart, HTTP identity and search verification.
+Loopback provider evidence stays explicitly test-only and cannot qualify production.
 
 ## Data and deployment sequence
 
