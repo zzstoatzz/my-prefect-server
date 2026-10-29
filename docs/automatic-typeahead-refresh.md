@@ -69,6 +69,15 @@ Loopback provider evidence stays explicitly test-only and cannot qualify product
 
 ### Optional cloud Tantivy publication
 
+The companion native build step seeds `ZIG_GLOBAL_CACHE_DIR/p` from the pinned
+Typeahead revision's `services/.zig-pkg-vendor`, matching its Dockerfile. It uses a
+legacy GitHub dependency manifest only when that selected revision actually
+contains one, restores the original manifest after either retry outcome, and
+preserves the original compiler error when no fallback exists. Storage/deadline
+failures do not trigger dependency fallback. An actual offline Zig package build
+and subprocess failure tests cover these paths; this does not identify the
+unavailable original diagnostic from the alerted Prefect run.
+
 `typeahead-index(snapshot_engine="tantivy", snapshot_format="compact")` adds an
 isolated publication stage after the existing native source/twin publication.
 The default `snapshot_engine="native"` invocation is unchanged. Tantivy automatic

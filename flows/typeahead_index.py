@@ -178,37 +178,50 @@ def clone_repo(ref: str | None = None) -> Path:
 
 @task(retries=1, retry_delay_seconds=30)
 def build_binary(repo_dir: Path) -> Path:
-    """`zig build -Doptimize=ReleaseSafe`, with the github-mirror dep fallback.
-
-    Mirrors the Dockerfile: if the primary dep fetch (tangled.org) fails, swap
-    in build.zig.zon.gh and retry. ~3min cold on the box; warm zig cache faster.
-    """
+    """Build pinned source with its vendored dependencies or explicit legacy fallback."""
     services = repo_dir / "services"
     binary = services / "zig-out" / "bin" / "typeahead-ingester"
     env = {**os.environ}
     zig = zig_for(services)
-    cache = str(INDEXER_HOME / "zig-cache")
-    get_run_logger().info(f"building with {zig}")
+    cache = INDEXER_HOME / "zig-cache"
+    global_cache = INDEXER_HOME / "zig-global-cache"
+    env["ZIG_GLOBAL_CACHE_DIR"] = str(global_cache)
+    vendor = services / ".zig-pkg-vendor"
+    if vendor.is_dir():
+        shutil.copytree(vendor, global_cache / "p", dirs_exist_ok=True)
+    command = quiet_command(
+        repo_dir,
+        [
+            zig,
+            "build",
+            "-Doptimize=ReleaseSafe",
+            "-j1",
+            "--cache-dir",
+            str(cache),
+        ],
+    )
+    logger = get_run_logger()
+    logger.info(f"building with {zig}")
     try:
-        _stream(
-            quiet_command(
-                repo_dir, [zig, "build", "-Doptimize=ReleaseSafe", "-j1", "--cache-dir", cache]
-            ),
-            services,
-            env,
-            timeout=10800,
-        )
-    except RuntimeError:
-        get_run_logger().warning("primary dep fetch failed; retrying via github mirrors")
-        shutil.copy(services / "build.zig.zon.gh", services / "build.zig.zon")
-        _stream(
-            quiet_command(
-                repo_dir, [zig, "build", "-Doptimize=ReleaseSafe", "-j1", "--cache-dir", cache]
-            ),
-            services,
-            env,
-            timeout=10800,
-        )
+        _stream(command, services, env, timeout=10800)
+    except ProcessExecutionError as primary:
+        fallback = services / "build.zig.zon.gh"
+        if not fallback.is_file():
+            primary.add_note(
+                "Selected Typeahead revision has no services/build.zig.zon.gh fallback; "
+                "preserving the original build failure."
+            )
+            raise
+        logger.warning("build failed; retrying with the selected revision's dependency fallback")
+        manifest = services / "build.zig.zon"
+        original = manifest.read_bytes()
+        try:
+            shutil.copyfile(fallback, manifest)
+            _stream(command, services, env, timeout=10800)
+        except ProcessExecutionError as secondary:
+            raise secondary from primary
+        finally:
+            manifest.write_bytes(original)
     if not binary.is_file():
         raise RuntimeError(f"build reported success but binary missing at {binary}")
     return binary
