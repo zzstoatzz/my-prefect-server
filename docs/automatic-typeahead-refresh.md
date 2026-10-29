@@ -19,14 +19,17 @@ An origin allowlist entry alone never authorizes installation.
 While Tantivy is current, automatic native refresh, candidate reuse and inactive
 slot deletion stop explicitly before resource mutation. The automatic flow also
 checks this fence before corpus preparation. The native rollback slot is retained.
-Routing-only rollback to an existing verified native previous target remains
-available. If public verification fails, an ETag-conditional compensation restores
+Routing-only rollback uses the persisted native-only `native_rollback` anchor when
+Tantivy is current, so another Tantivy refresh cannot displace the native target.
+Older first-promotion records may still use their native `previous` target.
+Native-to-native rollback continues to select the immediate previous target.
+If public verification fails, an ETag-conditional compensation restores
 the exact prior Tantivy route only while the failed native route is still current;
 operator changes win. This compatibility step does not permit new Tantivy promotion
 or rollback into a previous Tantivy target. Native-to-native rollback is unchanged.
 
-R2 artifact cleanup and local build retention protect current and previous source
-builds and their native/compact twins. A Tantivy engine build can differ from its
+R2 artifact cleanup and local build retention protect current, previous and native
+anchor source builds and their native/compact twins. A Tantivy engine build can differ from its
 source build, so retention reads the source identity from the binary-bound status
 and source manifest. Unknown identity preserves data and blocks retention when the
 existing backlog limit is exceeded. Directories outside the managed build root

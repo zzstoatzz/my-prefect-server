@@ -65,6 +65,28 @@ def require_native_refresh(target: dict):
         )
 
 
+def validate_route_record(route: dict):
+    route_target(route)
+    for field in ("previous", "native_rollback"):
+        if route.get(field) is not None:
+            target = route_target({"version": 1, "current": route[field]})
+            if field == "native_rollback" and target_engine(target) != "native":
+                raise ValueError("Rollback anchor must be native")
+
+
+def native_rollback_target(route: dict) -> dict:
+    validate_route_record(route)
+    target = (
+        route.get("native_rollback") or route.get("previous")
+        if target_engine(route["current"]) == "tantivy"
+        else route.get("previous")
+    )
+    if target is None:
+        raise RuntimeError("No retained native rollback backend is available")
+    require_native_refresh(target)
+    return target
+
+
 def response_identity(target: dict, body: dict, headers):
     if target_engine(target) != "tantivy":
         return
@@ -132,9 +154,7 @@ class Refresh:
         if len(raw) > 16384:
             raise ValueError("Routing record too large")
         route = json.loads(raw)
-        route_target(route)
-        if route.get("previous") is not None:
-            route_target({"version": 1, "current": route["previous"]})
+        validate_route_record(route)
         return route, result["ETag"]
 
     def replace_route(self, route: dict, etag: str):
@@ -142,9 +162,7 @@ class Refresh:
         return self._put_route(route, etag)
 
     def _put_route(self, route: dict, etag: str):
-        route_target(route)
-        if route.get("previous") is not None:
-            route_target({"version": 1, "current": route["previous"]})
+        validate_route_record(route)
         result = self.s3.put_object(
             Bucket=self.bucket,
             Key=ROUTE_KEY,
@@ -666,10 +684,7 @@ class Refresh:
 
     def rollback_to_native(self):
         route, etag = self.route()
-        previous = route.get("previous")
-        if previous is None:
-            raise RuntimeError("No previous managed backend is available")
-        require_native_refresh(route_target({"version": 1, "current": previous}))
+        previous = native_rollback_target(route)
         self.healthy(previous, require_fresh=False)
         replacement = {
             "version": 1,
@@ -678,6 +693,8 @@ class Refresh:
             "promoted_at": int(time.time()),
             "rollback": True,
         }
+        if route.get("native_rollback") is not None:
+            replacement["native_rollback"] = route["native_rollback"]
         self.replace_route(replacement, etag)
         time.sleep(2)
         try:
@@ -709,7 +726,8 @@ class Refresh:
         if route is None:
             route, _ = self.route()
         keep = set()
-        for entry in [route_target(route), route.get("previous")]:
+        validate_route_record(route)
+        for entry in [route_target(route), route.get("previous"), route.get("native_rollback")]:
             if entry is None:
                 continue
             route_target({"version": 1, "current": entry})

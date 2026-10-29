@@ -407,6 +407,72 @@ def test_rollback_cannot_promote_tantivy_as_previous(controller):
     assert controller.s3.writes == []
 
 
+def anchored_route():
+    return {
+        "version": 1,
+        "current": TANTIVY,
+        "previous": {**TANTIVY, "build_id": "b1792999999-previous-engine-px05"},
+        "native_rollback": NATIVE,
+    }
+
+
+def test_native_anchor_survives_successive_tantivy_route_and_rollback(controller):
+    route = anchored_route()
+    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
+    result = controller.rollback_to_native()
+    assert result["passed"] and result["current"] == NATIVE
+    actual, _ = controller.route()
+    assert actual["native_rollback"] == NATIVE
+    assert actual["previous"] == TANTIVY
+    assert len(controller.s3.writes) == 1
+
+
+def test_retention_protects_native_anchor_even_without_previous_native(controller):
+    route = {**anchored_route(), "previous": TANTIVY}
+    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
+    protected = controller.retained_build_ids()
+    assert {NATIVE["build_id"], NATIVE["build_id"].removesuffix("-px05")} <= protected
+    for bid in [*protected, "b1792800000-disposable"]:
+        controller.s3.seed(f"releases/search/{bid}/index.db", b"fixture")
+    assert controller.prune_artifacts()["deleted_objects"] == 1
+    assert controller.s3.path(f"releases/search/{NATIVE['build_id']}/index.db").exists()
+
+
+def test_failed_anchored_rollback_restores_exact_entire_prior_route(controller):
+    prior = anchored_route()
+    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(prior).encode())
+    controller.public_fail = True
+    with pytest.raises(RuntimeError, match="public verification"):
+        controller.rollback_to_native()
+    assert controller.route()[0] == prior
+    assert len(controller.s3.writes) == 2
+
+
+def test_native_anchor_cannot_be_non_native_or_override_native_previous(controller):
+    route = {**anchored_route(), "native_rollback": TANTIVY}
+    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
+    with pytest.raises(ValueError, match="anchor must be native"):
+        controller.route()
+    route = {"version": 1, "current": NATIVE, "previous": TANTIVY, "native_rollback": NATIVE}
+    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
+    with pytest.raises(RuntimeError, match="installation is fenced"):
+        controller.rollback_to_native()
+    assert controller.s3.writes == []
+
+
+def test_anchored_rollback_cas_race_preserves_operator_route(controller):
+    route = anchored_route()
+    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
+    raced = {**route, "operator_change": True}
+    controller.s3.before_put = lambda: controller.s3.seed(
+        refresh.ROUTE_KEY, json.dumps(raced).encode()
+    )
+    with pytest.raises(ConditionalWriteFailed):
+        controller.rollback_to_native()
+    assert controller.route()[0] == raced
+    assert controller.s3.writes == []
+
+
 def test_local_retention_rechecks_routed_sources_before_deletion(tmp_path, monkeypatch):
     for build in ["b1792000000-old", "b1792100000-old", "b1793100000-new", "b1793200000-new"]:
         path = tmp_path / ("build-" + build)
