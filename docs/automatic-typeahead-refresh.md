@@ -7,6 +7,37 @@ cadence is 06:00 UTC on odd-numbered days, next October 27. Runs are at most
 are verified against the actual server. The public Worker uses the stable
 transport route; no serving machine performs bulk installation.
 
+## Tantivy controller compatibility under review
+
+The `codex/tantivy-controller-compatibility` companion branch is local and has
+not been deployed. It recognizes the Typeahead Worker route union: native keeps
+the two existing managed origins; Tantivy requires its exact origin, expiry-v4
+format, admission and executable SHA256 values, and retrieval strategy. Tantivy
+health/status bodies and transport identity headers must agree with that route.
+An origin allowlist entry alone never authorizes installation.
+
+While Tantivy is current, automatic native refresh, candidate reuse and inactive
+slot deletion stop explicitly before resource mutation. The automatic flow also
+checks this fence before corpus preparation. The native rollback slot is retained.
+Routing-only rollback to an existing verified native previous target remains
+available. If public verification fails, an ETag-conditional compensation restores
+the exact prior Tantivy route only while the failed native route is still current;
+operator changes win. This compatibility step does not permit new Tantivy promotion
+or rollback into a previous Tantivy target. Native-to-native rollback is unchanged.
+
+R2 artifact cleanup and local build retention protect current and previous source
+builds and their native/compact twins. A Tantivy engine build can differ from its
+source build, so retention reads the source identity from the binary-bound status
+and source manifest. Unknown identity preserves data and blocks retention when the
+existing backlog limit is exceeded. Directories outside the managed build root
+are unaffected.
+
+Offline tests exercise real loopback HTTP and owned filesystem CAS/artifact/build
+operations; they do not qualify provider CAS, live routing or deployment. A complete
+engine-specific installer, refresh/recovery policy and production qualification
+remain open gates. Do not remove the native-refresh fence merely because route
+validation or these compatibility tests pass.
+
 ## Data and deployment sequence
 
 The existing cloud publisher builds the full corpus on local SSD using the
@@ -114,8 +145,10 @@ Run `just prefect deployment run typeahead-index/typeahead-index -p rollback=tru
 to exchange the current/previous routing targets after checking the previous
 backend. This does not rebuild, download, resize, or delete a backend. It checks
 public freshness and direct query contracts afterward, restoring the prior route
-if verification fails. The same command exchanges them again to return to the
-newer backend. A still-serving previous snapshot older than the freshness limit
+if verification fails. For native-to-native routes, the same command exchanges
+them again to return to the newer backend. The unreleased Tantivy compatibility
+branch permits only native rollback targets; see its explicit installation fence
+above. A still-serving previous snapshot older than the freshness limit
 returns a Degraded state rather than claiming freshness was restored.
 
 Completed data can be resumed with the per-run parameter

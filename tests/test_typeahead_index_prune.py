@@ -35,7 +35,9 @@ def test_prune_builds_deletes_on_disk_and_reports_bytes(tmp_path, monkeypatch):
         d.mkdir()
         (d / "index.db").write_bytes(b"x" * 1024)
     (tmp_path / "not-a-build").mkdir()
-    monkeypatch.setattr("flows.typeahead_index.serving_build_id", lambda: "b300-cc")
+    monkeypatch.setattr(
+        "mps.typeahead_refresh.protected_source_build_ids", lambda logger: {"b300-cc"}
+    )
     freed = prune_builds.fn(str(tmp_path))
     assert freed == 1024
     assert sorted(p.name for p in tmp_path.iterdir()) == [
@@ -48,7 +50,7 @@ def test_prune_builds_deletes_on_disk_and_reports_bytes(tmp_path, monkeypatch):
 def test_prune_builds_skips_when_service_unreachable(tmp_path, monkeypatch):
     for i in ("b100-aa", "b200-bb", "b300-cc"):
         (tmp_path / f"build-{i}").mkdir()
-    monkeypatch.setattr("flows.typeahead_index.serving_build_id", lambda: None)
+    monkeypatch.setattr("mps.typeahead_refresh.protected_source_build_ids", lambda logger: None)
     assert prune_builds.fn(str(tmp_path)) == 0
     assert len(list(tmp_path.iterdir())) == 3
 
@@ -66,7 +68,7 @@ def test_blocked_retention_is_not_silent_success(tmp_path, monkeypatch):
 
     for i in range(5):
         (tmp_path / f"build-b{i}-aa").mkdir()
-    monkeypatch.setattr("flows.typeahead_index.serving_build_id", lambda: None)
+    monkeypatch.setattr("mps.typeahead_refresh.protected_source_build_ids", lambda logger: None)
     with pytest.raises(RuntimeError, match="retention blocked"):
         prune_builds.fn(str(tmp_path))
     assert len(list(tmp_path.iterdir())) == 5

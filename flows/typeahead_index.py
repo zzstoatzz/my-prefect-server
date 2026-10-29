@@ -483,7 +483,7 @@ def serving_build_id(url: str = FRESHNESS_URL, timeout: int = 10) -> str | None:
 
 
 def builds_to_prune(
-    build_dirs: list[Path], serving: str | None, keep: int = KEEP_BUILDS
+    build_dirs: list[Path], serving: str | set[str] | None, keep: int = KEEP_BUILDS
 ) -> list[Path]:
     """Keep the newest generations and the serving one, including format twins.
 
@@ -492,7 +492,7 @@ def builds_to_prune(
     unknown: a stale snapshot is a state we recover from, a deleted build
     that a person was about to inspect is not.
     """
-    if serving is None:
+    if not serving:
         return []
     ordered = sorted(build_dirs, key=lambda p: p.name, reverse=True)
 
@@ -500,7 +500,8 @@ def builds_to_prune(
         return name.removesuffix("-px05")
 
     newest = sorted({generation(p.name) for p in ordered}, reverse=True)[:keep]
-    protected = {*newest, generation(f"build-{serving}")}
+    serving_ids = {serving} if isinstance(serving, str) else serving
+    protected = {*newest, *(generation(f"build-{build}") for build in serving_ids)}
     return [p for p in ordered if generation(p.name) not in protected]
 
 
@@ -524,15 +525,22 @@ def prune_builds(build_root: str | None = None) -> int:
         for p in root.iterdir()
         if p.is_dir() and not p.is_symlink() and p.name.startswith("build-")
     ]
-    serving = serving_build_id()
-    if serving is None:
-        logger.warning("serving build_id unknown (%s unreachable); pruning nothing", FRESHNESS_URL)
+    from mps.typeahead_refresh import protected_source_build_ids
+
+    try:
+        serving = protected_source_build_ids(logger)
+    except (OSError, ValueError, RuntimeError, KeyError):
+        serving = None
+    if not serving:
+        logger.warning("Routed source identities unavailable; pruning nothing")
         if len(build_dirs) > KEEP_BUILDS * 2:
             raise RuntimeError("Build retention blocked: serving identity unavailable")
         return 0
     victims = builds_to_prune(build_dirs, serving)
     freed = 0
     for victim in victims:
+        if protected_source_build_ids(logger) != serving:
+            raise RuntimeError("Routing source identities changed; refusing local cleanup")
         size = sum(f.stat().st_size for f in victim.rglob("*") if f.is_file())
         shutil.rmtree(victim)
         freed += size
@@ -673,6 +681,10 @@ def typeahead_index(
                 message="Rollback restored availability; the previous snapshot is stale and needs refresh",
             )
         return report
+    if automatic_refresh:
+        from mps.typeahead_refresh import require_automatic_refresh_supported
+
+        require_automatic_refresh_supported(get_run_logger())
     if resume_rollout:
         if (
             snapshot_format != "compact"
