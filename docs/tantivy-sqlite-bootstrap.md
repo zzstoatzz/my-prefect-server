@@ -41,8 +41,10 @@ Production integration remains blocked on these concrete contracts:
   provides the existing path, but its first-sync error handling can return without
   fresh WAL. Success alone is insufficient. Hashing stable files or successfully
   opening SQLite also does not prove all expected WAL frames were applied.
-- Persist and validate checkpoint bootstrap provenance in Rust/admission. The
-  current importer ignores the extra `source_bootstrap` JSON object. It cannot
+- Validate checkpoint bootstrap provenance in the external admission contract.
+  The existing Rust importer preserves the entire header in `source_manifest`;
+  actual status and restart tests verify exact `source_bootstrap` equality.
+  No ELF change is needed for retention. Retaining metadata alone cannot
   substitute for the existing live reconciliation-round proof.
 - Separate raw row/input/live/deleted counts from the native visible actor count.
   The current portable source validator equates native and imported counts;

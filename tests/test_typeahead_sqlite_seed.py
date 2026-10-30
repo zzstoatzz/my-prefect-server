@@ -149,6 +149,9 @@ def test_real_sqlite_wal_full_fields_and_rust_import(tmp_path, repository):
             try:
                 status = smoke.request(public, "/index/status")[2]
                 assert status["cutover_source_ready"] is False
+                assert (
+                    status["source_manifest"]["source_bootstrap"] == records[0]["source_bootstrap"]
+                )
                 assert status["full_source"] is False
                 matches = smoke.request(public, "/search?q=person000000")[2]["actors"]
                 assert matches[0]["did"] == "did:fixture:000000"
@@ -184,6 +187,10 @@ def test_real_sqlite_wal_full_fields_and_rust_import(tmp_path, repository):
                     == "checkpoint-only"
                 )
                 assert restarted["cutover_source_ready"] is False
+                assert (
+                    restarted["source_manifest"]["source_bootstrap"]
+                    == records[0]["source_bootstrap"]
+                )
             finally:
                 smoke.stop(child)
     finally:
