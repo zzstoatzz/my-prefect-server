@@ -29,6 +29,32 @@ GATES = (
 )
 
 
+def owned_mount(mounts, volume_id):
+    if not isinstance(mounts, list) or len(mounts) != 1 or not isinstance(mounts[0], dict):
+        return False
+    mount = mounts[0]
+    if set(mount) - {
+        "volume",
+        "path",
+        "name",
+        "encrypted",
+        "size_gb",
+        "read_only",
+        "readonly",
+        "mode",
+    }:
+        return False
+    return (
+        mount.get("volume") == volume_id
+        and mount.get("path") == "/data"
+        and all(field not in mount or mount[field] is False for field in ("read_only", "readonly"))
+        and ("mode" not in mount or mount["mode"] == "rw")
+        and ("encrypted" not in mount or mount["encrypted"] is True)
+        and ("size_gb" not in mount or (type(mount["size_gb"]) is int and mount["size_gb"] == 20))
+        and ("name" not in mount or (isinstance(mount["name"], str) and bool(mount["name"])))
+    )
+
+
 def raw_json(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":")).encode() + b"\n"
 
@@ -338,7 +364,7 @@ class Slots:
             or metadata.get("request_id") != state["request_id"]
             or metadata.get("deployment_sha256") != state["deployment_sha256"]
             or config.get("image") != state["image_digest"]
-            or config.get("mounts") != [{"volume": state["volume_id"], "path": "/data"}]
+            or not owned_mount(config.get("mounts"), state["volume_id"])
             or any(config.get("guest", {}).get(key) != expected for key, expected in GUEST.items())
             or config.get("env") != state["config"]["env"]
             or config.get("init") != state["config"]["init"]
@@ -703,7 +729,7 @@ class Slots:
         config = machine.get("config", {})
         if (
             config.get("image") != bound["image_digest"]
-            or config.get("mounts") != [{"volume": bound["volume_id"], "path": "/data"}]
+            or not owned_mount(config.get("mounts"), bound["volume_id"])
             or config.get("metadata", {}).get("owner") != OWNER
             or config.get("metadata", {}).get("role") != "tantivy-slot"
             or config.get("env", {}).get("EXPECTED_DEPLOYMENT_SHA256")
@@ -860,8 +886,7 @@ class Slots:
                 or machines[0].get("id") != record["machine_id"]
                 or machines[0].get("config", {}).get("metadata", {}).get("owner") != OWNER
                 or machines[0]["config"].get("metadata", {}).get("role") != "tantivy-slot"
-                or machines[0]["config"].get("mounts")
-                != [{"volume": bound["volume_id"], "path": "/data"}]
+                or not owned_mount(machines[0]["config"].get("mounts"), bound["volume_id"])
             ):
                 raise RuntimeError("Previous slot has unknown ownership or extra machines")
             if record["machine_id"] in self.service.tantivy_adapter().installer.PROTECTED_MACHINES:

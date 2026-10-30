@@ -10,7 +10,10 @@ release receipt. No slot operation in this branch has been run against Fly.
 Only `typeahead-tantivy-a` and `typeahead-tantivy-b` are eligible. Every candidate
 must carry owner `typeahead-snapshot-refresh`, role `tantivy-slot`, request/build
 identity, pinned image digest, two shared CPUs, 1 GiB RAM and its own encrypted
-20 GiB volume. Serving/native/ingester machines are never modified. An unrelated
+20 GiB volume. Provider mount records may include name, encryption and size
+metadata; identity still requires exactly one writable `/data` mount of the pinned
+volume. Conflicting metadata, read-only options or extra mounts fail closed.
+Serving/native/ingester machines are never modified. An unrelated
 machine or volume fences preparation. The existing checksum-pinned Typeahead
 installer performs installation and runtime qualification; this controller does
 not implement another installer or uploader.

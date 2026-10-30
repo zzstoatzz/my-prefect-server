@@ -163,6 +163,9 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
                     "state": "created",
                     "instance_id": "fixture-instance",
                 }
+                result["config"]["mounts"][0].update(
+                    encrypted=True, size_gb=20, name=data["volumes"][0]["name"]
+                )
                 data["machines"].append(result)
             else:
                 result = data["machines"][0]
@@ -209,7 +212,25 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
         assert calls.count(("POST", f"/{APPS[0]}/machines")) == 1
         assert controller.route()[0]["current"] == route["current"]
         assert all(APPS[0] in path for _, path in calls)
-        changed = json.loads(statefile.read_text())
+        original = json.loads(statefile.read_text())
+        mount = original["machines"][0]["config"]["mounts"][0]
+        assert mount["encrypted"] is True and mount["size_gb"] == 20
+        for invalid in [
+            [dict(mount, volume="vol_wrong")],
+            [dict(mount, path="/other")],
+            [mount, dict(mount)],
+            [dict(mount, read_only=True)],
+            [dict(mount, readonly=True)],
+            [dict(mount, mode="ro")],
+            [dict(mount, encrypted=False)],
+            [dict(mount, size_gb=21)],
+        ]:
+            changed = json.loads(json.dumps(original))
+            changed["machines"][0]["config"]["mounts"] = invalid
+            statefile.write_text(json.dumps(changed))
+            with pytest.raises(RuntimeError, match="configuration changed"):
+                resumed.machine(restored, restored["machine_id"])
+        changed = original
         changed["machines"][0]["config"]["guest"]["memory_mb"] = 2048
         statefile.write_text(json.dumps(changed))
         with pytest.raises(RuntimeError, match="configuration changed"):
