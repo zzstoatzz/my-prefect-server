@@ -887,32 +887,6 @@ deployments:
     - cron: 0 6,18 * * *
       timezone: UTC
       active: true
-  - name: typeahead-plc-identity
-    tags:
-    - publish
-    - heavypad
-    entrypoint: flows/typeahead_plc_identity.py:typeahead_plc_identity
-    work_pool:
-      name: heavypad-build-pool
-      job_variables:
-        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage
-          uv run --no-project --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
-          $MPS_PIN }}' prefect flow-run execute
-        env:
-          MPS_PIN: '{{ $MPS_PIN }}'
-          PREFECT_PLUGINS_ENABLED: 'true'
-          PREFECT_PLUGINS_ALLOW: mps-secrets
-          TURSO_URL: prefect-block://typeahead-turso-url
-          TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
-          PLC_BUNDLE_DIR: /home/stoat/typeahead-plc
-          PLC_APPLY: '1'
-          PREFECT_UI_URL: https://prefect-server.waow.tech
-    concurrency_limit:
-      limit: 1
-      collision_strategy: CANCEL_NEW
-    schedules:
-    - cron: 0 5 * * 1
-      active: false
   - name: phi-pull-review
     tags:
     - phi

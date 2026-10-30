@@ -17,7 +17,7 @@ removes a row from the index — so every run starts at the true queue head
 with no cursor state carried between runs. The worker's hourly event queue
 reads the same index newest-first; this flow reads oldest-first, so the two
 meet in the middle and never fight over rows. handle='' actors are NOT this
-flow's scope — they are the identity backlog (typeahead-plc-identity).
+flow's scope — they are the identity backlog, requiring separate cloud repair.
 
 Scheduled runs are time-budgeted (budget_seconds), not count-budgeted: the
 run drains whatever fits in the budget and reports how much it processed.

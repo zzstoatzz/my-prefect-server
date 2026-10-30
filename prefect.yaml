@@ -554,37 +554,6 @@ deployments:
     concurrency_limit: *cancel_new
     schedules: []  # Owned by HeavyPad after migration.
 
-  - name: typeahead-plc-identity
-    pull: *cached_home
-    tags: [publish]
-    entrypoint: flows/typeahead_plc_identity.py:typeahead_plc_identity
-    # Bulk DID -> (handle, pds) resolution from the PLC log, via fig's Allegedly
-    # weekly bundles. typeahead's per-DID identity resolution could not converge
-    # (1.3M rows missing handle, 9.3M missing pds, at 500/run). Not on the
-    # Cloudflare cron: ~28GB of bundles and a multi-GB working set. Same home-pool
-    # shape as typeahead-index — pure batch, no ingress, no SLA.
-    work_pool:
-      name: home-pool
-      job_variables:
-        command: >-
-          uv run
-          --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
-          prefect flow-run execute
-        env:
-          MPS_PIN: "{{ $MPS_PIN }}"
-          PREFECT_PLUGINS_ENABLED: "true"
-          PREFECT_PLUGINS_ALLOW: mps-secrets
-          # full libsql:// URL — unlike typeahead-index, this flow does NOT strip
-          # the scheme; the python script rewrites it to https itself.
-          TURSO_URL: prefect-block://typeahead-turso-url
-          TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
-          # persistent NVMe — process runs execute in an ephemeral /tmp, and the
-          # bundle cache is ~28GB that we do NOT want to re-download weekly.
-          PLC_BUNDLE_DIR: /home/stoat/typeahead-plc
-          PLC_APPLY: "1"
-    concurrency_limit: *cancel_new
-    schedules: []  # Owned by HeavyPad after migration.
-
   - name: pub-search-snapshot
     pull: *cached_home
     tags: [publish]

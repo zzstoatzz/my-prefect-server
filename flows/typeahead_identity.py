@@ -10,7 +10,7 @@ hour, the retrying Turso client, and nothing in front of it.
 - selector: `handle = '' AND identity_checked_at < now-3600`, oldest first,
   off idx_actors_enrich_identity (EXPLAIN-verified SEARCH, 2026-09-03).
 - resolver: the public appview's getProfiles, 25 DIDs/call, ~96% hit rate.
-  The ~4% it cannot see (self-hosted PDSes) belong to typeahead-plc-identity.
+  The ~4% it cannot see (self-hosted PDSes) require a separately qualified cloud identity repair.
 - every selected DID gets identity_checked_at stamped, resolved or not, so an
   unresolvable DID cannot pin the queue.
 - no unhiding, no counts, no labels: handle only. Profile enrichment is

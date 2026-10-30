@@ -82,7 +82,6 @@ and its observed schema/column lineage.
 | `pds-records` | ad hoc, no schedule | operator flow for listing/creating/updating/deleting PDS records; default deployment is dry-run list mode |
 | `costs` | cron `0 8 * * *` (daily 08:00 UTC) | collects provider billing (neon/cloudflare/hetzner/fly connectors), writes an `io.zzstoatzz.cost.snapshot` PDS record, surfaced at hub.waow.tech |
 | `typeahead-index` | cron `0 9 */3 * *` (every 3rd day) | builds the typeahead prefix-index snapshot on the home box (zig batch job), publishes it to R2, rewrites `latest.json`. no ingress, no SLA |
-| `typeahead-plc-identity` | cron `0 5 * * 1` (weekly Mon) | bulk-resolves typeahead's DID → (handle, pds) backlog from the PLC log (~28GB of bundles; heavy batch, no SLA) |
 | `typeahead-enrich-backfill` | ad hoc, no schedule | paced profile backfill for typeahead's enrichment queue |
 | `pub-search-snapshot` | cron `40 */2 * * *` | builds the pub-search FTS snapshot from the Turso document corpus and publishes it to R2 |
 | `bisk-snapshot` | cron `*/10 * * * *` | computes the authoritative bisk.social standings and publishes a static snapshot to R2 for the edge site to adopt |
