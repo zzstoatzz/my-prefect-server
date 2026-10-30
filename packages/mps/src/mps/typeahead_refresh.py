@@ -8,6 +8,7 @@ from pathlib import Path
 
 import boto3
 import httpx
+from botocore.exceptions import BotoCoreError, ClientError
 from prefect import task
 
 SLOTS = ("typeahead-startup-20261024", "typeahead-search-refresh")
@@ -26,6 +27,33 @@ class FlyAPIError(RuntimeError):
     def __init__(self, method, app, path, status_code):
         self.status_code = status_code
         super().__init__(f"Fly {method} {app}/{path} failed: HTTP {status_code}")
+
+
+class RollbackVerificationError(RuntimeError):
+    def __init__(self, receipt):
+        self.receipt = receipt
+        super().__init__(
+            "Rollback public verification "
+            + receipt["verification_outcome"]
+            + "; automatic route compensation disabled; "
+            + json.dumps(
+                {
+                    key: receipt[key]
+                    for key in (
+                        "verification_outcome",
+                        "verification_attempts",
+                        "verification_seconds",
+                        "verification_retry_window_seconds",
+                        "last_error_class",
+                        "native_retained",
+                        "public_verified",
+                        "automatic_compensation_performed",
+                    )
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
 
 
 def origin(app: str) -> str:
@@ -349,8 +377,8 @@ class Refresh:
                 self.serving_guard(route, etag, app)
                 self.fly("DELETE", app, "volumes/" + volume["id"])
 
-    def candidate_checks(self, target: dict):
-        status = self.healthy(target)
+    def candidate_checks(self, target: dict, *, require_fresh: bool = True):
+        status = self.healthy(target, require_fresh=require_fresh)
         timings = []
         for query in ["zzstoatzz.io", "a", "nate", "日本"]:
             start = time.monotonic()
@@ -740,7 +768,10 @@ class Refresh:
             )
             raise
 
-    def rollback_to_native(self):
+    def rollback_to_native(self, *, verification_timeout=120, verification_interval=1):
+        """Bound verification retries; individual client calls may outlast that window."""
+        if not 0 < verification_timeout <= 120 or not 0 < verification_interval <= 5:
+            raise ValueError("Rollback verification must be bounded")
         route, etag = self.route()
         previous = native_rollback_target(route)
         self.healthy(previous, require_fresh=False)
@@ -753,31 +784,84 @@ class Refresh:
         }
         if route.get("native_rollback") is not None:
             replacement["native_rollback"] = route["native_rollback"]
-        self.replace_route(replacement, etag)
-        time.sleep(2)
+        written_etag = self.replace_route(replacement, etag)
+        started = time.monotonic()
+        deadline = started + verification_timeout
+        freshness = {"ok": False, "probe_ok": False, "stale": True, "build_id": None}
+        attempts = 0
+        last_error = None
+        outcome = "deadline"
+        observed = None
+        observed_etag = None
+        while time.monotonic() < deadline:
+            attempts += 1
+            try:
+                observed, observed_etag = self.route()
+                if observed != replacement or observed_etag != written_etag:
+                    outcome = "operator-route-changed"
+                    break
+                code, body, _ = self.get(PUBLIC, "/health/freshness")
+                if isinstance(body, dict):
+                    freshness = body
+                if (
+                    code not in (200, 503)
+                    or not freshness.get("ok")
+                    or not freshness.get("probe_ok")
+                    or freshness.get("build_id") != previous["build_id"]
+                ):
+                    raise RuntimeError("Public native routing not verified")
+                self.candidate_checks(previous, require_fresh=False)
+                observed, observed_etag = self.route()
+                if observed != replacement or observed_etag != written_etag:
+                    outcome = "operator-route-changed"
+                    break
+                outcome = "verified"
+                break
+            except (
+                httpx.HTTPError,
+                BotoCoreError,
+                ClientError,
+                OSError,
+                ValueError,
+                RuntimeError,
+                TimeoutError,
+                KeyError,
+                TypeError,
+            ) as error:
+                last_error = type(error).__name__
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                time.sleep(min(verification_interval, remaining))
+        # A final read records what remains selected; observational failure never writes a route.
         try:
-            code, freshness, _ = self.get(PUBLIC, "/health/freshness")
-            if (
-                code not in (200, 503)
-                or not freshness.get("ok")
-                or not freshness.get("probe_ok")
-                or freshness.get("build_id") != previous["build_id"]
-            ):
-                raise RuntimeError("Rollback public verification failed")
-            self.candidate_checks(previous)
-        except BaseException:
-            actual, actual_etag = self.route()
-            if actual == replacement:
-                self._restore_previous_route(route, replacement, actual_etag)
-            raise
+            observed, observed_etag = self.route()
+        except Exception:
+            observed = None
+            observed_etag = None
+            if outcome == "verified":
+                outcome = "route-observation-unavailable"
+        if observed is not None and (observed != replacement or observed_etag != written_etag):
+            outcome = "operator-route-changed"
         report = {
             "at_unix": int(time.time()),
             "current": previous,
             "previous": route["current"],
             "freshness": freshness,
             "machine_or_volume_changed": False,
-            "passed": True,
+            "passed": outcome == "verified",
+            "public_verified": outcome == "verified",
+            "verification_outcome": outcome,
+            "verification_attempts": attempts,
+            "verification_seconds": round(time.monotonic() - started, 3),
+            "verification_retry_window_seconds": verification_timeout,
+            "last_error_class": last_error,
+            "written_route_etag": written_etag,
+            "observed_route_etag": observed_etag,
+            "native_retained": None if observed is None else observed.get("current") == previous,
+            "automatic_compensation_performed": False,
         }
+        if not report["passed"]:
+            raise RollbackVerificationError(report)
         return report
 
     def retained_build_ids(self, route: dict | None = None) -> set[str]:
@@ -1077,7 +1161,12 @@ def rollback_snapshot():
 
     service = Refresh(get_run_logger())
     try:
-        report = service.rollback_to_native()
+        error = None
+        try:
+            report = service.rollback_to_native()
+        except RollbackVerificationError as failure:
+            report = failure.receipt
+            error = failure
         output = (
             Path(os.environ["INDEXER_HOME"])
             / "refresh-receipts"
@@ -1085,6 +1174,8 @@ def rollback_snapshot():
         )
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(report, indent=2) + "\n")
+        if error is not None:
+            raise error
         return report
     finally:
         service.close()
