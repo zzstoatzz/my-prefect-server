@@ -93,3 +93,16 @@ caller must impose a separate hard process/job timeout. There is no automatic
 bulk-transfer retry. Private staging is removed on ordinary success/failure; the
 VM owner remains responsible for cleanup after forced termination. This code has
 not yet acquired the real full database or qualified a serving artifact.
+
+The manual `typeahead-checkpoint-pilot` diagnostic is separate from publication.
+It verifies the actual ephemeral hcloud pool/run identity before accessing source
+data, acquires one bounded checkpoint, then creates only small read-only-derived
+SQLite samples (32 and at most100,000 documents, with complete capped policy).
+It imports those samples using the pinned Linux D1 executable, verifies header
+retention and restart, and keeps `full_source` and cutover qualification false.
+The existing cloud VM owner deletes its scratch payloads after the run. There is
+no schedule and no pointer, routing, index publication or production mutation.
+A420-second flow timeout is additionally bounded by a600-second worker timeout,
+which includes environment setup. The32-document path passed locally in the
+actual Linux image under two CPUs/1GiB:29input documents, retained provenance,
+HTTP search and restart in0.984seconds; this is operational evidence only.
