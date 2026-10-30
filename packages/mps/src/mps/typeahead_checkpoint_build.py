@@ -8,12 +8,13 @@ import importlib.util
 import json
 import os
 import secrets
+import shutil
 import signal
 import socket
 import subprocess
 import sys
 import time
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from pathlib import Path
 
 from mps.typeahead_checkpoint_stream import stream_checkpoint
@@ -161,6 +162,8 @@ def build_checkpoint(
     source_bytes=512 * 1024**2,
     min_request_interval=0.5,
     allow_fixture=False,
+    pds_fallback_path=None,
+    pds_fallback_sha256=None,
 ):
     started = time.monotonic()
     started_at = int(time.time())
@@ -195,6 +198,7 @@ def build_checkpoint(
     deadline = started + timeout
     processes = []
     source = None
+    resources = ExitStack()
 
     def remaining():
         value = deadline - time.monotonic()
@@ -210,9 +214,18 @@ def build_checkpoint(
             return result
 
     try:
+        if bool(pds_fallback_path) != bool(pds_fallback_sha256):
+            raise ValueError("Fallback path and digest required together")
+        fallback = (
+            resources.enter_context(sync.pds_fallback(pds_fallback_path, pds_fallback_sha256))
+            if pds_fallback_path
+            else None
+        )
         # The two child processes exchange actor bytes directly through a kernel pipe.
         request = {
             "database": str(database),
+            "pds_fallback_path": str(pds_fallback_path) if pds_fallback_path else None,
+            "pds_fallback_sha256": pds_fallback_sha256,
             "repository": str(repository),
             "receipt_bytes": receipt_bytes.decode("utf8"),
             "native_manifest_bytes": native_manifest_bytes.decode("utf8"),
@@ -255,6 +268,8 @@ def build_checkpoint(
                 start_new_session=True,
             )
             processes.append(importer)
+            sort_directory = workspace / "sqlite-sort"
+            sort_directory.mkdir()
             producer = subprocess.Popen(
                 [
                     sys.executable,
@@ -266,6 +281,7 @@ def build_checkpoint(
                 ],
                 stdout=importer.stdin,
                 stderr=stream_log,
+                env=dict(os.environ, SQLITE_TMPDIR=str(sort_directory)),
                 start_new_session=True,
             )
             processes.append(producer)
@@ -520,6 +536,14 @@ def build_checkpoint(
                 "checkpoint_reconciliation_sha256": adapter.digest_json(record),
                 "checkpoint_handoff_sha256": adapter.digest_json(cursor["checkpoint_handoff"]),
             }
+            if fallback is not None:
+                fields["pds_fallback"] = fallback.identity()
+                target = data / "pds-fallback.sqlite"
+                try:
+                    os.link(fallback.path, target)
+                except OSError:
+                    shutil.copyfile(fallback.path, target)
+                adapter.validate_fallback_file(data, fields)
             final = admin.status()
             gates = adapter.checkpoint_source_gates(final, fields, int(time.time()))
             if final.get("ready") is not True or final.get("cutover_source_ready") is not False:
@@ -549,10 +573,11 @@ def build_checkpoint(
         remaining()
         raise ValueError("Checkpoint source handoff failed") from error
     finally:
-        if source is not None:
-            source.close()
-        for process in reversed(processes):
-            stop(process)
+        with resources:
+            for process in processes:
+                resources.callback(stop, process)
+            if source is not None:
+                resources.callback(source.close)
 
 
 def main():

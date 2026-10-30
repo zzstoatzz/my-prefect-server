@@ -409,8 +409,12 @@ class Slots:
         if pending is not None:
             if pending["name"] not in ("start", "stop"):
                 raise RuntimeError("Candidate creation must be reconciled before cancellation")
-            self.wait(state, "started" if pending["name"] == "start" else "stopped")
-            self.confirm(state, "reconciled-" + pending["name"])
+            observed = self.machine(state, state["machine_id"])
+            if pending["name"] == "start" and observed.get("state") == "stopped":
+                self.confirm(state, "reconciled-stopped")
+            else:
+                self.wait(state, "started" if pending["name"] == "start" else "stopped")
+                self.confirm(state, "reconciled-" + pending["name"])
         before = self.machine(state, state["machine_id"])
         if before["state"] != "stopped":
             self.action(

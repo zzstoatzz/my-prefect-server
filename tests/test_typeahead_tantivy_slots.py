@@ -429,6 +429,17 @@ def exercise_real_rust_preparation(
         assert canceled["phase"] == "canceled-retained"
         assert controller.route()[0] == before
         assert process is None
+        state = slots.journal("d" * 32)
+        state["pending_action"] = {
+            "name": "start",
+            "method": "POST",
+            "path": f"machines/{state['machine_id']}/start",
+        }
+        slots.save(state, "start-intent")
+        canceled = slots.cancel("d" * 32)
+        assert canceled["phase"] == "canceled-retained"
+        assert process is None and starts == 2
+        assert controller.route()[0] == before
     finally:
         if process is not None:
             fixtures.smoke.stop(process)

@@ -47,7 +47,7 @@ def release_manifest(imported, build, adapter, binary_sha):
 
 
 @contextmanager
-def checkpoint_source(root, repository, labels=None):
+def checkpoint_source(root, repository, labels=None, missing_pds=False):
     spec = importlib.util.spec_from_file_location(
         "checkpoint_build_source_fixture", repository / "services/tantivy-input/test_sync.py"
     )
@@ -71,6 +71,8 @@ def checkpoint_source(root, repository, labels=None):
             "UPDATE actors SET followers_count=12345,quality_score=16777217 WHERE did='did:fixture:000000'"
         )
         keeper.execute("UPDATE actors SET handle='' WHERE did='did:fixture:000004'")
+        if missing_pds:
+            keeper.execute("UPDATE actors SET pds='' WHERE did='did:fixture:000001'")
         if labels is not None:
             keeper.execute("UPDATE actors SET labels=? WHERE did='did:fixture:000000'", (labels,))
         keeper.commit()
@@ -258,6 +260,99 @@ class Tests(unittest.TestCase):
                 self.assertEqual(
                     portable["sha256"], hashlib.file_digest(bundle, "sha256").hexdigest()
                 )
+
+    def test_join_is_bound_through_checkpoint_catchup_and_portable_bundle(self):
+        mapping = self.root / "fallback.sqlite"
+        with sqlite3.connect(mapping) as db:
+            db.executescript(
+                "PRAGMA user_version=1; CREATE TABLE pds_fallback(did TEXT PRIMARY KEY,pds TEXT NOT NULL) WITHOUT ROWID;"
+            )
+            db.execute(
+                "INSERT INTO pds_fallback VALUES (?,?)",
+                ("did:fixture:000001", "https://joined.example"),
+            )
+        digest = hashlib.sha256(mapping.read_bytes()).hexdigest()
+        with checkpoint_source(self.root, self.repository, missing_pds=True) as (
+            _source,
+            database,
+            options,
+        ):
+            result = build_checkpoint(
+                self.repository,
+                self.root / "build",
+                self.binary,
+                database,
+                **options,
+                pds_fallback_path=mapping,
+                pds_fallback_sha256=digest,
+            )
+            self.assertEqual(
+                result["stream"]["pds_coverage"],
+                {"source_known": 30, "source_missing": 1, "joined": 1, "remaining_missing": 0},
+            )
+            data = Path(result["data_path"])
+            self.assertEqual(
+                hashlib.sha256((data / "pds-fallback.sqlite").read_bytes()).hexdigest(), digest
+            )
+            installer = module(
+                "fallback_freeze", self.repository / "scripts/snapshot_refresh/tantivy_install.py"
+            )
+            binary_sha = hashlib.sha256(self.binary.read_bytes()).hexdigest()
+            manifest = release_manifest(
+                result, options["build_id"], SimpleNamespace(installer=installer), binary_sha
+            )
+            portable = installer.freeze_bundle(
+                data,
+                self.root / "publication",
+                manifest,
+                options["native_manifest_bytes"],
+                self.binary,
+                allow_checkpoint_fixture=True,
+            )
+            installer.validate_artifact_manifest(portable, options["build_id"])
+            self.assertEqual(portable["pds_fallback"]["sha256"], digest)
+            self.assertIn("pds-fallback.sqlite", [r["path"] for r in portable["files"]])
+            status = json.loads(
+                subprocess.check_output([str(self.binary), "status", "--data", str(data)])
+            )
+            self.assertEqual(status["pds_missing_actor_count"], 0)
+            self.assertEqual(status["source_manifest"]["pds_fallback"], portable["pds_fallback"])
+            installed = self.root / "installed"
+            provider_manifest = dict(
+                portable,
+                image_digest="registry.fly.io/tantivy-fixture@sha256:" + "e" * 64,
+                guest=dict(installer.GUEST),
+                volume_id="vol_fixture",
+                volume_size_gib=20,
+                public_service_ports=[],
+                provider_app="tantivy-fixture",
+            )
+            receipt = installer.install_bundle(
+                self.root / "publication/index.tar",
+                installed,
+                provider_manifest,
+                self.binary,
+                allow_checkpoint_fixture=True,
+            )
+            self.assertTrue(receipt["passed"])
+            installer.validate_fallback_file(installed, portable)
+            restarted = json.loads(
+                subprocess.check_output([str(self.binary), "status", "--data", str(installed)])
+            )
+            self.assertEqual(restarted["pds_missing_actor_count"], 0)
+            self.assertEqual(restarted["source_manifest"]["pds_fallback"], portable["pds_fallback"])
+            with (installed / "pds-fallback.sqlite").open("r+b") as broken:
+                broken.seek(-1, 2)
+                broken.write(b"x")
+            with self.assertRaisesRegex(ValueError, "checksum"):
+                installer.validate_fallback_file(installed, portable)
+            unbound = dict(portable)
+            unbound.pop("pds_fallback")
+            with self.assertRaisesRegex(ValueError, "Unbound fallback"):
+                installer.validate_artifact_manifest(unbound, options["build_id"])
+            (data / "pds-fallback.sqlite").unlink()
+            with self.assertRaisesRegex(ValueError, "fallback file"):
+                installer.validate_fallback_file(data, portable)
 
     def test_failed_producer_and_importer_preserve_safe_exit_diagnostics(self):
         with checkpoint_source(self.root, self.repository, labels="private-profile-marker") as (

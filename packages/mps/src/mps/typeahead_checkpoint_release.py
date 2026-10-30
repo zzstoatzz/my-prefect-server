@@ -15,6 +15,56 @@ from mps.typeahead_checkpoint_stream import file_witness
 from mps.typeahead_tantivy import TantivyAdapter, durable_receipt, fetch_cloud_binary
 
 
+def fetch_pds_fallback(destination, sha256):
+    import re
+
+    import boto3
+    from botocore.config import Config
+
+    if not isinstance(sha256, str) or not re.fullmatch(r"[a-f0-9]{64}", sha256):
+        raise ValueError("Pinned archive mapping checksum required")
+    destination = Path(destination)
+    part = destination.with_suffix(".partial")
+    if destination.exists() or destination.is_symlink() or part.exists() or part.is_symlink():
+        raise ValueError("New owned mapping destination required")
+    client = boto3.client(
+        "s3",
+        endpoint_url=os.environ["INDEX_R2_ENDPOINT"],
+        aws_access_key_id=os.environ["INDEX_R2_ACCESS_KEY_ID"],
+        aws_secret_access_key=os.environ["INDEX_R2_SECRET_ACCESS_KEY"],
+        config=Config(connect_timeout=10, read_timeout=30, retries={"max_attempts": 2}),
+    )
+    deadline = time.monotonic() + 300
+    try:
+        result = client.get_object(
+            Bucket=os.environ["INDEX_R2_BUCKET"],
+            Key=f"releases/pds-fallback/{sha256}/pds-fallback.sqlite",
+        )
+        with result["Body"] as body:
+            size = result.get("ContentLength")
+            if type(size) is not int or not 4096 <= size <= 3 * 1024**3:
+                raise ValueError("Archive mapping exceeds size bound")
+            checksum = hashlib.sha256()
+            written = 0
+            with part.open("xb") as stream:
+                while chunk := body.read(1024 * 1024):
+                    written += len(chunk)
+                    if written > size or time.monotonic() > deadline:
+                        raise ValueError("Archive mapping download exceeded bounds")
+                    stream.write(chunk)
+                    checksum.update(chunk)
+                stream.flush()
+                os.fsync(stream.fileno())
+            if written != size or checksum.hexdigest() != sha256:
+                raise ValueError("Archive mapping checksum differs")
+            part.chmod(0o400)
+            part.rename(destination)
+        return destination
+    finally:
+        part.unlink(missing_ok=True)
+        client.close()
+
+
 def read_anchor(service):
     from mps.typeahead_refresh import target_engine
 
@@ -43,7 +93,9 @@ def read_anchor(service):
     return raw
 
 
-def run_cloud_release(repository, *, timeout_seconds=3600):
+def run_cloud_release(
+    repository, *, timeout_seconds=3600, pds_fallback_path=None, pds_fallback_sha256=None
+):
     from prefect import get_run_logger
     from prefect.artifacts import create_table_artifact
     from prefect.client.orchestration import get_client
@@ -112,12 +164,18 @@ def run_cloud_release(repository, *, timeout_seconds=3600):
     root = home / "tantivy-builds" / ("checkpoint-" + run.id.hex)
     root.mkdir(parents=True, exist_ok=False)
     (root / "owner").write_text("typeahead-index-tantivy-v1\n")
+    started = time.monotonic()
+    deadline = started + timeout_seconds
+    configured_mapping = os.environ.get("INDEX_PDS_FALLBACK_SHA256")
+    if configured_mapping is not None:
+        if pds_fallback_path is not None or pds_fallback_sha256 is not None:
+            raise ValueError("Specify one archive mapping source")
+        pds_fallback_sha256 = configured_mapping
+        pds_fallback_path = fetch_pds_fallback(root / "pds-fallback.sqlite", configured_mapping)
     source = root / "native-anchor"
     source.mkdir()
     (source / "manifest.json").write_bytes(anchor)
     binary = fetch_cloud_binary(root / "code/typeahead-tantivy", BINARY_SHA, root / "code")
-    started = time.monotonic()
-    deadline = started + timeout_seconds
 
     def progress(event):
         logger.info("checkpoint_progress %s", json.dumps(event, sort_keys=True))
@@ -153,6 +211,8 @@ def run_cloud_release(repository, *, timeout_seconds=3600):
         build_id=build,
         environment=dict(os.environ),
         timeout=remaining,
+        pds_fallback_path=pds_fallback_path,
+        pds_fallback_sha256=pds_fallback_sha256,
     )
     if (
         imported.get("consumer_verified") is not True
@@ -174,7 +234,17 @@ def run_cloud_release(repository, *, timeout_seconds=3600):
         sha256="0" * 64,
         byte_size=1,
         object_key=f"releases/search-tantivy/{build}/index.tar",
-        files=[{"path": "index/meta.json", "byte_size": 1, "sha256": "0" * 64}],
+        files=[{"path": "index/meta.json", "byte_size": 1, "sha256": "0" * 64}]
+        + (
+            [
+                {
+                    key: imported["manifest_fields"]["pds_fallback"][key]
+                    for key in ("path", "byte_size", "sha256")
+                }
+            ]
+            if "pds_fallback" in imported["manifest_fields"]
+            else []
+        ),
     )
     portable = adapter.freeze(root / "data", root / "publication", manifest, binary, anchor)
     report = {
@@ -188,6 +258,8 @@ def run_cloud_release(repository, *, timeout_seconds=3600):
         "promotion_permitted": False,
         "release_qualified": False,
         "frozen_bundle_bytes": portable["byte_size"],
+        "pds_coverage": imported["stream"]["pds_coverage"],
+        "pds_fallback": imported["manifest_fields"].get("pds_fallback"),
         "source_handoff_verified": True,
     }
     durable_receipt(root / "preparation.json", report)
