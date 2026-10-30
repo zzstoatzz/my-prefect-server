@@ -689,48 +689,11 @@ def archive_builds() -> list[str]:
     return [str(path) for path in archived]
 
 
-@task(retries=0, timeout_seconds=36000)
-def prepare_tantivy_generation(repo: Path, generation: Path, resume: bool = False) -> Path:
-    from mps.typeahead_tantivy import fetch_cloud_binary
+@task(retries=0, timeout_seconds=1800)
+def prepare_checkpoint_generation(repo: Path) -> tuple[Path, Path]:
+    from mps.typeahead_checkpoint_release import run_cloud_release
 
-    source = generation.resolve()
-    roots = [
-        Path(os.environ[name]).resolve() for name in ("INDEX_BUILD_ROOT", "INDEX_ARCHIVE_ROOT")
-    ]
-    if not any(source.is_relative_to(root) for root in roots):
-        raise ValueError("Tantivy source must belong to the existing cloud publisher")
-    manifest = json.loads((source / "manifest.json").read_bytes())
-    if (
-        manifest.get("manifest_version") != 2
-        or manifest.get("format_version") != 5
-        or not isinstance(manifest.get("active_build"), str)
-        or not re.fullmatch(r"b[0-9]{10}-[A-Za-z0-9_-]+", manifest["active_build"])
-    ):
-        raise ValueError("Tantivy preparation requires the published compact native source")
-    binary = Path(os.environ["INDEX_TANTIVY_BINARY"]).absolute()
-    if not binary.is_file():
-        fetch_cloud_binary(binary, os.environ["INDEX_TANTIVY_BINARY_SHA256"], INDEXER_HOME / "code")
-    workspace = INDEXER_HOME / "tantivy-builds" / ("build-" + manifest["active_build"])
-    _stream(
-        [
-            sys.executable,
-            "-m",
-            "mps.typeahead_tantivy",
-            "--repository",
-            str(repo),
-            "--source",
-            str(source),
-            "--workspace",
-            str(workspace),
-            "--binary",
-            str(binary),
-        ]
-        + (["--resume"] if resume else []),
-        repo,
-        dict(os.environ),
-        timeout=36000,
-    )
-    return workspace / "publication"
+    return run_cloud_release(repo)
 
 
 def tantivy_workspace(generation: Path) -> Path:
@@ -860,14 +823,16 @@ def typeahead_index(
         raise ValueError(
             "Tantivy supports isolated compact publication only; automatic installation remains fenced pending slot lifecycle qualification"
         )
-    if snapshot_engine == "tantivy" and resume_generation is not None:
-        if reuse_source is not None:
-            raise ValueError("Tantivy preparation resume cannot rebuild its source")
+    if snapshot_engine == "tantivy":
+        if reuse_source is not None or resume_generation is not None:
+            raise ValueError("Checkpoint publication requires one new owned cloud checkpoint")
         repo = clone_repo(ref, isolated=True)
-        generation = Path(resume_generation)
-        prepared = prepare_tantivy_generation(repo, generation, resume=True)
-        publish_tantivy_generation(repo, prepared, generation)
-        retire_tantivy_generation(prepared)
+        try:
+            prepared, source = prepare_checkpoint_generation(repo)
+            publish_tantivy_generation(repo, prepared, source)
+            retire_tantivy_generation(prepared)
+        finally:
+            shutil.rmtree(repo)
         return
     if rollback:
         if resume_generation is not None or reuse_source is not None or resume_rollout:
@@ -946,22 +911,14 @@ def typeahead_index(
         return
     prune_builds(os.environ.get("INDEX_ARCHIVE_ROOT"))
     require_build_space()
-    repo = clone_repo(ref, isolated=True) if snapshot_engine == "tantivy" else clone_repo(ref)
+    repo = clone_repo(ref)
     binary = build_binary(repo)
     if snapshot_format == "compact":
         compact_target()
         source = run_indexer(binary, local_only=True, reuse_source=reuse_source)
         if source is None:
             raise RuntimeError("local index build did not return a source generation")
-        generation = (
-            publish_compact(repo, source, update_pointer=False)
-            if snapshot_engine == "tantivy"
-            else publish_compact(repo, source)
-        )
-        if snapshot_engine == "tantivy":
-            prepared = prepare_tantivy_generation(repo, generation)
-            publish_tantivy_generation(repo, prepared, generation)
-            retire_tantivy_generation(prepared)
+        generation = publish_compact(repo, source)
         if automatic_refresh:
             if os.environ.get("INDEX_CHANNEL") != "managed":
                 raise ValueError("Automatic rollout requires the managed publication channel")

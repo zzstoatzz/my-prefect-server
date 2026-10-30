@@ -1,108 +1,75 @@
-# SQLite bootstrap pilot
+# Tantivy checkpoint publication
 
-The proposed initial seed reuses the full SQLite export already needed by the
-native builder. Fetch it once with verified WAL completion, then pass its path to
-native `reuse_source` and stream it directly to Tantivy. There is no second export,
-full JSONL staging copy or corpus-wide Hrana row walk. The existing native builder
-otherwise deletes `source.db` before its expensive prefix-index phase.
+The Tantivy branch of `typeahead-index` uses one full SQLite checkpoint, followed
+by a canonical stream into the pinned reader and a genuine live-source catch-up.
+It does not build a fresh native prefix index or run a second full source walk.
+The existing native publication is an independent rollback anchor. Native
+publication behavior is unchanged; Tantivy automatic rollout remains disabled.
 
-`mps.typeahead_sqlite_seed.checkpoint_fixture` is an offline fixture helper only.
-It reads one SQLite transaction, merges ordered actor rows with orphan tombstones,
-preserves the canonical FullActor payload and f32 conversion, and emits the current
-Rust import envelope. Existing live rows override retained tombstones. Cleared
-handles become deleted documents; hidden profiles remain present so a later show
-policy has a profile to expose. Complete `mod_overrides`/`blocked_domains` tables
-are retained separately, with existing 10,000-entry caps and no invented policy
-observation time.
+## Acquisition and import
 
-The 32-actor fixture keeps actual committed changes only in SQLite WAL. Main-file
-only reads retain the old values; the helper sees the new counts/score. A real Rust
-import, HTTP search and authenticated source-state read pass. Partial fixture
-admission is explicit; `cutover_source_ready` remains false. The 100,000-document
-synthetic pilot then measured 1.182 seconds for scan/export and 4.509 seconds for import
-on the local macOS host using the prebuilt cabfe5 binary. DB+WAL totaled 15,188,144
-bytes; JSONL 41,389,733 bytes; committed index 9,000,699 bytes. This is a bounded
-implementation pilot, not a cloud production timing estimate.
+`mps.typeahead_checkpoint.fetch_checkpoint` downloads one `/export/<generation>`
+and contiguous `/sync` batches. A successful short batch defines a finite WAL
+prefix; HTTP400/500 never counts as completion. SQLite verifies the exact
+committed frame count before materializing a standalone database. The receipt
+binds the source-origin hash, source clocks bracketing the transfer, generation,
+base/WAL/materialized hashes, bytes and verified frame count. It makes no live
+freshness or moderation claim.
 
-The fixture receipt is typed by explicit version/kind/coverage fields:
-`schema_version:1`, `kind:sqlite-checkpoint`, `fixture:true`,
-`coverage:checkpoint-only`, `live_coverage_verified:false`,
-`completed_live_round:false`, `policy_freshness_attested:false`, plus file hashes,
-input counts and stream footer hash. Supplied generation/frame coordinates are
-fixture labels, not verified Turso storage attestations. Initial stored versions
-remain the coarse import floor; original row timestamps survive in the input's
-`source_updated_at` field, which the current Rust Actor parser does not persist.
-Source-authoritative reconciliation already ignores timestamp-only differences.
+Acquisition defaults to eight GiB of source bytes,64MiB of WAL and180 seconds,
+with a maximum900-second application deadline. Progress reports only phase,
+bytes, requests and elapsed time. Blocking I/O can overrun the application check;
+the caller must also impose a hard flow/worker deadline. Failed bulk transfers
+are not retried automatically. The cloud VM owner handles forced-exit cleanup.
 
-Production integration remains blocked on these concrete contracts:
+`mps.typeahead_checkpoint_stream.stream_checkpoint` verifies the exact receipt,
+materialized database hash and unchanged file witness, then reads one SQLite
+transaction. Ordered actor rows merge with orphan tombstones; live actor rows
+win over retained tombstones, and cleared handles become deleted documents.
+The canonical adapter preserves profile fields, counts, f32 scores and labels.
+There is one actor serialization pass, directly through a pipe into the reader;
+there is no full JSONL staging file or second corpus copy. The reader validates
+the footer hash and full input count. Raw rows, imported documents, live/deleted
+documents and the retained native count remain distinct.
 
-- Verify the exact exported generation and committed WAL boundary. The official
-  [Turso CLI implementation](https://github.com/tursodatabase/turso-cli/pull/990/files)
-  provides the existing path, but its first-sync error handling can return without
-  fresh WAL. Success alone is insufficient. Hashing stable files or successfully
-  opening SQLite also does not prove all expected WAL frames were applied.
-- Validate checkpoint bootstrap provenance in the external admission contract.
-  The existing Rust importer preserves the entire header in `source_manifest`;
-  actual status and restart tests verify exact `source_bootstrap` equality.
-  No ELF change is needed for retention. Retaining metadata alone cannot
-  substitute for the existing live reconciliation-round proof.
-- Separate raw row/input/live/deleted counts from the native visible actor count.
-  The current portable source validator equates native and imported counts;
-  hidden/cleared/orphan rows make that equation invalid for a raw seed.
-- Establish fresh source policy and a bounded storage-observation/catch-up cursor.
-  `MAX(updated_at)`, local SQLite `unixepoch()` or download time cannot honestly
-  populate a completed live round. Periodic backdated-change coverage also needs
-  a real checkpoint observation, not a declared successful timestamp replay.
+The reader retains the bootstrap receipt in its public source metadata. Only
+moderation policy hash/counts are included; the rule arrays stay private. Fixture
+helpers and small diagnostic samples retain explicit fixture/partial identities
+and cannot qualify for production.
 
-The next cloud pilot should use the same retained raw checkpoint, first 32 rows and
-then at most 100,000 documents, with 128 MiB input/output bounds and a 180-second local
-scan/import deadline. It must report checkpoint/WAL completion and catch-up
-separately. If no retained raw checkpoint exists, measure and budget the one bulk
-export before scheduling it; do not silently recreate the old hours-long path.
-No cloud operation or production publication was performed by this fixture work.
+## Live handoff and serving
 
-The existing reconciliation algorithm was then exercised against the same readonly
-32-actor SQLite/WAL transaction and actual Rust backend. Both source/backend DID
-walks completed with 33 document hash comparisons: zero applied writes, 33 version-only
-replays, unchanged stored document hashes, unchanged segment descriptors and
-unchanged indexed memberships. It used seven local SQLite statements and zero
-source network requests; the measured round took 0.068 seconds on the host. Its
-cursor uses `sqlite-checkpoint-observations-v1` and an explicit checkpoint-only
-coverage object with the immutable bootstrap receipt SHA. A separate-process
-restart retains that distinction and stays cutover-unqualified. The ordinary
-source client's policy validator rejects that cursor; it cannot silently relabel
-its completed checkpoint markers as live Turso coverage.
+The replay floor precedes the provider's first source-clock observation by an
+explicit300-second overlap. A verified full import records its footer hash and
+initial counts. An exact cursor/revision CAS then initializes the real remote-v2
+client at that floor. Admission requires an actually completed remote discovery
+cycle covering the checkpoint cut and a fresh, complete post-cut moderation
+observation. Local download/import timestamps never stand in for live coverage.
 
-`mps.typeahead_checkpoint.fetch_checkpoint` now implements the bounded acquisition
-step: one `/export/<generation>` plus contiguous `/sync` batches, stopping at a
-successful short batch and retaining only the committed prefix. It follows the
-official WAL encoding, then asks SQLite to verify the exact committed frame count,
-checkpoints it into a standalone DB, and hashes that materialized file. The receipt
-separates base bytes/hash, received frames, committed frames, reconstructed WAL
-hash and final DB hash. Source clock observations bracket the transfer; generation
-advances are recorded, never silently labeled current-head coverage. No global
-policy or live freshness is attested by this receipt.
+External admission dispatches on the distinct checkpoint source kind; it does
+not relabel the reader's traditional `cutover_source_ready` flag. Checkpoint
+coverage expires after24 hours unless a genuine complete remote round renews
+it. The slot supervisor stops both reader and reconciler before expiry and
+refuses an expired cached restart. Ordinary timestamp polling cannot renew it.
 
-Sixteen real HTTP/SQLite tests cover replayed values, uncommitted tails, full/empty
-batches, HTTP400/500, truncated frames, byte limits, generation/clock regressions,
-no-overwrite, redirects, request stalls and trickling bodies. Acquisition defaults
-to an eight-GiB source byte cap,64-MiB WAL cap and180-second application deadline,
-with a maximum300-second application setting. Blocking socket/local filesystem
-work can overrun that soft deadline until the operation returns, so the cloud
-caller must impose a separate hard process/job timeout. There is no automatic
-bulk-transfer retry. Private staging is removed on ordinary success/failure; the
-VM owner remains responsible for cleanup after forced termination. This code has
-not yet acquired the real full database or qualified a serving artifact.
+`mps.typeahead_checkpoint_release.run_cloud_release` is cloud-only. It downloads
+once, smoke-tests a100,000-document sample, imports the full database, catches up
+live state and freezes an immutable bundle. The existing publisher verifies the
+bundle and independent native anchor. No routing pointer changes in this path.
+The preparation task is limited to30 minutes and requires a separate hard worker
+timeout. Serving qualification, recovery and cutover approval remain separate.
 
-The manual `typeahead-checkpoint-pilot` diagnostic is separate from publication.
-It verifies the actual ephemeral hcloud pool/run identity before accessing source
-data, acquires one bounded checkpoint, then creates only small read-only-derived
-SQLite samples (32 and at most100,000 documents, with complete capped policy).
-It imports those samples using the pinned Linux D1 executable, verifies header
-retention and restart, and keeps `full_source` and cutover qualification false.
-The existing cloud VM owner deletes its scratch payloads after the run. There is
-no schedule and no pointer, routing, index publication or production mutation.
-A420-second flow timeout is additionally bounded by a600-second worker timeout,
-which includes environment setup. The32-document path passed locally in the
-actual Linux image under two CPUs/1GiB:29input documents, retained provenance,
-HTTP search and restart in0.984seconds; this is operational evidence only.
+## Evidence and remaining qualification
+
+Real HTTP/SQLite/WAL tests exercise committed replay, malformed/partial responses,
+byte and deadline limits, slow trickling responses, provenance and no-overwrite.
+Actual pinned Linux-reader tests cover full stream import, HTTP/restart retention,
+policy privacy, live cursor handoff, freeze/install and coverage expiry. These
+small fixtures do not establish full-cloud build time or serving readiness.
+
+The first cloud diagnostic reached source export but failed its180-second
+acquisition deadline before import. Provider readback confirmed its VM was
+deleted; its temporary deployment was retired. The revised path adds transfer
+progress and reuses the same checkpoint for sample and full import. Full-cloud
+publication and actual serving-slot qualification remain outstanding until their
+receipts exist. Production has not cut over.
