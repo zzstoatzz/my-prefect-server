@@ -154,61 +154,91 @@ def quiet_command(repo: Path, command: list[str]) -> list[str]:
     retry_delay_seconds=exponential_backoff(backoff_factor=10),
     retry_jitter_factor=1,
 )
-def clone_repo(ref: str | None = None) -> Path:
+def clone_repo(ref: str | None = None, isolated: bool = False) -> Path:
     """Fresh shallow clone of typeahead (tangled, github fallback). `ref` names
     a branch to build instead of the default one."""
     logger = get_run_logger()
-    if REPO_DIR.exists():
-        shutil.rmtree(REPO_DIR)
-    REPO_DIR.parent.mkdir(parents=True, exist_ok=True)
+    destination = REPO_DIR
+    if isolated:
+        from uuid import uuid4
+
+        root = INDEXER_HOME / "tantivy-repos"
+        if root.is_symlink() or root.resolve() != root.absolute():
+            raise ValueError("An owned canonical producer checkout root is required")
+        destination = root / uuid4().hex
+    if destination.exists():
+        shutil.rmtree(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
     branch = ["--branch", ref] if ref else []
     for url in (REPO_URL, REPO_URL_FALLBACK):
-        r = subprocess.run(
-            ["git", "clone", "--depth", "1", *branch, url, str(REPO_DIR)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        if isolated and ref and re.fullmatch(r"[0-9a-f]{40}", ref):
+            commands = [
+                ["git", "init", str(destination)],
+                ["git", "-C", str(destination), "remote", "add", "origin", url],
+                ["git", "-C", str(destination), "fetch", "--depth", "1", "origin", ref],
+                ["git", "-C", str(destination), "checkout", "--detach", ref],
+            ]
+        else:
+            commands = [["git", "clone", "--depth", "1", *branch, url, str(destination)]]
+        for command in commands:
+            r = subprocess.run(command, capture_output=True, text=True, check=False, timeout=120)
+            if r.returncode:
+                break
         if r.returncode == 0:
             logger.info(f"cloned {url}")
-            return REPO_DIR
+            return destination
         logger.warning(f"clone failed for {url}: {r.stderr.strip()}")
+        if isolated and destination.exists():
+            shutil.rmtree(destination)
     raise RuntimeError("clone failed from both tangled and github")
 
 
 @task(retries=1, retry_delay_seconds=30)
 def build_binary(repo_dir: Path) -> Path:
-    """`zig build -Doptimize=ReleaseSafe`, with the github-mirror dep fallback.
-
-    Mirrors the Dockerfile: if the primary dep fetch (tangled.org) fails, swap
-    in build.zig.zon.gh and retry. ~3min cold on the box; warm zig cache faster.
-    """
+    """Build pinned source with its vendored dependencies or explicit legacy fallback."""
     services = repo_dir / "services"
     binary = services / "zig-out" / "bin" / "typeahead-ingester"
     env = {**os.environ}
     zig = zig_for(services)
-    cache = str(INDEXER_HOME / "zig-cache")
-    get_run_logger().info(f"building with {zig}")
+    cache = INDEXER_HOME / "zig-cache"
+    global_cache = INDEXER_HOME / "zig-global-cache"
+    env["ZIG_GLOBAL_CACHE_DIR"] = str(global_cache)
+    vendor = services / ".zig-pkg-vendor"
+    if vendor.is_dir():
+        shutil.copytree(vendor, global_cache / "p", dirs_exist_ok=True)
+    command = quiet_command(
+        repo_dir,
+        [
+            zig,
+            "build",
+            "-Doptimize=ReleaseSafe",
+            "-j1",
+            "--cache-dir",
+            str(cache),
+        ],
+    )
+    logger = get_run_logger()
+    logger.info(f"building with {zig}")
     try:
-        _stream(
-            quiet_command(
-                repo_dir, [zig, "build", "-Doptimize=ReleaseSafe", "-j1", "--cache-dir", cache]
-            ),
-            services,
-            env,
-            timeout=10800,
-        )
-    except RuntimeError:
-        get_run_logger().warning("primary dep fetch failed; retrying via github mirrors")
-        shutil.copy(services / "build.zig.zon.gh", services / "build.zig.zon")
-        _stream(
-            quiet_command(
-                repo_dir, [zig, "build", "-Doptimize=ReleaseSafe", "-j1", "--cache-dir", cache]
-            ),
-            services,
-            env,
-            timeout=10800,
-        )
+        _stream(command, services, env, timeout=10800)
+    except ProcessExecutionError as primary:
+        fallback = services / "build.zig.zon.gh"
+        if not fallback.is_file():
+            primary.add_note(
+                "Selected Typeahead revision has no services/build.zig.zon.gh fallback; "
+                "preserving the original build failure."
+            )
+            raise
+        logger.warning("build failed; retrying with the selected revision's dependency fallback")
+        manifest = services / "build.zig.zon"
+        original = manifest.read_bytes()
+        try:
+            shutil.copyfile(fallback, manifest)
+            _stream(command, services, env, timeout=10800)
+        except ProcessExecutionError as secondary:
+            raise secondary from primary
+        finally:
+            manifest.write_bytes(original)
     if not binary.is_file():
         raise RuntimeError(f"build reported success but binary missing at {binary}")
     return binary
@@ -309,8 +339,10 @@ def compact_target() -> tuple[str, str] | None:
 
 
 @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
-def publish_compact(repo: Path, source: Path) -> Path:
+def publish_compact(repo: Path, source: Path, update_pointer: bool = True) -> Path:
     target = compact_target()
+    if not update_pointer and target != ("releases/search", "control/builds/latest.json"):
+        raise ValueError("Immutable source publication requires the managed release namespace")
     legacy = json.loads((source / "manifest.json").read_text())
     compact_id = legacy["active_build"] + "-px05"
     output = source.parent / f"build-{compact_id}"
@@ -350,7 +382,7 @@ def publish_compact(repo: Path, source: Path) -> Path:
     ):
         raise ValueError("existing compact generation does not match source")
     if target == ("releases/search", "control/builds/latest.json"):
-        return publish_completed_generation.fn(repo, str(output))
+        return publish_completed_generation.fn(repo, str(output), update_pointer=update_pointer)
     if target is not None:
         _stream(
             quiet_command(
@@ -376,7 +408,7 @@ def publish_compact(repo: Path, source: Path) -> Path:
 
 
 @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
-def publish_completed_generation(repo: Path, generation: str) -> Path:
+def publish_completed_generation(repo: Path, generation: str, update_pointer: bool = True) -> Path:
     source = Path(generation).resolve()
     roots = [
         Path(os.environ["INDEX_BUILD_ROOT"]).resolve(),
@@ -437,9 +469,8 @@ def publish_completed_generation(repo: Path, generation: str) -> Path:
             str(legacy_path / "index.db"),
             "--legacy-manifest",
             str(legacy_manifest),
-            "--pointer",
-            "control/builds/latest.json",
-        ],
+        ]
+        + (["--pointer", "control/builds/latest.json"] if update_pointer else ["--immutable-only"]),
         repo,
         dict(os.environ, RCLONE_COPY_LINKS="true"),
         timeout=7200,
@@ -483,7 +514,7 @@ def serving_build_id(url: str = FRESHNESS_URL, timeout: int = 10) -> str | None:
 
 
 def builds_to_prune(
-    build_dirs: list[Path], serving: str | None, keep: int = KEEP_BUILDS
+    build_dirs: list[Path], serving: str | set[str] | None, keep: int = KEEP_BUILDS
 ) -> list[Path]:
     """Keep the newest generations and the serving one, including format twins.
 
@@ -492,7 +523,7 @@ def builds_to_prune(
     unknown: a stale snapshot is a state we recover from, a deleted build
     that a person was about to inspect is not.
     """
-    if serving is None:
+    if not serving:
         return []
     ordered = sorted(build_dirs, key=lambda p: p.name, reverse=True)
 
@@ -500,7 +531,8 @@ def builds_to_prune(
         return name.removesuffix("-px05")
 
     newest = sorted({generation(p.name) for p in ordered}, reverse=True)[:keep]
-    protected = {*newest, generation(f"build-{serving}")}
+    serving_ids = {serving} if isinstance(serving, str) else serving
+    protected = {*newest, *(generation(f"build-{build}") for build in serving_ids)}
     return [p for p in ordered if generation(p.name) not in protected]
 
 
@@ -524,15 +556,22 @@ def prune_builds(build_root: str | None = None) -> int:
         for p in root.iterdir()
         if p.is_dir() and not p.is_symlink() and p.name.startswith("build-")
     ]
-    serving = serving_build_id()
-    if serving is None:
-        logger.warning("serving build_id unknown (%s unreachable); pruning nothing", FRESHNESS_URL)
+    from mps.typeahead_refresh import protected_source_build_ids
+
+    try:
+        serving = protected_source_build_ids(logger)
+    except (OSError, ValueError, RuntimeError, KeyError):
+        serving = None
+    if not serving:
+        logger.warning("Routed source identities unavailable; pruning nothing")
         if len(build_dirs) > KEEP_BUILDS * 2:
             raise RuntimeError("Build retention blocked: serving identity unavailable")
         return 0
     victims = builds_to_prune(build_dirs, serving)
     freed = 0
     for victim in victims:
+        if protected_source_build_ids(logger) != serving:
+            raise RuntimeError("Routing source identities changed; refusing local cleanup")
         size = sum(f.stat().st_size for f in victim.rglob("*") if f.is_file())
         shutil.rmtree(victim)
         freed += size
@@ -650,6 +689,105 @@ def archive_builds() -> list[str]:
     return [str(path) for path in archived]
 
 
+@task(retries=0, timeout_seconds=3600)
+def prepare_checkpoint_generation(repo: Path) -> tuple[Path, Path]:
+    from mps.typeahead_checkpoint_release import run_cloud_release
+
+    return run_cloud_release(repo)
+
+
+def tantivy_workspace(generation: Path) -> Path:
+    workspace = generation.parent
+    if (
+        workspace.parent != INDEXER_HOME / "tantivy-builds"
+        or workspace.resolve() != workspace
+        or generation.name != "publication"
+        or generation.resolve() != generation
+        or (workspace / "owner").read_text() != "typeahead-index-tantivy-v1\n"
+    ):
+        raise ValueError("Tantivy publication workspace ownership mismatch")
+    return workspace
+
+
+@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
+def publish_tantivy_generation(
+    repo: Path, generation: Path, source: Path, config: Path | None = None
+) -> Path:
+    from mps.typeahead_tantivy import durable_receipt
+
+    tantivy_workspace(generation)
+
+    verify_only = not (generation / "index.tar").is_file()
+    if verify_only:
+        published = json.loads((generation.parent / "published.json").read_bytes())
+        if (
+            published.get("remote_readback_passed") is not True
+            or published.get("manifest_sha256")
+            != hashlib.sha256((generation / "manifest.json").read_bytes()).hexdigest()
+        ):
+            raise ValueError("Retired local payload lacks a verified publication receipt")
+
+    _stream(
+        [
+            sys.executable,
+            str(repo / "scripts/snapshot_compaction/publish.py"),
+            "--engine",
+            "tantivy",
+            "--generation",
+            str(generation),
+            "--source-manifest",
+            str(source / "manifest.json"),
+        ]
+        + (["--verify-only"] if verify_only else [])
+        + (["--config", str(config)] if config is not None else []),
+        repo,
+        dict(os.environ),
+        timeout=7200,
+    )
+    manifest_raw = (generation / "manifest.json").read_bytes()
+    durable_receipt(
+        generation.parent / "published.json",
+        {
+            "engine": "tantivy",
+            "build_id": json.loads(manifest_raw)["active_build"],
+            "manifest_sha256": hashlib.sha256(manifest_raw).hexdigest(),
+            "remote_readback_passed": True,
+        },
+    )
+    return generation
+
+
+@task(retries=0)
+def retire_tantivy_generation(generation: Path) -> Path:
+    from mps.typeahead_tantivy import durable_receipt
+
+    workspace = tantivy_workspace(generation)
+    published = json.loads((workspace / "published.json").read_bytes())
+    if (
+        published.get("remote_readback_passed") is not True
+        or published.get("manifest_sha256")
+        != hashlib.sha256((generation / "manifest.json").read_bytes()).hexdigest()
+    ):
+        raise ValueError("Verified publication receipt required before retirement")
+    payloads = (workspace / "data", generation / "index.tar")
+    if any(path.is_symlink() for path in payloads):
+        raise ValueError("Tantivy publication cleanup refuses symlinks")
+    for path in payloads:
+        if path.is_dir():
+            shutil.rmtree(path)
+        else:
+            path.unlink(missing_ok=True)
+    durable_receipt(
+        workspace / "retired.json",
+        {
+            "engine": "tantivy",
+            "manifest_sha256": published["manifest_sha256"],
+            "local_payloads_retired": True,
+        },
+    )
+    return generation
+
+
 @flow(name="typeahead-index", log_prints=True, timeout_seconds=43200)
 def typeahead_index(
     ref: str | None = None,
@@ -659,7 +797,122 @@ def typeahead_index(
     resume_generation: str | None = None,
     rollback: bool = False,
     resume_rollout: bool = False,
+    snapshot_engine: Literal["native", "tantivy"] = "native",
+    tantivy_operation: dict | None = None,
 ):
+    if tantivy_operation is not None:
+        if (
+            ref is not None
+            or reuse_source is not None
+            or automatic_refresh
+            or resume_generation is not None
+            or rollback
+            or resume_rollout
+        ):
+            raise ValueError(
+                "Explicit slot operations cannot be combined with build/automatic/native operations"
+            )
+        from mps.typeahead_tantivy_slots import run_slot_operation
+
+        revision = os.environ.get("INDEX_TANTIVY_SOURCE_REVISION", "")
+        if not re.fullmatch(r"[a-f0-9]{40}", revision):
+            raise ValueError("Slot operations require an immutable Typeahead source revision")
+        repo = clone_repo(revision, isolated=True)
+        previous_adapter = os.environ.get("INDEX_TANTIVY_ADAPTER_PATH")
+        os.environ["INDEX_TANTIVY_ADAPTER_PATH"] = str(
+            repo / "scripts/snapshot_refresh/tantivy_install.py"
+        )
+        try:
+            return run_slot_operation(tantivy_operation, get_run_logger())
+        finally:
+            if previous_adapter is None:
+                os.environ.pop("INDEX_TANTIVY_ADAPTER_PATH", None)
+            else:
+                os.environ["INDEX_TANTIVY_ADAPTER_PATH"] = previous_adapter
+            shutil.rmtree(repo)
+    if (
+        automatic_refresh
+        and not rollback
+        and snapshot_engine == "native"
+        and snapshot_format == "compact"
+    ):
+        from mps.typeahead_refresh import Refresh, prune_snapshot_artifacts, target_engine
+        from mps.typeahead_tantivy_automatic import (
+            refresh as automatic_tantivy_refresh,
+            settings as automatic_tantivy_settings,
+        )
+        from mps.typeahead_tantivy_slots import Slots
+
+        service = Refresh(get_run_logger())
+        try:
+            current, _ = service.route()
+            if target_engine(current["current"]) == "tantivy":
+                if reuse_source is not None or resume_generation is not None:
+                    raise ValueError("Automatic Tantivy refresh cannot combine native operations")
+                config = automatic_tantivy_settings(os.environ)
+                if ref is not None and ref != config["revision"]:
+                    raise ValueError(
+                        "Automatic Tantivy ref conflicts with its immutable source revision"
+                    )
+                repo = clone_repo(config["revision"], isolated=True)
+                previous_adapter = os.environ.get("INDEX_TANTIVY_ADAPTER_PATH")
+                os.environ["INDEX_TANTIVY_ADAPTER_PATH"] = str(
+                    repo / "scripts/snapshot_refresh/tantivy_install.py"
+                )
+                publication = None
+
+                def publish():
+                    nonlocal publication
+                    publication, source = prepare_checkpoint_generation(repo)
+                    publish_tantivy_generation(repo, publication, source)
+                    return json.loads((publication / "manifest.json").read_bytes())["active_build"]
+
+                try:
+                    slots = Slots(service, INDEXER_HOME / "tantivy-slot-journals")
+                    report = automatic_tantivy_refresh(
+                        service,
+                        slots,
+                        publish,
+                        release_key=config["release_key"],
+                        release_sha256=config["release_sha256"],
+                        resume_only=resume_rollout,
+                    )
+                    if (
+                        report.get("phase") != "promoted"
+                        or report.get("public_verified") is not True
+                    ):
+                        raise RuntimeError("Automatic promotion is not confirmed; retention fenced")
+                    if publication is not None:
+                        retire_tantivy_generation(publication)
+                    prune_snapshot_artifacts()
+                    return report
+                finally:
+                    if previous_adapter is None:
+                        os.environ.pop("INDEX_TANTIVY_ADAPTER_PATH", None)
+                    else:
+                        os.environ["INDEX_TANTIVY_ADAPTER_PATH"] = previous_adapter
+                    shutil.rmtree(repo)
+        finally:
+            service.close()
+    if snapshot_engine not in ("native", "tantivy"):
+        raise ValueError("Unsupported snapshot engine")
+    if snapshot_engine == "tantivy" and (
+        snapshot_format != "compact" or automatic_refresh or rollback or resume_rollout
+    ):
+        raise ValueError(
+            "Tantivy supports isolated compact publication only; automatic installation remains fenced pending slot lifecycle qualification"
+        )
+    if snapshot_engine == "tantivy":
+        if reuse_source is not None or resume_generation is not None:
+            raise ValueError("Checkpoint publication requires one new owned cloud checkpoint")
+        repo = clone_repo(ref, isolated=True)
+        try:
+            prepared, source = prepare_checkpoint_generation(repo)
+            publish_tantivy_generation(repo, prepared, source)
+            retire_tantivy_generation(prepared)
+        finally:
+            shutil.rmtree(repo)
+        return
     if rollback:
         if resume_generation is not None or reuse_source is not None or resume_rollout:
             raise ValueError("Rollback does not build or install a generation")
@@ -673,6 +926,10 @@ def typeahead_index(
                 message="Rollback restored availability; the previous snapshot is stale and needs refresh",
             )
         return report
+    if automatic_refresh:
+        from mps.typeahead_refresh import require_automatic_refresh_supported
+
+        require_automatic_refresh_supported(get_run_logger())
     if resume_rollout:
         if (
             snapshot_format != "compact"

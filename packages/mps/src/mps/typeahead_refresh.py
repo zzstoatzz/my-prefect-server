@@ -8,6 +8,7 @@ from pathlib import Path
 
 import boto3
 import httpx
+from botocore.exceptions import BotoCoreError, ClientError
 from prefect import task
 
 SLOTS = ("typeahead-startup-20261024", "typeahead-search-refresh")
@@ -16,6 +17,43 @@ ROUTER = "https://typeahead-search-transport.n8-3e9.workers.dev"
 PUBLIC = "https://typeahead.waow.tech"
 OWNER = "typeahead-snapshot-refresh"
 ARTIFACT_PREFIX = "releases/search/"
+TANTIVY_ORIGIN = "https://typeahead-tantivy-dev.fly.dev"
+TANTIVY_SLOTS = ("typeahead-tantivy-a", "typeahead-tantivy-b")
+TANTIVY_FORMAT = "tantivy-0.27-f32-did-expiry-v4"
+BUILD_PATTERN = r"b[0-9]{10}-[A-Za-z0-9_-]+"
+
+
+class FlyAPIError(RuntimeError):
+    def __init__(self, method, app, path, status_code):
+        self.status_code = status_code
+        super().__init__(f"Fly {method} {app}/{path} failed: HTTP {status_code}")
+
+
+class RollbackVerificationError(RuntimeError):
+    def __init__(self, receipt):
+        self.receipt = receipt
+        super().__init__(
+            "Rollback public verification "
+            + receipt["verification_outcome"]
+            + "; automatic route compensation disabled; "
+            + json.dumps(
+                {
+                    key: receipt[key]
+                    for key in (
+                        "verification_outcome",
+                        "verification_attempts",
+                        "verification_seconds",
+                        "verification_retry_window_seconds",
+                        "last_error_class",
+                        "native_retained",
+                        "public_verified",
+                        "automatic_compensation_performed",
+                    )
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        )
 
 
 def origin(app: str) -> str:
@@ -24,16 +62,115 @@ def origin(app: str) -> str:
     return f"https://{app}.fly.dev"
 
 
+def target_engine(target: dict) -> str:
+    engine = target.get("engine", "native")
+    if engine not in ("native", "tantivy"):
+        raise ValueError("Unsupported route engine")
+    return engine
+
+
 def route_target(route: dict) -> dict:
     target = route["current"]
-    if route["version"] != 1 or target["origin"] not in [origin(s) for s in SLOTS]:
-        raise ValueError("Unmanaged routing target")
-    if not re.fullmatch(r"b[0-9]{10}-[A-Za-z0-9_-]+", target["build_id"]):
+    if type(route["version"]) is not int or route["version"] != 1 or not isinstance(target, dict):
+        raise ValueError("Invalid routing record")
+    if not isinstance(target.get("build_id"), str) or not re.fullmatch(
+        BUILD_PATTERN, target["build_id"]
+    ):
         raise ValueError("Invalid route identity")
+    if target_engine(target) == "native":
+        if target["origin"] not in [origin(slot) for slot in SLOTS]:
+            raise ValueError("Unmanaged routing target")
+    elif (
+        target.get("origin")
+        not in (TANTIVY_ORIGIN, *(f"https://{app}.fly.dev" for app in TANTIVY_SLOTS))
+        or target.get("format") != TANTIVY_FORMAT
+        or target.get("retrieval_strategy") not in ("per-segment", "global-merge")
+        or any(
+            not isinstance(target.get(key), str) or not re.fullmatch(r"[a-f0-9]{64}", target[key])
+            for key in ("admission_sha256", "binary_sha256")
+        )
+    ):
+        raise ValueError("Invalid Tantivy route identity")
     return target
 
 
+def require_native_refresh(target: dict):
+    if target_engine(target) != "native":
+        raise RuntimeError(
+            "Tantivy serving: automatic native installation is fenced pending engine-specific refresh qualification"
+        )
+
+
+def validate_route_record(route: dict):
+    route_target(route)
+    for field in ("previous", "native_rollback"):
+        if route.get(field) is not None:
+            target = route_target({"version": 1, "current": route[field]})
+            if field == "native_rollback" and target_engine(target) != "native":
+                raise ValueError("Rollback anchor must be native")
+    if route.get("mutation") is not None:
+        from mps.typeahead_tantivy_slots import validate_mutation
+
+        validate_mutation(route["mutation"])
+
+
+def native_rollback_target(route: dict) -> dict:
+    validate_route_record(route)
+    target = (
+        route.get("native_rollback") or route.get("previous")
+        if target_engine(route["current"]) == "tantivy"
+        else route.get("previous")
+    )
+    if target is None:
+        raise RuntimeError("No retained native rollback backend is available")
+    require_native_refresh(target)
+    return target
+
+
+def response_identity(target: dict, body: dict, headers):
+    if target_engine(target) != "tantivy":
+        return
+    expected = {
+        "engine": "tantivy",
+        "build_id": target["build_id"],
+        "format": target["format"],
+        "binary_sha256": target["binary_sha256"],
+        "retrieval_strategy": target["retrieval_strategy"],
+    }
+    transport = {
+        "engine": "X-Typeahead-Engine",
+        "build_id": "X-Typeahead-Build",
+        "format": "X-Typeahead-Format",
+        "binary_sha256": "X-Typeahead-Binary-Sha256",
+        "retrieval_strategy": "X-Typeahead-Retrieval-Strategy",
+    }
+    if any(
+        body.get(key) != value or headers.get(transport[key]) != value
+        for key, value in expected.items()
+    ):
+        raise RuntimeError("Tantivy backend/transport identity mismatch")
+
+
 class Refresh:
+    def execution_identity(self):
+        from prefect.runtime import flow_run
+
+        if not flow_run.id:
+            raise RuntimeError("Slot lifecycle must run in the existing cloud publisher flow")
+        return str(flow_run.id)
+
+    def execution_finished(self, execution_id):
+        from uuid import UUID
+
+        from prefect.client.orchestration import get_client
+
+        with get_client(sync_client=True) as client:
+            run = client.read_flow_run(UUID(execution_id))
+        return run.state is not None and run.state.is_final()
+
+    def _fly_url(self, app, path):
+        return f"https://api.machines.dev/v1/apps/{app}/{path}"
+
     def __init__(self, logger):
         self.logger = logger
         self.http = httpx.Client(timeout=30, headers={"User-Agent": "fleet-health/1"})
@@ -56,18 +193,24 @@ class Refresh:
         self.s3.close()
 
     def fly(self, method: str, app: str, path: str, body=None):
-        origin(app)
+        tokens = {
+            SLOTS[0]: "FLY_PRIMARY_TOKEN",
+            SLOTS[1]: "FLY_REFRESH_TOKEN",
+            TANTIVY_SLOTS[0]: "FLY_TANTIVY_A_TOKEN",
+            TANTIVY_SLOTS[1]: "FLY_TANTIVY_B_TOKEN",
+        }
+        if app not in tokens:
+            raise ValueError("Unmanaged provider app")
         result = self.http.request(
             method,
-            f"https://api.machines.dev/v1/apps/{app}/{path}",
-            headers={
-                "Authorization": "Bearer "
-                + os.environ["FLY_PRIMARY_TOKEN" if app == SLOTS[0] else "FLY_REFRESH_TOKEN"]
-            },
+            self._fly_url(app, path),
+            headers={"Authorization": "Bearer " + os.environ[tokens[app]]},
             json=body,
         )
         if result.status_code >= 400:
-            raise RuntimeError(f"Fly {method} {app}/{path} failed: HTTP {result.status_code}")
+            raise FlyAPIError(method, app, path, result.status_code)
+        if len(result.content) > 2 * 1024 * 1024:
+            raise RuntimeError("Provider metadata response exceeds its byte budget")
         return result.json() if result.content else None
 
     def route(self):
@@ -76,11 +219,36 @@ class Refresh:
         if len(raw) > 16384:
             raise ValueError("Routing record too large")
         route = json.loads(raw)
-        route_target(route)
+        validate_route_record(route)
         return route, result["ETag"]
 
     def replace_route(self, route: dict, etag: str):
-        route_target(route)
+        require_native_refresh(route_target(route))
+        return self._put_route(route, etag)
+
+    def _put_route(self, route: dict, etag: str, *, release_mutation=None):
+        before, actual_etag = self.route()
+        if actual_etag != etag:
+            raise RuntimeError("Routing changed before conditional update")
+        lease = before.get("mutation")
+        if lease is not None:
+            if route["current"]["origin"] == f"https://{lease['app']}.fly.dev":
+                raise RuntimeError("Routing target is leased for inactive mutation")
+            if release_mutation is None:
+                route["mutation"] = lease
+            elif (
+                release_mutation != lease
+                or {key: value for key, value in before.items() if key != "mutation"} != route
+            ):
+                raise RuntimeError("Mutation release changed routing identity")
+        elif release_mutation is not None:
+            raise RuntimeError("Mutation lease disappeared before release")
+        elif route.get("mutation") is not None and (
+            {key: value for key, value in route.items() if key != "mutation"} != before
+            or route["current"]["origin"] == f"https://{route['mutation']['app']}.fly.dev"
+        ):
+            raise RuntimeError("Mutation acquisition cannot change the serving route")
+        validate_route_record(route)
         result = self.s3.put_object(
             Bucket=self.bucket,
             Key=ROUTE_KEY,
@@ -90,31 +258,63 @@ class Refresh:
         )
         return result["ETag"]
 
+    def _restore_previous_route(self, previous: dict, failed: dict, etag: str):
+        actual, actual_etag = self.route()
+        if actual != failed or actual_etag != etag:
+            raise RuntimeError("Routing changed; refusing compensating rollback")
+        self.healthy(previous["current"], require_fresh=False)
+        return self._put_route(previous, etag)
+
     def get(self, base: str, path: str):
         result = self.http.get(base + path, timeout=10)
         return result.status_code, result.json(), result.headers
 
     def healthy(self, target: dict, *, require_fresh: bool = True):
-        code, health, _ = self.get(target["origin"], "/health")
+        code, health, health_headers = self.get(target["origin"], "/health")
         if (
             code != 200
             or not health["ready"]
             or (require_fresh and not 0 <= health["sync_lag_s"] < 600)
         ):
             raise RuntimeError("Backend is not fresh and ready")
-        code, index, _ = self.get(target["origin"], "/index/status")
+        code, index, index_headers = self.get(target["origin"], "/index/status")
         if (
             code != 200
             or index["build_id"] != target["build_id"]
-            or index["source_watermark"] != target["source_watermark"]
+            or (
+                target_engine(target) == "native"
+                and index["source_watermark"] != target["source_watermark"]
+            )
+            or (
+                target_engine(target) == "tantivy"
+                and "source_watermark" in target
+                and index.get("snapshot_watermark") != target["source_watermark"]
+            )
         ):
             raise RuntimeError("Backend snapshot identity mismatch")
-        if index.get("snapshot_format") != "FLATPX05":
+        if target_engine(target) == "tantivy":
+            if index.get("ready") is not True:
+                raise RuntimeError("Tantivy index is not ready")
+            response_identity(target, index, index_headers)
+            for key, header in [
+                ("engine", "X-Typeahead-Engine"),
+                ("build_id", "X-Typeahead-Build"),
+                ("format", "X-Typeahead-Format"),
+                ("binary_sha256", "X-Typeahead-Binary-Sha256"),
+                ("retrieval_strategy", "X-Typeahead-Retrieval-Strategy"),
+            ]:
+                wanted = "tantivy" if key == "engine" else target[key]
+                if health_headers.get(header) != wanted:
+                    raise RuntimeError("Tantivy health transport identity mismatch")
+            if health.get("engine") != "tantivy" or health.get("build_id") != target["build_id"]:
+                raise RuntimeError("Tantivy health identity mismatch")
+        elif index.get("snapshot_format") != "FLATPX05":
             raise RuntimeError("Backend format mismatch")
         return {"health": health, "index": index}
 
     def serving_guard(self, expected: dict, etag: str, inactive_app: str):
         current, actual = self.route()
+        require_native_refresh(route_target(current))
         if (
             actual != etag
             or current != expected
@@ -150,6 +350,7 @@ class Refresh:
         self.fly("DELETE", app, f"machines/{mid}")
 
     def discard_inactive(self, app: str, route: dict, etag: str):
+        require_native_refresh(route_target(route))
         machines = self.fly("GET", app, "machines")
         previous = route.get("previous") or {}
         for machine in machines:
@@ -176,8 +377,8 @@ class Refresh:
                 self.serving_guard(route, etag, app)
                 self.fly("DELETE", app, "volumes/" + volume["id"])
 
-    def candidate_checks(self, target: dict):
-        status = self.healthy(target)
+    def candidate_checks(self, target: dict, *, require_fresh: bool = True):
+        status = self.healthy(target, require_fresh=require_fresh)
         timings = []
         for query in ["zzstoatzz.io", "a", "nate", "日本"]:
             start = time.monotonic()
@@ -315,11 +516,12 @@ class Refresh:
             actual, actual_etag = self.route()
             if actual == next_route:
                 self.healthy(route["current"], require_fresh=False)
-                self.replace_route(route, actual_etag)
+                self._restore_previous_route(route, next_route, actual_etag)
                 self.logger.error("Restored previous verified backend after failed promotion")
             raise
 
     def release_is_current(self, target: dict, manifest: dict) -> bool:
+        require_native_refresh(target)
         if target["build_id"] != manifest["active_build"]:
             return False
         app = next(app for app in SLOTS if origin(app) == target["origin"])
@@ -343,6 +545,7 @@ class Refresh:
         ):
             raise ValueError("Published compact snapshot is not fresh")
         route, etag = self.route()
+        require_native_refresh(route_target(route))
         if self.release_is_current(route["current"], manifest):
             with tempfile.TemporaryDirectory(prefix="typeahead-resume-") as directory:
                 generation = Path(directory)
@@ -430,6 +633,7 @@ class Refresh:
             raise ValueError("A fresh compact generation is required")
         route, etag = self.route()
         current = route_target(route)
+        require_native_refresh(current)
         self.healthy(current, require_fresh=False)
         if self.release_is_current(current, manifest):
             return {
@@ -564,29 +768,325 @@ class Refresh:
             )
             raise
 
+    def rollback_to_native(self, *, verification_timeout=120, verification_interval=1):
+        """Bound verification retries; individual client calls may outlast that window."""
+        if not 0 < verification_timeout <= 120 or not 0 < verification_interval <= 5:
+            raise ValueError("Rollback verification must be bounded")
+        route, etag = self.route()
+        previous = native_rollback_target(route)
+        self.healthy(previous, require_fresh=False)
+        replacement = {
+            "version": 1,
+            "current": previous,
+            "previous": route["current"],
+            "promoted_at": int(time.time()),
+            "rollback": True,
+        }
+        if route.get("native_rollback") is not None:
+            replacement["native_rollback"] = route["native_rollback"]
+        written_etag = self.replace_route(replacement, etag)
+        started = time.monotonic()
+        deadline = started + verification_timeout
+        freshness = {"ok": False, "probe_ok": False, "stale": True, "build_id": None}
+        attempts = 0
+        last_error = None
+        outcome = "deadline"
+        observed = None
+        observed_etag = None
+        while time.monotonic() < deadline:
+            attempts += 1
+            try:
+                observed, observed_etag = self.route()
+                if observed != replacement or observed_etag != written_etag:
+                    outcome = "operator-route-changed"
+                    break
+                code, body, _ = self.get(PUBLIC, "/health/freshness")
+                if isinstance(body, dict):
+                    freshness = body
+                if (
+                    code not in (200, 503)
+                    or not freshness.get("ok")
+                    or not freshness.get("probe_ok")
+                    or freshness.get("build_id") != previous["build_id"]
+                ):
+                    raise RuntimeError("Public native routing not verified")
+                self.candidate_checks(previous, require_fresh=False)
+                observed, observed_etag = self.route()
+                if observed != replacement or observed_etag != written_etag:
+                    outcome = "operator-route-changed"
+                    break
+                outcome = "verified"
+                break
+            except (
+                httpx.HTTPError,
+                BotoCoreError,
+                ClientError,
+                OSError,
+                ValueError,
+                RuntimeError,
+                TimeoutError,
+                KeyError,
+                TypeError,
+            ) as error:
+                last_error = type(error).__name__
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                time.sleep(min(verification_interval, remaining))
+        # A final read records what remains selected; observational failure never writes a route.
+        try:
+            observed, observed_etag = self.route()
+        except Exception:
+            observed = None
+            observed_etag = None
+            if outcome == "verified":
+                outcome = "route-observation-unavailable"
+        if observed is not None and (observed != replacement or observed_etag != written_etag):
+            outcome = "operator-route-changed"
+        report = {
+            "at_unix": int(time.time()),
+            "current": previous,
+            "previous": route["current"],
+            "freshness": freshness,
+            "machine_or_volume_changed": False,
+            "passed": outcome == "verified",
+            "public_verified": outcome == "verified",
+            "verification_outcome": outcome,
+            "verification_attempts": attempts,
+            "verification_seconds": round(time.monotonic() - started, 3),
+            "verification_retry_window_seconds": verification_timeout,
+            "last_error_class": last_error,
+            "written_route_etag": written_etag,
+            "observed_route_etag": observed_etag,
+            "native_retained": None if observed is None else observed.get("current") == previous,
+            "automatic_compensation_performed": False,
+        }
+        if not report["passed"]:
+            raise RollbackVerificationError(report)
+        return report
+
+    def retained_build_ids(self, route: dict | None = None) -> set[str]:
+        if route is None:
+            route, _ = self.route()
+        keep = set()
+        validate_route_record(route)
+        for entry in [route_target(route), route.get("previous"), route.get("native_rollback")]:
+            if entry is None:
+                continue
+            route_target({"version": 1, "current": entry})
+            source = entry["build_id"]
+            if target_engine(entry) == "tantivy":
+                published = self.tantivy_publication(entry)
+                if published is not None:
+                    keep.update(self.tantivy_retained_builds(published))
+                    continue
+                index = self.healthy(entry, require_fresh=False)["index"]
+                source = index.get("source_build_id")
+                manifest = index.get("source_manifest") or {}
+                if manifest.get("source_kind") == "sqlite-committed-prefix":
+                    raise RuntimeError("Checkpoint artifact provenance unknown; refusing cleanup")
+                if (
+                    not isinstance(source, str)
+                    or not re.fullmatch(BUILD_PATTERN, source)
+                    or manifest.get("build_id") != source
+                    or type(index.get("snapshot_watermark")) is not int
+                    or manifest.get("source_watermark") != index["snapshot_watermark"]
+                    or index.get("full_source") is not True
+                    or index.get("import_complete") is not True
+                ):
+                    raise RuntimeError("Tantivy source identity unknown; refusing artifact cleanup")
+            twin = entry.get("legacy_build_id", source.removesuffix("-px05"))
+            if not isinstance(twin, str) or not re.fullmatch(BUILD_PATTERN, twin):
+                raise RuntimeError("Legacy source identity unknown; refusing artifact cleanup")
+            keep.update([entry["build_id"], source, source.removesuffix("-px05"), twin])
+        latest = self.optional_metadata("control/builds/latest.json", 1024 * 1024)
+        if latest is not None:
+            source = latest["active_build"]
+            twin = latest["legacy_twin"]["build_id"]
+            if any(
+                not isinstance(value, str) or not re.fullmatch(BUILD_PATTERN, value)
+                for value in (source, twin)
+            ):
+                raise ValueError("Invalid retained publisher generation")
+            keep.update([source, twin])
+        for app in TANTIVY_SLOTS:
+            pending = self.optional_metadata(f"control/tantivy-slots/{app}/pending.json", 4096)
+            if pending is None:
+                continue
+            if (
+                pending.get("schema_version") != 1
+                or pending.get("owner") != OWNER
+                or pending.get("app") != app
+            ):
+                raise ValueError("Invalid pending candidate retention record")
+            builds = [
+                pending.get(field) for field in ("build_id", "source_build_id", "legacy_build_id")
+            ]
+            if any(
+                not isinstance(value, str) or not re.fullmatch(BUILD_PATTERN, value)
+                for value in builds
+            ):
+                raise ValueError("Invalid pending candidate source identity")
+            key = f"releases/search-tantivy/{pending['build_id']}/manifest.json"
+            result = self.s3.get_object(Bucket=self.bucket, Key=key)
+            try:
+                raw = result["Body"].read(1024 * 1024 + 1)
+            finally:
+                result["Body"].close()
+            import hashlib
+
+            if len(raw) > 1024 * 1024 or hashlib.sha256(raw).hexdigest() != pending.get(
+                "artifact_manifest_sha256"
+            ):
+                raise ValueError("Pending artifact manifest identity changed")
+            manifest = json.loads(raw)
+            self.tantivy_adapter().validate_source(manifest, self.tantivy_source_manifest(manifest))
+            if [
+                manifest[field] for field in ("active_build", "source_build_id", "legacy_build_id")
+            ] != builds:
+                raise ValueError("Pending artifact source linkage changed")
+            keep.update(self.tantivy_retained_builds(manifest))
+        return keep
+
+    def optional_metadata(self, key, limit):
+        from botocore.exceptions import ClientError
+
+        try:
+            result = self.s3.get_object(Bucket=self.bucket, Key=key)
+        except FileNotFoundError:
+            return None
+        except ClientError as error:
+            if error.response["Error"]["Code"] in ("NoSuchKey", "404"):
+                return None
+            raise
+        try:
+            raw = result["Body"].read(limit + 1)
+        finally:
+            result["Body"].close()
+        if len(raw) > limit:
+            raise ValueError("Managed metadata exceeds its byte budget")
+        return json.loads(raw)
+
+    def tantivy_adapter(self):
+        from mps.typeahead_tantivy import TantivyAdapter
+
+        return TantivyAdapter(
+            Path(os.environ["INDEX_TANTIVY_ADAPTER_PATH"]),
+            os.environ["INDEX_TANTIVY_ADAPTER_SHA256"],
+        )
+
+    def tantivy_publication(self, target: dict) -> dict | None:
+        from botocore.exceptions import ClientError
+
+        key = f"releases/search-tantivy/{target['build_id']}/manifest.json"
+        try:
+            result = self.s3.get_object(Bucket=self.bucket, Key=key)
+        except FileNotFoundError:
+            return None
+        except ClientError as exc:
+            if exc.response["Error"]["Code"] in ("NoSuchKey", "404"):
+                return None
+            raise
+        raw = result["Body"].read(32 * 1024 * 1024 + 1)
+        if len(raw) > 32 * 1024 * 1024:
+            raise ValueError("Tantivy publication manifest too large")
+        manifest = json.loads(raw)
+        adapter = self.tantivy_adapter()
+        adapter.validate_manifest(manifest)
+        if manifest["active_build"] != target["build_id"] or any(
+            target[key] != manifest[field]
+            for key, field in (
+                ("format", "backend_format"),
+                ("binary_sha256", "binary_sha256"),
+                ("retrieval_strategy", "retrieval_strategy"),
+            )
+        ):
+            raise ValueError("Routed Tantivy publication identity mismatch")
+        source = self.tantivy_source_manifest(manifest)
+        adapter.validate_source(manifest, source)
+        return manifest
+
+    def tantivy_source_binding(self, manifest: dict) -> tuple[str, str | None]:
+        if manifest.get("source_kind") == "sqlite-committed-prefix":
+            adapter = self.tantivy_adapter()
+            adapter.validate_manifest(manifest)
+            return adapter.installer.native_anchor_binding(manifest)
+        return manifest["source_build_id"], manifest.get("source_manifest_sha256")
+
+    def tantivy_retained_builds(self, manifest: dict) -> set[str]:
+        native_build, _ = self.tantivy_source_binding(manifest)
+        return {
+            manifest["active_build"],
+            manifest["source_build_id"],
+            manifest["legacy_build_id"],
+            native_build,
+        }
+
+    def tantivy_source_manifest(self, manifest: dict) -> bytes:
+        self.tantivy_adapter().validate_manifest(manifest)
+        native_build, _ = self.tantivy_source_binding(manifest)
+        body = self.s3.get_object(
+            Bucket=self.bucket,
+            Key=f"releases/search/{native_build}/manifest.json",
+        )["Body"]
+        try:
+            raw = body.read(1024 * 1024 + 1)
+        finally:
+            body.close()
+        if len(raw) > 1024 * 1024:
+            raise ValueError("Native rollback manifest is too large")
+        self.tantivy_adapter().validate_source(manifest, raw)
+        return raw
+
+    def install_tantivy_bundle(
+        self, bundle: Path, destination: Path, manifest: dict, binary: Path
+    ) -> dict:
+        return self.tantivy_adapter().install(
+            bundle, destination, manifest, binary, self.tantivy_source_manifest(manifest)
+        )
+
+    def freeze_tantivy_bundle(
+        self, data: Path, destination: Path, manifest: dict, binary: Path
+    ) -> dict:
+        return self.tantivy_adapter().freeze(
+            data, destination, manifest, binary, self.tantivy_source_manifest(manifest)
+        )
+
+    def qualify_tantivy_candidate(
+        self, url: str, manifest: dict, installation: dict, provider_attestation: dict
+    ) -> dict:
+        return self.tantivy_adapter().qualify(
+            url,
+            manifest,
+            installation,
+            provider_attestation,
+            self.tantivy_source_manifest(manifest),
+        )
+
     def prune_artifacts(self):
         route, etag = self.route()
-        keep = set()
-        for entry in [route["current"], route.get("previous")]:
-            if entry is not None:
-                keep.add(entry["build_id"])
-                keep.add(entry.get("legacy_build_id", entry["build_id"].removesuffix("-px05")))
+        if route.get("mutation") is not None:
+            raise RuntimeError("Inactive mutation is pending; artifact cleanup is fenced")
+        keep = self.retained_build_ids(route)
         victims = []
-        for page in self.s3.get_paginator("list_objects_v2").paginate(
-            Bucket=self.bucket, Prefix=ARTIFACT_PREFIX
+        for prefix, names in (
+            (ARTIFACT_PREFIX, ("index.db", "index.db.prefix", "manifest.json")),
+            ("releases/search-tantivy/", ("index.tar", "manifest.json")),
         ):
-            for item in page.get("Contents", []):
-                parts = item["Key"].split("/")
-                if (
-                    len(parts) == 4
-                    and re.fullmatch(r"b[0-9]{10}-[A-Za-z0-9_-]+", parts[2])
-                    and parts[2] not in keep
-                    and parts[3] in ("index.db", "index.db.prefix", "manifest.json")
-                ):
-                    victims.append(item)
+            for page in self.s3.get_paginator("list_objects_v2").paginate(
+                Bucket=self.bucket, Prefix=prefix
+            ):
+                for item in page.get("Contents", []):
+                    parts = item["Key"].split("/")
+                    if (
+                        len(parts) == 4
+                        and re.fullmatch(r"b[0-9]{10}-[A-Za-z0-9_-]+", parts[2])
+                        and parts[2] not in keep
+                        and parts[3] in names
+                    ):
+                        victims.append(item)
         for start in range(0, len(victims), 1000):
             current, actual_etag = self.route()
-            if actual_etag != etag or current != route:
+            if actual_etag != etag or current != route or self.retained_build_ids(route) != keep:
                 raise RuntimeError("Routing changed; refusing artifact cleanup")
             result = self.s3.delete_objects(
                 Bucket=self.bucket,
@@ -601,6 +1101,23 @@ class Refresh:
             "deleted_objects": len(victims),
             "deleted_bytes": sum(item["Size"] for item in victims),
         }
+
+
+def require_automatic_refresh_supported(logger):
+    service = Refresh(logger)
+    try:
+        route, _ = service.route()
+        require_native_refresh(route_target(route))
+    finally:
+        service.close()
+
+
+def protected_source_build_ids(logger) -> set[str]:
+    service = Refresh(logger)
+    try:
+        return service.retained_build_ids()
+    finally:
+        service.close()
 
 
 @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
@@ -644,44 +1161,12 @@ def rollback_snapshot():
 
     service = Refresh(get_run_logger())
     try:
-        route, etag = service.route()
-        previous = route.get("previous")
-        if previous is None:
-            raise RuntimeError("No previous managed backend is available")
-        service.healthy(previous, require_fresh=False)
-        replacement = {
-            "version": 1,
-            "current": previous,
-            "previous": route["current"],
-            "promoted_at": int(time.time()),
-            "rollback": True,
-        }
-        service.replace_route(replacement, etag)
-        time.sleep(2)
+        error = None
         try:
-            code, freshness, _ = service.get(PUBLIC, "/health/freshness")
-            if (
-                code not in (200, 503)
-                or not freshness.get("ok")
-                or not freshness.get("probe_ok")
-                or freshness.get("build_id") != previous["build_id"]
-            ):
-                raise RuntimeError("Rollback public verification failed")
-            service.candidate_checks(previous)
-        except BaseException:
-            actual, actual_etag = service.route()
-            if actual == replacement:
-                service.healthy(route["current"], require_fresh=False)
-                service.replace_route(route, actual_etag)
-            raise
-        report = {
-            "at_unix": int(time.time()),
-            "current": previous,
-            "previous": route["current"],
-            "freshness": freshness,
-            "machine_or_volume_changed": False,
-            "passed": True,
-        }
+            report = service.rollback_to_native()
+        except RollbackVerificationError as failure:
+            report = failure.receipt
+            error = failure
         output = (
             Path(os.environ["INDEXER_HOME"])
             / "refresh-receipts"
@@ -689,6 +1174,8 @@ def rollback_snapshot():
         )
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(json.dumps(report, indent=2) + "\n")
+        if error is not None:
+            raise error
         return report
     finally:
         service.close()

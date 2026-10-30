@@ -99,7 +99,10 @@ def test_completed_generation_recovery_rejects_other_roots_and_stale_data(tmp_pa
         publish_completed_generation.fn(tmp_path, str(generation))
 
 
-def test_completed_publication_with_real_rclone_links_and_retry(tmp_path, monkeypatch):
+@pytest.mark.parametrize("update_pointer", [True, False])
+def test_completed_publication_with_real_rclone_links_and_retry(
+    tmp_path, monkeypatch, update_pointer
+):
     import hashlib
     import shutil
     import sqlite3
@@ -166,16 +169,26 @@ def test_completed_publication_with_real_rclone_links_and_retry(tmp_path, monkey
         "RCLONE_CONFIG_R2_TYPE": "local",
     }.items():
         monkeypatch.setenv(name, value)
-    output = flow.publish_completed_generation.fn(repo, str(compact))
     pointer = remote / "control/builds/latest.json"
+    pointer.parent.mkdir(parents=True)
+    pointer.write_bytes(b'{"unrelated":"existing live source"}')
+    original_pointer = pointer.read_bytes()
+    output = flow.publish_completed_generation.fn(repo, str(compact), update_pointer=update_pointer)
     before = pointer.read_bytes()
-    published = json.loads(before)
+    published = json.loads(
+        (remote / "releases/search" / (bid + "-px05") / "manifest.json").read_bytes()
+    )
+    if not update_pointer:
+        assert before == original_pointer
     assert published["active_build"] == bid + "-px05"
     assert (remote / published["snapshot_url"]).read_bytes() == (compact / "index.db").read_bytes()
     link = output / "index.db"
     link.unlink()
     os.link(compact / "index.db", link)
-    assert flow.publish_completed_generation.fn(repo, str(compact)) == output
+    assert (
+        flow.publish_completed_generation.fn(repo, str(compact), update_pointer=update_pointer)
+        == output
+    )
     assert pointer.read_bytes() == before
     assert (remote / published["prefix_map"]["object_key"]).read_bytes() == (
         compact / "index.db.prefix"

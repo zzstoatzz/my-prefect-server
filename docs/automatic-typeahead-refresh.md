@@ -7,6 +7,158 @@ cadence is 06:00 UTC on odd-numbered days, next October 27. Runs are at most
 are verified against the actual server. The public Worker uses the stable
 transport route; no serving machine performs bulk installation.
 
+## Tantivy controller compatibility under review
+
+The `codex/tantivy-controller-compatibility` companion branch is local and has
+not been deployed. It recognizes the Typeahead Worker route union: native keeps
+the two existing managed origins; Tantivy requires its exact origin, expiry-v4
+format, admission and executable SHA256 values, and retrieval strategy. Tantivy
+health/status bodies and transport identity headers must agree with that route.
+An origin allowlist entry alone never authorizes installation.
+
+While Tantivy is current, automatic native refresh, candidate reuse and inactive
+slot deletion stop explicitly before resource mutation. The automatic flow also
+checks this fence before corpus preparation. The native rollback slot is retained.
+Routing-only rollback uses the persisted native-only `native_rollback` anchor when
+Tantivy is current, so another Tantivy refresh cannot displace the native target.
+Older first-promotion records may still use their native `previous` target.
+Native-to-native rollback continues to select the immediate previous target.
+If public verification fails, an ETag-conditional compensation restores
+the exact prior Tantivy route only while the failed native route is still current;
+operator changes win. Automatic invocation does not permit Tantivy promotion. The separate explicit
+[slot lifecycle](tantivy-slot-lifecycle.md) requires a prepared plan and complete
+non-test release evidence; native-to-native rollback is unchanged.
+
+R2 artifact cleanup and local build retention protect current, previous and native
+anchor source builds and their native/compact twins. A Tantivy engine build can differ from its
+source build, so retention reads the source identity from the binary-bound status
+and source manifest for older records. Portable generations instead resolve the
+immutable `releases/search-tantivy/<build-id>/manifest.json`, validate it through
+the checksum-pinned Typeahead installer, and verify the exact native source
+manifest bytes, source database/prefix hashes and legacy twin. This preserves an
+older Tantivy generation without querying an origin that now serves its successor.
+Native source/twin artifacts and both referenced Tantivy bundles are retained.
+Unknown identity preserves data and blocks retention when the
+existing backlog limit is exceeded. Directories outside the managed build root
+are unaffected.
+
+The companion `mps.typeahead_tantivy` adapter loads the existing Typeahead
+`scripts/snapshot_refresh/tantivy_install.py`, pinned by
+`INDEX_TANTIVY_ADAPTER_PATH` and `INDEX_TANTIVY_ADAPTER_SHA256`. It delegates portable
+manifest/source validation, stopped-checkpoint freezing, directory installation and runtime qualification to
+that implementation. Installation and qualification require the exact published
+native source manifest; a valid tar alone cannot bypass source linkage. There is
+no second installer or publisher. These entry points do not authorize a route CAS;
+the promotion fence remains until engine-specific cloud orchestration and its
+qualification evidence are complete.
+
+Offline tests exercise real loopback HTTP and owned filesystem CAS/artifact/build
+operations; they do not qualify provider CAS, live routing or deployment. A complete
+engine-specific installer, refresh/recovery policy and production qualification
+remain open gates. Do not remove the native-refresh fence merely because route
+validation or these compatibility tests pass.
+
+Run the cross-repository integration against the intended Typeahead revision:
+
+```sh
+TA_REPOSITORY=/path/to/typeahead TA_ADAPTER_SHA256=<approved-source-sha256> uv run pytest tests/test_typeahead_engine_compatibility.py
+```
+
+This includes a real local Rust import, source/policy commit, portable directory
+installation, separate-process restart, HTTP identity and search verification.
+Loopback provider evidence stays explicitly test-only and cannot qualify production.
+
+### Optional cloud Tantivy publication
+
+The companion native build step seeds `ZIG_GLOBAL_CACHE_DIR/p` from the pinned
+Typeahead revision's `services/.zig-pkg-vendor`, matching its Dockerfile. It uses a
+legacy GitHub dependency manifest only when that selected revision actually
+contains one, restores the original manifest after either retry outcome, and
+preserves the original compiler error when no fallback exists. Storage/deadline
+failures do not trigger dependency fallback. An actual offline Zig package build
+and subprocess failure tests cover these paths; this does not identify the
+unavailable original diagnostic from the alerted Prefect run.
+
+`typeahead-index(snapshot_engine="tantivy", snapshot_format="compact")` adds an
+isolated publication stage after the existing native source/twin publication.
+Tantivy source/twin publication uses the same publisher’s `--immutable-only`
+mode, preserving the managed live pointer byte-for-byte.
+The default `snapshot_engine="native"` invocation is unchanged. Tantivy automatic
+installation, rollback/recovery combinations and source-format mismatches fail
+before preparation; route promotion is not enabled by this parameter.
+
+This stage requires an exact `INDEX_TANTIVY_SOURCE_REVISION` (40 hex characters),
+`INDEX_TANTIVY_ADAPTER_SHA256`, and executable
+`INDEX_TANTIVY_BINARY`/`INDEX_TANTIVY_BINARY_SHA256`. A missing executable is
+fetched from the fixed immutable R2 code key into `INDEXER_HOME/code`, with a
+128 MiB limit, streaming SHA256 verification and Linux x86-64 ELF validation.
+The code artifact is published by the existing immutable publisher; no Rust
+build, Docker daemon or corpus transfer through the controller is needed. It verifies the checked-out
+producer revision and clean producer paths before execution. Preparation uses a
+new owned `INDEXER_HOME/tantivy-builds/build-<source-build-id>` directory; a failed
+attempt is retained for inspection rather than overwritten or retried with a new
+source-byte allowance.
+
+The existing compact exporter pipes actors directly to the Rust importer. It does
+not create another full JSONL corpus. An isolated loopback Rust process and one
+bounded source-sync process must then pass the actual polling, policy and completed
+reconciliation-round gates. Missing source credentials, exhausted accounted bytes
+or a deadline fail preparation. The source process is never restarted to bypass
+its allowance. `INDEX_TANTIVY_PREPARE_SECONDS` may tighten each supervised
+36,000-second job; `INDEX_TANTIVY_MAX_SOURCE_BYTES` may tighten the explicit 8 GiB
+offline initial-preparation allowance. Its 25% polling reserve leaves 6 GiB for
+sweep work, based on the measured packed backend pass of approximately 3.85 GiB
+plus identity/polling headroom. Serving's existing 512 MiB process allowance is
+unchanged. Profile batches remain 500, and the initial-preparation worker limits
+source SELECTs to two per second with thirty-second bulk slices.
+
+`source-budget.json` is a single-writer, fsynced accounting ledger. The pinned Typeahead client owns accounting; MPS delegates to that implementation.
+Before each HTTP attempt it reserves the bounded maximum response, then settles
+actual consumed bytes. An interrupted reservation
+stays charged; a resumed process restores cumulative poll/sweep counters rather
+than receiving another allowance. This can conservatively overcharge an interrupted
+request, but cannot reset the budget. A deadline or budget failure retains the
+checkpoint and accounting without publishing.
+Charged counters after recovery are conservative bounds, not exact historical wire
+bytes; `recovered_reservation_bytes` exposes the unresolved reservations.
+
+An explicit `snapshot_engine="tantivy", snapshot_format="compact",
+resume_generation="<existing native compact generation>"` resumes only a completed
+initial import with matching producer/binary/adapter/source/budget identity. It
+does not re-export or re-import the corpus. Durable round start/completion clocks
+remain unchanged across process restarts on the same owned disk, so the actual one-day admission bound
+still applies. An incomplete initial import requires inspection and a separate
+owned attempt; it cannot masquerade as a resumable source checkpoint. No incomplete
+checkpoint may be published. The current hcloud worker destroys its root disk
+after a flow run; these local checkpoints do not imply cross-VM resume.
+
+Preparation rejects a deadline below the two-walk lower bound
+`2 * (ceil(source_actor_count / 500) + 1) * minimum_select_interval` before import.
+At 12.86 million actors and the default 0.5-second interval, that is about 7.14
+hours before import, query latency or polling. The explicit ten-hour preparation
+budget fits within the existing twelve-hour flow limit but is not a throughput
+guarantee. `INDEX_TANTIVY_SOURCE_MIN_INTERVAL_SECONDS` may only tighten the
+0.5-second pacing (up to five seconds). Each Tantivy invocation clones its exact
+producer commit into a unique checkout; the shared native checkout is untouched.
+
+After stopping both child processes, the pinned installer freezes the checkpoint.
+The existing Typeahead `scripts/snapshot_compaction/publish.py --engine tantivy`
+verifies the already-published native source manifest, uploads the immutable bundle
+and publishes its manifest last. It changes no pointer. Only after successful remote
+readback are the owned local index and duplicate tar retired; small manifests,
+receipts and logs remain. R2 keeps the routed current/previous bundles and native
+rollback source/twin through the guarded retention code.
+Retirement is a separate task after the retried publisher has returned and fsynced
+its receipt. A lost handoff can retry publication while the tar is still present.
+After retirement, an explicit resume uses the same publisher's `--verify-only`
+operation to read back exact remote source/bundle/manifest identities; it neither
+re-imports the corpus nor grants another source allowance.
+
+`typeahead-tantivy-a` and `typeahead-tantivy-b` are the approved route identities
+for future independent slots; listing them creates no apps, machines or volumes.
+Actual slot installation, restart, recurring swap and compensating rollback must
+be qualified before the explicit automatic-installation fence is removed.
+
 ## Data and deployment sequence
 
 The existing cloud publisher builds the full corpus on local SSD using the
@@ -114,8 +266,10 @@ Run `just prefect deployment run typeahead-index/typeahead-index -p rollback=tru
 to exchange the current/previous routing targets after checking the previous
 backend. This does not rebuild, download, resize, or delete a backend. It checks
 public freshness and direct query contracts afterward, restoring the prior route
-if verification fails. The same command exchanges them again to return to the
-newer backend. A still-serving previous snapshot older than the freshness limit
+if verification fails. For native-to-native routes, the same command exchanges
+them again to return to the newer backend. The unreleased Tantivy compatibility
+branch permits only native rollback targets; see its explicit installation fence
+above. A still-serving previous snapshot older than the freshness limit
 returns a Degraded state rather than claiming freshness was restored.
 
 Completed data can be resumed with the per-run parameter
