@@ -458,3 +458,91 @@ def test_public_transport_identity_and_canary_primitive_uses_real_http(controlle
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def test_retirement_rechecks_strict_source_age_over_actual_http(tmp_path, pinned_adapter):
+    import importlib.util
+    import logging
+    import os
+    import time
+    from pathlib import Path
+
+    import httpx
+
+    repository = Path(os.environ["TA_REPOSITORY"])
+    spec = importlib.util.spec_from_file_location(
+        "retirement_reference", repository / "scripts/snapshot_refresh/test_tantivy_install.py"
+    )
+    fixtures = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fixtures)
+    reference = fixtures.AdmissionTests()
+    now = int(time.time())
+    manifest = reference.manifest()
+    status = reference.status()
+    status["source_cursor"]["reconciliation"].update(
+        last_completed_at=now - 10, last_completed_started_at=now - 100
+    )
+    status["moderation"]["source_observed_at"] = now - 5
+    status["watermark"] = now - 121
+    status["source_cursor"]["through"] = status["watermark"]
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = (
+                {
+                    "ready": True,
+                    "sync_lag_s": now - status["watermark"],
+                    "build_id": manifest["active_build"],
+                    "engine": "tantivy",
+                    "format": manifest["backend_format"],
+                    "binary_sha256": manifest["binary_sha256"],
+                    "retrieval_strategy": manifest["retrieval_strategy"],
+                }
+                if self.path == "/health"
+                else status
+            )
+            raw = raw_json(body)
+            self.send_response(200)
+            for key, header in (
+                ("engine", "X-Typeahead-Engine"),
+                ("build_id", "X-Typeahead-Build"),
+                ("format", "X-Typeahead-Format"),
+                ("binary_sha256", "X-Typeahead-Binary-Sha256"),
+                ("retrieval_strategy", "X-Typeahead-Retrieval-Strategy"),
+            ):
+                self.send_header(header, str(body[key]))
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, *_):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    service = refresh.Refresh.__new__(refresh.Refresh)
+    service.http = httpx.Client(timeout=3)
+    service.logger = logging.getLogger(__name__)
+    service.tantivy_adapter = lambda: pinned_adapter
+    target = {
+        "engine": "tantivy",
+        "origin": f"http://127.0.0.1:{server.server_port}",
+        "build_id": manifest["active_build"],
+        "format": manifest["backend_format"],
+        "binary_sha256": manifest["binary_sha256"],
+        "retrieval_strategy": manifest["retrieval_strategy"],
+    }
+    slots = Slots(service, tmp_path / "journals", timeout_seconds=2)
+    try:
+        assert service.healthy(target)["index"]["watermark"] == now - 121
+        with pytest.raises(ValueError, match="Source polling is not fresh"):
+            slots.retirement_freshness(target, manifest)
+        status["watermark"] = now - 5
+        status["source_cursor"]["through"] = status["watermark"]
+        assert slots.retirement_freshness(target, manifest)["watermark"] == now - 5
+    finally:
+        service.http.close()
+        server.shutdown()
+        server.server_close()
+        thread.join()

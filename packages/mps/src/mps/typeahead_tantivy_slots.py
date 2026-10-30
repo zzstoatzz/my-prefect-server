@@ -797,6 +797,8 @@ class Slots:
             )
             self.service.healthy(state["native_rollback"], require_fresh=False)
             self.guard(state, fresh=True)
+            manifest, _ = self.artifact(state["route"]["current"]["build_id"])
+            self.retirement_freshness(state["route"]["current"], manifest)
             self.action(
                 state, name, method, path + ("/stop" if name == "retire-stop" else ""), body
             )
@@ -825,6 +827,11 @@ class Slots:
         progress[name] = True
         self.confirm(state, name + "-confirmed")
 
+    def retirement_freshness(self, target, manifest):
+        status = self.service.healthy(target)["index"]
+        self.service.tantivy_adapter().installer.validate_runtime(status, manifest)
+        return status
+
     def retire_previous(self, state, key, digest):
         route = state["route"]
         previous = route.get("previous")
@@ -840,9 +847,8 @@ class Slots:
             raise RuntimeError("Retained previous Tantivy slot is fenced by default")
         self.require_release(route["current"], key, digest)
         self.guard(state, fresh=True)
-        current = self.service.healthy(route["current"])["index"]
         current_manifest, _ = self.artifact(route["current"]["build_id"])
-        self.service.tantivy_adapter().installer.validate_runtime(current, current_manifest)
+        self.retirement_freshness(route["current"], current_manifest)
         self.service.healthy(state["native_rollback"], require_fresh=False)
         record, bound = self.admission_record(previous)
         if state.get("retirement_intent") is None:
