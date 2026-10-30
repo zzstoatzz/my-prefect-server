@@ -47,15 +47,21 @@ def run_cloud_release(repository, *, timeout_seconds=1800):
     from prefect import get_run_logger
     from prefect.artifacts import create_table_artifact
     from prefect.client.orchestration import get_client
-    from prefect.context import FlowRunContext, get_run_context
+    from prefect.context import FlowRunContext, TaskRunContext, get_run_context
 
     from mps.typeahead_checkpoint_build import build_checkpoint
     from mps.typeahead_refresh import Refresh
 
     context = get_run_context()
-    if not isinstance(context, FlowRunContext):
+    if isinstance(context, TaskRunContext):
+        if context.task_run.flow_run_id is None:
+            raise ValueError("Cloud release task must belong to a flow execution")
+        with get_client(sync_client=True) as client:
+            run = client.read_flow_run(context.task_run.flow_run_id)
+    elif isinstance(context, FlowRunContext):
+        run = context.flow_run
+    else:
         raise ValueError("Cloud release requires a flow execution")
-    run = context.flow_run
     home = Path(os.environ["INDEXER_HOME"])
     if (
         sys.platform != "linux"
