@@ -58,3 +58,15 @@ scan/import deadline. It must report checkpoint/WAL completion and catch-up
 separately. If no retained raw checkpoint exists, measure and budget the one bulk
 export before scheduling it; do not silently recreate the old hours-long path.
 No cloud operation or production publication was performed by this fixture work.
+
+The existing reconciliation algorithm was then exercised against the same readonly
+32-actor SQLite/WAL transaction and actual Rust backend. Both source/backend DID
+walks completed with 33 document hash comparisons: zero applied writes, 33 version-only
+replays, unchanged stored document hashes, unchanged segment descriptors and
+unchanged indexed memberships. It used seven local SQLite statements and zero
+source network requests; the measured round took 0.068 seconds on the host. Its
+cursor uses `sqlite-checkpoint-observations-v1` and an explicit checkpoint-only
+coverage object with the immutable bootstrap receipt SHA. A separate-process
+restart retains that distinction and stays cutover-unqualified. The ordinary
+source client's policy validator rejects that cursor; it cannot silently relabel
+its completed checkpoint markers as live Turso coverage.

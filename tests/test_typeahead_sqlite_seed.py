@@ -162,6 +162,28 @@ def test_real_sqlite_wal_full_fields_and_rust_import(tmp_path, repository):
                 assert stored[0] == 200 and all(
                     row["document_sha256"] for row in stored[2]["actors"]
                 )
+                round_receipt = checkpoint_round_fixture(
+                    repository, path, output, data, public, admin, smoke
+                )
+                assert round_receipt["applied"] == 0
+                assert round_receipt["replayed"] == 33
+                assert round_receipt["source_policy"] == "sqlite-checkpoint-observations-v1"
+                assert round_receipt["live_coverage_verified"] is False
+                print("SQLITE_CHECKPOINT_ROUND " + json.dumps(round_receipt, sort_keys=True))
+            finally:
+                smoke.stop(child)
+            child, public, _ = smoke.start(data, log, "fixture-secret")
+            try:
+                restarted = smoke.request(public, "/index/status")[2]
+                assert (
+                    restarted["source_cursor"]["source_policy"]
+                    == "sqlite-checkpoint-observations-v1"
+                )
+                assert (
+                    restarted["source_cursor"]["reconciliation"]["coverage"]["kind"]
+                    == "checkpoint-only"
+                )
+                assert restarted["cutover_source_ready"] is False
             finally:
                 smoke.stop(child)
     finally:
@@ -247,3 +269,108 @@ def test_100k_sqlite_seed_and_actual_rust_import(tmp_path, repository):
         print("SQLITE_SEED_PILOT " + json.dumps(receipt, sort_keys=True))
     finally:
         db.close()
+
+
+def checkpoint_round_fixture(repository, database, seed, data, public, admin_url, smoke):
+    modules = []
+    for name in ("sync", "current_state"):
+        spec = importlib.util.spec_from_file_location(
+            "checkpoint_round_" + name, repository / "services/tantivy-input" / (name + ".py")
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        modules.append(module)
+    sync, current = modules
+    current.SOURCE_POLICY = "sqlite-checkpoint-observations-v1"
+
+    class LocalSource:
+        def __init__(self):
+            self.db = sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)
+            self.db.row_factory = sqlite3.Row
+            self.db.execute("BEGIN")
+            self.clock = 111
+            self.db.create_function("unixepoch", 0, lambda: self.clock)
+            self.requests = 0
+            self.bytes = 0
+
+        def select(self, sql, args):
+            assert sql in sync.SELECTS
+            self.requests += 1
+            return [dict(row) for row in self.db.execute(sql, args)]
+
+        def now(self):
+            return self.select(sync.CLOCK_SQL, [])[0]["source_now"]
+
+    local = LocalSource()
+    try:
+        admin = sync.Admin(admin_url, "fixture-secret", public + "/index/status")
+        dids = [
+            row["did"]
+            for row in local.db.execute(
+                "SELECT did FROM actors UNION SELECT did FROM tombstones ORDER BY did"
+            )
+        ]
+        before = smoke.request(admin_url, "/admin/source-state", {"dids": dids}, "fixture-secret")[
+            2
+        ]["actors"]
+        status_before = smoke.request(public, "/index/status")[2]
+        segments_before = json.loads((data / "index/meta.json").read_bytes())["segments"]
+        started = time.monotonic()
+        runner = current.ObservedSynchronizer(
+            local,
+            admin,
+            sync,
+            anti_entropy_pages=4,
+            policy_mode="off",
+            sweep_cooldown_seconds=0,
+            page_size=500,
+            max_pages=10,
+            max_seconds=30,
+            safety_lag=0,
+            retries=1,
+            backoff=0,
+        )
+        result = runner.run()
+        assert result["reconciliation"]["last_completed_at"] == 111
+        assert result["reconciliation"]["last_completed_started_at"] == 111
+        status = admin.status()
+        cursor = json.loads(json.dumps(status["source_cursor"]))
+        checkpoint_hash = hashlib.sha256(seed.with_suffix(".receipt.json").read_bytes()).hexdigest()
+        cursor["reconciliation"]["coverage"] = {
+            "kind": "checkpoint-only",
+            "bootstrap_receipt_sha256": checkpoint_hash,
+            "live_coverage_verified": False,
+        }
+        writer = current.ObservationAdmin(admin, sync)
+        state, revision = writer.state([])
+        writer.reconcile([], [], revision, state["source_cursor"], cursor)
+        status_after = smoke.request(public, "/index/status")[2]
+        after = smoke.request(admin_url, "/admin/source-state", {"dids": dids}, "fixture-secret")[
+            2
+        ]["actors"]
+        assert after == before
+        assert status_after["indexed_memberships"] == status_before["indexed_memberships"]
+        assert json.loads((data / "index/meta.json").read_bytes())["segments"] == segments_before
+        assert status_after["cutover_source_ready"] is False
+        with pytest.raises(sync.SafeError, match="policy differs"):
+            sync.initial_cursor(status_after)
+        assert (
+            status_after["source_cursor"]["reconciliation"]["coverage"]["bootstrap_receipt_sha256"]
+            == checkpoint_hash
+        )
+        return {
+            "kind": "checkpoint-only",
+            "source_policy": current.SOURCE_POLICY,
+            "live_coverage_verified": False,
+            "source_network_requests": 0,
+            "local_sql_calls": local.requests,
+            "applied": result["applied"],
+            "replayed": result["replayed"],
+            "documents_checked": len(dids),
+            "document_hashes_unchanged": True,
+            "segments_unchanged": True,
+            "indexed_memberships_unchanged": True,
+            "wall_seconds": time.monotonic() - started,
+        }
+    finally:
+        local.db.close()
