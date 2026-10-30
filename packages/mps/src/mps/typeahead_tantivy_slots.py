@@ -503,15 +503,21 @@ class Slots:
     def wait_qualified(self, state, bound):
         deadline = time.monotonic() + self.timeout
         while True:
-            self.guard(state)
+            if time.monotonic() >= deadline:
+                raise RuntimeError("Inactive candidate runtime qualification timed out")
             try:
-                return self.qualify(state, bound)
-            except (httpx.HTTPError, RuntimeError, ValueError, KeyError):
-                if time.monotonic() >= deadline:
-                    raise RuntimeError(
-                        "Inactive candidate runtime qualification timed out"
-                    ) from None
-                time.sleep(0.5)
+                self.guard(state)
+            except httpx.TransportError:
+                pass
+            else:
+                try:
+                    return self.qualify(state, bound)
+                except (httpx.HTTPError, RuntimeError, ValueError, KeyError):
+                    pass
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise RuntimeError("Inactive candidate runtime qualification timed out")
+            time.sleep(min(5, remaining))
 
     def config(self, state, bound, image):
         key = f"control/tantivy-slots/{state['app']}/{state['request_id']}.json"

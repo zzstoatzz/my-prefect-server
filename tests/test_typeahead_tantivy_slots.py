@@ -1,9 +1,12 @@
 import hashlib
 import json
 import threading
+import time
+from contextlib import suppress
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import MethodType
 
+import httpx
 import pytest
 from mps import typeahead_refresh as refresh
 from mps.typeahead_tantivy_slots import APPS, GATES, OWNER, Slots, raw_json, validate_release_proof
@@ -608,6 +611,102 @@ def test_retirement_rechecks_strict_source_age_over_actual_http(tmp_path, pinned
         assert slots.retirement_freshness(target, manifest)["watermark"] == now - 5
     finally:
         service.http.close()
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+@pytest.mark.parametrize("behavior", ["recover", "route-change", "timeout"])
+def test_qualification_guard_transport_retry_preserves_route_fence_and_deadline(
+    controller, tmp_path, behavior
+):
+    initial = {"version": 1, "current": NATIVE, "previous": None}
+    controller.s3.seed(refresh.ROUTE_KEY, raw_json(initial))
+    counts = {"health": 0, "candidate": 0}
+    timeout_errors = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path == "/health":
+                counts["health"] += 1
+                if counts["health"] == 1 or behavior == "timeout":
+                    if behavior == "route-change":
+                        controller.s3.seed(
+                            refresh.ROUTE_KEY,
+                            raw_json(
+                                {
+                                    **initial,
+                                    "current": {**NATIVE, "build_id": "b1792908655-changed"},
+                                }
+                            ),
+                        )
+                    time.sleep(0.15)
+                value = {"ready": True, "sync_lag_s": 0}
+            elif self.path == "/index/status":
+                value = {**NATIVE, "snapshot_format": "FLATPX05"}
+            elif self.path == "/health/freshness":
+                value = {"ok": True, "probe_ok": True, "build_id": NATIVE["build_id"]}
+            elif self.path == "/candidate":
+                counts["candidate"] += 1
+                value = {"qualified": True}
+            else:
+                self.send_error(404)
+                return
+            raw = raw_json(value)
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            with suppress(BrokenPipeError):
+                self.wfile.write(raw)
+
+        def log_message(self, *_):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base = f"http://127.0.0.1:{server.server_port}"
+    slots = Slots(
+        controller,
+        tmp_path / "qualification-journal",
+        timeout_seconds=1 if behavior == "timeout" else 8,
+    )
+    state = {"app": APPS[0], "route": initial}
+
+    def get(_base, path):
+        try:
+            response = controller.http.get(base + path, timeout=0.05)
+        except httpx.ReadTimeout as error:
+            timeout_errors.append(type(error))
+            raise
+        return response.status_code, response.json(), response.headers
+
+    def qualify(_state, _bound):
+        response = controller.http.get(base + "/candidate", timeout=1)
+        response.raise_for_status()
+        return response.json(), {}
+
+    controller.get = get
+    slots.qualify = qualify
+    started = time.monotonic()
+    try:
+        if behavior == "recover":
+            assert slots.wait_qualified(state, {}) == ({"qualified": True}, {})
+            assert counts == {"health": 2, "candidate": 1}
+            assert 5 <= time.monotonic() - started < 8
+            assert controller.route()[0] == initial
+        elif behavior == "route-change":
+            with pytest.raises(RuntimeError, match="Routing changed"):
+                slots.wait_qualified(state, {})
+            assert counts == {"health": 1, "candidate": 0}
+            assert time.monotonic() - started < 8
+        else:
+            with pytest.raises(RuntimeError, match="qualification timed out"):
+                slots.wait_qualified(state, {})
+            assert counts == {"health": 1, "candidate": 0}
+            assert time.monotonic() - started < 2
+        assert timeout_errors == [httpx.ReadTimeout]
+    finally:
         server.shutdown()
         server.server_close()
         thread.join()

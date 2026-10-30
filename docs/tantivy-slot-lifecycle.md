@@ -38,6 +38,9 @@ installation receipt is read by a fixed bounded Machines API exec command at
 immutable admission evidence. The controller independently reads provider shape,
 process/instance identity, HTTP binary/strategy acknowledgements and source gates,
 then verifies a stop/start using the cached installation before producing a plan.
+While waiting, guard transport failures retry on a five-second cadence within the
+original deadline. Route, lease and ownership violations still abort immediately;
+a network timeout does not authorize any mutation or reset the wait budget.
 
 The R2 journal `control/tantivy-operations/<request>.json` is authoritative; local
 files are only caches on the disposable worker disk. Every provider mutation has
