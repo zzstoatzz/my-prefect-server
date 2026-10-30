@@ -835,7 +835,23 @@ def typeahead_index(
     rollback: bool = False,
     resume_rollout: bool = False,
     snapshot_engine: Literal["native", "tantivy"] = "native",
+    tantivy_operation: dict | None = None,
 ):
+    if tantivy_operation is not None:
+        if (
+            ref is not None
+            or reuse_source is not None
+            or automatic_refresh
+            or resume_generation is not None
+            or rollback
+            or resume_rollout
+        ):
+            raise ValueError(
+                "Explicit slot operations cannot be combined with build/automatic/native operations"
+            )
+        from mps.typeahead_tantivy_slots import run_slot_operation
+
+        return run_slot_operation(tantivy_operation, get_run_logger())
     if snapshot_engine not in ("native", "tantivy"):
         raise ValueError("Unsupported snapshot engine")
     if snapshot_engine == "tantivy" and (

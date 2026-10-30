@@ -22,6 +22,12 @@ TANTIVY_FORMAT = "tantivy-0.27-f32-did-expiry-v4"
 BUILD_PATTERN = r"b[0-9]{10}-[A-Za-z0-9_-]+"
 
 
+class FlyAPIError(RuntimeError):
+    def __init__(self, method, app, path, status_code):
+        self.status_code = status_code
+        super().__init__(f"Fly {method} {app}/{path} failed: HTTP {status_code}")
+
+
 def origin(app: str) -> str:
     if app not in SLOTS:
         raise ValueError("Unmanaged refresh app")
@@ -74,6 +80,10 @@ def validate_route_record(route: dict):
             target = route_target({"version": 1, "current": route[field]})
             if field == "native_rollback" and target_engine(target) != "native":
                 raise ValueError("Rollback anchor must be native")
+    if route.get("mutation") is not None:
+        from mps.typeahead_tantivy_slots import validate_mutation
+
+        validate_mutation(route["mutation"])
 
 
 def native_rollback_target(route: dict) -> dict:
@@ -114,6 +124,25 @@ def response_identity(target: dict, body: dict, headers):
 
 
 class Refresh:
+    def execution_identity(self):
+        from prefect.runtime import flow_run
+
+        if not flow_run.id:
+            raise RuntimeError("Slot lifecycle must run in the existing cloud publisher flow")
+        return str(flow_run.id)
+
+    def execution_finished(self, execution_id):
+        from uuid import UUID
+
+        from prefect.client.orchestration import get_client
+
+        with get_client(sync_client=True) as client:
+            run = client.read_flow_run(UUID(execution_id))
+        return run.state is not None and run.state.is_final()
+
+    def _fly_url(self, app, path):
+        return f"https://api.machines.dev/v1/apps/{app}/{path}"
+
     def __init__(self, logger):
         self.logger = logger
         self.http = httpx.Client(timeout=30, headers={"User-Agent": "fleet-health/1"})
@@ -136,18 +165,24 @@ class Refresh:
         self.s3.close()
 
     def fly(self, method: str, app: str, path: str, body=None):
-        origin(app)
+        tokens = {
+            SLOTS[0]: "FLY_PRIMARY_TOKEN",
+            SLOTS[1]: "FLY_REFRESH_TOKEN",
+            TANTIVY_SLOTS[0]: "FLY_TANTIVY_A_TOKEN",
+            TANTIVY_SLOTS[1]: "FLY_TANTIVY_B_TOKEN",
+        }
+        if app not in tokens:
+            raise ValueError("Unmanaged provider app")
         result = self.http.request(
             method,
-            f"https://api.machines.dev/v1/apps/{app}/{path}",
-            headers={
-                "Authorization": "Bearer "
-                + os.environ["FLY_PRIMARY_TOKEN" if app == SLOTS[0] else "FLY_REFRESH_TOKEN"]
-            },
+            self._fly_url(app, path),
+            headers={"Authorization": "Bearer " + os.environ[tokens[app]]},
             json=body,
         )
         if result.status_code >= 400:
-            raise RuntimeError(f"Fly {method} {app}/{path} failed: HTTP {result.status_code}")
+            raise FlyAPIError(method, app, path, result.status_code)
+        if len(result.content) > 2 * 1024 * 1024:
+            raise RuntimeError("Provider metadata response exceeds its byte budget")
         return result.json() if result.content else None
 
     def route(self):
@@ -163,7 +198,28 @@ class Refresh:
         require_native_refresh(route_target(route))
         return self._put_route(route, etag)
 
-    def _put_route(self, route: dict, etag: str):
+    def _put_route(self, route: dict, etag: str, *, release_mutation=None):
+        before, actual_etag = self.route()
+        if actual_etag != etag:
+            raise RuntimeError("Routing changed before conditional update")
+        lease = before.get("mutation")
+        if lease is not None:
+            if route["current"]["origin"] == f"https://{lease['app']}.fly.dev":
+                raise RuntimeError("Routing target is leased for inactive mutation")
+            if release_mutation is None:
+                route["mutation"] = lease
+            elif (
+                release_mutation != lease
+                or {key: value for key, value in before.items() if key != "mutation"} != route
+            ):
+                raise RuntimeError("Mutation release changed routing identity")
+        elif release_mutation is not None:
+            raise RuntimeError("Mutation lease disappeared before release")
+        elif route.get("mutation") is not None and (
+            {key: value for key, value in route.items() if key != "mutation"} != before
+            or route["current"]["origin"] == f"https://{route['mutation']['app']}.fly.dev"
+        ):
+            raise RuntimeError("Mutation acquisition cannot change the serving route")
         validate_route_record(route)
         result = self.s3.put_object(
             Bucket=self.bucket,
@@ -762,7 +818,73 @@ class Refresh:
             if not isinstance(twin, str) or not re.fullmatch(BUILD_PATTERN, twin):
                 raise RuntimeError("Legacy source identity unknown; refusing artifact cleanup")
             keep.update([entry["build_id"], source, source.removesuffix("-px05"), twin])
+        latest = self.optional_metadata("control/builds/latest.json", 1024 * 1024)
+        if latest is not None:
+            source = latest["active_build"]
+            twin = latest["legacy_twin"]["build_id"]
+            if any(
+                not isinstance(value, str) or not re.fullmatch(BUILD_PATTERN, value)
+                for value in (source, twin)
+            ):
+                raise ValueError("Invalid retained publisher generation")
+            keep.update([source, twin])
+        for app in TANTIVY_SLOTS:
+            pending = self.optional_metadata(f"control/tantivy-slots/{app}/pending.json", 4096)
+            if pending is None:
+                continue
+            if (
+                pending.get("schema_version") != 1
+                or pending.get("owner") != OWNER
+                or pending.get("app") != app
+            ):
+                raise ValueError("Invalid pending candidate retention record")
+            builds = [
+                pending.get(field) for field in ("build_id", "source_build_id", "legacy_build_id")
+            ]
+            if any(
+                not isinstance(value, str) or not re.fullmatch(BUILD_PATTERN, value)
+                for value in builds
+            ):
+                raise ValueError("Invalid pending candidate source identity")
+            key = f"releases/search-tantivy/{pending['build_id']}/manifest.json"
+            result = self.s3.get_object(Bucket=self.bucket, Key=key)
+            try:
+                raw = result["Body"].read(1024 * 1024 + 1)
+            finally:
+                result["Body"].close()
+            import hashlib
+
+            if len(raw) > 1024 * 1024 or hashlib.sha256(raw).hexdigest() != pending.get(
+                "artifact_manifest_sha256"
+            ):
+                raise ValueError("Pending artifact manifest identity changed")
+            manifest = json.loads(raw)
+            self.tantivy_adapter().validate_source(manifest, self.tantivy_source_manifest(manifest))
+            if [
+                manifest[field] for field in ("active_build", "source_build_id", "legacy_build_id")
+            ] != builds:
+                raise ValueError("Pending artifact source linkage changed")
+            keep.update(builds)
         return keep
+
+    def optional_metadata(self, key, limit):
+        from botocore.exceptions import ClientError
+
+        try:
+            result = self.s3.get_object(Bucket=self.bucket, Key=key)
+        except FileNotFoundError:
+            return None
+        except ClientError as error:
+            if error.response["Error"]["Code"] in ("NoSuchKey", "404"):
+                return None
+            raise
+        try:
+            raw = result["Body"].read(limit + 1)
+        finally:
+            result["Body"].close()
+        if len(raw) > limit:
+            raise ValueError("Managed metadata exceeds its byte budget")
+        return json.loads(raw)
 
     def tantivy_adapter(self):
         from mps.typeahead_tantivy import TantivyAdapter
@@ -837,6 +959,8 @@ class Refresh:
 
     def prune_artifacts(self):
         route, etag = self.route()
+        if route.get("mutation") is not None:
+            raise RuntimeError("Inactive mutation is pending; artifact cleanup is fenced")
         keep = self.retained_build_ids(route)
         victims = []
         for prefix, names in (
@@ -857,7 +981,7 @@ class Refresh:
                         victims.append(item)
         for start in range(0, len(victims), 1000):
             current, actual_etag = self.route()
-            if actual_etag != etag or current != route:
+            if actual_etag != etag or current != route or self.retained_build_ids(route) != keep:
                 raise RuntimeError("Routing changed; refusing artifact cleanup")
             result = self.s3.delete_objects(
                 Bucket=self.bucket,

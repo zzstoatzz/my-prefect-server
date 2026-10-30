@@ -25,8 +25,9 @@ Older first-promotion records may still use their native `previous` target.
 Native-to-native rollback continues to select the immediate previous target.
 If public verification fails, an ETag-conditional compensation restores
 the exact prior Tantivy route only while the failed native route is still current;
-operator changes win. This compatibility step does not permit new Tantivy promotion
-or rollback into a previous Tantivy target. Native-to-native rollback is unchanged.
+operator changes win. Automatic invocation does not permit Tantivy promotion. The separate explicit
+[slot lifecycle](tantivy-slot-lifecycle.md) requires a prepared plan and complete
+non-test release evidence; native-to-native rollback is unchanged.
 
 R2 artifact cleanup and local build retention protect current, previous and native
 anchor source builds and their native/compact twins. A Tantivy engine build can differ from its

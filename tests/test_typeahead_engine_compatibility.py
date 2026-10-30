@@ -557,7 +557,7 @@ def test_installer_checksum_mismatch_is_rejected_before_source_execution(tmp_pat
 
 
 def test_actual_bundle_install_restart_and_http_qualification_through_adapter(
-    tmp_path, pinned_adapter, monkeypatch
+    tmp_path, pinned_adapter, monkeypatch, controller
 ):
     repository = Path(os.environ["TA_REPOSITORY"])
     binary = Path(
@@ -706,6 +706,18 @@ def test_actual_bundle_install_restart_and_http_qualification_through_adapter(
             fixtures.smoke.stop(child)
     assert (destination / "index/meta.json").is_file()
     assert not (destination / "index.db").exists()
+    from tests.test_typeahead_tantivy_slots import exercise_real_rust_preparation
+
+    exercise_real_rust_preparation(
+        controller,
+        tmp_path / "slot-lifecycle",
+        pinned_adapter,
+        portable,
+        source,
+        bundle,
+        binary,
+        fixtures,
+    )
     producer = tmp_path / "pinned-producer"
     script = producer / "scripts/snapshot_refresh/tantivy_install.py"
     script.parent.mkdir(parents=True)
@@ -748,7 +760,7 @@ def test_actual_bundle_install_restart_and_http_qualification_through_adapter(
         "binary_sha256": manifest["binary_sha256"],
         "source_manifest_sha256": hashlib.sha256(source).hexdigest(),
         "max_source_bytes": 8 * 1024**3,
-        "minimum_select_interval": .5,
+        "minimum_select_interval": 0.5,
     }
     (resumed / "owner").write_text("typeahead-index-tantivy-v1\n")
     (resumed / "identity.json").write_text(json.dumps(identity))
@@ -774,10 +786,18 @@ def test_actual_bundle_install_restart_and_http_qualification_through_adapter(
     )
     impossible_source = tmp_path / "impossible-deadline-source"
     impossible_source.mkdir()
-    (impossible_source / "manifest.json").write_text(json.dumps(native | {"actor_count": 12_860_000}))
+    (impossible_source / "manifest.json").write_text(
+        json.dumps(native | {"actor_count": 12_860_000})
+    )
     impossible_workspace = tmp_path / "impossible-builder"
     with pytest.raises(ValueError, match="lower bound"):
-        prepare_generation(producer, impossible_source, impossible_workspace, binary, environment | {"INDEX_TANTIVY_PREPARE_SECONDS": "10800"})
+        prepare_generation(
+            producer,
+            impossible_source,
+            impossible_workspace,
+            binary,
+            environment | {"INDEX_TANTIVY_PREPARE_SECONDS": "10800"},
+        )
     assert not impossible_workspace.exists()
     with pytest.raises(ValueError, match="resume identity mismatch"):
         prepare_generation(
