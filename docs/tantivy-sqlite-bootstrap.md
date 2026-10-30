@@ -72,3 +72,24 @@ coverage object with the immutable bootstrap receipt SHA. A separate-process
 restart retains that distinction and stays cutover-unqualified. The ordinary
 source client's policy validator rejects that cursor; it cannot silently relabel
 its completed checkpoint markers as live Turso coverage.
+
+`mps.typeahead_checkpoint.fetch_checkpoint` now implements the bounded acquisition
+step: one `/export/<generation>` plus contiguous `/sync` batches, stopping at a
+successful short batch and retaining only the committed prefix. It follows the
+official WAL encoding, then asks SQLite to verify the exact committed frame count,
+checkpoints it into a standalone DB, and hashes that materialized file. The receipt
+separates base bytes/hash, received frames, committed frames, reconstructed WAL
+hash and final DB hash. Source clock observations bracket the transfer; generation
+advances are recorded, never silently labeled current-head coverage. No global
+policy or live freshness is attested by this receipt.
+
+Sixteen real HTTP/SQLite tests cover replayed values, uncommitted tails, full/empty
+batches, HTTP400/500, truncated frames, byte limits, generation/clock regressions,
+no-overwrite, redirects, request stalls and trickling bodies. Acquisition defaults
+to an eight-GiB source byte cap,64-MiB WAL cap and180-second application deadline,
+with a maximum300-second application setting. Blocking socket/local filesystem
+work can overrun that soft deadline until the operation returns, so the cloud
+caller must impose a separate hard process/job timeout. There is no automatic
+bulk-transfer retry. Private staging is removed on ordinary success/failure; the
+VM owner remains responsible for cleanup after forced termination. This code has
+not yet acquired the real full database or qualified a serving artifact.
