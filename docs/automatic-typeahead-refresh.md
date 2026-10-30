@@ -80,6 +80,8 @@ unavailable original diagnostic from the alerted Prefect run.
 
 `typeahead-index(snapshot_engine="tantivy", snapshot_format="compact")` adds an
 isolated publication stage after the existing native source/twin publication.
+Tantivy source/twin publication uses the same publisher’s `--immutable-only`
+mode, preserving the managed live pointer byte-for-byte.
 The default `snapshot_engine="native"` invocation is unchanged. Tantivy automatic
 installation, rollback/recovery combinations and source-format mismatches fail
 before preparation; route promotion is not enabled by this parameter.

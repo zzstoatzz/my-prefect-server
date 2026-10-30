@@ -339,8 +339,10 @@ def compact_target() -> tuple[str, str] | None:
 
 
 @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
-def publish_compact(repo: Path, source: Path) -> Path:
+def publish_compact(repo: Path, source: Path, update_pointer: bool = True) -> Path:
     target = compact_target()
+    if not update_pointer and target != ("releases/search", "control/builds/latest.json"):
+        raise ValueError("Immutable source publication requires the managed release namespace")
     legacy = json.loads((source / "manifest.json").read_text())
     compact_id = legacy["active_build"] + "-px05"
     output = source.parent / f"build-{compact_id}"
@@ -380,7 +382,7 @@ def publish_compact(repo: Path, source: Path) -> Path:
     ):
         raise ValueError("existing compact generation does not match source")
     if target == ("releases/search", "control/builds/latest.json"):
-        return publish_completed_generation.fn(repo, str(output))
+        return publish_completed_generation.fn(repo, str(output), update_pointer=update_pointer)
     if target is not None:
         _stream(
             quiet_command(
@@ -406,7 +408,7 @@ def publish_compact(repo: Path, source: Path) -> Path:
 
 
 @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
-def publish_completed_generation(repo: Path, generation: str) -> Path:
+def publish_completed_generation(repo: Path, generation: str, update_pointer: bool = True) -> Path:
     source = Path(generation).resolve()
     roots = [
         Path(os.environ["INDEX_BUILD_ROOT"]).resolve(),
@@ -467,9 +469,8 @@ def publish_completed_generation(repo: Path, generation: str) -> Path:
             str(legacy_path / "index.db"),
             "--legacy-manifest",
             str(legacy_manifest),
-            "--pointer",
-            "control/builds/latest.json",
-        ],
+        ]
+        + (["--pointer", "control/builds/latest.json"] if update_pointer else ["--immutable-only"]),
         repo,
         dict(os.environ, RCLONE_COPY_LINKS="true"),
         timeout=7200,
@@ -936,7 +937,11 @@ def typeahead_index(
         source = run_indexer(binary, local_only=True, reuse_source=reuse_source)
         if source is None:
             raise RuntimeError("local index build did not return a source generation")
-        generation = publish_compact(repo, source)
+        generation = (
+            publish_compact(repo, source, update_pointer=False)
+            if snapshot_engine == "tantivy"
+            else publish_compact(repo, source)
+        )
         if snapshot_engine == "tantivy":
             prepared = prepare_tantivy_generation(repo, generation)
             publish_tantivy_generation(repo, prepared, generation)

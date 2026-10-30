@@ -20,7 +20,7 @@ job["command"] = (
 )
 job["env"].update({
     "MPS_PIN": "@" + MPS_SHA,
-    "INDEX_TANTIVY_SOURCE_REVISION": "00a95a7427cd8ce6b97cb5bcc5d9d90eb49281bb",
+    "INDEX_TANTIVY_SOURCE_REVISION": "557021cebe0cf94dc7f4e90e0625b4a583bc3e49",
     "INDEX_TANTIVY_ADAPTER_SHA256": "ce99c13446f70cd889c89b8c5469eea351e1bb522d5057ccd40359a6c9fdad5c",
     "INDEX_TANTIVY_BINARY": "/var/lib/typeahead-indexer/work/code/typeahead-tantivy",
     "INDEX_TANTIVY_BINARY_SHA256": "d1cc0366ed3b28b34daca15d23ee6f06aa1d08844e483c357b80cdb778d5cfa2",
@@ -31,7 +31,7 @@ job["env"].update({
 payload = {
     "name": "tantivy-candidate-publication-" + MPS_SHA[:12],
     "parameters": {
-        "ref": "00a95a7427cd8ce6b97cb5bcc5d9d90eb49281bb",
+        "ref": "557021cebe0cf94dc7f4e90e0625b4a583bc3e49",
         "snapshot_engine": "tantivy", "snapshot_format": "compact",
         "automatic_refresh": False, "reuse_source": None,
         "resume_generation": None, "rollback": False, "resume_rollout": False,
@@ -52,7 +52,9 @@ on this cloud worker. No local path is assumed to exist on its fresh disk.
 The fixed code key is
 `releases/code/tantivy/d1cc0366ed3b28b34daca15d23ee6f06aa1d08844e483c357b80cdb778d5cfa2/typeahead-tantivy`.
 Its published size is 10,028,384 bytes. A missing/wrong code artifact fails before
-Tantivy import. Publication requires actual source reconciliation completion;
+Tantivy import. The native source/twin stage uses the existing publisher’s `--immutable-only`
+mode; neither the live source pointer nor routing is changed. Publication requires
+actual source reconciliation completion;
 budget/deadline failure cannot produce a successful manifest. The eight-GiB
 cumulative allowance includes a two-GiB polling reserve and survives process
 restart without resetting counters.
