@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-10-30T07:14:17.500773+00:00",
+  "scope": "Empty parallel apps only: canonical new app tokens/admin secrets, staged serving secrets and future operation refs",
+  "prefect_target": "https://prefect-server.waow.tech/api",
+  "apps": [
+    {
+      "app": "typeahead-tantivy-a",
+      "new_block_value_sha256": {
+        "typeahead-tantivy-a-fly-deploy-token": "914e717e8da13a07a23a7f84a51aeddb359a79be609e669ceb341b02844e9a6a",
+        "typeahead-tantivy-a-admin-secret": "00da3b1ff3bace339266b86d9dbe44df19da81f8d6bc12ee3013a26f74602aae"
+      },
+      "prefect_and_store_hashes_verified": true,
+      "deploy_token_requested_expiry_hours": 8760,
+      "app_scope_own_list_verified": true,
+      "cross_app_read_denied": true,
+      "staged_secret_digests": {
+        "ADMIN_SECRET": "6b98ad9eb1e83342",
+        "INDEX_R2_ACCESS_KEY_ID": "328fba79c6c286f2",
+        "INDEX_R2_BUCKET": "50a65b413d57f43a",
+        "INDEX_R2_ENDPOINT": "2bfa3cf823f39b2d",
+        "INDEX_R2_SECRET_ACCESS_KEY": "e5bba353202ca898",
+        "TURSO_AUTH_TOKEN": "ef6783b34a92e4d2",
+        "TURSO_URL": "bca32f3577e744cf"
+      },
+      "machines": 0
+    },
+    {
+      "app": "typeahead-tantivy-b",
+      "new_block_value_sha256": {
+        "typeahead-tantivy-b-fly-deploy-token": "f3ac0d20ccd02be8a9a1fe3b94713abfe0c289da2c3ca4d10b3f3428dc91253b",
+        "typeahead-tantivy-b-admin-secret": "4ecb675b791909f0359a3dac2d5be3a6404fbf847fdefbb4b843b4552863fe6f"
+      },
+      "prefect_and_store_hashes_verified": true,
+      "deploy_token_requested_expiry_hours": 8760,
+      "app_scope_own_list_verified": true,
+      "cross_app_read_denied": true,
+      "staged_secret_digests": {
+        "ADMIN_SECRET": "f9d0331034a430ea",
+        "INDEX_R2_ACCESS_KEY_ID": "328fba79c6c286f2",
+        "INDEX_R2_BUCKET": "50a65b413d57f43a",
+        "INDEX_R2_ENDPOINT": "2bfa3cf823f39b2d",
+        "INDEX_R2_SECRET_ACCESS_KEY": "e5bba353202ca898",
+        "TURSO_AUTH_TOKEN": "ef6783b34a92e4d2",
+        "TURSO_URL": "bca32f3577e744cf"
+      },
+      "machines": 0
+    }
+  ],
+  "controller_env": {
+    "PREFECT_PLUGINS_ENABLED": "true",
+    "PREFECT_PLUGINS_ALLOW": "mps-secrets",
+    "FLY_PRIMARY_TOKEN": "prefect-block://typeahead-startup-fly-deploy-token",
+    "FLY_REFRESH_TOKEN": "prefect-block://typeahead-refresh-fly-deploy-token",
+    "FLY_TANTIVY_A_TOKEN": "prefect-block://typeahead-tantivy-a-fly-deploy-token",
+    "FLY_TANTIVY_B_TOKEN": "prefect-block://typeahead-tantivy-b-fly-deploy-token",
+    "INDEX_R2_ENDPOINT": "prefect-block://index-r2-endpoint",
+    "INDEX_R2_BUCKET": "prefect-block://index-r2-bucket",
+    "INDEX_R2_ACCESS_KEY_ID": "prefect-block://index-r2-access-key-id",
+    "INDEX_R2_SECRET_ACCESS_KEY": "prefect-block://index-r2-secret-access-key",
+    "INDEX_TANTIVY_ADAPTER_SHA256": "8257ef4aa117ea2ac31ee78a834cd0b993f3860aa514f956fd3eb852f4985df0",
+    "INDEX_REFRESH_IMAGE": "registry.fly.io/typeahead-search-refresh@sha256:d4c3111ee8ad058cb08f7ef02ffeb0a2826e1c328b61c12c29a6e9d3e93ca0ed",
+    "INDEXER_HOME": "/var/lib/typeahead-indexer/work",
+    "INDEX_ALLOW_PROD": "0",
+    "INDEX_TANTIVY_SOURCE_REVISION": "305f5da9c90f16697a1128ca39200214c71eac40"
+  },
+  "serving_image": "registry.fly.io/typeahead-qual-20261029@sha256:34aef86a7d9bf7256d80681728022a3ba56c2b7de59129f269da4bc14df0f929",
+  "adapter_source_revision": "305f5da9c90f16697a1128ca39200214c71eac40",
+  "installer_bootstrap_required": "Root-owned slot-operation flow materializes INDEX_TANTIVY_SOURCE_REVISION with the existing isolated clone task, sets INDEX_TANTIVY_ADAPTER_PATH to scripts/snapshot_refresh/tantivy_install.py within that checkout and verifies the configured checksum. The fresh worker must run that updated MPS code; no prior ephemeral path is assumed.",
+  "fly_secret_digest_note": "Fly digests are opaque provider metadata, not claimed to be SHA256(value). Canonical\u2194Prefect values were compared by SHA256 before staging; runtime value attestation waits for an actual candidate.",
+  "canonical_store_note": "README.md and prod.yaml were already dirty; unrelated edits preserved, no whole-store sync or store commit performed.",
+  "existing_credentials_rotated": false,
+  "machines_created": false,
+  "production_route_changed": false,
+  "native_dev_ingester_changed": false,
+  "automatic_deployment_changed": false
+}
