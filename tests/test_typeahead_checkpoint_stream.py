@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from mps.typeahead_checkpoint import FRAME, fetch_checkpoint
 from mps.typeahead_checkpoint_stream import file_witness, stream_checkpoint
+from mps.typeahead_sqlite_seed import encode
 
 _spec = importlib.util.spec_from_file_location(
     "seed_fixture", Path(__file__).with_name("test_typeahead_sqlite_seed.py")
@@ -173,10 +174,19 @@ def test_complete_wal_stream_fields_counts_policy_and_raw_provenance(tmp_path, r
         assert header["source_kind"] == "sqlite-committed-prefix"
         assert header["source_policy"] == "sqlite-checkpoint-observations-v1"
         assert "source_prefix_sha256" not in header
-        policy = bootstrap["checkpoint_policy"]
-        assert policy["complete"] is True and "source_observed_at" not in policy
-        assert policy["overrides"] == [{"did": "did:fixture:000003", "action": "show"}]
-        assert policy["blocked_domains"] == ["blocked.test"]
+        policy = {
+            "schema_version": 1,
+            "complete": True,
+            "coverage": "checkpoint-only",
+            "overrides": [{"did": "did:fixture:000003", "action": "show"}],
+            "blocked_domains": ["blocked.test"],
+        }
+        assert bootstrap["checkpoint_policy_counts"] == {"overrides": 1, "blocked_domains": 1}
+        assert bootstrap["checkpoint_policy_sha256"] == hashlib.sha256(encode(policy)).hexdigest()
+        assert "checkpoint_policy" not in bootstrap
+        assert "did:fixture:000003" not in json.dumps(header)
+        assert "blocked.test" not in json.dumps(result)
+        assert "source_observed_at" not in json.dumps(bootstrap)
         assert actors["did:fixture:000000"]["followers_count"] == 12345
         assert actors["did:fixture:000000"]["quality_score"] == 16777216
         assert actors["did:fixture:000000"]["source_updated_at"] == 99
@@ -348,7 +358,15 @@ for restart in range(2):
                 time.sleep(.05)
         else:raise RuntimeError('Rust startup timeout')
         assert status['full_source'] and not status['cutover_source_ready']
-        assert status['source_manifest']['source_bootstrap']['fixture'] is True
+        bootstrap=status['source_manifest']['source_bootstrap']
+        assert bootstrap['fixture'] is True
+        assert 'checkpoint_policy' not in bootstrap
+        assert bootstrap['checkpoint_policy_counts']=={'overrides':1,'blocked_domains':1}
+        public_manifest=json.dumps(status['source_manifest'])
+        assert 'did:fixture:000003' not in public_manifest
+        assert 'blocked.test' not in public_manifest
+        assert '\"overrides\": [' not in public_manifest
+        assert '\"blocked_domains\": [' not in public_manifest
         assert status['source_cursor'] is None
         actors=json.load(urllib.request.urlopen('http://127.0.0.1:18080/search?q=person000000',timeout=2))['actors']
         assert actors[0]['did']=='did:fixture:000000'

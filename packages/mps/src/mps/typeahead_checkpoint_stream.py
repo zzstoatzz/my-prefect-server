@@ -371,7 +371,10 @@ def stream_checkpoint(
             "replay_floor": floor,
             "replay_overlap_seconds": overlap_seconds,
             "counts": counts,
-            "checkpoint_policy": policy,
+            "checkpoint_policy_counts": {
+                "overrides": len(overrides),
+                "blocked_domains": len(domains),
+            },
             "checkpoint_policy_sha256": hashlib.sha256(encode(policy)).hexdigest(),
             "raw_tombstone_rows": raw_tombs,
         }
