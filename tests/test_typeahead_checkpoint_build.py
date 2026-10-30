@@ -47,14 +47,14 @@ def release_manifest(imported, build, adapter, binary_sha):
 
 
 @contextmanager
-def checkpoint_source(root, repository, labels=None, missing_pds=False):
+def checkpoint_source(root, repository, labels=None, missing_pds=False, clock_offset=0):
     spec = importlib.util.spec_from_file_location(
         "checkpoint_build_source_fixture", repository / "services/tantivy-input/test_sync.py"
     )
     assert spec is not None and spec.loader is not None
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
-    source = fixtures.Fixture(root, now=int(time.time()))
+    source = fixtures.Fixture(root, now=int(time.time()) + clock_offset)
     keeper = sqlite3.connect(source.path)
     try:
         for n in range(32):
@@ -153,6 +153,35 @@ class Tests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name).resolve()
+
+    def test_verified_footer_crash_resumes_without_reimport(self):
+        import shlex
+
+        with checkpoint_source(self.root, self.repository) as (_, database, options):
+            wrapper = self.root / "crash-import"
+            wrapper.write_text(
+                "#!/bin/sh\nulimit -c 0\n"
+                'if [ "$1" = import ]; then export TYPEAHEAD_TEST_CRASH=import_after_footer; fi\n'
+                + "exec "
+                + shlex.quote(str(self.binary))
+                + ' "$@"\n'
+            )
+            wrapper.chmod(0o700)
+            previous = self.root / "interrupted"
+            with self.assertRaises(ValueError):
+                build_checkpoint(self.repository, previous, wrapper, database, **options)
+            self.assertTrue((previous / "stream-receipt.json").is_file())
+            result = build_checkpoint(
+                self.repository,
+                self.root / "resumed",
+                self.binary,
+                database,
+                resume_import_from=previous,
+                **options,
+            )
+            self.assertTrue(result["consumer_verified"] and result["live_handoff_verified"])
+            self.assertFalse((previous / "data").exists())
+            self.assertEqual(result["stream"]["input_documents"], 33)
 
     def test_real_pipe_import_cas_policy_handoff_without_second_identity_walk(self):
         with checkpoint_source(self.root, self.repository) as (source, database, options):
@@ -468,6 +497,27 @@ class Tests(unittest.TestCase):
             self.assertIsNone(status["source_cursor"]["checkpoint_handoff"]["first_remote_through"])
             self.assertGreater(status["source_observation_revision"], 1)
 
+    def test_completed_stale_cycle_requires_another_fresh_cycle(self):
+        with checkpoint_source(self.root, self.repository, clock_offset=-130) as (
+            source,
+            database,
+            options,
+        ):
+            original = source.server.RequestHandlerClass
+
+            class AdvancingClock(original):
+                def source(self, body):
+                    super().source(body)
+                    if "unixepoch()" in body["requests"][0]["stmt"]["sql"]:
+                        source.now = int(time.time())
+
+            source.server.RequestHandlerClass = AdvancingClock
+            result = build_checkpoint(
+                self.repository, self.root / "build", self.binary, database, **options
+            )
+            self.assertGreaterEqual(result["completed_remote_cycles"], 2)
+            self.assertLessEqual(result["source_gates"]["poll_age_s"], 120)
+
 
 def test_actual_linux_d1_checkpoint_build():
     image = os.environ.get("TA_LINUX_IMAGE")
@@ -502,7 +552,7 @@ def test_actual_linux_d1_checkpoint_build():
         image,
         "python3",
         "-c",
-        "import hashlib,os,pathlib,runpy,shutil,sys,tempfile; assert hashlib.sha256(pathlib.Path('/app/typeahead-tantivy').read_bytes()).hexdigest()=='d1cc0366ed3b28b34daca15d23ee6f06aa1d08844e483c357b80cdb778d5cfa2'; root=pathlib.Path(tempfile.mkdtemp()); package=root/'mps';package.mkdir();(package/'__init__.py').write_text(''); [shutil.copyfile(pathlib.Path('/mps/packages/mps/src/mps')/(name+'.py'),package/(name+'.py')) for name in ['typeahead_checkpoint','typeahead_checkpoint_build','typeahead_checkpoint_stream','typeahead_sqlite_seed','typeahead_tantivy','typeahead_source_budget']];os.environ['PYTHONPATH']=str(root);sys.path.insert(0,str(root));runpy.run_path('/mps/tests/test_typeahead_checkpoint_build.py',run_name='__main__')",
+        "import hashlib,os,pathlib,runpy,shutil,sys,tempfile; assert hashlib.sha256(pathlib.Path('/app/typeahead-tantivy').read_bytes()).hexdigest()=='ef2be085f7ad7b2bf4ea1f0e4976ee07e37b4041a95b5f34c31c562399f17a4d'; root=pathlib.Path(tempfile.mkdtemp()); package=root/'mps';package.mkdir();(package/'__init__.py').write_text(''); [shutil.copyfile(pathlib.Path('/mps/packages/mps/src/mps')/(name+'.py'),package/(name+'.py')) for name in ['typeahead_checkpoint','typeahead_checkpoint_build','typeahead_checkpoint_stream','typeahead_sqlite_seed','typeahead_tantivy','typeahead_source_budget']];os.environ['PYTHONPATH']=str(root);sys.path.insert(0,str(root));runpy.run_path('/mps/tests/test_typeahead_checkpoint_build.py',run_name='__main__')",
     ]
     result = subprocess.run(command, capture_output=True, check=False, timeout=120)
     assert result.returncode == 0, result.stderr.decode()[-5000:]

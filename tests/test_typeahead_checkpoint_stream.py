@@ -346,7 +346,7 @@ def test_actual_linux_d1_import_direct_pipe_retains_full_unqualified_checkpoint(
         )
         assert stdout
         script = r"""import hashlib,json,subprocess,time,urllib.request
-assert hashlib.sha256(open('/app/typeahead-tantivy','rb').read()).hexdigest()=='d1cc0366ed3b28b34daca15d23ee6f06aa1d08844e483c357b80cdb778d5cfa2'
+assert hashlib.sha256(open('/app/typeahead-tantivy','rb').read()).hexdigest()=='ef2be085f7ad7b2bf4ea1f0e4976ee07e37b4041a95b5f34c31c562399f17a4d'
 for restart in range(2):
     child=subprocess.Popen(['/app/typeahead-tantivy','serve','--data','/data/index','--listen','127.0.0.1:18080','--admin-listen','127.0.0.1:18081','--allow-stale','true','--writer-memory-mb','32'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     try:
@@ -374,7 +374,7 @@ for restart in range(2):
         assert json.load(urllib.request.urlopen('http://127.0.0.1:18080/search?q=person000004',timeout=2))['actors']==[]
     finally:
         child.terminate();child.wait(timeout=10)
-print(json.dumps({'restarts':2,'full_source':True,'cutover_source_ready':False,'binary_sha256':'d1cc0366ed3b28b34daca15d23ee6f06aa1d08844e483c357b80cdb778d5cfa2'}))
+print(json.dumps({'restarts':2,'full_source':True,'cutover_source_ready':False,'binary_sha256':'ef2be085f7ad7b2bf4ea1f0e4976ee07e37b4041a95b5f34c31c562399f17a4d'}))
 """
         checked = subprocess.run(
             [*command[: command.index("/app/typeahead-tantivy")], "python3", "-c", script],

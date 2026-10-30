@@ -80,7 +80,7 @@ refuses an expired cached restart. Ordinary timestamp polling cannot renew it.
 once, smoke-tests a100,000-document sample, imports the full database, catches up
 live state and freezes an immutable bundle. The existing publisher verifies the
 bundle and independent native anchor. No routing pointer changes in this path.
-The preparation task is limited to 60 minutes and requires a separate hard worker
+The preparation task is limited to 90 minutes and requires a separate hard worker
 timeout. Serving qualification, recovery and cutover approval remain separate.
 
 ## Evidence and remaining qualification
@@ -95,3 +95,13 @@ The October 30 archive-join candidate reuses one verified cloud checkpoint for
 full import and qualification. Its isolated receipt must establish actual PDS
 coverage, build/storage cost and runtime behavior before promotion. Older
 source-only production qualification does not establish those new properties.
+
+A completed actor stream can outlive the original build deadline during the final
+segment merge. `build_checkpoint(..., resume_import_from=previous_workspace)`
+requires identical checkpoint, source, native-anchor and mapping inputs. It moves
+the existing index into a new owned workspace and uses `resume-import` with the
+checksum-bound stream receipt. The Rust finalizer requires a committed verified
+footer, matching manifest/counts/hash, and no live-source observations. Partial
+streams cannot be resumed this way. Normal handoff and admission checks still run.
+The larger build bound includes download, sample, full import and merge; it is a
+failure cutoff, not a latency claim. The worker's independent two-hour bound remains.

@@ -220,7 +220,7 @@ def stream_checkpoint(
         or not BUILD.fullmatch(build_id)
         or type(overlap_seconds) is not int
         or not 0 <= overlap_seconds <= 3600
-        or not 0 < max_seconds <= 3600
+        or not 0 < max_seconds <= 5400
     ):
         raise ValueError("Invalid streaming identity/deadline")
     if (
@@ -551,7 +551,7 @@ def main():
     parser.add_argument("--max-output-bytes", type=int, default=16 * 1024**3)
     parser.add_argument("--receipt", type=Path, required=True)
     args = parser.parse_args()
-    if not 1 <= args.max_seconds <= 3600 or args.receipt.exists() or args.receipt.is_symlink():
+    if not 1 <= args.max_seconds <= 5400 or args.receipt.exists() or args.receipt.is_symlink():
         raise ValueError("Bounded new streaming receipt required")
 
     def expired(*_):
