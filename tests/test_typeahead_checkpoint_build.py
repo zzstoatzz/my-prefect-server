@@ -1,3 +1,4 @@
+import ast
 import hashlib
 import importlib.util
 import json
@@ -9,10 +10,39 @@ import time
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
+from types import SimpleNamespace
 
 from mps.typeahead_checkpoint import fetch_checkpoint
-from mps.typeahead_checkpoint_build import build_checkpoint
+from mps.typeahead_checkpoint_build import build_checkpoint, module
 from mps.typeahead_checkpoint_stream import file_witness
+
+
+def release_manifest(imported, build, adapter, binary_sha):
+    source = (
+        Path(__file__).resolve().parents[1] / "packages/mps/src/mps/typeahead_checkpoint_release.py"
+    )
+    tree = ast.parse(source.read_text())
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "run_cloud_release"
+    )
+    index = next(
+        index
+        for index, node in enumerate(function.body)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "manifest" for target in node.targets)
+    )
+    nodes = function.body[index : index + 2]
+    assert (
+        isinstance(nodes[1], ast.Expr)
+        and isinstance(nodes[1].value, ast.Call)
+        and isinstance(nodes[1].value.func, ast.Attribute)
+        and nodes[1].value.func.attr == "update"
+    )
+    namespace = {"imported": imported, "build": build, "adapter": adapter, "BINARY_SHA": binary_sha}
+    exec(compile(ast.Module(body=nodes, type_ignores=[]), str(source), "exec"), namespace)
+    return namespace["manifest"]
 
 
 @contextmanager
@@ -74,6 +104,7 @@ def checkpoint_source(root, repository):
             {
                 "manifest_version": 2,
                 "format_version": 5,
+                "normalize_version": "v2-cjk-bigram",
                 "active_build": "b1793230000-native",
                 "actor_count": 123456,
                 "source_watermark": 1793230000,
@@ -187,6 +218,43 @@ class Tests(unittest.TestCase):
             self.assertEqual(result["source_accounting"]["sweep_bytes"], 0)
             self.assertFalse(list((self.root / "build").glob("*.jsonl")))
             self.assertNotIn("blocked.test", json.dumps(fields))
+            installer = module(
+                "checkpoint_build_freeze",
+                self.repository / "scripts/snapshot_refresh/tantivy_install.py",
+            )
+            with self.binary.open("rb") as binary_file:
+                binary_sha = hashlib.file_digest(binary_file, "sha256").hexdigest()
+            manifest = release_manifest(
+                result, options["build_id"], SimpleNamespace(installer=installer), binary_sha
+            )
+            portable = installer.freeze_bundle(
+                Path(result["data_path"]),
+                self.root / "publication",
+                manifest,
+                options["native_manifest_bytes"],
+                self.binary,
+                allow_checkpoint_fixture=True,
+            )
+            self.assertEqual(portable["source_policy"], "sqlite-checkpoint-observations-v1")
+            self.assertEqual(portable["source_build_id"], status["source_manifest"]["build_id"])
+            self.assertEqual(
+                portable["source_actors_sha256"],
+                status["expiry_coverage"]["verified_input_actors_sha256"],
+            )
+            self.assertEqual(portable["source_manifest_sha256"], options["receipt_sha256"])
+            self.assertEqual(
+                portable["rollback_native_anchor"]["manifest_sha256"],
+                options["native_manifest_sha256"],
+            )
+            self.assertTrue(portable["test_only"])
+            installer.validate_artifact_manifest(portable, options["build_id"])
+            installer.validate_checkpoint_provenance(
+                portable, options["receipt_bytes"], options["native_manifest_bytes"]
+            )
+            with (self.root / "publication/index.tar").open("rb") as bundle:
+                self.assertEqual(
+                    portable["sha256"], hashlib.file_digest(bundle, "sha256").hexdigest()
+                )
 
     def test_default_fixture_rejection_never_yields_handoff(self):
         with checkpoint_source(self.root, self.repository) as (_, database, options):
@@ -276,6 +344,33 @@ def test_actual_linux_d1_checkpoint_build():
     ]
     result = subprocess.run(command, capture_output=True, check=False, timeout=120)
     assert result.returncode == 0, result.stderr.decode()[-5000:]
+
+
+def test_cloud_release_resolves_real_task_context_before_cloud_guard(tmp_path, monkeypatch):
+    import pytest
+    from mps.typeahead_checkpoint_release import run_cloud_release
+    from prefect import flow, task
+    from prefect.cache_policies import NO_CACHE
+    from prefect.context import TaskRunContext, get_run_context
+    from prefect.testing.utilities import prefect_test_harness
+
+    monkeypatch.setenv("INDEXER_HOME", str(tmp_path))
+
+    @task(cache_policy=NO_CACHE)
+    def attempt():
+        context = get_run_context()
+        assert isinstance(context, TaskRunContext)
+        assert context.task_run.flow_run_id is not None
+        with pytest.raises(ValueError, match="Bounded cloud-only release required"):
+            run_cloud_release(tmp_path)
+        return str(context.task_run.flow_run_id)
+
+    @flow
+    def trial():
+        return attempt()
+
+    with prefect_test_harness():
+        assert trial()
 
 
 if __name__ == "__main__":
