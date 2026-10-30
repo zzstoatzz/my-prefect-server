@@ -5,7 +5,12 @@ The companion branch adds explicit `tantivy_operation` requests to the existing
 remain unchanged. A preparation returns an immutable review plan; it never changes
 `current`, `previous` or `native_rollback`. The operator must separately request
 promotion after supplying the exact plan, current ETag and complete empirical
-release receipt. No slot operation in this branch has been run against Fly.
+release receipt. Managed slot A has passed cloud publication, installation and
+cached restart qualification on Fly using build `b1793346536-cp-7c8322df79`.
+The immutable prepared plan is
+`7f547a14b234180083cff854cdb5a00163faf214301f9a96467bb6b40624173b`;
+production remains native. Two-slot retirement and automatic Tantivy refresh
+have not been exercised against the live managed slots.
 
 Only `typeahead-tantivy-a` and `typeahead-tantivy-b` are eligible. Every candidate
 must carry owner `typeahead-snapshot-refresh`, role `tantivy-slot`, request/build
