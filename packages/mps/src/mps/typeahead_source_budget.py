@@ -1,127 +1,40 @@
-"""Durable conservative accounting for the offline initial reconciliation job."""
+"""Offline source worker delegating accounting to the pinned Typeahead client."""
 
-import fcntl
-import json
+import importlib.util
 import os
+import sys
 import time
+from pathlib import Path
 
 
-def accounted_source(sync, url, token, ledger, build_id, max_bytes, *, allow_test_loopback=False):
-    class AccountedTurso(sync.Turso):
-        def __init__(self):
-            self.recovered_reservation_bytes = 0
-            super().__init__(
-                url, token, max_bytes=max_bytes, allow_test_loopback=allow_test_loopback
-            )
-            if (
-                ledger.is_symlink()
-                or ledger.with_suffix(".lock").is_symlink()
-                or ledger.with_suffix(".partial").is_symlink()
-            ):
-                raise ValueError("Offline accounting paths cannot be symlinks")
-            self.lock = ledger.with_suffix(".lock").open("a+b")
-            try:
-                fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                self.restore()
-                self.persist(self.accounting(), pending=False)
-            except BaseException:
-                self.lock.close()
-                raise
-            self.next_request = 0
-
-        def restore(self):
-            if ledger.exists():
-                with ledger.open("rb") as stream:
-                    raw = stream.read(4097)
-                if len(raw) > 4096:
-                    raise ValueError("Offline source accounting ledger too large")
-                state = json.loads(raw)
-                if (
-                    state.get("schema_version") != 1
-                    or state.get("build_id") != build_id
-                    or state.get("max_source_bytes") != max_bytes
-                ):
-                    raise ValueError("Offline source accounting identity changed")
-                for key in ("source_bytes", "poll_bytes", "sweep_bytes", "requests"):
-                    if type(state.get(key)) is not int or state[key] < 0:
-                        raise ValueError("Invalid offline source accounting")
-                if (
-                    state["source_bytes"] != state["poll_bytes"] + state["sweep_bytes"]
-                    or state["source_bytes"] > max_bytes
-                    or state["sweep_bytes"] > max_bytes - self.poll_reserve_bytes
-                ):
-                    raise ValueError("Invalid offline source accounting sum")
-                recovered = state.get("recovered_reservation_bytes", 0)
-                reserved = state.get("reservation_bytes", 0)
-                if (
-                    type(recovered) is not int
-                    or recovered < 0
-                    or type(reserved) is not int
-                    or not 0 <= reserved <= state["source_bytes"]
-                ):
-                    raise ValueError("Invalid offline source reservation accounting")
-                self.recovered_reservation_bytes = recovered + (
-                    reserved if state.get("pending_reservation") else 0
-                )
-                self.bytes, self.poll_bytes, self.sweep_bytes, self.requests = (
-                    state[key] for key in ("source_bytes", "poll_bytes", "sweep_bytes", "requests")
-                )
-
-        def accounting(self):
-            return {
-                **super().accounting(),
-                "accounting_mode": "conservative-offline",
-                "recovered_reservation_bytes": self.recovered_reservation_bytes,
-            }
-
-        def persist(self, accounting, *, pending, reservation_bytes=0):
-            state = {
-                **accounting,
-                "schema_version": 1,
-                "build_id": build_id,
-                "requests": self.requests,
-                "pending_reservation": pending,
-                "reservation_bytes": reservation_bytes,
-            }
-            state["remaining_source_bytes"] = max(0, max_bytes - state["source_bytes"])
-            state["remaining_sweep_bytes"] = max(
-                0,
-                min(
-                    state["remaining_source_bytes"],
-                    max_bytes - self.poll_reserve_bytes - state["sweep_bytes"],
-                ),
-            )
-            temporary = ledger.with_suffix(".partial")
-            with temporary.open("wb") as stream:
-                stream.write(json.dumps(state, sort_keys=True).encode() + b"\n")
-                stream.flush()
-                os.fsync(stream.fileno())
-            temporary.replace(ledger)
-            descriptor = os.open(ledger.parent, os.O_RDONLY)
-            try:
-                os.fsync(descriptor)
-            finally:
-                os.close(descriptor)
-
-        def select(self, sql, args):
-            wait = self.next_request - time.monotonic()
-            if wait > 0:
-                time.sleep(wait)
-            self.next_request = time.monotonic() + 0.5
-            reservation = max(0, min(self.remaining_bytes(), (4 * 1024 * 1024 + 1) * self.retries))
-            charged = self.accounting()
-            charged["source_bytes"] += reservation
-            charged[self.budget_kind + "_bytes"] += reservation
-            self.persist(charged, pending=True, reservation_bytes=reservation)
-            try:
-                return super().select(sql, args)
-            finally:
-                self.persist(self.accounting(), pending=False)
-
-        def close(self):
-            self.lock.close()
-
-    return AccountedTurso()
+def accounted_source(
+    sync,
+    url,
+    token,
+    ledger,
+    build_id,
+    max_bytes,
+    *,
+    allow_test_loopback=False,
+    min_request_interval=0.5,
+):
+    path = Path(sync.__file__).resolve().with_name("budget.py")
+    spec = importlib.util.spec_from_file_location("_mps_pinned_source_budget", path)
+    if spec is None or spec.loader is None:
+        raise ValueError("Cannot load pinned Typeahead source accounting")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module.accounted_source(
+        sync,
+        url,
+        token,
+        ledger,
+        build_id,
+        max_bytes,
+        allow_test_loopback=allow_test_loopback,
+        min_request_interval=min_request_interval,
+    )
 
 
 def main():
@@ -138,8 +51,13 @@ def main():
     parser.add_argument("--status-url", required=True)
     parser.add_argument("--max-source-bytes", type=int, required=True)
     parser.add_argument("--max-seconds", type=int, required=True)
+    parser.add_argument("--minimum-select-interval", type=float, default=0.5)
     args = parser.parse_args()
-    if not 1 <= args.max_seconds <= 10800 or not 2 <= args.max_source_bytes <= 8 * 1024**3:
+    if (
+        not 1 <= args.max_seconds <= 36000
+        or not 2 <= args.max_source_bytes <= 8 * 1024**3
+        or not 0.5 <= args.minimum_select_interval <= 5
+    ):
         raise ValueError("Invalid bounded offline source settings")
     modules = []
     for name, filename in [
@@ -168,6 +86,7 @@ def main():
         args.workspace / "source-budget.json",
         status["build_id"],
         args.max_source_bytes,
+        min_request_interval=args.minimum_select_interval,
     )
     deadline = time.monotonic() + args.max_seconds
 
@@ -187,7 +106,7 @@ def main():
                 max_seconds=min(300, deadline - time.monotonic()),
                 anti_entropy_pages=32,
                 policy_mode="snapshot",
-                max_sweep_seconds=5,
+                max_sweep_seconds=30,
                 status_file=str(args.workspace / "replay-status.json"),
             ).run()
             if result.get("sweep_pause") == "budget":

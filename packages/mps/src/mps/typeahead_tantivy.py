@@ -91,6 +91,79 @@ class TantivyAdapter:
         )
 
 
+def fetch_cloud_binary(destination, expected_sha256, cache_root, *, client=None, bucket=None):
+    destination, cache_root = Path(destination), Path(cache_root)
+    if (
+        not isinstance(expected_sha256, str)
+        or not DIGEST.fullmatch(expected_sha256)
+        or destination.parent != cache_root
+        or cache_root.absolute() != cache_root.resolve()
+        or destination.is_symlink()
+    ):
+        raise ValueError("A pinned code artifact in the owned binary cache is required")
+    cache_root.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        with destination.open("rb") as stream:
+            if hashlib.file_digest(stream, "sha256").hexdigest() != expected_sha256:
+                raise ValueError("Existing code cache checksum differs")
+        return destination
+    if client is None:
+        import boto3
+        from botocore.config import Config
+
+        client = boto3.client(
+            "s3",
+            endpoint_url=os.environ["INDEX_R2_ENDPOINT"],
+            region_name="auto",
+            aws_access_key_id=os.environ["INDEX_R2_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["INDEX_R2_SECRET_ACCESS_KEY"],
+            config=Config(connect_timeout=10, read_timeout=30, retries={"max_attempts": 2}),
+        )
+        bucket = os.environ["INDEX_R2_BUCKET"]
+    key = f"releases/code/tantivy/{expected_sha256}/typeahead-tantivy"
+    response = client.get_object(Bucket=bucket, Key=key)
+    body = response["Body"]
+    part = destination.with_suffix(".partial")
+    size = response.get("ContentLength")
+    written = 0
+    owned_part = False
+    digest = hashlib.sha256()
+    try:
+        if type(size) is not int or not 0 < size <= 128 * 1024**2 or part.is_symlink():
+            raise ValueError("Code artifact exceeds its bounded size")
+        with part.open("xb") as output:
+            owned_part = True
+            while chunk := body.read(min(1024 * 1024, size - written + 1)):
+                written += len(chunk)
+                if written > size:
+                    raise ValueError("Code artifact exceeds its declared size")
+                output.write(chunk)
+                digest.update(chunk)
+            output.flush()
+            os.fsync(output.fileno())
+        if written != size or digest.hexdigest() != expected_sha256:
+            raise ValueError("Downloaded code artifact checksum differs")
+        with part.open("rb") as source:
+            header = source.read(20)
+        if len(header) < 20 or header[:6] != b"\x7fELF\x02\x01" or header[18:20] != b"\x3e\x00":
+            raise ValueError("Code artifact must be the Linux x86-64 ELF")
+        part.chmod(0o755)
+        os.link(part, destination)
+        descriptor = os.open(cache_root, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        progress(
+            "tantivy-code-ready", sha256=expected_sha256, byte_size=written, code_object_key=key
+        )
+        return destination
+    finally:
+        body.close()
+        if owned_part:
+            part.unlink(missing_ok=True)
+
+
 def import_snapshot(repository, source, workspace, binary, *, timeout, environment):
     import subprocess
     import sys
@@ -220,7 +293,9 @@ def builder_status(url):
     return json.loads(raw)
 
 
-def reconcile_checkpoint(repository, workspace, binary, *, timeout, environment, source_bytes):
+def reconcile_checkpoint(
+    repository, workspace, binary, *, timeout, environment, source_bytes, min_request_interval=0.5
+):
     import secrets
     import socket
     import subprocess
@@ -259,7 +334,7 @@ def reconcile_checkpoint(repository, workspace, binary, *, timeout, environment,
                     f"127.0.0.1:{private}",
                     "--writer-memory-mb",
                     "128",
-                    "--retrieval-strategy",
+                    "--retrieval",
                     "global-merge",
                 ],
                 env=environment,
@@ -302,6 +377,8 @@ def reconcile_checkpoint(repository, workspace, binary, *, timeout, environment,
                     str(max(1, int(deadline - time.monotonic()))),
                     "--max-source-bytes",
                     str(source_bytes),
+                    "--minimum-select-interval",
+                    str(min_request_interval),
                 ],
                 env=environment,
                 stdout=replay_log,
@@ -356,6 +433,7 @@ def prepare_generation(
     *,
     resume=False,
 ):
+    import math
     import subprocess
     import time
 
@@ -401,20 +479,43 @@ def prepare_generation(
         repository / "scripts/snapshot_refresh/tantivy_install.py",
         environment["INDEX_TANTIVY_ADAPTER_SHA256"],
     )
-    timeout = int(environment.get("INDEX_TANTIVY_PREPARE_SECONDS", "10800"))
+    timeout = int(environment.get("INDEX_TANTIVY_PREPARE_SECONDS", "36000"))
+    min_interval = float(environment.get("INDEX_TANTIVY_SOURCE_MIN_INTERVAL_SECONDS", ".5"))
     source_budget = int(environment.get("INDEX_TANTIVY_MAX_SOURCE_BYTES", str(8 * 1024**3)))
-    if not 1 <= timeout <= 10800 or not 2 <= source_budget <= 8 * 1024**3:
+    if (
+        not 1 <= timeout <= 36000
+        or not 2 <= source_budget <= 8 * 1024**3
+        or not math.isfinite(min_interval)
+        or not 0.5 <= min_interval <= 5
+    ):
         raise ValueError("Tantivy preparation exceeds the current bounded qualification settings")
     if workspace.is_symlink() or workspace.absolute() != workspace.resolve():
         raise ValueError("A canonical isolated Tantivy builder directory is required")
     source_raw = (source / "manifest.json").read_bytes()
     native = json.loads(source_raw)
+    actors = native.get("actor_count")
+    if type(actors) is not int or actors < 1:
+        raise ValueError("A nonempty complete source actor count is required")
+    minimum_selects = 2 * (math.ceil(actors / 500) + 1)
+    lower_bound = minimum_selects * min_interval
+    progress(
+        "tantivy-preflight",
+        source_actors=actors,
+        minimum_source_selects=minimum_selects,
+        minimum_source_seconds=lower_bound,
+        preparation_deadline_seconds=timeout,
+    )
+    if not resume and timeout <= lower_bound:
+        raise ValueError(
+            "Preparation deadline is below the source walk lower bound before import, latency or polling"
+        )
     identity = {
         "source_revision": revision,
         "adapter_sha256": adapter.source_sha256,
         "binary_sha256": expected_binary,
         "source_manifest_sha256": hashlib.sha256(source_raw).hexdigest(),
         "max_source_bytes": source_budget,
+        "minimum_select_interval": min_interval,
     }
     if workspace.exists():
         if (
@@ -469,6 +570,7 @@ def prepare_generation(
         timeout=remaining,
         environment=environment,
         source_bytes=source_budget,
+        min_request_interval=min_interval,
     )
     metadata = status["expiry_coverage"]
     manifest = {

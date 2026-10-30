@@ -154,25 +154,42 @@ def quiet_command(repo: Path, command: list[str]) -> list[str]:
     retry_delay_seconds=exponential_backoff(backoff_factor=10),
     retry_jitter_factor=1,
 )
-def clone_repo(ref: str | None = None) -> Path:
+def clone_repo(ref: str | None = None, isolated: bool = False) -> Path:
     """Fresh shallow clone of typeahead (tangled, github fallback). `ref` names
     a branch to build instead of the default one."""
     logger = get_run_logger()
-    if REPO_DIR.exists():
-        shutil.rmtree(REPO_DIR)
-    REPO_DIR.parent.mkdir(parents=True, exist_ok=True)
+    destination = REPO_DIR
+    if isolated:
+        from uuid import uuid4
+
+        root = INDEXER_HOME / "tantivy-repos"
+        if root.is_symlink() or root.resolve() != root.absolute():
+            raise ValueError("An owned canonical producer checkout root is required")
+        destination = root / uuid4().hex
+    if destination.exists():
+        shutil.rmtree(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
     branch = ["--branch", ref] if ref else []
     for url in (REPO_URL, REPO_URL_FALLBACK):
-        r = subprocess.run(
-            ["git", "clone", "--depth", "1", *branch, url, str(REPO_DIR)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        if isolated and ref and re.fullmatch(r"[0-9a-f]{40}", ref):
+            commands = [
+                ["git", "init", str(destination)],
+                ["git", "-C", str(destination), "remote", "add", "origin", url],
+                ["git", "-C", str(destination), "fetch", "--depth", "1", "origin", ref],
+                ["git", "-C", str(destination), "checkout", "--detach", ref],
+            ]
+        else:
+            commands = [["git", "clone", "--depth", "1", *branch, url, str(destination)]]
+        for command in commands:
+            r = subprocess.run(command, capture_output=True, text=True, check=False, timeout=120)
+            if r.returncode:
+                break
         if r.returncode == 0:
             logger.info(f"cloned {url}")
-            return REPO_DIR
+            return destination
         logger.warning(f"clone failed for {url}: {r.stderr.strip()}")
+        if isolated and destination.exists():
+            shutil.rmtree(destination)
     raise RuntimeError("clone failed from both tangled and github")
 
 
@@ -671,8 +688,10 @@ def archive_builds() -> list[str]:
     return [str(path) for path in archived]
 
 
-@task(retries=0, timeout_seconds=10800)
+@task(retries=0, timeout_seconds=36000)
 def prepare_tantivy_generation(repo: Path, generation: Path, resume: bool = False) -> Path:
+    from mps.typeahead_tantivy import fetch_cloud_binary
+
     source = generation.resolve()
     roots = [
         Path(os.environ[name]).resolve() for name in ("INDEX_BUILD_ROOT", "INDEX_ARCHIVE_ROOT")
@@ -687,7 +706,9 @@ def prepare_tantivy_generation(repo: Path, generation: Path, resume: bool = Fals
         or not re.fullmatch(r"b[0-9]{10}-[A-Za-z0-9_-]+", manifest["active_build"])
     ):
         raise ValueError("Tantivy preparation requires the published compact native source")
-    binary = Path(os.environ["INDEX_TANTIVY_BINARY"]).resolve()
+    binary = Path(os.environ["INDEX_TANTIVY_BINARY"]).absolute()
+    if not binary.is_file():
+        fetch_cloud_binary(binary, os.environ["INDEX_TANTIVY_BINARY_SHA256"], INDEXER_HOME / "code")
     workspace = INDEXER_HOME / "tantivy-builds" / ("build-" + manifest["active_build"])
     _stream(
         [
@@ -706,7 +727,7 @@ def prepare_tantivy_generation(repo: Path, generation: Path, resume: bool = Fals
         + (["--resume"] if resume else []),
         repo,
         dict(os.environ),
-        timeout=10800,
+        timeout=36000,
     )
     return workspace / "publication"
 
@@ -825,7 +846,7 @@ def typeahead_index(
     if snapshot_engine == "tantivy" and resume_generation is not None:
         if reuse_source is not None:
             raise ValueError("Tantivy preparation resume cannot rebuild its source")
-        repo = clone_repo(ref)
+        repo = clone_repo(ref, isolated=True)
         generation = Path(resume_generation)
         prepared = prepare_tantivy_generation(repo, generation, resume=True)
         publish_tantivy_generation(repo, prepared, generation)
@@ -908,7 +929,7 @@ def typeahead_index(
         return
     prune_builds(os.environ.get("INDEX_ARCHIVE_ROOT"))
     require_build_space()
-    repo = clone_repo(ref)
+    repo = clone_repo(ref, isolated=True) if snapshot_engine == "tantivy" else clone_repo(ref)
     binary = build_binary(repo)
     if snapshot_format == "compact":
         compact_target()

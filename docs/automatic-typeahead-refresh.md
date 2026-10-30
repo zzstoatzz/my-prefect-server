@@ -85,8 +85,12 @@ installation, rollback/recovery combinations and source-format mismatches fail
 before preparation; route promotion is not enabled by this parameter.
 
 This stage requires an exact `INDEX_TANTIVY_SOURCE_REVISION` (40 hex characters),
-`INDEX_TANTIVY_ADAPTER_SHA256`, and existing executable
-`INDEX_TANTIVY_BINARY`/`INDEX_TANTIVY_BINARY_SHA256`. It verifies the checked-out
+`INDEX_TANTIVY_ADAPTER_SHA256`, and executable
+`INDEX_TANTIVY_BINARY`/`INDEX_TANTIVY_BINARY_SHA256`. A missing executable is
+fetched from the fixed immutable R2 code key into `INDEXER_HOME/code`, with a
+128 MiB limit, streaming SHA256 verification and Linux x86-64 ELF validation.
+The code artifact is published by the existing immutable publisher; no Rust
+build, Docker daemon or corpus transfer through the controller is needed. It verifies the checked-out
 producer revision and clean producer paths before execution. Preparation uses a
 new owned `INDEXER_HOME/tantivy-builds/build-<source-build-id>` directory; a failed
 attempt is retained for inspection rather than overwritten or retried with a new
@@ -98,16 +102,16 @@ bounded source-sync process must then pass the actual polling, policy and comple
 reconciliation-round gates. Missing source credentials, exhausted accounted bytes
 or a deadline fail preparation. The source process is never restarted to bypass
 its allowance. `INDEX_TANTIVY_PREPARE_SECONDS` may tighten each supervised
-10,800-second job; `INDEX_TANTIVY_MAX_SOURCE_BYTES` may tighten the explicit 8 GiB
+36,000-second job; `INDEX_TANTIVY_MAX_SOURCE_BYTES` may tighten the explicit 8 GiB
 offline initial-preparation allowance. Its 25% polling reserve leaves 6 GiB for
 sweep work, based on the measured packed backend pass of approximately 3.85 GiB
 plus identity/polling headroom. Serving's existing 512 MiB process allowance is
 unchanged. Profile batches remain 500, and the initial-preparation worker limits
-source SELECTs to two per second with five-second bulk slices.
+source SELECTs to two per second with thirty-second bulk slices.
 
-`source-budget.json` is a single-writer, fsynced accounting ledger. Before each
-SELECT it reserves the maximum possible response bytes across that SELECT's
-bounded retries, then settles actual consumed bytes. An interrupted reservation
+`source-budget.json` is a single-writer, fsynced accounting ledger. The pinned Typeahead client owns accounting; MPS delegates to that implementation.
+Before each HTTP attempt it reserves the bounded maximum response, then settles
+actual consumed bytes. An interrupted reservation
 stays charged; a resumed process restores cumulative poll/sweep counters rather
 than receiving another allowance. This can conservatively overcharge an interrupted
 request, but cannot reset the budget. A deadline or budget failure retains the
@@ -119,10 +123,20 @@ An explicit `snapshot_engine="tantivy", snapshot_format="compact",
 resume_generation="<existing native compact generation>"` resumes only a completed
 initial import with matching producer/binary/adapter/source/budget identity. It
 does not re-export or re-import the corpus. Durable round start/completion clocks
-remain unchanged across job boundaries, so the actual one-day admission bound
+remain unchanged across process restarts on the same owned disk, so the actual one-day admission bound
 still applies. An incomplete initial import requires inspection and a separate
 owned attempt; it cannot masquerade as a resumable source checkpoint. No incomplete
-checkpoint may be published.
+checkpoint may be published. The current hcloud worker destroys its root disk
+after a flow run; these local checkpoints do not imply cross-VM resume.
+
+Preparation rejects a deadline below the two-walk lower bound
+`2 * (ceil(source_actor_count / 500) + 1) * minimum_select_interval` before import.
+At 12.86 million actors and the default 0.5-second interval, that is about 7.14
+hours before import, query latency or polling. The explicit ten-hour preparation
+budget fits within the existing twelve-hour flow limit but is not a throughput
+guarantee. `INDEX_TANTIVY_SOURCE_MIN_INTERVAL_SECONDS` may only tighten the
+0.5-second pacing (up to five seconds). Each Tantivy invocation clones its exact
+producer commit into a unique checkout; the shared native checkout is untouched.
 
 After stopping both child processes, the pinned installer freezes the checkpoint.
 The existing Typeahead `scripts/snapshot_compaction/publish.py --engine tantivy`
