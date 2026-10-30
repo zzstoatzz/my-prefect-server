@@ -1,16 +1,20 @@
 # Tantivy slot operations
 
-The companion branch adds explicit `tantivy_operation` requests to the existing
-`typeahead-index` cloud flow. Default native invocation and automatic refresh
-remain unchanged. A preparation returns an immutable review plan; it never changes
+The controller supports explicit `tantivy_operation` requests to the existing
+`typeahead-index` cloud flow. Native routes retain the native refresh path;
+approved Tantivy routes use the managed Tantivy continuation. A preparation returns an immutable review plan; it never changes
 `current`, `previous` or `native_rollback`. The operator must separately request
 promotion after supplying the exact plan, current ETag and complete empirical
 release receipt. Managed slot A has passed cloud publication, installation and
 cached restart qualification on Fly using build `b1793346536-cp-7c8322df79`.
 The immutable prepared plan is
 `7f547a14b234180083cff854cdb5a00163faf214301f9a96467bb6b40624173b`;
-production remains native. Two-slot retirement and automatic Tantivy refresh
-have not been exercised against the live managed slots.
+Nate approved promotion on October 30, 2026. Production now routes to A;
+run `93520430-fe68-48d1-898d-06a741aebd75` completed the guarded promotion.
+The publisher runs at 06:00 and 18:00 UTC on the cloud pool, pinned to
+controller `39c753cc6193d22d77a3646571787b8180ef89d9`. Native remains the
+independent rollback anchor. The first scheduled automatic Tantivy refresh
+has not yet completed; two-slot retirement has not been exercised live.
 
 Only `typeahead-tantivy-a` and `typeahead-tantivy-b` are eligible. Every candidate
 must carry owner `typeahead-snapshot-refresh`, role `tantivy-slot`, request/build
