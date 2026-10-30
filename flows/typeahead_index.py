@@ -814,7 +814,22 @@ def typeahead_index(
             )
         from mps.typeahead_tantivy_slots import run_slot_operation
 
-        return run_slot_operation(tantivy_operation, get_run_logger())
+        revision = os.environ.get("INDEX_TANTIVY_SOURCE_REVISION", "")
+        if not re.fullmatch(r"[a-f0-9]{40}", revision):
+            raise ValueError("Slot operations require an immutable Typeahead source revision")
+        repo = clone_repo(revision, isolated=True)
+        previous_adapter = os.environ.get("INDEX_TANTIVY_ADAPTER_PATH")
+        os.environ["INDEX_TANTIVY_ADAPTER_PATH"] = str(
+            repo / "scripts/snapshot_refresh/tantivy_install.py"
+        )
+        try:
+            return run_slot_operation(tantivy_operation, get_run_logger())
+        finally:
+            if previous_adapter is None:
+                os.environ.pop("INDEX_TANTIVY_ADAPTER_PATH", None)
+            else:
+                os.environ["INDEX_TANTIVY_ADAPTER_PATH"] = previous_adapter
+            shutil.rmtree(repo)
     if snapshot_engine not in ("native", "tantivy"):
         raise ValueError("Unsupported snapshot engine")
     if snapshot_engine == "tantivy" and (
