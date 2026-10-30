@@ -2,6 +2,8 @@ import hashlib
 import json
 import threading
 import time
+import urllib.error
+import urllib.request
 from contextlib import suppress
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import MethodType
@@ -706,6 +708,68 @@ def test_qualification_guard_transport_retry_preserves_route_fence_and_deadline(
             assert counts == {"health": 1, "candidate": 0}
             assert time.monotonic() - started < 2
         assert timeout_errors == [httpx.ReadTimeout]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+@pytest.mark.parametrize("behavior", ["recover", "deadline", "unauthorized"])
+def test_qualification_candidate_urllib_startup_failure_is_bounded(controller, tmp_path, behavior):
+    initial = {"version": 1, "current": NATIVE, "previous": None}
+    controller.s3.seed(refresh.ROUTE_KEY, raw_json(initial))
+    calls = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            calls.append(time.monotonic())
+            status = (
+                401
+                if behavior == "unauthorized"
+                else 503
+                if behavior == "deadline" or len(calls) == 1
+                else 200
+            )
+            raw = raw_json({"qualified": status == 200})
+            self.send_response(status)
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, *_):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    slots = Slots(
+        controller, tmp_path / "urllib-journal", timeout_seconds=8 if behavior == "recover" else 1
+    )
+    state = {"app": APPS[0], "route": initial}
+
+    def qualify(_state, _bound):
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{server.server_port}/ready", timeout=0.5
+        ) as response:
+            return json.load(response), {}
+
+    slots.qualify = qualify
+    started = time.monotonic()
+    try:
+        if behavior == "recover":
+            assert slots.wait_qualified(state, {}) == ({"qualified": True}, {})
+            assert len(calls) == 2 and calls[1] - calls[0] >= 5
+        elif behavior == "deadline":
+            with pytest.raises(RuntimeError, match="qualification timed out"):
+                slots.wait_qualified(state, {})
+            assert len(calls) == 1 and time.monotonic() - started < 2
+        else:
+            with pytest.raises(urllib.error.HTTPError) as error:
+                slots.wait_qualified(state, {})
+            assert error.value.code == 401
+            assert len(calls) == 1 and time.monotonic() - started < 1
+        assert controller.route()[0] == initial
+        assert controller.s3.writes == []
     finally:
         server.shutdown()
         server.server_close()

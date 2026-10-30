@@ -41,6 +41,10 @@ then verifies a stop/start using the cached installation before producing a plan
 While waiting, guard transport failures retry on a five-second cadence within the
 original deadline. Route, lease and ownership violations still abort immediately;
 a network timeout does not authorize any mutation or reset the wait budget.
+Candidate urllib startup responses retry only HTTP 408/425/429/500/502/503/504,
+plus transport timeouts. Other HTTP failures and TLS certificate verification
+errors propagate immediately. Existing candidate startup readiness gates remain
+required throughout the wait.
 
 The R2 journal `control/tantivy-operations/<request>.json` is authoritative; local
 files are only caches on the disposable worker disk. Every provider mutation has

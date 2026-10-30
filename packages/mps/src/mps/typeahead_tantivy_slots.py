@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import ssl
 import time
+import urllib.error
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -512,7 +514,14 @@ class Slots:
             else:
                 try:
                     return self.qualify(state, bound)
-                except (httpx.HTTPError, RuntimeError, ValueError, KeyError):
+                except urllib.error.HTTPError as error:
+                    if error.code not in {408, 425, 429, 500, 502, 503, 504}:
+                        raise
+                    error.close()
+                except urllib.error.URLError as error:
+                    if isinstance(error.reason, ssl.SSLCertVerificationError):
+                        raise
+                except (httpx.HTTPError, TimeoutError, RuntimeError, ValueError, KeyError):
                     pass
             remaining = deadline - time.monotonic()
             if remaining <= 0:
