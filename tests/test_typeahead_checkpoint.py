@@ -268,3 +268,20 @@ def test_slow_response_body_cannot_hide_the_application_deadline(provider, tmp_p
     assert time.monotonic() - started < 1.5
     assert not destination.exists()
     assert not list(tmp_path.glob(".checkpoint-*"))
+
+
+def test_progress_contains_only_bounded_transfer_metadata(provider, tmp_path):
+    events = []
+    receipt = fetch(provider, tmp_path / "reported.db", progress=events.append, max_seconds=900)
+    assert [event["phase"] for event in events] == [
+        "base-export",
+        "wal-export",
+        "sqlite-replay",
+        "materialized-hash",
+    ]
+    assert all(
+        set(event) == {"phase", "received_bytes", "requests", "elapsed_seconds"} for event in events
+    )
+    assert events[-1]["received_bytes"] == receipt["received_source_bytes"]
+    assert events[-1]["requests"] == receipt["source_requests"]
+    assert all(event["elapsed_seconds"] >= 0 for event in events)

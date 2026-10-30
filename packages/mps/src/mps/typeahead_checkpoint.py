@@ -62,18 +62,24 @@ class Export:
             raise CheckpointError("Invalid source origin")
         if not token or any(character in token for character in "\r\n\0"):
             raise CheckpointError("Invalid source credential")
-        if not 1 <= seconds <= 300 or not PAGE <= maximum <= 16 * 1024**3:
+        if not 1 <= seconds <= 900 or not PAGE <= maximum <= 16 * 1024**3:
             raise CheckpointError("Invalid checkpoint bounds")
         self.origin = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
         self.token, self.maximum = token, maximum
-        self.deadline = time.monotonic() + seconds
+        self.started = time.monotonic()
+        self.deadline = self.started + seconds
+        self.phase = "source-metadata"
         self.received = self.requests = 0
         self.opener = urllib.request.build_opener(NoRedirect())
 
     def remaining(self):
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
-            raise CheckpointError("Checkpoint deadline exceeded")
+            raise CheckpointError(
+                f"Checkpoint deadline exceeded: phase={self.phase} "
+                f"received_bytes={self.received} requests={self.requests} "
+                f"elapsed_seconds={time.monotonic() - self.started:.3f}"
+            )
         return min(10, remaining)
 
     def open(self, path, body=None):
@@ -165,6 +171,7 @@ def fetch_checkpoint(
     max_bytes=8 * 1024**3,
     max_wal_bytes=64 * 1024**2,
     allow_test_loopback=False,
+    progress=None,
 ):
     export = Export(url, token, max_seconds, max_bytes, allow_test_loopback)
     if not FRAME <= max_wal_bytes <= 512 * 1024**2:
@@ -178,10 +185,29 @@ def fetch_checkpoint(
     working = staging / "source.db"
     wal = Path(str(working) + "-wal")
     started = time.monotonic()
+    next_report = started
+
+    def report(phase):
+        nonlocal next_report
+        changed = export.phase != phase
+        export.phase = phase
+        now = time.monotonic()
+        if progress is not None and (changed or now >= next_report):
+            progress(
+                {
+                    "phase": phase,
+                    "received_bytes": export.received,
+                    "requests": export.requests,
+                    "elapsed_seconds": round(now - started, 3),
+                }
+            )
+            next_report = now + 30
+
     try:
         before_clock = export.clock()
         generation = export.info()
         base_hash = hashlib.sha256()
+        report("base-export")
         with working.open("xb") as output, export.open(f"/export/{generation}") as response:
             while True:
                 export.remaining()
@@ -191,6 +217,7 @@ def fetch_checkpoint(
                     break
                 output.write(data)
                 base_hash.update(data)
+                report("base-export")
             output.flush()
             os.fsync(output.fileno())
         base_size = working.stat().st_size
@@ -210,6 +237,7 @@ def fetch_checkpoint(
         raw_hash = hashlib.sha256()
         committed_raw_sha = raw_hash.hexdigest()
         next_frame, committed, received_frames, committed_pages = 1, 0, 0, 0
+        report("wal-export")
         with wal.open("xb") as output:
             output.write(wal_header)
             while True:
@@ -238,6 +266,7 @@ def fetch_checkpoint(
                         committed_raw_sha = raw_hash.hexdigest()
                 received_frames += count
                 next_frame += count
+                report("wal-export")
                 if count < BATCH:
                     break
             output.truncate(32 + committed * FRAME)
@@ -250,6 +279,7 @@ def fetch_checkpoint(
         if after_generation < generation or after_clock < before_clock:
             raise CheckpointError("Source generation or clock regressed")
         export.remaining()
+        report("sqlite-replay")
         with sqlite3.connect(working, timeout=export.remaining()) as database:
             database.execute("PRAGMA schema_version").fetchone()
             applied = database.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
@@ -264,6 +294,7 @@ def fetch_checkpoint(
             if database.execute("PRAGMA journal_mode=DELETE").fetchone()[0] != "delete":
                 raise CheckpointError("SQLite checkpoint did not become standalone")
         export.remaining()
+        report("materialized-hash")
         final_sha = file_sha(working)
         export.remaining()
         receipt = {
