@@ -99,3 +99,56 @@ Public verification checks engine/build/format/binary/strategy headers and the
 canary, rather than build ID alone. Failed verification compensates only while the
 same target and ETag remain current; operator changes win. A committed transaction
 journal supports verification after a lost acknowledgement without another cutover.
+
+## Automatic continuation after approved cutover
+
+The local companion code now dispatches the existing compact
+`automatic_refresh:true` flow according to the current route. With native selected,
+the existing native build and refresh path stays in charge. With Tantivy selected,
+the dispatcher validates the current slot's exact admitted image, observed guest
+and encrypted 20-GiB volume, strict source freshness and non-test release proof.
+It then composes the existing checkpoint publisher, inactive-slot preparation,
+guarded promotion and post-promotion retention. It cannot perform the initial
+native-to-Tantivy cutover. That remains an explicit approved operation.
+
+Automatic continuation uses the existing default `snapshot_engine:native`
+parameter as the dispatcher; explicit `snapshot_engine:tantivy` combined with
+`automatic_refresh:true` remains fenced. Configure these metadata values for the
+same publisher only as part of the approved transition:
+
+- `INDEX_TANTIVY_SOURCE_REVISION`: exact 40-character producer revision.
+- `INDEX_TANTIVY_ADAPTER_SHA256`: exact checksum-pinned adapter.
+- `INDEX_TANTIVY_RELEASE_RECEIPT_KEY` and
+  `INDEX_TANTIVY_RELEASE_RECEIPT_SHA256`: immutable complete release evidence.
+- `ref:null`, or exactly the same immutable producer revision. A conflicting
+  native tag or mutable branch is rejected before checkout.
+
+No scheduler or deployment was changed by this implementation. The existing
+publisher's two-day cadence exceeds the checkpoint's one-day coverage lifetime
+unless a genuine remote round renews it. The unapplied cutover configuration must
+therefore use the same cloud pool with a twelve-hour cadence until actual renewal
+is proven, and a bounded worker budget around 7,200 seconds. These are configuration
+requirements in the approval plan, not a build-time or availability estimate.
+The existing publisher is paused only during the approved transition; no second
+publisher clock is introduced.
+
+An automatic pending journal resumes its exact request and immutable artifact
+before another bulk export. Manual candidates remain fenced for operator review.
+`resume_rollout:true` with no pending operation fails instead of starting a new
+build. Promotion-response recovery uses the existing durable CAS journal. A native
+rollback or route/ETag change during publication or preparation aborts continuation;
+immutable publication is retained and the newer route wins. Initial promotion
+also requires a fresh native rollback overlay. Availability rollback retains its
+separate degraded-native contract.
+
+Cleanup runs only after confirmed promotion and public verification. A crash after
+immutable publication but before preparation creates its pending record remains
+a bounded recovery limitation: resume-only will refuse to invent a pending request,
+and a later fresh cadence can perform another export. It does not change routing,
+overwrite an immutable artifact, or imply complete crash recovery for that gap.
+
+Offline verification uses actual HTTP and filesystem-backed R2 for rollback during
+publication, pending-before-build resume, route/ETag fencing, source-ref conflicts,
+resource drift, and stale-native promotion refusal. Tests below the independent
+release authorization gate do not manufacture a positive production proof.
+Deployment and unattended execution remain deferred until cutover approval.

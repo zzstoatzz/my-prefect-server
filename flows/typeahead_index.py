@@ -830,6 +830,70 @@ def typeahead_index(
             else:
                 os.environ["INDEX_TANTIVY_ADAPTER_PATH"] = previous_adapter
             shutil.rmtree(repo)
+    if (
+        automatic_refresh
+        and not rollback
+        and snapshot_engine == "native"
+        and snapshot_format == "compact"
+    ):
+        from mps.typeahead_refresh import Refresh, prune_snapshot_artifacts, target_engine
+        from mps.typeahead_tantivy_automatic import (
+            refresh as automatic_tantivy_refresh,
+            settings as automatic_tantivy_settings,
+        )
+        from mps.typeahead_tantivy_slots import Slots
+
+        service = Refresh(get_run_logger())
+        try:
+            current, _ = service.route()
+            if target_engine(current["current"]) == "tantivy":
+                if reuse_source is not None or resume_generation is not None:
+                    raise ValueError("Automatic Tantivy refresh cannot combine native operations")
+                config = automatic_tantivy_settings(os.environ)
+                if ref is not None and ref != config["revision"]:
+                    raise ValueError(
+                        "Automatic Tantivy ref conflicts with its immutable source revision"
+                    )
+                repo = clone_repo(config["revision"], isolated=True)
+                previous_adapter = os.environ.get("INDEX_TANTIVY_ADAPTER_PATH")
+                os.environ["INDEX_TANTIVY_ADAPTER_PATH"] = str(
+                    repo / "scripts/snapshot_refresh/tantivy_install.py"
+                )
+                publication = None
+
+                def publish():
+                    nonlocal publication
+                    publication, source = prepare_checkpoint_generation(repo)
+                    publish_tantivy_generation(repo, publication, source)
+                    return json.loads((publication / "manifest.json").read_bytes())["active_build"]
+
+                try:
+                    slots = Slots(service, INDEXER_HOME / "tantivy-slot-journals")
+                    report = automatic_tantivy_refresh(
+                        service,
+                        slots,
+                        publish,
+                        release_key=config["release_key"],
+                        release_sha256=config["release_sha256"],
+                        resume_only=resume_rollout,
+                    )
+                    if (
+                        report.get("phase") != "promoted"
+                        or report.get("public_verified") is not True
+                    ):
+                        raise RuntimeError("Automatic promotion is not confirmed; retention fenced")
+                    if publication is not None:
+                        retire_tantivy_generation(publication)
+                    prune_snapshot_artifacts()
+                    return report
+                finally:
+                    if previous_adapter is None:
+                        os.environ.pop("INDEX_TANTIVY_ADAPTER_PATH", None)
+                    else:
+                        os.environ["INDEX_TANTIVY_ADAPTER_PATH"] = previous_adapter
+                    shutil.rmtree(repo)
+        finally:
+            service.close()
     if snapshot_engine not in ("native", "tantivy"):
         raise ValueError("Unsupported snapshot engine")
     if snapshot_engine == "tantivy" and (

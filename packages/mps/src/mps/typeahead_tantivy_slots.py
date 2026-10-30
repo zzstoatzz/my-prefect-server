@@ -274,8 +274,10 @@ class Slots:
             raise RuntimeError("Public serving identity is unavailable or changed")
         return route, etag
 
-    def acquire(self, state):
+    def acquire(self, state, *, expected_etag=None):
         route, etag = self.service.route()
+        if expected_etag is not None and etag != expected_etag:
+            raise RuntimeError("Automatic preparation route ETag changed before lease")
         before = {key: value for key, value in route.items() if key != "mutation"}
         if before != state["route"]:
             raise RuntimeError("Routing changed before preparation lease")
@@ -744,6 +746,7 @@ class Slots:
         config = machine.get("config", {})
         if (
             config.get("image") != bound["image_digest"]
+            or any(config.get("guest", {}).get(key) != expected for key, expected in GUEST.items())
             or not owned_mount(config.get("mounts"), bound["volume_id"])
             or config.get("metadata", {}).get("owner") != OWNER
             or config.get("metadata", {}).get("role") != "tantivy-slot"
@@ -751,6 +754,13 @@ class Slots:
             != record["deployment_sha256"]
         ):
             raise RuntimeError("Serving slot provider enrollment changed")
+        volume = self.service.fly("GET", app, "volumes/" + bound["volume_id"])
+        if (
+            volume.get("id") != bound["volume_id"]
+            or volume.get("size_gb") != 20
+            or volume.get("encrypted") is not True
+        ):
+            raise RuntimeError("Serving slot provider volume changed")
         return {
             "binary_sha256": bound["binary_sha256"],
             "retrieval_strategy": bound["retrieval_strategy"],
@@ -938,6 +948,9 @@ class Slots:
         retire_previous_tantivy=False,
         release_receipt_key=None,
         release_receipt_sha256=None,
+        expected_route=None,
+        expected_etag=None,
+        automatic_refresh=False,
     ):
         import fcntl
         from uuid import uuid4
@@ -955,6 +968,17 @@ class Slots:
             manifest, artifact_raw = self.artifact(build_id)
             state = self.journal(request_id)
             if state is not None:
+                if expected_route is not None:
+                    actual, actual_etag = self.service.route()
+                    if {
+                        key: value for key, value in actual.items() if key != "mutation"
+                    } != expected_route or (
+                        actual.get("mutation") is not None
+                        and actual["mutation"] != state.get("mutation")
+                    ):
+                        raise RuntimeError("Automatic preparation routing precondition changed")
+                    if expected_etag is not None and actual_etag != expected_etag:
+                        raise RuntimeError("Automatic preparation route ETag changed")
                 if (
                     state.get("schema_version") != 1
                     or state.get("owner") != OWNER
@@ -963,6 +987,7 @@ class Slots:
                     or state.get("artifact_manifest_sha256")
                     != hashlib.sha256(artifact_raw).hexdigest()
                     or state.get("retire_previous_tantivy") != retire_previous_tantivy
+                    or state.get("automatic_refresh", False) != automatic_refresh
                     or (app is not None and state.get("app") != app)
                 ):
                     raise ValueError("Preparation resume identity changed")
@@ -975,7 +1000,11 @@ class Slots:
                         "preparation_receipt": state,
                     }
             else:
-                route, _ = self.service.route()
+                route, actual_etag = self.service.route()
+                if expected_etag is not None and actual_etag != expected_etag:
+                    raise RuntimeError("Automatic preparation route ETag changed")
+                if expected_route is not None and route != expected_route:
+                    raise RuntimeError("Automatic preparation routing precondition changed")
                 if route.get("mutation") is not None:
                     raise RuntimeError("Another inactive mutation is pending")
                 current = route["current"]
@@ -1016,13 +1045,14 @@ class Slots:
                     "route": route,
                     "native_rollback": anchor,
                     "retire_previous_tantivy": retire_previous_tantivy,
+                    "automatic_refresh": automatic_refresh,
                     "volume_name": "tv_" + request_id[:20],
                     "machine_name": "tv-" + request_id[:20],
                     "pending_action": None,
                     "execution_id": self.service.execution_identity(),
                 }
                 self.save(state, "planned")
-            self.acquire(state)
+            self.acquire(state, expected_etag=expected_etag)
             self.protect(state)
             self.retire_previous(state, release_receipt_key, release_receipt_sha256)
             bound = self.allocate(state, manifest)
@@ -1193,7 +1223,7 @@ class Slots:
             raise RuntimeError("Prepared plan routing precondition changed")
         candidate = plan["candidate"]
         proof = self.require_release(candidate, release_receipt_key, release_receipt_sha256)
-        self.service.healthy(plan["native_rollback"], require_fresh=False)
+        self.service.healthy(plan["native_rollback"], require_fresh=True)
         self.acquire(state)
         qualified, _ = self.qualify(
             state, json.loads(self.read(state["deployment_key"], 1024 * 1024))
