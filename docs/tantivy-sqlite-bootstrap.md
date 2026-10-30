@@ -56,7 +56,7 @@ refuses an expired cached restart. Ordinary timestamp polling cannot renew it.
 once, smoke-tests a100,000-document sample, imports the full database, catches up
 live state and freezes an immutable bundle. The existing publisher verifies the
 bundle and independent native anchor. No routing pointer changes in this path.
-The preparation task is limited to30 minutes and requires a separate hard worker
+The preparation task is limited to 60 minutes and requires a separate hard worker
 timeout. Serving qualification, recovery and cutover approval remain separate.
 
 ## Evidence and remaining qualification

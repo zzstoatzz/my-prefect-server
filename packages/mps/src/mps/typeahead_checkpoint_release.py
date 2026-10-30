@@ -43,7 +43,7 @@ def read_anchor(service):
     return raw
 
 
-def run_cloud_release(repository, *, timeout_seconds=1800):
+def run_cloud_release(repository, *, timeout_seconds=3600):
     from prefect import get_run_logger
     from prefect.artifacts import create_table_artifact
     from prefect.client.orchestration import get_client
@@ -66,7 +66,7 @@ def run_cloud_release(repository, *, timeout_seconds=1800):
     if (
         sys.platform != "linux"
         or home != Path("/var/lib/typeahead-indexer/work")
-        or not 60 <= timeout_seconds <= 1800
+        or not 60 <= timeout_seconds <= 3600
     ):
         raise ValueError("Bounded cloud-only release required")
     with get_client(sync_client=True) as client:
