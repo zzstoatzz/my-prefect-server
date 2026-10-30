@@ -793,17 +793,13 @@ class Refresh:
             if target_engine(entry) == "tantivy":
                 published = self.tantivy_publication(entry)
                 if published is not None:
-                    keep.update(
-                        [
-                            entry["build_id"],
-                            published["source_build_id"],
-                            published["legacy_build_id"],
-                        ]
-                    )
+                    keep.update(self.tantivy_retained_builds(published))
                     continue
                 index = self.healthy(entry, require_fresh=False)["index"]
                 source = index.get("source_build_id")
                 manifest = index.get("source_manifest") or {}
+                if manifest.get("source_kind") == "sqlite-committed-prefix":
+                    raise RuntimeError("Checkpoint artifact provenance unknown; refusing cleanup")
                 if (
                     not isinstance(source, str)
                     or not re.fullmatch(BUILD_PATTERN, source)
@@ -864,7 +860,7 @@ class Refresh:
                 manifest[field] for field in ("active_build", "source_build_id", "legacy_build_id")
             ] != builds:
                 raise ValueError("Pending artifact source linkage changed")
-            keep.update(builds)
+            keep.update(self.tantivy_retained_builds(manifest))
         return keep
 
     def optional_metadata(self, key, limit):
@@ -925,12 +921,37 @@ class Refresh:
         adapter.validate_source(manifest, source)
         return manifest
 
+    def tantivy_source_binding(self, manifest: dict) -> tuple[str, str | None]:
+        if manifest.get("source_kind") == "sqlite-committed-prefix":
+            adapter = self.tantivy_adapter()
+            adapter.validate_manifest(manifest)
+            return adapter.installer.native_anchor_binding(manifest)
+        return manifest["source_build_id"], manifest.get("source_manifest_sha256")
+
+    def tantivy_retained_builds(self, manifest: dict) -> set[str]:
+        native_build, _ = self.tantivy_source_binding(manifest)
+        return {
+            manifest["active_build"],
+            manifest["source_build_id"],
+            manifest["legacy_build_id"],
+            native_build,
+        }
+
     def tantivy_source_manifest(self, manifest: dict) -> bytes:
         self.tantivy_adapter().validate_manifest(manifest)
-        return self.s3.get_object(
+        native_build, _ = self.tantivy_source_binding(manifest)
+        body = self.s3.get_object(
             Bucket=self.bucket,
-            Key=f"releases/search/{manifest['source_build_id']}/manifest.json",
-        )["Body"].read(1024 * 1024 + 1)
+            Key=f"releases/search/{native_build}/manifest.json",
+        )["Body"]
+        try:
+            raw = body.read(1024 * 1024 + 1)
+        finally:
+            body.close()
+        if len(raw) > 1024 * 1024:
+            raise ValueError("Native rollback manifest is too large")
+        self.tantivy_adapter().validate_source(manifest, raw)
+        return raw
 
     def install_tantivy_bundle(
         self, bundle: Path, destination: Path, manifest: dict, binary: Path

@@ -69,6 +69,9 @@ class DiskBucket:
         raw = self.path(Key).read_bytes()
         return {"Body": io.BytesIO(raw), "ETag": hashlib.sha256(raw).hexdigest()}
 
+    def head_object(self, *, Bucket, Key):
+        return {"ContentLength": self.path(Key).stat().st_size}
+
     def put_object(self, *, Bucket, Key, Body, ContentType, IfMatch):
         if self.before_put:
             action, self.before_put = self.before_put, None
@@ -505,6 +508,93 @@ def seed_tantivy_publication(controller, target, source_build):
         f"releases/search-tantivy/{target['build_id']}/manifest.json", json.dumps(manifest).encode()
     )
     return manifest
+
+
+def seed_checkpoint_publication(controller, target):
+    repository = Path(os.environ["TA_REPOSITORY"])
+    spec = importlib.util.spec_from_file_location(
+        "typeahead_checkpoint_retention_fixture",
+        repository / "scripts/snapshot_refresh/test_tantivy_install.py",
+    )
+    fixtures = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fixtures)
+    manifest, _, native_raw = fixtures.AdmissionTests().checkpoint_manifest()
+    for field in (
+        "provider_app",
+        "image_digest",
+        "guest",
+        "volume_id",
+        "volume_size_gib",
+        "public_service_ports",
+    ):
+        manifest.pop(field, None)
+    manifest.update(
+        active_build=target["build_id"],
+        binary_sha256=target["binary_sha256"],
+        retrieval_strategy=target["retrieval_strategy"],
+        object_key=f"releases/search-tantivy/{target['build_id']}/index.tar",
+    )
+    native = json.loads(native_raw)
+    native_build = native["active_build"]
+    native.update(snapshot_url=f"releases/search/{native_build}/index.db", byte_size=16)
+    native["prefix_map"].update(object_key=native["snapshot_url"] + ".prefix", byte_size=8)
+    twin = {
+        "active_build": manifest["legacy_build_id"],
+        "source_watermark": native["source_watermark"],
+        "snapshot_url": f"releases/search/{manifest['legacy_build_id']}/index.db",
+        "byte_size": 4,
+    }
+    twin_raw = json.dumps(twin).encode()
+    twin_key = f"releases/search/{twin['active_build']}/manifest.json"
+    native["legacy_twin"]["manifest"] = {
+        "object_key": twin_key,
+        "byte_size": len(twin_raw),
+        "sha256": hashlib.sha256(twin_raw).hexdigest(),
+    }
+    native_raw = json.dumps(native).encode()
+    manifest["rollback_native_anchor"]["manifest_sha256"] = hashlib.sha256(native_raw).hexdigest()
+    controller.s3.seed(f"releases/search/{native_build}/manifest.json", native_raw)
+    controller.s3.seed(twin_key, twin_raw)
+    for key, size in [
+        (manifest["object_key"], manifest["byte_size"]),
+        (native["snapshot_url"], native["byte_size"]),
+        (native["prefix_map"]["object_key"], native["prefix_map"]["byte_size"]),
+        (twin["snapshot_url"], twin["byte_size"]),
+    ]:
+        controller.s3.seed(key, b"x" * size)
+    controller.s3.seed(
+        f"releases/search-tantivy/{manifest['active_build']}/manifest.json",
+        json.dumps(manifest).encode(),
+    )
+    return manifest, native_raw
+
+
+def test_checkpoint_retention_preserves_independent_native_anchor_without_primary_native_artifact(
+    controller, pinned_adapter
+):
+    controller.tantivy_adapter = lambda: pinned_adapter
+    manifest, native_raw = seed_checkpoint_publication(controller, TANTIVY)
+    native_build = manifest["rollback_native_anchor"]["build_id"]
+    assert controller.tantivy_source_manifest(manifest) == native_raw
+    assert not controller.s3.path(
+        f"releases/search/{manifest['source_build_id']}/manifest.json"
+    ).exists()
+    retained = controller.retained_build_ids()
+    assert {
+        manifest["active_build"],
+        manifest["source_build_id"],
+        native_build,
+        manifest["legacy_build_id"],
+    } <= retained
+    disposable = "releases/search/b1791000000-disposable/index.db"
+    controller.s3.seed(disposable, b"discard")
+    assert controller.prune_artifacts()["deleted_objects"] == 1
+    assert controller.s3.path(f"releases/search/{native_build}/index.db").is_file()
+    assert not controller.s3.path(disposable).exists()
+    anchor_key = f"releases/search/{native_build}/manifest.json"
+    controller.s3.seed(anchor_key, native_raw + b" ")
+    with pytest.raises(ValueError, match="rollback-native manifest bytes"):
+        controller.retained_build_ids()
 
 
 def test_portable_retention_resolves_two_tantivy_generations_without_old_endpoint(

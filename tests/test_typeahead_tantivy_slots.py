@@ -15,6 +15,7 @@ from tests.test_typeahead_engine_compatibility import (
     DiskBucket,
     controller as controller,
     pinned_adapter as pinned_adapter,
+    seed_checkpoint_publication,
 )
 
 
@@ -98,8 +99,9 @@ def test_fixture_release_proof_cannot_enable_production():
         validate_release_proof(raw, hashlib.sha256(raw).hexdigest(), {})
 
 
+@pytest.mark.parametrize("checkpoint", [False, True])
 def test_actual_provider_http_lost_ack_resume_and_cached_restart(
-    controller, tmp_path, pinned_adapter, monkeypatch
+    controller, tmp_path, pinned_adapter, monkeypatch, checkpoint
 ):
     slots = slot_service(controller, tmp_path)
     controller.tantivy_adapter = lambda: pinned_adapter
@@ -186,11 +188,16 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
     controller._fly_url = lambda app, path: f"http://127.0.0.1:{server.server_port}/{app}/{path}"
     monkeypatch.setenv("FLY_TANTIVY_A_TOKEN", "fixture-token")
     manifest = {"source_build_id": state["source_build_id"]}
+    if checkpoint:
+        target = {**TANTIVY, "build_id": state["build_id"]}
+        manifest, _ = seed_checkpoint_publication(controller, target)
     try:
         bound = slots.allocate(state, manifest)
         first_config = json.loads(statefile.read_text())["machines"][0]["config"]
         assert bound["guest"] == {"cpu_kind": "shared", "cpus": 2, "memory_mb": 1024}
         assert bound["volume_size_gib"] == 20
+        native_build = controller.tantivy_source_binding(manifest)[0]
+        assert bound["source_manifest_key"] == f"releases/search/{native_build}/manifest.json"
         slots.start(state)
         slots.stop(state)
         slots.start(state)
@@ -211,6 +218,43 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def test_checkpoint_retained_slot_verifies_anchor_twin_at_its_own_watermark(
+    controller, tmp_path, pinned_adapter
+):
+    controller.tantivy_adapter = lambda: pinned_adapter
+    slots = slot_service(controller, tmp_path)
+    target = {**TANTIVY, "origin": f"https://{APPS[0]}.fly.dev"}
+    manifest, _ = seed_checkpoint_publication(controller, target)
+    bound = {**manifest, "provider_app": APPS[0]}
+    deployment_raw = raw_json(bound)
+    deployment_key = "control/tantivy-slots/fixture-deployment.json"
+    controller.s3.seed(deployment_key, deployment_raw)
+    admission = {"bundle_sha256": manifest["sha256"]}
+    digest = pinned_adapter.installer.digest_json(admission)
+    target["admission_sha256"] = digest
+    controller.s3.seed(
+        f"control/tantivy-admissions/{digest}.json",
+        raw_json(
+            {
+                "schema_version": 1,
+                "admission": admission,
+                "deployment_key": deployment_key,
+                "deployment_sha256": hashlib.sha256(deployment_raw).hexdigest(),
+            }
+        ),
+    )
+    retained = slots.retained(target)
+    assert retained["rollback_native_build_id"] == manifest["rollback_native_anchor"]["build_id"]
+    assert retained["rollback_native_manifest_sha256"] != retained["source_manifest_sha256"]
+    assert len(retained["objects"]) == 4
+    assert manifest["source_watermark"] != manifest["rollback_native_anchor"]["source_watermark"]
+    native = json.loads(controller.tantivy_source_manifest(manifest))
+    twin_key = native["legacy_twin"]["manifest"]["object_key"]
+    controller.s3.seed(twin_key, controller.s3.path(twin_key).read_bytes() + b" ")
+    with pytest.raises(ValueError, match="twin manifest"):
+        slots.retained(target)
 
 
 def exercise_real_rust_preparation(

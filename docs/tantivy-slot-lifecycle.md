@@ -22,7 +22,12 @@ An explicit request takes this shape:
 ```
 
 The published artifact manifest and exact native source manifest determine all
-source bindings. The controller writes immutable deployment metadata under
+source bindings. For `sqlite-committed-prefix`, the primary source build, receipt,
+counts and watermark describe the raw checkpoint. Its independently validated
+`rollback_native_anchor` names the retained native manifest/twin and their own
+watermark. Deployment and restore fetch that anchor manifest; retention protects
+both source builds plus the native twin and Tantivy bundle. It never expects a
+native prefix artifact under the checkpoint build ID. The controller writes immutable deployment metadata under
 `control/tantivy-slots/<app>/<request>.json`, then passes only its key, SHA256 and
 build ID to the guest. Guest credentials remain platform secrets. The durable
 installation receipt is read by a fixed bounded Machines API exec command at

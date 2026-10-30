@@ -184,11 +184,7 @@ class Slots:
             )
         ):
             raise ValueError("A portable immutable Tantivy publication is required")
-        source = self.read(
-            f"releases/search/{manifest['source_build_id']}/manifest.json", 1024 * 1024
-        )
-        if source is None:
-            raise ValueError("Retained native source manifest is missing")
+        source = self.service.tantivy_source_manifest(manifest)
         self.service.tantivy_adapter().validate_source(manifest, source)
         return manifest, raw
 
@@ -633,7 +629,7 @@ class Slots:
             "request_id": state["request_id"],
             "artifact_manifest_key": f"releases/search-tantivy/{state['build_id']}/manifest.json",
             "artifact_manifest_sha256": state["artifact_manifest_sha256"],
-            "source_manifest_key": f"releases/search/{manifest['source_build_id']}/manifest.json",
+            "source_manifest_key": f"releases/search/{self.service.tantivy_source_binding(manifest)[0]}/manifest.json",
         }
         state["config"] = self.config(state, bound, state["image_digest"])
         self.save(state, "deployment-ready")
@@ -742,9 +738,9 @@ class Slots:
             or bound.get("sha256") != manifest["sha256"]
         ):
             raise ValueError("Retained artifact differs from installed admission")
-        source = json.loads(
-            self.read(f"releases/search/{manifest['source_build_id']}/manifest.json", 1024 * 1024)
-        )
+        source = json.loads(self.service.tantivy_source_manifest(manifest))
+        native_build, native_manifest_sha = self.service.tantivy_source_binding(manifest)
+        native_watermark = source["source_watermark"]
         twin_ref = source.get("legacy_twin", {}).get("manifest", {})
         twin_raw = self.read(twin_ref.get("object_key"), 1024 * 1024)
         if (
@@ -756,7 +752,7 @@ class Slots:
         twin = json.loads(twin_raw)
         if (
             twin.get("active_build") != manifest["legacy_build_id"]
-            or twin.get("source_watermark") != manifest["source_watermark"]
+            or twin.get("source_watermark") != native_watermark
         ):
             raise ValueError("Native rollback twin identity differs")
         objects = [
@@ -774,6 +770,8 @@ class Slots:
         return {
             "artifact_manifest_sha256": hashlib.sha256(raw).hexdigest(),
             "source_manifest_sha256": manifest["source_manifest_sha256"],
+            "rollback_native_build_id": native_build,
+            "rollback_native_manifest_sha256": native_manifest_sha,
             "legacy_build_id": manifest["legacy_build_id"],
             "verification": "immutable-manifest-linkage-and-object-presence-size",
             "payload_checksums_revalidated_on_restore": True,
