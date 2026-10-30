@@ -833,21 +833,20 @@ deployments:
     - heavypad
     entrypoint: flows/typeahead_index.py:typeahead_index
     parameters:
-      ref: pds-compact-31ec142-20261020
+      ref: null
       snapshot_format: compact
+      snapshot_engine: native
       automatic_refresh: true
     work_pool:
       name: typeahead-ephemeral
       job_variables:
         server_type: cpx32
         location: fsn1
-        timeout_seconds: 43200
+        timeout_seconds: 7200
         working_dir: /var/lib/typeahead-indexer
-        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --with 'my-prefect-server
-          @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}' --with prefect==3.8.2 prefect flow-run
-          execute
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git@39c753cc6193d22d77a3646571787b8180ef89d9' --with prefect==3.8.2 prefect flow-run execute
         env:
-          MPS_PIN: '{{ $MPS_PIN }}'
+          MPS_PIN: '@39c753cc6193d22d77a3646571787b8180ef89d9'
           PREFECT_PLUGINS_ENABLED: 'true'
           PREFECT_PLUGINS_ALLOW: mps-secrets
           TURSO_URL: prefect-block://typeahead-turso-url
@@ -866,6 +865,14 @@ deployments:
           INDEX_REFRESH_IMAGE: registry.fly.io/typeahead-search-refresh@sha256:d4c3111ee8ad058cb08f7ef02ffeb0a2826e1c328b61c12c29a6e9d3e93ca0ed
           FLY_PRIMARY_TOKEN: prefect-block://typeahead-startup-fly-deploy-token
           FLY_REFRESH_TOKEN: prefect-block://typeahead-refresh-fly-deploy-token
+          FLY_TANTIVY_A_TOKEN: 'prefect-block://typeahead-tantivy-a-fly-deploy-token'
+          FLY_TANTIVY_B_TOKEN: 'prefect-block://typeahead-tantivy-b-fly-deploy-token'
+          INDEX_TANTIVY_ADAPTER_SHA256: '8257ef4aa117ea2ac31ee78a834cd0b993f3860aa514f956fd3eb852f4985df0'
+          INDEX_TANTIVY_SOURCE_REVISION: '305f5da9c90f16697a1128ca39200214c71eac40'
+          TA_RETRIEVAL_STRATEGY: 'global-merge'
+          INDEX_TANTIVY_BINARY_SHA256: 'd1cc0366ed3b28b34daca15d23ee6f06aa1d08844e483c357b80cdb778d5cfa2'
+          INDEX_TANTIVY_RELEASE_RECEIPT_KEY: 'control/tantivy-releases/058cbb2081c5f4cf729e4b652c943b040185b572dc3c27fd212713b3ec022083.json'
+          INDEX_TANTIVY_RELEASE_RECEIPT_SHA256: '058cbb2081c5f4cf729e4b652c943b040185b572dc3c27fd212713b3ec022083'
           INDEX_ALLOW_PROD: '0'
           INDEX_SAMPLE_LIMIT: '0'
           INDEX_PDS_MAX_ACTORS: '10000'
@@ -877,7 +884,7 @@ deployments:
       limit: 1
       collision_strategy: CANCEL_NEW
     schedules:
-    - cron: 0 6 */2 * *
+    - cron: 0 6,18 * * *
       timezone: UTC
       active: true
   - name: typeahead-plc-identity
