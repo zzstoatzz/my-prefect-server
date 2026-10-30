@@ -1,4 +1,11 @@
-# Candidate cloud publication
+# Retired long-walk candidate launch
+
+Do not run this recipe. Nate rejected the hours-long full-row reconciliation
+bootstrap on October 29, 2026. It is retained only as failure/history context; the
+replacement must reuse a complete SQLite checkpoint and prove its freshness
+without a 13-million-row Hrana walk. The 726dbf49 attempt crashed before tasks.
+
+# Historical candidate cloud publication
 
 This is a per-run override of deployment `a0c0ce9c-5bab-4bdc-8512-39984c322a74`,
 using its existing `typeahead-ephemeral` hcloud publisher. It does not update the
