@@ -5,6 +5,7 @@ import json
 import os
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -13,7 +14,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from mps.typeahead_checkpoint import fetch_checkpoint
-from mps.typeahead_checkpoint_build import build_checkpoint, module
+from mps.typeahead_checkpoint_build import build_checkpoint, import_diagnostics, module
 from mps.typeahead_checkpoint_stream import file_witness
 
 
@@ -46,7 +47,7 @@ def release_manifest(imported, build, adapter, binary_sha):
 
 
 @contextmanager
-def checkpoint_source(root, repository):
+def checkpoint_source(root, repository, labels=None):
     spec = importlib.util.spec_from_file_location(
         "checkpoint_build_source_fixture", repository / "services/tantivy-input/test_sync.py"
     )
@@ -70,6 +71,8 @@ def checkpoint_source(root, repository):
             "UPDATE actors SET followers_count=12345,quality_score=16777217 WHERE did='did:fixture:000000'"
         )
         keeper.execute("UPDATE actors SET handle='' WHERE did='did:fixture:000004'")
+        if labels is not None:
+            keeper.execute("UPDATE actors SET labels=? WHERE did='did:fixture:000000'", (labels,))
         keeper.commit()
         frames = Path(str(source.path) + "-wal").read_bytes()[32:]
         original = source.server.RequestHandlerClass
@@ -255,6 +258,70 @@ class Tests(unittest.TestCase):
                 self.assertEqual(
                     portable["sha256"], hashlib.file_digest(bundle, "sha256").hexdigest()
                 )
+
+    def test_failed_producer_and_importer_preserve_safe_exit_diagnostics(self):
+        with checkpoint_source(self.root, self.repository, labels="private-profile-marker") as (
+            _,
+            database,
+            options,
+        ):
+            with self.assertRaisesRegex(ValueError, "producer_validation") as error:
+                build_checkpoint(
+                    self.repository, self.root / "build", self.binary, database, **options
+                )
+            receipt = json.loads((self.root / "build/import-failure.json").read_bytes())
+            self.assertEqual(receipt["producer_exit"], 1)
+            self.assertEqual(receipt["producer_error_class"], "ValueError")
+            self.assertEqual(receipt["cause"], "producer_validation")
+            self.assertGreater(receipt["stream_log_bytes"], 0)
+            self.assertNotIn("private-profile-marker", str(error.exception))
+            self.assertNotIn(options["environment"]["TURSO_AUTH_TOKEN"], str(error.exception))
+            self.assertNotIn("http://", json.dumps(receipt))
+
+    def test_unbuffered_producer_deadline_exits_when_consumer_does_not_read(self):
+        with checkpoint_source(
+            self.root, self.repository, labels=json.dumps([{"val": "x" * 131072}])
+        ) as (_, database, options):
+            request = {
+                key: value
+                for key, value in options.items()
+                if key not in ("environment", "timeout", "min_request_interval")
+            }
+            request.update(database=str(database), repository=str(self.repository), max_seconds=1)
+            request["receipt_bytes"] = request["receipt_bytes"].decode()
+            request["native_manifest_bytes"] = request["native_manifest_bytes"].decode()
+            path = self.root / "request.json"
+            path.write_text(json.dumps(request))
+            started = time.monotonic()
+            with (self.root / "stream.log").open("wb") as log:
+                child = subprocess.Popen(
+                    [
+                        sys.executable,
+                        "-u",
+                        "-m",
+                        "mps.typeahead_checkpoint_build",
+                        str(path),
+                        str(self.root / "receipt.json"),
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=log,
+                )
+                try:
+                    child.wait(timeout=5)
+                    output, _ = child.communicate(timeout=1)
+                finally:
+                    if child.poll() is None:
+                        child.kill()
+                        child.wait(timeout=2)
+            self.assertLess(time.monotonic() - started, 5)
+            self.assertNotEqual(child.returncode, 0)
+            receipt = import_diagnostics(
+                self.root, child.returncode, None, time.monotonic() - started, 1
+            )
+            self.assertEqual(receipt["producer_error_class"], "TimeoutError")
+            self.assertEqual(receipt["cause"], "producer_deadline")
+            self.assertFalse((self.root / "receipt.json").exists())
+            self.assertNotIn(b'"type":"end"', output)
 
     def test_default_fixture_rejection_never_yields_handoff(self):
         with checkpoint_source(self.root, self.repository) as (_, database, options):

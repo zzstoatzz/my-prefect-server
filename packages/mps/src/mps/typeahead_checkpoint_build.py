@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib.util
 import json
 import os
@@ -18,7 +19,7 @@ from pathlib import Path
 from mps.typeahead_checkpoint_stream import stream_checkpoint
 from mps.typeahead_source_budget import accounted_source
 from mps.typeahead_sqlite_seed import encode
-from mps.typeahead_tantivy import progress
+from mps.typeahead_tantivy import durable_receipt, progress
 
 
 def module(name, path):
@@ -47,6 +48,99 @@ def stop(child):
             with suppress(ProcessLookupError):
                 os.killpg(child.pid, signal.SIGKILL)
             child.wait(timeout=3)
+
+
+def import_diagnostics(workspace, producer_exit, importer_exit, elapsed_s, budget_s):
+    result = {
+        "schema_version": 1,
+        "producer_exit": producer_exit,
+        "importer_exit": importer_exit,
+        "elapsed_s": round(elapsed_s, 2),
+        "budget_s": round(budget_s, 2),
+    }
+    for name in ("stream", "import"):
+        path = Path(workspace) / (name + ".log")
+        if not path.exists():
+            continue
+        with path.open("rb") as log:
+            size = os.fstat(log.fileno()).st_size
+            offset = max(0, size - 65536)
+            log.seek(offset)
+            tail = log.read(65536)
+        result[name + "_log_bytes"] = size
+        result[name + "_tail_sha256"] = hashlib.sha256(tail).hexdigest()
+        lines = tail.splitlines()[int(offset > 0) :]
+        for line in lines:
+            try:
+                entry = json.loads(line)
+            except (ValueError, UnicodeError):
+                continue
+            if not isinstance(entry, dict):
+                continue
+            if name == "stream" and entry.get("error") == "checkpoint_build_stream_failed":
+                kind = entry.get("error_class")
+                result["producer_error_class"] = (
+                    kind
+                    if kind
+                    in {
+                        "TimeoutError",
+                        "BrokenPipeError",
+                        "ValueError",
+                        "SafeError",
+                        "OSError",
+                        "OperationalError",
+                        "OverflowError",
+                    }
+                    else "OtherError"
+                )
+            if name == "import" and entry.get("event") == "import_progress":
+                result["import_progress"] = {
+                    key: entry[key]
+                    for key in (
+                        "actors",
+                        "elapsed_s",
+                        "invalid_source_pds",
+                        "missing_source_pds",
+                        "expiry_actors_checked",
+                        "unsupported_expiry_actors",
+                        "malformed_label_actors",
+                    )
+                    if type(entry.get(key)) is int and entry[key] >= 0
+                }
+            if name == "import" and entry.get("event") == "import_actor_rejected":
+                result["importer_error_kind"] = "actor_rejected"
+                result["rejected_actor_shape"] = {
+                    key: entry[key]
+                    for key in (
+                        "accepted_actors",
+                        "handle_bytes",
+                        "display_bytes",
+                        "avatar_bytes",
+                        "pds_bytes",
+                    )
+                    if type(entry.get(key)) is int and entry[key] >= 0
+                }
+            if name == "import" and isinstance(entry.get("error"), str):
+                error = entry["error"].lower()
+                result["importer_error_kind"] = (
+                    "input_footer"
+                    if "footer" in error
+                    else "disk_full"
+                    if "no space left" in error
+                    else "invalid_input"
+                    if any(word in error for word in ("invalid", "missing", "expected", "exceeds"))
+                    else "unclassified"
+                )
+    result["cause"] = (
+        "producer_deadline"
+        if result.get("producer_error_class") == "TimeoutError"
+        else "producer_validation"
+        if result.get("producer_error_class") in ("ValueError", "SafeError", "OverflowError")
+        else "downstream_closed"
+        if result.get("producer_error_class") == "BrokenPipeError"
+        else "child_exit"
+    )
+    return result
 
 
 def build_checkpoint(
@@ -164,6 +258,7 @@ def build_checkpoint(
             producer = subprocess.Popen(
                 [
                     sys.executable,
+                    "-u",
                     "-m",
                     "mps.typeahead_checkpoint_build",
                     str(request_path),
@@ -177,22 +272,50 @@ def build_checkpoint(
             assert importer.stdin is not None
             importer.stdin.close()
             next_report = 0
-            while producer.poll() is None or importer.poll() is None:
-                remaining()
-                if producer.returncode not in (None, 0):
-                    raise ValueError("Canonical checkpoint producer failed")
-                if importer.returncode not in (None, 0):
-                    raise ValueError("D1 checkpoint importer failed")
-                if time.monotonic() >= next_report:
-                    progress(
-                        "tantivy-checkpoint-import",
-                        elapsed_s=round(time.monotonic() - started, 1),
-                        import_log_bytes=(workspace / "import.log").stat().st_size,
-                    )
-                    next_report = time.monotonic() + 30
-                time.sleep(min(0.25, remaining()))
-            if producer.returncode != 0 or importer.returncode != 0:
-                raise ValueError("Checkpoint producer or D1 importer failed")
+            try:
+                while producer.poll() is None or importer.poll() is None:
+                    remaining()
+                    if producer.returncode not in (None, 0) or importer.returncode not in (None, 0):
+                        break
+                    if time.monotonic() >= next_report:
+                        observed = import_diagnostics(
+                            workspace,
+                            producer.returncode,
+                            importer.returncode,
+                            time.monotonic() - started,
+                            timeout,
+                        )
+                        progress(
+                            "tantivy-checkpoint-import",
+                            **{
+                                key: value
+                                for key, value in observed.items()
+                                if key
+                                in ("elapsed_s", "budget_s", "import_log_bytes", "import_progress")
+                            },
+                        )
+                        next_report = time.monotonic() + 30
+                    time.sleep(min(0.25, remaining()))
+                if producer.poll() != 0 or importer.poll() != 0:
+                    raise ValueError("Checkpoint import child exited")
+            except (ValueError, TimeoutError) as error:
+                observed = import_diagnostics(
+                    workspace, producer.poll(), importer.poll(), time.monotonic() - started, timeout
+                )
+                if isinstance(error, TimeoutError):
+                    observed["cause"] = "parent_deadline"
+                durable_receipt(workspace / "import-failure.json", observed)
+                progress("tantivy-checkpoint-import-failed", **observed)
+                kind = (
+                    TimeoutError
+                    if observed["cause"] in ("producer_deadline", "parent_deadline")
+                    else ValueError
+                )
+                raise kind(
+                    "Checkpoint import failed: "
+                    + json.dumps(observed, sort_keys=True, separators=(",", ":"))
+                ) from error
+
         if stream_receipt.stat().st_size > 1024**2:
             raise ValueError("Checkpoint producer receipt exceeds metadata bound")
         stream = json.loads(stream_receipt.read_bytes())
