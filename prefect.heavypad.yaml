@@ -822,6 +822,9 @@ deployments:
           TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
           PREFECT_UI_URL: https://prefect-server.waow.tech
   - name: typeahead-index
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
     pull:
     - mps.deployment_steps.cached_checkout:
         repository: https://tangled.org/zzstoatzz.io/my-prefect-server.git
