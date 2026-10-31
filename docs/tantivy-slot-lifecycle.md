@@ -166,3 +166,11 @@ Unconfirmed provider actions retain their intent and sanitized failure category
 (HTTP status or transport exception type) in the preparation journal. Transition
 timeouts report the machine, observed state and requested state alongside that
 category. They do not erase the pending action or retry an uncertain mutation.
+
+A start rejected with HTTP 412 is reconciled separately from an uncertain
+transport failure: the controller verifies the same owned machine is stopped,
+records the rejected attempt, and retries startup at most three times. This also
+allows resume-only recovery of a previously journaled 412 without rebuilding or
+allocating another machine. Every retry retains the route and configuration
+checks. Other failed or ambiguous start requests still wait for their recorded
+outcome; they are not blindly retried.

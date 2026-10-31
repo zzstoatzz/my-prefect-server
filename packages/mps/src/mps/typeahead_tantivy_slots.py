@@ -405,16 +405,30 @@ class Slots:
         if pending is not None:
             if pending["name"] not in ("start", "stop"):
                 raise RuntimeError("Candidate creation must be reconciled before start")
-            self.wait(state, "started" if pending["name"] == "start" else "stopped")
-            self.confirm(state, "reconciled-" + pending["name"])
-        before = self.machine(state, state["machine_id"])
-        if before["state"] != "started":
-            if before["state"] not in ("stopped", "created"):
-                raise RuntimeError("Candidate is not safely startable")
-            self.action(state, "start", "POST", "machines/" + state["machine_id"] + "/start")
-        machine = self.wait(state, "started")
-        self.confirm(state, "started")
-        return machine
+            rejected = pending["name"] == "start" and pending.get("error") == "HTTP 412"
+            self.wait(
+                state, "started" if pending["name"] == "start" and not rejected else "stopped"
+            )
+            self.confirm(
+                state, "reconciled-rejected-start" if rejected else "reconciled-" + pending["name"]
+            )
+        for attempt in range(3):
+            before = self.machine(state, state["machine_id"])
+            if before["state"] != "started":
+                if before["state"] not in ("stopped", "created"):
+                    raise RuntimeError("Candidate is not safely startable")
+                self.action(state, "start", "POST", "machines/" + state["machine_id"] + "/start")
+            pending = state.get("pending_action")
+            if pending is not None and pending.get("error") == "HTTP 412":
+                self.wait(state, "stopped")
+                self.confirm(state, "reconciled-rejected-start")
+                if attempt == 2:
+                    raise RuntimeError("Fly rejected candidate startup after three attempts")
+                time.sleep(1)
+                continue
+            machine = self.wait(state, "started")
+            self.confirm(state, "started")
+            return machine
 
     def stop(self, state):
         pending = state.get("pending_action")

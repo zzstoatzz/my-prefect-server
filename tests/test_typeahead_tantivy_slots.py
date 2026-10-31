@@ -246,7 +246,9 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
         assert controller.route()[0]["current"] == route["current"]
         assert all(APPS[0] in path for _, path in calls)
         if not checkpoint and retired_state is None:
-            resumed.action(restored, "stop", "POST", f"machines/{state['machine_id']}/stop-rejected")
+            resumed.action(
+                restored, "stop", "POST", f"machines/{state['machine_id']}/stop-rejected"
+            )
             assert restored["pending_action"]["error"] == "HTTP 403"
             restored = resumed.journal(state["request_id"])
             assert restored["pending_action"]["error"] == "HTTP 403"
@@ -848,3 +850,107 @@ def test_promotion_route_guard_survives_unavailable_public_serving(controller, t
     controller.s3.seed(refresh.ROUTE_KEY, raw_json({**leased, "operator_change": True}))
     with pytest.raises(RuntimeError, match="Routing changed"):
         slots.guard(state, serving_health=False)
+
+
+@pytest.mark.parametrize(
+    "behavior", ["recover", "resume", "rejected", "unknown", "route-change", "config-change"]
+)
+def test_start_reconciles_rejected_request_over_provider_http(
+    controller, tmp_path, pinned_adapter, monkeypatch, behavior
+):
+    slots = slot_service(controller, tmp_path)
+    controller.tantivy_adapter = lambda: pinned_adapter
+    route, _ = controller.route()
+    state = {
+        "request_id": "e" * 32,
+        "owner": OWNER,
+        "execution_id": "execution-one",
+        "app": APPS[0],
+        "route": route,
+        "machine_id": "abcdef12345678",
+        "volume_id": "vol_fixture",
+        "deployment_sha256": "a" * 64,
+        "image_digest": "registry.fly.io/fixture@sha256:" + "b" * 64,
+        "config": {"env": {}, "init": {}},
+    }
+    config = {
+        "metadata": {
+            "owner": OWNER,
+            "role": "tantivy-slot",
+            "request_id": state["request_id"],
+            "deployment_sha256": state["deployment_sha256"],
+        },
+        "image": state["image_digest"],
+        "mounts": [{"volume": "vol_fixture", "path": "/data"}],
+        "guest": {"cpu_kind": "shared", "cpus": 2, "memory_mb": 1024},
+        "env": {},
+        "init": {},
+    }
+    machine = {"id": state["machine_id"], "state": "stopped", "config": config}
+    starts = []
+    slots.acquire(state)
+    if behavior == "resume":
+        state["pending_action"] = {"name": "start", "error": "HTTP 412"}
+        slots.save(state, "start-unconfirmed")
+        state = slots.journal(state["request_id"])
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.respond(200, machine)
+
+        def do_POST(self):
+            assert self.path.endswith("/start")
+            self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            starts.append(self.path)
+            if behavior == "unknown":
+                self.respond(500, {})
+            elif behavior == "rejected" or (behavior != "resume" and len(starts) == 1):
+                if behavior == "route-change":
+                    current, _ = controller.route()
+                    controller.s3.seed(
+                        refresh.ROUTE_KEY, raw_json({**current, "operator_change": True})
+                    )
+                if behavior == "config-change":
+                    machine["config"]["guest"]["memory_mb"] = 2048
+                self.respond(412, {})
+            else:
+                machine["state"] = "started"
+                self.respond(200, machine)
+
+        def respond(self, status, value):
+            raw = raw_json(value)
+            self.send_response(status)
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def log_message(self, *_):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    controller.fly = MethodType(refresh.Refresh.fly, controller)
+    controller._fly_url = lambda app, path: f"http://127.0.0.1:{server.server_port}/{app}/{path}"
+    monkeypatch.setenv("FLY_TANTIVY_A_TOKEN", "fixture-token")
+    try:
+        if behavior in ("recover", "resume"):
+            assert slots.start(state)["state"] == "started"
+            assert len(starts) == (1 if behavior == "resume" else 2)
+            assert state["pending_action"] is None
+        else:
+            expected = {
+                "rejected": "three attempts",
+                "unknown": "HTTP 500",
+                "route-change": "Routing changed",
+                "config-change": "configuration changed",
+            }
+            with pytest.raises(RuntimeError, match=expected[behavior]):
+                slots.start(state)
+            assert len(starts) == (3 if behavior == "rejected" else 1)
+        assert all(path == f"/{APPS[0]}/machines/{state['machine_id']}/start" for path in starts)
+        assert controller.route()[0]["current"] == route["current"]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
