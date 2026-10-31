@@ -592,7 +592,17 @@ class Slots:
             for item in self.service.fly("GET", state["app"], "machines")
             if item.get("state") != "destroyed"
         ]
-        volumes = self.service.fly("GET", state["app"], "volumes")
+        volumes = [
+            item
+            for item in self.service.fly("GET", state["app"], "volumes")
+            if not (
+                item.get("state") in ("destroyed", "deleted", "pending_destroy")
+                and not item.get("attached_machine_id")
+                and not item.get("attached_alloc_id")
+                and item.get("id") != state.get("volume_id")
+                and item.get("name") != state["volume_name"]
+            )
+        ]
         retired = state.get("retired_previous")
         if retired is not None and state.get("retirement_progress", {}).get("retire-volume"):
             volumes = [

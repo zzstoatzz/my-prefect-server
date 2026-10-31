@@ -105,8 +105,11 @@ def test_fixture_release_proof_cannot_enable_production():
 
 
 @pytest.mark.parametrize("checkpoint", [False, True])
+@pytest.mark.parametrize(
+    "retired_state", [None, "pending_destroy", "destroyed", "deleted", "created", "attached"]
+)
 def test_actual_provider_http_lost_ack_resume_and_cached_restart(
-    controller, tmp_path, pinned_adapter, monkeypatch, checkpoint
+    controller, tmp_path, pinned_adapter, monkeypatch, checkpoint, retired_state
 ):
     slots = slot_service(controller, tmp_path)
     controller.tantivy_adapter = lambda: pinned_adapter
@@ -131,7 +134,20 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
     slots.acquire(state)
     calls = []
     statefile = tmp_path / "provider.json"
-    statefile.write_text(json.dumps({"machines": [], "volumes": []}))
+    retired = (
+        []
+        if retired_state is None
+        else [
+            {
+                "id": "vol_retired",
+                "name": "old_preparation",
+                "state": "pending_destroy" if retired_state == "attached" else retired_state,
+                "attached_machine_id": "other_machine" if retired_state == "attached" else None,
+                "attached_alloc_id": None,
+            }
+        ]
+    )
+    statefile.write_text(json.dumps({"machines": [], "volumes": retired}))
     dropped = set()
 
     class Handler(BaseHTTPRequestHandler):
@@ -169,7 +185,9 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
                     "instance_id": "fixture-instance",
                 }
                 result["config"]["mounts"][0].update(
-                    encrypted=True, size_gb=20, name=data["volumes"][0]["name"]
+                    encrypted=True,
+                    size_gb=20,
+                    name=next(v["name"] for v in data["volumes"] if v["id"] == "vol_fixture"),
                 )
                 data["machines"].append(result)
             else:
@@ -200,6 +218,11 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
         target = {**TANTIVY, "build_id": state["build_id"]}
         manifest, _ = seed_checkpoint_publication(controller, target)
     try:
+        if retired_state in ("created", "attached"):
+            with pytest.raises(RuntimeError, match="unrelated or retained volume"):
+                slots.allocate(state, manifest)
+            assert not any(method == "POST" for method, _ in calls)
+            return
         bound = slots.allocate(state, manifest)
         first_config = json.loads(statefile.read_text())["machines"][0]["config"]
         assert bound["guest"] == {"cpu_kind": "shared", "cpus": 2, "memory_mb": 1024}
