@@ -11,7 +11,10 @@ The publisher runs at 06:00 and 18:00 UTC; exact immutable pins live in
 `prefect.heavypad.yaml`. Check actual completed refreshes and the serving coverage
 deadline before reserving a slot. The worker has a three-hour outer bound: observed
 checkpoint preparation plus installation can exceed the former two-hour bound.
-This is a failure cutoff, not a refresh-time guarantee.
+This is a failure cutoff, not a refresh-time guarantee. Each readiness phase has
+a one-hour bound: the verified cold installation on a 1 GiB slot took about
+38 minutes, too close to the previous 40-minute bound. The restart phase gets its
+own readiness deadline; all phases remain inside the outer worker bound.
 
 Only `typeahead-tantivy-a` and `typeahead-tantivy-b` are eligible. Every candidate
 must carry owner `typeahead-snapshot-refresh`, role `tantivy-slot`, request/build

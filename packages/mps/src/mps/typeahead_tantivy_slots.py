@@ -109,7 +109,7 @@ def validate_release_proof(raw, expected_sha256, binding):
 
 
 class Slots:
-    def __init__(self, service, journal_root: Path, *, timeout_seconds=2400):
+    def __init__(self, service, journal_root: Path, *, timeout_seconds=3600):
         if (
             not 1 <= timeout_seconds <= 7200
             or journal_root.is_symlink()
