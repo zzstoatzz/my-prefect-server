@@ -5,16 +5,13 @@ The controller supports explicit `tantivy_operation` requests to the existing
 approved Tantivy routes use the managed Tantivy continuation. A preparation returns an immutable review plan; it never changes
 `current`, `previous` or `native_rollback`. The operator must separately request
 promotion after supplying the exact plan, current ETag and complete empirical
-release receipt. Managed slot A has passed cloud publication, installation and
-cached restart qualification on Fly using build `b1793346536-cp-7c8322df79`.
-The immutable prepared plan is
-`7f547a14b234180083cff854cdb5a00163faf214301f9a96467bb6b40624173b`;
-Nate approved promotion on October 30, 2026. Production now routes to A;
-run `93520430-fe68-48d1-898d-06a741aebd75` completed the guarded promotion.
-The publisher runs at 06:00 and 18:00 UTC on the cloud pool, pinned to
-controller `39c753cc6193d22d77a3646571787b8180ef89d9`. Native remains the
-independent rollback anchor. The first scheduled automatic Tantivy refresh
-has not yet completed; two-slot retirement has not been exercised live.
+release receipt. Current outage/recovery evidence and experiment preflight live in Typeahead's
+[October 31 retrospective](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/retros/2026-10-31-search-expiry-outage.md).
+The publisher runs at 06:00 and 18:00 UTC; exact immutable pins live in
+`prefect.heavypad.yaml`. Check actual completed refreshes and the serving coverage
+deadline before reserving a slot. The worker has a three-hour outer bound: observed
+checkpoint preparation plus installation can exceed the former two-hour bound.
+This is a failure cutoff, not a refresh-time guarantee.
 
 Only `typeahead-tantivy-a` and `typeahead-tantivy-b` are eligible. Every candidate
 must carry owner `typeahead-snapshot-refresh`, role `tantivy-slot`, request/build
@@ -97,6 +94,9 @@ The existing full benchmark is a component result, not a substitute for these
 release gates.
 
 Before CAS, promotion rechecks actual provider/HTTP/source and the native anchor.
+Unlike preparation, promotion does not depend on the old backend being available.
+It can resume its own unchanged lease after an interrupted attempt; another
+lease or changed route still fences it.
 It releases the preparation lease, then uses the resulting ETag to install the
 exact reviewed target. A competing lease or operator update invalidates that CAS.
 Public verification checks engine/build/format/binary/strategy headers and the
