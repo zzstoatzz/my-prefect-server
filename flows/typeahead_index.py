@@ -689,7 +689,7 @@ def archive_builds() -> list[str]:
     return [str(path) for path in archived]
 
 
-@task(retries=0, timeout_seconds=3600)
+@task(retries=0, timeout_seconds=5400)
 def prepare_checkpoint_generation(repo: Path) -> tuple[Path, Path]:
     from mps.typeahead_checkpoint_release import run_cloud_release
 

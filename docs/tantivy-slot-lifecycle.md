@@ -156,3 +156,13 @@ publication, pending-before-build resume, route/ETag fencing, source-ref conflic
 resource drift, and stale-native promotion refusal. Tests below the independent
 release authorization gate do not manufacture a positive production proof.
 Deployment and unattended execution remain deferred until cutover approval.
+
+Cancellation reconciles a pending start against actual provider state. If the
+owned machine is already stopped, it confirms that state and releases the
+reservation without starting the machine merely to stop it again. Ownership,
+previous-execution completion and current-route fences still apply.
+
+Unconfirmed provider actions retain their intent and sanitized failure category
+(HTTP status or transport exception type) in the preparation journal. Transition
+timeouts report the machine, observed state and requested state alongside that
+category. They do not erase the pending action or retry an uncertain mutation.

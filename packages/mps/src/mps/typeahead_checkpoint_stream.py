@@ -7,12 +7,16 @@ import hashlib
 import importlib.util
 import json
 import math
+import os
 import re
+import shutil
 import signal
 import sqlite3
 import stat
 import sys
+import tempfile
 import time
+from contextlib import nullcontext
 from pathlib import Path
 
 from mps.typeahead_sqlite_seed import encode
@@ -207,6 +211,8 @@ def stream_checkpoint(
     max_output_bytes=16 * 1024**3,
     max_documents=50_000_000,
     allow_fixture=False,
+    pds_fallback_path=None,
+    pds_fallback_sha256=None,
 ):
     started = time.monotonic()
     if (
@@ -214,7 +220,7 @@ def stream_checkpoint(
         or not BUILD.fullmatch(build_id)
         or type(overlap_seconds) is not int
         or not 0 <= overlap_seconds <= 3600
-        or not 0 < max_seconds <= 3600
+        or not 0 < max_seconds <= 5400
     ):
         raise ValueError("Invalid streaming identity/deadline")
     if (
@@ -298,13 +304,30 @@ def stream_checkpoint(
         written += len(raw)
         check()
 
-    with sqlite3.connect(database.as_uri() + "?mode=ro&immutable=1", uri=True) as connection:
+    if bool(pds_fallback_path) != bool(pds_fallback_sha256):
+        raise ValueError("Fallback path and digest required together")
+    fallback_context = (
+        sync.pds_fallback(pds_fallback_path, pds_fallback_sha256)
+        if pds_fallback_path
+        else nullcontext()
+    )
+    pds_coverage = {"source_known": 0, "source_missing": 0, "joined": 0, "remaining_missing": 0}
+    sort_reserve = 2 * checkpoint["database_bytes"] + 64 * 1024**2
+    sort_directory = os.environ.get("SQLITE_TMPDIR", tempfile.gettempdir())
+    if shutil.disk_usage(sort_directory).free < sort_reserve:
+        raise ValueError("Insufficient disk reserve for sequential checkpoint sorting")
+    with (
+        fallback_context as fallback,
+        sqlite3.connect(database.as_uri() + "?mode=ro&immutable=1", uri=True) as connection,
+    ):
         connection.row_factory = sqlite3.Row
         connection.set_progress_handler(
             lambda: int(time.monotonic() - started > max_seconds), 10000
         )
         connection.execute("PRAGMA query_only=ON")
         connection.execute("PRAGMA cache_size=-8192")
+        connection.execute("PRAGMA temp_store=FILE")
+        connection.execute("PRAGMA soft_heap_limit=67108864")
         connection.execute("BEGIN")
         for table in ["actors", "tombstones"]:
             columns = connection.execute(f"PRAGMA table_info({table})").fetchall()
@@ -397,6 +420,8 @@ def stream_checkpoint(
             "legacy_build_id": anchor["legacy_build_id"],
             "canonical_rules_source_sha256": rules_sha,
         }
+        if fallback is not None:
+            header["pds_fallback"] = fallback.identity()
         unchanged()
         write(encode(header))
         projections = []
@@ -410,7 +435,7 @@ def stream_checkpoint(
             connection.execute(
                 "SELECT "
                 + ",".join(projections)
-                + " FROM actors AS a ORDER BY a.did COLLATE BINARY"
+                + " FROM actors AS a NOT INDEXED ORDER BY a.did COLLATE BINARY"
             )
         )
         tombs = iter(
@@ -418,14 +443,6 @@ def stream_checkpoint(
                 "SELECT CASE WHEN length(CAST(t.did AS BLOB))<=2048 THEN t.did ELSE zeroblob(0) END AS did, CASE WHEN typeof(t.deleted_at)='integer' THEN t.deleted_at ELSE zeroblob(0) END AS deleted_at FROM tombstones t WHERE NOT EXISTS(SELECT 1 FROM actors a WHERE a.did=t.did) ORDER BY t.did COLLATE BINARY"
             )
         )
-        for query in [
-            "SELECT did FROM actors ORDER BY did COLLATE BINARY",
-            "SELECT did FROM tombstones ORDER BY did COLLATE BINARY",
-        ]:
-            if any(
-                "TEMP B-TREE" in row[3] for row in connection.execute("EXPLAIN QUERY PLAN " + query)
-            ):
-                raise ValueError("Indexed binary DID ordering required")
         actor, tomb = next(actors, None), next(tombs, None)
         emitted = deleted = 0
         previous = ""
@@ -450,6 +467,12 @@ def stream_checkpoint(
                 source_version = integer(row["updated_at"], "source actor version")
                 try:
                     record = sync.actor_record(row)
+                    if not record["deleted"]:
+                        known = bool(row.get("pds"))
+                        present = bool(record["pds"])
+                        pds_coverage["source_known" if known else "source_missing"] += 1
+                        pds_coverage["joined"] += int(not known and present)
+                        pds_coverage["remaining_missing"] += int(not present)
                 except sync.SafeError as error:
                     raise ValueError(str(error)) from error
                 actor = next(actors, None)
@@ -499,6 +522,9 @@ def stream_checkpoint(
         "footer": footer,
         "actors_sha256": actor_hash.hexdigest(),
         "input_documents": emitted,
+        "pds_coverage": pds_coverage,
+        "scan_strategy": "sequential-file-sort",
+        "sort_disk_reserve_bytes": sort_reserve,
         "output_bytes": written,
         "source_bytes_hashed": expected_file_witness["byte_size"],
         "source_unchanged": True,
@@ -525,7 +551,7 @@ def main():
     parser.add_argument("--max-output-bytes", type=int, default=16 * 1024**3)
     parser.add_argument("--receipt", type=Path, required=True)
     args = parser.parse_args()
-    if not 1 <= args.max_seconds <= 3600 or args.receipt.exists() or args.receipt.is_symlink():
+    if not 1 <= args.max_seconds <= 5400 or args.receipt.exists() or args.receipt.is_symlink():
         raise ValueError("Bounded new streaming receipt required")
 
     def expired(*_):

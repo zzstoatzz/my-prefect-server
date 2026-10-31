@@ -16,7 +16,7 @@ from mps.typeahead_checkpoint import fetch_checkpoint
 from mps.typeahead_sqlite_seed import checkpoint_fixture
 from mps.typeahead_tantivy import durable_receipt, fetch_cloud_binary
 
-BINARY_SHA = "d1cc0366ed3b28b34daca15d23ee6f06aa1d08844e483c357b80cdb778d5cfa2"
+BINARY_SHA = "ef2be085f7ad7b2bf4ea1f0e4976ee07e37b4041a95b5f34c31c562399f17a4d"
 
 
 def sample_checkpoint(source, destination, documents, *, seconds=30):

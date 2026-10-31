@@ -350,7 +350,13 @@ class Slots:
         self.save(state, name + "-intent")
         try:
             return self.service.fly(method, state["app"], path, body)
-        except (httpx.TransportError, RuntimeError):
+        except (httpx.TransportError, RuntimeError) as exc:
+            from mps.typeahead_refresh import FlyAPIError
+
+            state["pending_action"]["error"] = (
+                f"HTTP {exc.status_code}" if isinstance(exc, FlyAPIError) else type(exc).__name__
+            )
+            self.save(state, name + "-unconfirmed")
             return None
 
     def confirm(self, state, phase):
@@ -385,7 +391,12 @@ class Slots:
             if machine.get("state") == wanted:
                 return machine
             if time.monotonic() >= deadline:
-                raise RuntimeError("Candidate state transition remains unconfirmed")
+                pending = state.get("pending_action") or {}
+                raise RuntimeError(
+                    f"Candidate {state['machine_id']} remains {machine.get('state')}; "
+                    f"expected {wanted}; action {pending.get('name', 'none')}; "
+                    f"provider outcome {pending.get('error', 'acknowledged')}"
+                )
             time.sleep(0.5)
 
     def start(self, state):
@@ -409,8 +420,12 @@ class Slots:
         if pending is not None:
             if pending["name"] not in ("start", "stop"):
                 raise RuntimeError("Candidate creation must be reconciled before cancellation")
-            self.wait(state, "started" if pending["name"] == "start" else "stopped")
-            self.confirm(state, "reconciled-" + pending["name"])
+            observed = self.machine(state, state["machine_id"])
+            if pending["name"] == "start" and observed.get("state") == "stopped":
+                self.confirm(state, "reconciled-stopped")
+            else:
+                self.wait(state, "started" if pending["name"] == "start" else "stopped")
+                self.confirm(state, "reconciled-" + pending["name"])
         before = self.machine(state, state["machine_id"])
         if before["state"] != "stopped":
             self.action(
@@ -588,7 +603,17 @@ class Slots:
             for item in self.service.fly("GET", state["app"], "machines")
             if item.get("state") != "destroyed"
         ]
-        volumes = self.service.fly("GET", state["app"], "volumes")
+        volumes = [
+            item
+            for item in self.service.fly("GET", state["app"], "volumes")
+            if not (
+                item.get("state") in ("destroyed", "deleted", "pending_destroy")
+                and not item.get("attached_machine_id")
+                and not item.get("attached_alloc_id")
+                and item.get("id") != state.get("volume_id")
+                and item.get("name") != state["volume_name"]
+            )
+        ]
         retired = state.get("retired_previous")
         if retired is not None and state.get("retirement_progress", {}).get("retire-volume"):
             volumes = [

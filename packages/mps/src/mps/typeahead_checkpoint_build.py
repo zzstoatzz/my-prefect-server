@@ -8,12 +8,13 @@ import importlib.util
 import json
 import os
 import secrets
+import shutil
 import signal
 import socket
 import subprocess
 import sys
 import time
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from pathlib import Path
 
 from mps.typeahead_checkpoint_stream import stream_checkpoint
@@ -161,10 +162,13 @@ def build_checkpoint(
     source_bytes=512 * 1024**2,
     min_request_interval=0.5,
     allow_fixture=False,
+    pds_fallback_path=None,
+    pds_fallback_sha256=None,
+    resume_import_from=None,
 ):
     started = time.monotonic()
     started_at = int(time.time())
-    if type(timeout) not in (int, float) or not 1 <= timeout <= 3600:
+    if type(timeout) not in (int, float) or not 1 <= timeout <= 5400:
         raise ValueError("Checkpoint build requires a bounded deadline")
     if type(source_bytes) is not int or not 16 * 1024**2 <= source_bytes <= 8 * 1024**3:
         raise ValueError("Checkpoint build source byte bound differs")
@@ -195,6 +199,7 @@ def build_checkpoint(
     deadline = started + timeout
     processes = []
     source = None
+    resources = ExitStack()
 
     def remaining():
         value = deadline - time.monotonic()
@@ -210,9 +215,18 @@ def build_checkpoint(
             return result
 
     try:
+        if bool(pds_fallback_path) != bool(pds_fallback_sha256):
+            raise ValueError("Fallback path and digest required together")
+        fallback = (
+            resources.enter_context(sync.pds_fallback(pds_fallback_path, pds_fallback_sha256))
+            if pds_fallback_path
+            else None
+        )
         # The two child processes exchange actor bytes directly through a kernel pipe.
         request = {
             "database": str(database),
+            "pds_fallback_path": str(pds_fallback_path) if pds_fallback_path else None,
+            "pds_fallback_sha256": pds_fallback_sha256,
             "repository": str(repository),
             "receipt_bytes": receipt_bytes.decode("utf8"),
             "native_manifest_bytes": native_manifest_bytes.decode("utf8"),
@@ -233,88 +247,147 @@ def build_checkpoint(
             for key in ("PATH", "TMPDIR", "LANG", "LC_ALL", "TZ")
             if key in environment
         }
-        with (
-            (workspace / "import.log").open("xb") as importer_log,
-            (workspace / "stream.log").open("xb") as stream_log,
-        ):
-            importer = subprocess.Popen(
-                [
-                    str(binary),
-                    "import",
-                    "--data",
-                    str(data),
-                    "--input",
-                    "-",
-                    "--writer-memory-mb",
-                    "128",
-                ],
-                stdin=subprocess.PIPE,
-                stdout=importer_log,
-                stderr=importer_log,
-                env=child_env,
-                start_new_session=True,
-            )
-            processes.append(importer)
-            producer = subprocess.Popen(
-                [
-                    sys.executable,
-                    "-u",
-                    "-m",
-                    "mps.typeahead_checkpoint_build",
-                    str(request_path),
-                    str(stream_receipt),
-                ],
-                stdout=importer.stdin,
-                stderr=stream_log,
-                start_new_session=True,
-            )
-            processes.append(producer)
-            assert importer.stdin is not None
-            importer.stdin.close()
-            next_report = 0
-            try:
-                while producer.poll() is None or importer.poll() is None:
+        if resume_import_from is not None:
+            previous = Path(resume_import_from)
+            if (
+                not previous.is_absolute()
+                or previous.resolve() != previous
+                or previous == workspace
+            ):
+                raise ValueError("Canonical separate import recovery workspace required")
+            old_request = json.loads((previous / "stream-request.json").read_bytes())
+            if {k: v for k, v in old_request.items() if k != "max_seconds"} != {
+                k: v for k, v in request.items() if k != "max_seconds"
+            }:
+                raise ValueError("Interrupted import inputs differ from requested build")
+            old_receipt = previous / "stream-receipt.json"
+            if old_receipt.stat().st_size > 1024**2:
+                raise ValueError("Recovery receipt exceeds bound")
+            stream_receipt.write_bytes(old_receipt.read_bytes())
+            (previous / "data").rename(data)
+            with (workspace / "import.log").open("xb") as importer_log:
+                importer = subprocess.Popen(
+                    [
+                        str(binary),
+                        "resume-import",
+                        "--data",
+                        str(data),
+                        "--receipt",
+                        str(stream_receipt),
+                        "--receipt-sha256",
+                        hashlib.sha256(stream_receipt.read_bytes()).hexdigest(),
+                        "--writer-memory-mb",
+                        "128",
+                    ],
+                    stdout=importer_log,
+                    stderr=importer_log,
+                    env=child_env,
+                    start_new_session=True,
+                )
+                processes.append(importer)
+                while importer.poll() is None:
                     remaining()
-                    if producer.returncode not in (None, 0) or importer.returncode not in (None, 0):
-                        break
-                    if time.monotonic() >= next_report:
-                        observed = import_diagnostics(
-                            workspace,
-                            producer.returncode,
-                            importer.returncode,
-                            time.monotonic() - started,
-                            timeout,
-                        )
-                        progress(
-                            "tantivy-checkpoint-import",
-                            **{
-                                key: value
-                                for key, value in observed.items()
-                                if key
-                                in ("elapsed_s", "budget_s", "import_log_bytes", "import_progress")
-                            },
-                        )
-                        next_report = time.monotonic() + 30
                     time.sleep(min(0.25, remaining()))
-                if producer.poll() != 0 or importer.poll() != 0:
-                    raise ValueError("Checkpoint import child exited")
-            except (ValueError, TimeoutError) as error:
-                observed = import_diagnostics(
-                    workspace, producer.poll(), importer.poll(), time.monotonic() - started, timeout
+                if importer.returncode != 0:
+                    raise ValueError("Verified import recovery failed")
+        else:
+            with (
+                (workspace / "import.log").open("xb") as importer_log,
+                (workspace / "stream.log").open("xb") as stream_log,
+            ):
+                importer = subprocess.Popen(
+                    [
+                        str(binary),
+                        "import",
+                        "--data",
+                        str(data),
+                        "--input",
+                        "-",
+                        "--writer-memory-mb",
+                        "128",
+                    ],
+                    stdin=subprocess.PIPE,
+                    stdout=importer_log,
+                    stderr=importer_log,
+                    env=child_env,
+                    start_new_session=True,
                 )
-                if isinstance(error, TimeoutError):
-                    observed["cause"] = "parent_deadline"
-                durable_receipt(workspace / "import-failure.json", observed)
-                progress("tantivy-checkpoint-import-failed", **observed)
-                kind = (
-                    TimeoutError
-                    if observed["cause"] in ("producer_deadline", "parent_deadline")
-                    else ValueError
+                processes.append(importer)
+                sort_directory = workspace / "sqlite-sort"
+                sort_directory.mkdir()
+                producer = subprocess.Popen(
+                    [
+                        sys.executable,
+                        "-u",
+                        "-m",
+                        "mps.typeahead_checkpoint_build",
+                        str(request_path),
+                        str(stream_receipt),
+                    ],
+                    stdout=importer.stdin,
+                    stderr=stream_log,
+                    env=dict(os.environ, SQLITE_TMPDIR=str(sort_directory)),
+                    start_new_session=True,
                 )
-                raise kind(
-                    "Checkpoint import failed: "
-                    + json.dumps(observed, sort_keys=True, separators=(",", ":"))
-                ) from error
+                processes.append(producer)
+                assert importer.stdin is not None
+                importer.stdin.close()
+                next_report = 0
+                try:
+                    while producer.poll() is None or importer.poll() is None:
+                        remaining()
+                        if producer.returncode not in (None, 0) or importer.returncode not in (
+                            None,
+                            0,
+                        ):
+                            break
+                        if time.monotonic() >= next_report:
+                            observed = import_diagnostics(
+                                workspace,
+                                producer.returncode,
+                                importer.returncode,
+                                time.monotonic() - started,
+                                timeout,
+                            )
+                            progress(
+                                "tantivy-checkpoint-import",
+                                **{
+                                    key: value
+                                    for key, value in observed.items()
+                                    if key
+                                    in (
+                                        "elapsed_s",
+                                        "budget_s",
+                                        "import_log_bytes",
+                                        "import_progress",
+                                    )
+                                },
+                            )
+                            next_report = time.monotonic() + 30
+                        time.sleep(min(0.25, remaining()))
+                    if producer.poll() != 0 or importer.poll() != 0:
+                        raise ValueError("Checkpoint import child exited")
+                except (ValueError, TimeoutError) as error:
+                    observed = import_diagnostics(
+                        workspace,
+                        producer.poll(),
+                        importer.poll(),
+                        time.monotonic() - started,
+                        timeout,
+                    )
+                    if isinstance(error, TimeoutError):
+                        observed["cause"] = "parent_deadline"
+                    durable_receipt(workspace / "import-failure.json", observed)
+                    progress("tantivy-checkpoint-import-failed", **observed)
+                    kind = (
+                        TimeoutError
+                        if observed["cause"] in ("producer_deadline", "parent_deadline")
+                        else ValueError
+                    )
+                    raise kind(
+                        "Checkpoint import failed: "
+                        + json.dumps(observed, sort_keys=True, separators=(",", ":"))
+                    ) from error
 
         if stream_receipt.stat().st_size > 1024**2:
             raise ValueError("Checkpoint producer receipt exceeds metadata bound")
@@ -383,7 +456,39 @@ def build_checkpoint(
                     counts["deleted_actor_documents"],
                 )
             ):
-                raise ValueError("D1 initial checkpoint identity/counts differ")
+                raise ValueError(
+                    "D1 initial checkpoint identity/counts differ: "
+                    + json.dumps(
+                        {
+                            "input_actors": initial.get("input_actors"),
+                            "actor_count": initial.get("actor_count"),
+                            "tombstone_count": initial.get("tombstone_count"),
+                            "expected_counts": counts,
+                            "checkpoint_wall_seconds": [
+                                header["source_bootstrap"]["checkpoint_receipt"].get(
+                                    "wall_seconds"
+                                ),
+                                (initial.get("source_manifest") or {})
+                                .get("source_bootstrap", {})
+                                .get("checkpoint_receipt", {})
+                                .get("wall_seconds"),
+                            ],
+                            "import_complete": initial.get("import_complete"),
+                            "full_source": initial.get("full_source"),
+                            "has_source_cursor": initial.get("source_cursor") is not None,
+                            "source_observation_revision": initial.get(
+                                "source_observation_revision"
+                            ),
+                            "manifest_differences": sorted(
+                                key
+                                for key in set(header) | set(initial.get("source_manifest") or {})
+                                if header.get(key)
+                                != (initial.get("source_manifest") or {}).get(key)
+                            ),
+                        },
+                        sort_keys=True,
+                    )
+                )
             if (
                 expiry.get("verified_input_actors_sha256") != stream["actors_sha256"]
                 or expiry.get("input_actors_checked") != counts["input_documents"]
@@ -498,7 +603,10 @@ def build_checkpoint(
                     for key, column in (("actors", "updated_at"), ("tombstones", "deleted_at"))
                 ):
                     raise ValueError("Remote cycle did not commit complete discovery positions")
-                if through >= bootstrap["checkpoint_receipt"]["source_clock_after"]:
+                if (
+                    through >= bootstrap["checkpoint_receipt"]["source_clock_after"]
+                    and int(time.time()) - through <= 120
+                ):
                     break
                 time.sleep(min(0.1, remaining()))
             cursor["checkpoint_handoff"]["first_remote_through"] = through
@@ -520,6 +628,14 @@ def build_checkpoint(
                 "checkpoint_reconciliation_sha256": adapter.digest_json(record),
                 "checkpoint_handoff_sha256": adapter.digest_json(cursor["checkpoint_handoff"]),
             }
+            if fallback is not None:
+                fields["pds_fallback"] = fallback.identity()
+                target = data / "pds-fallback.sqlite"
+                try:
+                    os.link(fallback.path, target)
+                except OSError:
+                    shutil.copyfile(fallback.path, target)
+                adapter.validate_fallback_file(data, fields)
             final = admin.status()
             gates = adapter.checkpoint_source_gates(final, fields, int(time.time()))
             if final.get("ready") is not True or final.get("cutover_source_ready") is not False:
@@ -549,10 +665,11 @@ def build_checkpoint(
         remaining()
         raise ValueError("Checkpoint source handoff failed") from error
     finally:
-        if source is not None:
-            source.close()
-        for process in reversed(processes):
-            stop(process)
+        with resources:
+            for process in processes:
+                resources.callback(stop, process)
+            if source is not None:
+                resources.callback(source.close)
 
 
 def main():
@@ -560,7 +677,7 @@ def main():
         raise ValueError("Private checkpoint stream request and receipt paths required")
     request = json.loads(Path(sys.argv[1]).read_bytes())
     seconds = request.pop("max_seconds")
-    if type(seconds) is not int or not 1 <= seconds <= 3600:
+    if type(seconds) is not int or not 1 <= seconds <= 5400:
         raise ValueError("Invalid producer process deadline")
 
     def expired(*_):
