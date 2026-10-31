@@ -69,6 +69,10 @@ initial counts. An exact cursor/revision CAS then initializes the real remote-v2
 client at that floor. Admission requires an actually completed remote discovery
 cycle covering the checkpoint cut and a fresh, complete post-cut moderation
 observation. Local download/import timestamps never stand in for live coverage.
+If the first replay cycle takes longer than the polling freshness window, the
+builder completes another cycle before sealing the handoff. Packaging validates
+the stopped snapshot at one captured time; installation and runtime admission
+still require their own live replay and freshness checks.
 
 External admission dispatches on the distinct checkpoint source kind; it does
 not relabel the reader's traditional `cutover_source_ready` flag. Checkpoint
