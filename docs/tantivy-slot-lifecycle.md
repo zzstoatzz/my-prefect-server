@@ -3,9 +3,9 @@
 The controller supports explicit `tantivy_operation` requests to the existing
 `typeahead-index` cloud flow. Native routes retain the native refresh path;
 approved Tantivy routes use the managed Tantivy continuation. A preparation returns an immutable review plan; it never changes
-`current`, `previous` or `native_rollback`. The operator must separately request
-promotion after supplying the exact plan, current ETag and complete empirical
-release receipt. Current outage/recovery evidence and experiment preflight live in Typeahead's
+`current`, `previous` or `native_rollback`. For manual preparation, the operator separately requests
+promotion with the exact plan, current ETag and complete empirical release receipt.
+Approved automatic refreshes promote only after the same qualification gates. Current outage/recovery evidence and experiment preflight live in Typeahead's
 [October 31 retrospective](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/retros/2026-10-31-search-expiry-outage.md).
 The publisher runs at 06:00 and 18:00 UTC; exact immutable pins live in
 `prefect.heavypad.yaml`. Check actual completed refreshes and the serving coverage
@@ -127,14 +127,12 @@ same publisher only as part of the approved transition:
 - `ref:null`, or exactly the same immutable producer revision. A conflicting
   native tag or mutable branch is rejected before checkout.
 
-No scheduler or deployment was changed by this implementation. The existing
-publisher's two-day cadence exceeds the checkpoint's one-day coverage lifetime
-unless a genuine remote round renews it. The unapplied cutover configuration must
-therefore use the same cloud pool with a twelve-hour cadence until actual renewal
-is proven, and a bounded worker budget around 7,200 seconds. These are configuration
-requirements in the approval plan, not a build-time or availability estimate.
-The existing publisher is paused only during the approved transition; no second
-publisher clock is introduced.
+The normal deployment uses the twelve-hour cadence documented above because a
+checkpoint has a one-day coverage lifetime unless a genuine remote round renews
+it. Keep this cadence until renewal is independently proven. The three-hour outer
+worker budget bounds failure; it is not a promise that a refresh finishes in that
+time. Do not introduce a second publisher clock or infer successful refreshes from
+the presence of a schedule.
 
 An automatic pending journal resumes its exact request and immutable artifact
 before another bulk export. Manual candidates remain fenced for operator review.
@@ -155,7 +153,8 @@ Offline verification uses actual HTTP and filesystem-backed R2 for rollback duri
 publication, pending-before-build resume, route/ETag fencing, source-ref conflicts,
 resource drift, and stale-native promotion refusal. Tests below the independent
 release authorization gate do not manufacture a positive production proof.
-Deployment and unattended execution remain deferred until cutover approval.
+The approved deployment uses this path; live completion evidence belongs in the
+linked operations record, separately from these local tests.
 
 Cancellation reconciles a pending start against actual provider state. If the
 owned machine is already stopped, it confirms that state and releases the
