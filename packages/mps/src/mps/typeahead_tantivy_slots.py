@@ -350,7 +350,13 @@ class Slots:
         self.save(state, name + "-intent")
         try:
             return self.service.fly(method, state["app"], path, body)
-        except (httpx.TransportError, RuntimeError):
+        except (httpx.TransportError, RuntimeError) as exc:
+            from mps.typeahead_refresh import FlyAPIError
+
+            state["pending_action"]["error"] = (
+                f"HTTP {exc.status_code}" if isinstance(exc, FlyAPIError) else type(exc).__name__
+            )
+            self.save(state, name + "-unconfirmed")
             return None
 
     def confirm(self, state, phase):
@@ -385,7 +391,12 @@ class Slots:
             if machine.get("state") == wanted:
                 return machine
             if time.monotonic() >= deadline:
-                raise RuntimeError("Candidate state transition remains unconfirmed")
+                pending = state.get("pending_action") or {}
+                raise RuntimeError(
+                    f"Candidate {state['machine_id']} remains {machine.get('state')}; "
+                    f"expected {wanted}; action {pending.get('name', 'none')}; "
+                    f"provider outcome {pending.get('error', 'acknowledged')}"
+                )
             time.sleep(0.5)
 
     def start(self, state):

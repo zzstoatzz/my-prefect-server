@@ -163,6 +163,11 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
             pieces = self.path.strip("/").split("/")
             assert pieces[0] == APPS[0]
             path = "/".join(pieces[1:])
+            if path.endswith("/stop-rejected"):
+                self.send_response(403)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             data = json.loads(statefile.read_text())
             payload = json.loads(
                 self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"null"
@@ -240,6 +245,19 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
         assert calls.count(("POST", f"/{APPS[0]}/machines")) == 1
         assert controller.route()[0]["current"] == route["current"]
         assert all(APPS[0] in path for _, path in calls)
+        if not checkpoint and retired_state is None:
+            resumed.action(restored, "stop", "POST", f"machines/{state['machine_id']}/stop-rejected")
+            assert restored["pending_action"]["error"] == "HTTP 403"
+            restored = resumed.journal(state["request_id"])
+            assert restored["pending_action"]["error"] == "HTTP 403"
+            previous_timeout = resumed.timeout
+            resumed.timeout = 0
+            with pytest.raises(
+                RuntimeError,
+                match="remains started; expected stopped; action stop; provider outcome HTTP 403",
+            ):
+                resumed.wait(restored, "stopped")
+            resumed.timeout = previous_timeout
         original = json.loads(statefile.read_text())
         mount = original["machines"][0]["config"]["mounts"][0]
         assert mount["encrypted"] is True and mount["size_gb"] == 20
