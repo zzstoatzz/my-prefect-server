@@ -826,3 +826,25 @@ def test_qualification_candidate_urllib_startup_failure_is_bounded(controller, t
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def test_promotion_route_guard_survives_unavailable_public_serving(controller, tmp_path):
+    slots = slot_service(controller, tmp_path)
+    original, _ = controller.route()
+    state = {
+        "request_id": "f" * 32,
+        "owner": OWNER,
+        "app": APPS[0],
+        "route": original,
+        "execution_id": "execution-one",
+    }
+    controller.public_fail = True
+    with pytest.raises(RuntimeError, match="Public serving identity"):
+        slots.acquire(state)
+    leased, _ = controller.route()
+    assert leased["mutation"] == state["mutation"]
+    slots.acquire(state, serving_health=False)
+    slots.guard(state, serving_health=False)
+    controller.s3.seed(refresh.ROUTE_KEY, raw_json({**leased, "operator_change": True}))
+    with pytest.raises(RuntimeError, match="Routing changed"):
+        slots.guard(state, serving_health=False)

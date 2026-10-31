@@ -251,7 +251,7 @@ class Slots:
         except OSError:
             self.service.logger.warning("Slot journal persisted remotely; local cache unavailable")
 
-    def guard(self, state, *, fresh=False):
+    def guard(self, state, *, fresh=False, serving_health=True):
         if state.get("app") not in APPS:
             raise ValueError("Only approved inactive Tantivy apps may be mutated")
         route, etag = self.service.route()
@@ -263,18 +263,19 @@ class Slots:
             raise RuntimeError("Routing changed; same preparation intent must be reconciled")
         if route["current"]["origin"] == f"https://{state['app']}.fly.dev":
             raise RuntimeError("Refusing mutation of the serving app")
-        self.service.healthy(route["current"], require_fresh=fresh)
-        code, public, _ = self.service.get("https://typeahead.waow.tech", "/health/freshness")
-        if (
-            code not in (200, 503)
-            or public.get("ok") is not True
-            or public.get("probe_ok") is not True
-            or public.get("build_id") != route["current"]["build_id"]
-        ):
-            raise RuntimeError("Public serving identity is unavailable or changed")
+        if serving_health:
+            self.service.healthy(route["current"], require_fresh=fresh)
+            code, public, _ = self.service.get("https://typeahead.waow.tech", "/health/freshness")
+            if (
+                code not in (200, 503)
+                or public.get("ok") is not True
+                or public.get("probe_ok") is not True
+                or public.get("build_id") != route["current"]["build_id"]
+            ):
+                raise RuntimeError("Public serving identity is unavailable or changed")
         return route, etag
 
-    def acquire(self, state, *, expected_etag=None):
+    def acquire(self, state, *, expected_etag=None, serving_health=True):
         route, etag = self.service.route()
         if expected_etag is not None and etag != expected_etag:
             raise RuntimeError("Automatic preparation route ETag changed before lease")
@@ -296,7 +297,7 @@ class Slots:
         self.save(state, "lease-intent")
         if lease is None:
             self.service._put_route({**route, "mutation": state["mutation"]}, etag)
-        self.guard(state)
+        self.guard(state, serving_health=serving_health)
 
     def protect(self, state):
         key = f"control/tantivy-slots/{state['app']}/pending.json"
@@ -1240,16 +1241,25 @@ class Slots:
             )
         if state.get("phase") in ("promotion-cas-confirmed", "promoted"):
             raise RuntimeError("Routing changed after confirmed promotion; refusing recovery")
+        owned_lease = route.get("mutation")
+        resuming_lease = (
+            owned_lease is not None
+            and validate_mutation(owned_lease) == state.get("mutation")
+            and owned_lease["request_id"] == state["request_id"]
+            and owned_lease["app"] == state["app"]
+        )
+        route_without_lease = {key: value for key, value in route.items() if key != "mutation"}
         if (
-            route != plan["expected_route"]
-            or etag != expected_current_etag
-            or etag != plan["expected_current_etag"]
+            route_without_lease != plan["expected_route"]
+            or (owned_lease is not None and not resuming_lease)
+            or (not resuming_lease and etag != expected_current_etag)
         ):
             raise RuntimeError("Prepared plan routing precondition changed")
+        route = route_without_lease
         candidate = plan["candidate"]
         proof = self.require_release(candidate, release_receipt_key, release_receipt_sha256)
         self.service.healthy(plan["native_rollback"], require_fresh=True)
-        self.acquire(state)
+        self.acquire(state, serving_health=False)
         qualified, _ = self.qualify(
             state, json.loads(self.read(state["deployment_key"], 1024 * 1024))
         )
@@ -1258,7 +1268,7 @@ class Slots:
             for key in ("origin", "build_id", "format", "binary_sha256", "retrieval_strategy")
         ):
             raise RuntimeError("Fresh candidate identity differs from the prepared plan")
-        self.guard(state)
+        self.guard(state, serving_health=False)
         state["release_proof"] = proof
         self.save(state, "promotion-verified")
         # Releasing and replacing use separate ETags. A competing lease invalidates
