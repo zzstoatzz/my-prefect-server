@@ -8,7 +8,7 @@ from uuid import uuid4
 import dagster as dg
 import duckdb
 import pytest
-from mps.analytics import export_hub_db
+from mps.analytics import HUB_TABLES, export_hub_db
 from prefect.settings import PREFECT_API_URL, temporary_settings
 
 from hub_dagster.assets import build_definitions
@@ -65,6 +65,8 @@ def test_real_dbt_build_and_metadata_release_database_before_other_assets(
     with duckdb.connect(str(database)) as db:
         db.execute("CREATE TABLE raw_github_issues AS SELECT 1 AS n")
         db.execute("CREATE TABLE raw_liked_posts AS SELECT 1 AS n")
+        for table in ("fastmcp_daily", "fastmcp_weekly", "fastmcp_stuck"):
+            db.execute(f"CREATE TABLE {table} AS SELECT 1 AS n")
     subprocess.run(
         [
             str(Path(sys.executable).with_name("dbt")),
@@ -84,7 +86,7 @@ def test_real_dbt_build_and_metadata_release_database_before_other_assets(
     defs = build_definitions(project, database, tmp_path / "missing-spend.jsonl", export)
     graph = defs.resolve_asset_graph()
     assert dg.AssetKey("llm_spend") not in graph.get(dg.AssetKey("hub_action_items")).parent_keys
-    assert len(graph.get(dg.AssetKey("hub_export")).parent_keys) == 3
+    assert len(graph.get(dg.AssetKey("hub_export")).parent_keys) == len(HUB_TABLES)
     with temporary_settings({PREFECT_API_URL: None}):
         result = defs.resolve_job_def("hub_transform").execute_in_process(raise_on_error=False)
     if fails:
@@ -141,6 +143,8 @@ def test_snapshot_validation_uses_its_own_catalog_and_preserves_source_project(t
     with duckdb.connect(str(database)) as db:
         db.execute("CREATE TABLE raw_github_issues AS SELECT 1 AS n")
         db.execute("CREATE TABLE raw_liked_posts AS SELECT 1 AS n")
+        for table in ("fastmcp_daily", "fastmcp_weekly", "fastmcp_stuck"):
+            db.execute(f"CREATE TABLE {table} AS SELECT 1 AS n")
     spend = tmp_path / "spend.jsonl"
     spend.write_text("")
     env = {

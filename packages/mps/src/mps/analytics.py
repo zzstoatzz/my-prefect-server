@@ -10,7 +10,14 @@ from mps.spend import RAW_LLM_SPEND_SCHEMA
 # Tables hub serves. Anything not on this list is dropped from hub.duckdb so
 # the file stays small (hub mmaps everything in it). Keep this in sync with
 # web/src/lib/server/{loaders,discovery}.ts.
-HUB_TABLES = ("hub_action_items", "raw_github_issues", "raw_liked_posts")
+HUB_TABLES = (
+    "hub_action_items",
+    "raw_github_issues",
+    "raw_liked_posts",
+    "fastmcp_daily",
+    "fastmcp_weekly",
+    "fastmcp_stuck",
+)
 
 # DuckDB sizes its buffer pool from the cgroup's MemoryMax; under the Dagster
 # unit's lower MemoryHigh the kernel throttles it instead, stalling builds.

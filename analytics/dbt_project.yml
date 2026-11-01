@@ -13,3 +13,5 @@ models:
       +materialized: table
     marts:
       +materialized: table
+    fastmcp:
+      +materialized: table

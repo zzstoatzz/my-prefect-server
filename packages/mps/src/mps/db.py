@@ -3,11 +3,13 @@
 import datetime
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from pathlib import Path
 
 import duckdb
 
 from mps.email import EmailClassification, EmailItem
 from mps.email_triage import Candidate
+from mps.fastmcp_items import COLUMNS as FASTMCP_COLUMNS, CREATE_TABLE as FASTMCP_TABLE, FastmcpItem
 from mps.likes import LikedPost
 from mps.lock import analytics_write_slot
 from mps.phi import PhiInteraction, PhiObservation
@@ -445,3 +447,32 @@ def write_email_triage(
             [(m, a, n, run_id, instructions, now) for m, a, n in decisions],
         )
         return _count(con, "raw_email_triage")
+
+
+def fastmcp_watermark(db_path: str) -> datetime.datetime | None:
+    """Latest `updated_at` stored for fastmcp, or None before the first sync."""
+    if not Path(db_path).exists():
+        return None
+    con = duckdb.connect(db_path, read_only=True)
+    try:
+        row = con.execute("SELECT max(updated_at) FROM raw_fastmcp_items").fetchone()
+    except duckdb.CatalogException:
+        return None
+    finally:
+        con.close()
+    return row[0] if row else None
+
+
+def write_fastmcp_items(items: Sequence[FastmcpItem], db_path: str) -> int:
+    """Upsert fastmcp issues and PRs into raw_fastmcp_items. Returns total row count."""
+    with _write_conn(db_path) as con:
+        con.execute(FASTMCP_TABLE)
+        now = datetime.datetime.now(datetime.UTC)
+        _upsert_changed(
+            con,
+            "raw_fastmcp_items",
+            ("number",),
+            FASTMCP_COLUMNS,
+            [item.row(now) for item in items],
+        )
+        return _count(con, "raw_fastmcp_items")

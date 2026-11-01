@@ -118,3 +118,50 @@ export interface DiscoveryPoolEntry {
 	last_liked_at: string;
 	sample_posts: DiscoveryPoolPost[];
 }
+
+export interface FastmcpDay {
+	day: string;
+	kind: 'issue' | 'pr';
+	opened: number;
+	merged: number;
+	closed_unmerged: number;
+	open_end: number;
+	open_lt_7d: number;
+	open_7_30d: number;
+	open_30_90d: number;
+	open_gt_90d: number;
+}
+
+export interface FastmcpWeek {
+	week: string;
+	triage_reviewed: boolean;
+	prs: number;
+	merged: number;
+	still_open: number;
+	old_enough_7d: number;
+	responded_7d: number;
+	old_enough_14d: number;
+	resolved_14d: number;
+	median_hours_to_first_response: number | null;
+	median_hours_to_merge: number | null;
+}
+
+export interface FastmcpStuckPr {
+	number: number;
+	title: string;
+	author: string;
+	created_at: string;
+	age_days: number;
+	triage_reviewed: boolean;
+	reason: 'no maintainer response' | 'maintainer quiet';
+	last_maintainer_activity_at: string | null;
+	url: string;
+}
+
+export interface FastmcpTriage {
+	repo: 'PrefectHQ/fastmcp';
+	as_of: string | null;
+	days: FastmcpDay[];
+	weeks: FastmcpWeek[];
+	stuck: FastmcpStuckPr[];
+}

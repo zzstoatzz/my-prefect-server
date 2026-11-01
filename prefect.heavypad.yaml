@@ -538,6 +538,29 @@ deployments:
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
           PREFECT_UI_URL: https://prefect-server.waow.tech
+  - name: fastmcp-warehouse
+    tags:
+    - pipeline
+    - heavypad
+    entrypoint: flows/fastmcp_warehouse.py:fastmcp_warehouse
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+    - cron: 45 * * * *
+      active: true
+      timezone: UTC
+    work_pool:
+      name: heavypad-background-pool
+      job_variables:
+        command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
+          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          $MPS_PIN }}' prefect flow-run execute
+        env:
+          MPS_PIN: '{{ $MPS_PIN }}'
+          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
+          PREFECT_UI_URL: https://prefect-server.waow.tech
   - name: analytics-maintenance
     tags:
     - pipeline
