@@ -224,23 +224,6 @@ deployments:
     concurrency_limit: *cancel_new
     schedules: []
 
-  - name: brief
-    pull: *cached_home
-    tags: [pipeline]
-    entrypoint: flows/brief.py:brief
-    work_pool: *home
-    triggers:
-      - type: event
-        enabled: false
-        expect:
-          - "prefect.flow-run.Completed"
-        match_related:
-          prefect.resource.name: "transform"
-          prefect.resource.role: "deployment"
-
-  # phi's per-user relationship summaries + likes observations (formerly
-  # "compact"). chained off transform because it reads the dbt mart AND to
-  # serialize DuckDB access behind the single-writer pipeline.
   - name: phi-memory-synthesis
     pull: *cached_home
     tags: [pipeline]

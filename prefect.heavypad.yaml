@@ -597,34 +597,6 @@ deployments:
           ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
           LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
           PREFECT_UI_URL: https://prefect-server.waow.tech
-  - name: brief
-    tags:
-    - pipeline
-    - heavypad
-    entrypoint: flows/brief.py:brief
-    triggers:
-    - type: event
-      expect:
-      - prefect.flow-run.Completed
-      match_related:
-        prefect.resource.name: transform
-        prefect.resource.role: deployment
-      enabled: true
-    work_pool:
-      name: heavypad-background-pool
-      job_variables:
-        command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
-          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
-          $MPS_PIN }}' prefect flow-run execute
-        env:
-          MPS_PIN: '{{ $MPS_PIN }}'
-          ANALYTICS_DB_PATH: /home/stoat/prefect-analytics/analytics.duckdb
-          LLM_SPEND_LOG_PATH: /home/stoat/prefect-analytics/llm-spend.jsonl
-          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
-          PREFECT_UI_URL: https://prefect-server.waow.tech
-    concurrency_limit:
-      limit: 1
-      collision_strategy: CANCEL_NEW
   - name: phi-memory-synthesis
     tags:
     - pipeline

@@ -1,10 +1,7 @@
 # my-prefect-server
 
-Personal workflows for activity briefings, agent jobs, analytics, and published
-snapshots. Python flows use [Prefect](https://github.com/PrefectHQ/prefect), backed
+Personal workflows for agent jobs, analytics, and published snapshots. Python flows use [Prefect](https://github.com/PrefectHQ/prefect), backed
 by a self-hosted [Zig control plane](https://tangled.org/zzstoatzz.io/prefect-server).
-
-**live:** [hub.waow.tech](https://hub.waow.tech)
 
 ## install
 
