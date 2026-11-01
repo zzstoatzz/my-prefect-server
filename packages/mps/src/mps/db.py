@@ -8,7 +8,7 @@ import duckdb
 
 from mps.email import EmailClassification, EmailItem
 from mps.email_triage import Candidate
-from mps.likes import LikedPost, LikeRecord
+from mps.likes import LikedPost
 from mps.lock import analytics_write_slot
 from mps.phi import PhiInteraction, PhiObservation
 
@@ -20,6 +20,38 @@ def _count(con: duckdb.DuckDBPyConnection, table: str) -> int:
     return int(row[0])
 
 
+def _upsert_changed(
+    con: duckdb.DuckDBPyConnection,
+    table: str,
+    key: Sequence[str],
+    columns: Sequence[str],
+    rows: Sequence[tuple],
+) -> None:
+    """Insert new rows and replace changed ones, leaving unchanged rows alone.
+
+    `INSERT OR REPLACE` of every fetched row leaves a dead row version behind
+    each run; hourly refetches grew analytics.duckdb to 5 GiB of deleted rows.
+    `fetched_at` is not compared, so refetching an unchanged row writes nothing.
+    """
+    if not rows:
+        return
+    quoted = [f'"{c}"' for c in columns]
+    con.execute(
+        f"CREATE OR REPLACE TEMP TABLE _incoming AS SELECT {', '.join(quoted)} FROM {table} LIMIT 0"
+    )
+    con.executemany(f"INSERT INTO _incoming VALUES ({', '.join('?' for _ in columns)})", rows)
+    match = " AND ".join(f't."{k}" = i."{k}"' for k in key)
+    changed = " OR ".join(
+        f't."{c}" IS DISTINCT FROM i."{c}"' for c in columns if c not in key and c != "fetched_at"
+    )
+    con.execute(
+        f"INSERT OR REPLACE INTO {table} ({', '.join(quoted)}) "
+        f"SELECT {', '.join(f'i.{q}' for q in quoted)} FROM _incoming i "
+        f'LEFT JOIN {table} t ON {match} WHERE t."{key[0]}" IS NULL OR {changed}'
+    )
+    con.execute("DROP TABLE _incoming")
+
+
 @contextmanager
 def _write_conn(db_path: str) -> Iterator[duckdb.DuckDBPyConnection]:
     """RW connection that holds the single analytics writer slot for its lifetime."""
@@ -29,34 +61,6 @@ def _write_conn(db_path: str) -> Iterator[duckdb.DuckDBPyConnection]:
             yield con
         finally:
             con.close()
-
-
-def write_likes(items: list[LikeRecord], db_path: str) -> int:
-    """Upsert like records into raw_likes. Returns total row count."""
-    with _write_conn(db_path) as con:
-        con.execute("""
-            CREATE TABLE IF NOT EXISTS raw_likes (
-                at_uri VARCHAR PRIMARY KEY,
-                subject_uri VARCHAR,
-                created_at VARCHAR,
-                fetched_at TIMESTAMP DEFAULT now()
-            )
-        """)
-        rows = [
-            (
-                item.at_uri,
-                item.subject_uri,
-                item.created_at,
-                datetime.datetime.now(datetime.UTC),
-            )
-            for item in items
-        ]
-        if rows:
-            con.executemany(
-                "INSERT OR REPLACE INTO raw_likes VALUES (?, ?, ?, ?)",
-                rows,
-            )
-        return _count(con, "raw_likes")
 
 
 def write_liked_posts(items: list[LikedPost], db_path: str) -> int:
@@ -89,11 +93,23 @@ def write_liked_posts(items: list[LikedPost], db_path: str) -> int:
             )
             for item in items
         ]
-        if rows:
-            con.executemany(
-                "INSERT OR REPLACE INTO raw_liked_posts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                rows,
-            )
+        _upsert_changed(
+            con,
+            "raw_liked_posts",
+            ("subject_uri",),
+            (
+                "subject_uri",
+                "author_handle",
+                "author_did",
+                "text",
+                "created_at",
+                "liked_at",
+                "embed_type",
+                "embed_text",
+                "fetched_at",
+            ),
+            rows,
+        )
         return _count(con, "raw_liked_posts")
 
 
@@ -129,48 +145,29 @@ def write_github_issues(items: list, db_path: str) -> int:
             )
             for item in items
         ]
-        con.executemany(
-            "INSERT OR REPLACE INTO raw_github_issues VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        _upsert_changed(
+            con,
+            "raw_github_issues",
+            ("repo", "number"),
+            (
+                "repo",
+                "number",
+                "type",
+                "title",
+                "state",
+                "body",
+                "url",
+                "labels",
+                "created_at",
+                "updated_at",
+                "user",
+                "comments",
+                "reactions_total",
+                "fetched_at",
+            ),
             rows,
         )
         return _count(con, "raw_github_issues")
-
-
-def write_tangled_items(items: list, db_path: str) -> int:
-    """Upsert TangledItem objects into raw_tangled_items. Returns total row count."""
-    with _write_conn(db_path) as con:
-        con.execute("""
-            CREATE TABLE IF NOT EXISTS raw_tangled_items (
-                repo VARCHAR, kind VARCHAR, title VARCHAR,
-                body VARCHAR, url VARCHAR, at_uri VARCHAR,
-                author_did VARCHAR, author_handle VARCHAR,
-                created_at VARCHAR, parent_uri VARCHAR,
-                fetched_at TIMESTAMP DEFAULT now(),
-                PRIMARY KEY (at_uri)
-            )
-        """)
-        rows = [
-            (
-                item.repo,
-                item.kind,
-                item.title,
-                item.body,
-                item.url,
-                item.at_uri,
-                item.author_did,
-                item.author_handle,
-                item.created_at,
-                item.parent_uri,
-                datetime.datetime.now(datetime.UTC),
-            )
-            for item in items
-        ]
-        if rows:
-            con.executemany(
-                "INSERT OR REPLACE INTO raw_tangled_items VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                rows,
-            )
-        return _count(con, "raw_tangled_items")
 
 
 def write_phi_observations(items: list[PhiObservation], db_path: str) -> int:
@@ -196,11 +193,13 @@ def write_phi_observations(items: list[PhiObservation], db_path: str) -> int:
             )
             for item in items
         ]
-        if rows:
-            con.executemany(
-                "INSERT OR REPLACE INTO raw_phi_observations VALUES (?, ?, ?, ?, ?, ?)",
-                rows,
-            )
+        _upsert_changed(
+            con,
+            "raw_phi_observations",
+            ("observation_id",),
+            ("handle", "observation_id", "content", "tags", "created_at", "fetched_at"),
+            rows,
+        )
         return _count(con, "raw_phi_observations")
 
 
@@ -225,11 +224,13 @@ def write_phi_interactions(items: list[PhiInteraction], db_path: str) -> int:
             )
             for item in items
         ]
-        if rows:
-            con.executemany(
-                "INSERT OR REPLACE INTO raw_phi_interactions VALUES (?, ?, ?, ?, ?)",
-                rows,
-            )
+        _upsert_changed(
+            con,
+            "raw_phi_interactions",
+            ("interaction_id",),
+            ("handle", "interaction_id", "content", "created_at", "fetched_at"),
+            rows,
+        )
         return _count(con, "raw_phi_interactions")
 
 
@@ -259,14 +260,23 @@ def write_emails(items: list[EmailItem], db_path: str) -> int:
             )
             for item in items
         ]
-        if rows:
-            con.executemany(
-                """INSERT OR REPLACE INTO raw_emails
-                   (message_id, subject, sender_name, sender_address, snippet,
-                    received_at, unread, mailbox, fetched_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                rows,
-            )
+        _upsert_changed(
+            con,
+            "raw_emails",
+            ("message_id",),
+            (
+                "message_id",
+                "subject",
+                "sender_name",
+                "sender_address",
+                "snippet",
+                "received_at",
+                "unread",
+                "mailbox",
+                "fetched_at",
+            ),
+            rows,
+        )
         return _count(con, "raw_emails")
 
 

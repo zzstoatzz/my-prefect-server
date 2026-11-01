@@ -16,7 +16,6 @@ from flows.ingest import (
     LIKES_PAGES,
     NETWORK_RETRIES,
     _tolerate,
-    fetch_all_tangled_items,
     fetch_authored_items,
     fetch_emails,
     fetch_issue_or_pr,
@@ -30,7 +29,6 @@ NETWORK_TASKS = [
     fetch_notifications,
     fetch_issue_or_pr,
     fetch_authored_items,
-    fetch_all_tangled_items,
     fetch_emails,
     fetch_phi_memory,
     fetch_nate_likes,
@@ -160,3 +158,51 @@ def test_a_named_completed_state_is_completed_but_not_Completed():
     assert state.is_completed()
     assert state.name == "Degraded"
     assert state.type.value == "COMPLETED"
+
+
+def test_resolve_liked_posts_fetches_only_recent_likes_not_yet_stored(tmp_path, monkeypatch):
+    import datetime as dt
+    from unittest import mock
+
+    from mps.db import write_liked_posts
+    from mps.likes import LikedPost, LikeRecord
+    from prefect.logging import disable_run_logger
+
+    monkeypatch.delenv("PREFECT_API_URL", raising=False)
+    db = str(tmp_path / "analytics.duckdb")
+    now = dt.datetime.now(dt.UTC)
+    recent, old = (
+        (now - dt.timedelta(hours=1)).isoformat(),
+        (now - dt.timedelta(days=9)).isoformat(),
+    )
+    with mock.patch("prefect.settings.PREFECT_API_URL") as setting:
+        setting.value.return_value = None
+        write_liked_posts(
+            [LikedPost("at://a/post/stored", "a.test", "did:a", "x", recent, recent)], db
+        )
+        requested: list[list[str]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            uris = request.url.params.get_list("uris")
+            requested.append(uris)
+            posts = [
+                {"uri": u, "author": {"handle": "b.test", "did": "did:b"}, "record": {"text": "hi"}}
+                for u in uris
+            ]
+            return httpx.Response(200, json={"posts": posts})
+
+        real_client = httpx.Client
+        monkeypatch.setattr(
+            "flows.ingest.httpx.Client",
+            lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw),
+        )
+        likes = [
+            LikeRecord("at://me/like/1", "at://a/post/stored", recent),
+            LikeRecord("at://me/like/2", "at://b/post/new", recent),
+            LikeRecord("at://me/like/3", "at://b/post/old", old),
+        ]
+        with disable_run_logger():
+            posts = resolve_liked_posts.fn(likes, db)
+
+    assert requested == [["at://b/post/new"]]
+    assert [(p.subject_uri, p.liked_at) for p in posts] == [("at://b/post/new", recent)]

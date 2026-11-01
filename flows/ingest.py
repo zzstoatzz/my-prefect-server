@@ -1,8 +1,8 @@
 """
-Fetch GitHub notifications and tangled.org items, persist both to DuckDB.
+Fetch GitHub notifications, likes, email and phi memory, persist them to DuckDB.
 
-Combines the two data sources into one flow so DuckDB's single-writer lock
-is never contested — both persists happen sequentially in the same process.
+Combines the sources into one flow so DuckDB's single-writer lock is never
+contested — the persists happen sequentially in the same process.
 
 Cache policy: each GitHub issue is cached by repo+number for 24h.
 
@@ -23,10 +23,8 @@ from mps.db import (
     write_emails,
     write_github_issues,
     write_liked_posts,
-    write_likes,
     write_phi_interactions,
     write_phi_observations,
-    write_tangled_items,
 )
 from mps.email import (
     EmailItem,
@@ -36,7 +34,7 @@ from mps.github import IssueOrPR, IssueRef, gh_headers
 from mps.likes import LikedPost, LikeRecord, fetch_likes, summarize_embed
 from mps.lock import analytics_write_slot
 from mps.phi import PhiInteraction, PhiObservation, restore_handle, row_strings, row_text
-from mps.tangled import PDS_BASE, TangledItem, fetch_items, fetch_repo_at_uris
+from mps.tangled import PDS_BASE
 from prefect import flow, get_run_logger, task, unmapped
 from prefect.artifacts import create_table_artifact
 from prefect.cache_policies import CachePolicy
@@ -68,13 +66,6 @@ def gh_client(token: str, transport: httpx.BaseTransport | None = None) -> httpx
     # numeric /repositories/<id>/ url and httpx won't follow by default
     return httpx.Client(headers=gh_headers(token), follow_redirects=True, transport=transport)
 
-
-TANGLED_COLLECTIONS = [
-    "sh.tangled.repo.issue",
-    "sh.tangled.repo.pull",
-    "sh.tangled.repo.issue.comment",
-    "sh.tangled.repo.pull.comment",
-]
 
 # bump to invalidate all cached results (e.g. when fetch shape changes)
 _CACHE_VERSION = "v3"
@@ -253,26 +244,6 @@ def stored_open_refs() -> list[IssueRef]:
     return refs
 
 
-# --- tangled tasks ---
-
-
-@task(**NETWORK_RETRIES)
-def fetch_all_tangled_items() -> list[TangledItem]:
-    """Fetch issues, PRs, and comments from the tangled.org PDS."""
-    logger = get_run_logger()
-    with httpx.Client(base_url=PDS_BASE, timeout=30) as client:
-        repo_uris = fetch_repo_at_uris(client)
-        logger.info(f"found {len(repo_uris)} target repos on PDS")
-
-        items: list[TangledItem] = []
-        for collection in TANGLED_COLLECTIONS:
-            batch = fetch_items(client, collection, repo_uris)
-            logger.info(f"{collection}: {len(batch)} records")
-            items.extend(batch)
-
-    return items
-
-
 # --- email tasks ---
 
 
@@ -394,45 +365,48 @@ def fetch_nate_likes(max_pages: int | None = LIKES_PAGES) -> list[LikeRecord]:
     return likes
 
 
-@task
-def persist_likes(items: list[LikeRecord]) -> int:
-    return write_likes(items, _db_path())
-
-
 @task(**NETWORK_RETRIES)
-def resolve_liked_posts(db_path: str) -> list[LikedPost]:
-    """Find recent unresolved likes and batch-resolve post content via public API."""
+def resolve_liked_posts(likes: list[LikeRecord], db_path: str) -> list[LikedPost]:
+    """Resolve post content for this run's likes from the last 7 days not yet stored."""
     import duckdb
 
     logger = get_run_logger()
 
+    cutoff = (datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=7)).isoformat()
+    recent = sorted(
+        (like for like in likes if like.created_at >= cutoff),
+        key=lambda like: like.created_at,
+        reverse=True,
+    )
     with analytics_write_slot():
         con = duckdb.connect(db_path)
-        # bootstrap raw_liked_posts if it doesn't exist yet
-        con.execute("""
-            CREATE TABLE IF NOT EXISTS raw_liked_posts (
-                subject_uri VARCHAR PRIMARY KEY,
-                author_handle VARCHAR,
-                author_did VARCHAR,
-                text VARCHAR,
-                created_at VARCHAR,
-                liked_at VARCHAR,
-                embed_type VARCHAR,
-                embed_text VARCHAR,
-                fetched_at TIMESTAMP DEFAULT now()
-            )
-        """)
-        # find likes from last 7 days not yet resolved
-        rows = con.execute("""
-            SELECT l.subject_uri, l.created_at AS liked_at
-            FROM raw_likes l
-            LEFT JOIN raw_liked_posts lp ON l.subject_uri = lp.subject_uri
-            WHERE lp.subject_uri IS NULL
-              AND l.created_at >= (now() - INTERVAL '7 days')::VARCHAR
-            ORDER BY l.created_at DESC
-            LIMIT 200
-        """).fetchall()
-        con.close()
+        try:
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS raw_liked_posts (
+                    subject_uri VARCHAR PRIMARY KEY,
+                    author_handle VARCHAR,
+                    author_did VARCHAR,
+                    text VARCHAR,
+                    created_at VARCHAR,
+                    liked_at VARCHAR,
+                    embed_type VARCHAR,
+                    embed_text VARCHAR,
+                    fetched_at TIMESTAMP DEFAULT now()
+                )
+            """)
+            stored = {
+                uri
+                for (uri,) in con.execute(
+                    "SELECT subject_uri FROM raw_liked_posts WHERE subject_uri IN "
+                    "(SELECT unnest(?::VARCHAR[]))",
+                    [[like.subject_uri for like in recent]],
+                ).fetchall()
+            }
+        finally:
+            con.close()
+    rows = [
+        (like.subject_uri, like.created_at) for like in recent if like.subject_uri not in stored
+    ][:200]
 
     if not rows:
         logger.info("no unresolved likes to fetch")
@@ -509,11 +483,6 @@ def persist_github(items: list[IssueOrPR]) -> int:
     return write_github_issues(items, _db_path())
 
 
-@task
-def persist_tangled(items: list[TangledItem]) -> int:
-    return write_tangled_items(items, _db_path())
-
-
 # --- flow ---
 
 
@@ -527,7 +496,7 @@ def _tolerate[T](
     """Resolve a fetch that stayed down through all its retries.
 
     Every persist below is already guarded on an empty source, so one dead
-    upstream should cost us that source for an hour — not the github, tangled
+    upstream should cost us that source for an hour — not the github, likes
     and phi rows the same run already fetched successfully.
     """
     value = future.result(raise_on_failure=False)
@@ -541,15 +510,14 @@ def _tolerate[T](
 @flow(name="ingest", log_prints=True, timeout_seconds=1800)
 def ingest(only_unread: bool = True):
     """
-    Fetch GitHub, tangled.org, and phi memory concurrently, then persist sequentially.
+    Fetch GitHub, likes, email and phi memory concurrently, then persist sequentially.
     """
     logger = get_run_logger()
     degraded: list[str] = []
 
     token = load_token()
 
-    # kick off tangled + phi + likes fetches immediately (no deps on github token)
-    tangled_future = fetch_all_tangled_items.submit()
+    # kick off phi, likes and email fetches immediately (no deps on github token)
     likes_future = fetch_nate_likes.submit()
     email_future = fetch_emails.submit()
 
@@ -582,10 +550,6 @@ def ingest(only_unread: bool = True):
         gh_items = [r for r in futures.result() if r is not None]
     logger.info(f"resolved {len(gh_items)} github issues/PRs")
 
-    # wait for tangled + phi fetches
-    tangled_items = _tolerate(tangled_future, "tangled", [], degraded, logger)
-    logger.info(f"fetched {len(tangled_items)} tangled items")
-
     phi_observations, phi_interactions = _tolerate(phi_future, "phi", ([], []), degraded, logger)
 
     likes = _tolerate(likes_future, "likes", [], degraded, logger)
@@ -598,18 +562,8 @@ def ingest(only_unread: bool = True):
         total = persist_github(gh_items)
         logger.info(f"upserted {len(gh_items)} github rows; {total} total in raw_github_issues")
 
-    if tangled_items:
-        total = persist_tangled(tangled_items)
-        logger.info(
-            f"persisted {len(tangled_items)} tangled rows; {total} total in raw_tangled_items"
-        )
-
     if likes:
-        total = persist_likes(likes)
-        logger.info(f"persisted {len(likes)} likes; {total} total in raw_likes")
-
-        # resolve liked post content for recent unresolved likes
-        liked_posts = resolve_liked_posts(_db_path())
+        liked_posts = resolve_liked_posts(likes, _db_path())
         if liked_posts:
             lp_total = persist_liked_posts(liked_posts)
             logger.info(
@@ -631,7 +585,6 @@ def ingest(only_unread: bool = True):
         key="ingest-counts",
         table=[
             {"source": "github", "fetched": len(gh_items)},
-            {"source": "tangled", "fetched": len(tangled_items)},
             {"source": "email", "fetched": len(emails)},
             {"source": "likes", "fetched": len(likes)},
             {"source": "phi observations", "fetched": len(phi_observations)},
