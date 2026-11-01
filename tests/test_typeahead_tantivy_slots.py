@@ -988,7 +988,9 @@ def _settling_slots(tmp_path, monkeypatch, outcomes, settle=120):
 def test_retirement_freshness_waits_for_a_completed_poll_cycle(tmp_path, monkeypatch):
     from mps.typeahead_tantivy_slots import POLL_CYCLE_INCOMPLETE
 
-    slots, runtime = _settling_slots(tmp_path, monkeypatch, [POLL_CYCLE_INCOMPLETE, POLL_CYCLE_INCOMPLETE, None])
+    slots, runtime = _settling_slots(
+        tmp_path, monkeypatch, [POLL_CYCLE_INCOMPLETE, POLL_CYCLE_INCOMPLETE, None]
+    )
     assert slots.retirement_freshness({}, {}) == {"outcome": None}
     assert runtime.reads == 3
 
