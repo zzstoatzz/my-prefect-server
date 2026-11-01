@@ -56,6 +56,32 @@
   `PREFECT_INTEGRATIONS_KUBERNETES_OBSERVER_NAMESPACES=prefect` for scoped RBAC.
   Interpreter/dependency overrides belong in `work_pool.job_variables.command`.
 
+## before removing or "retiring" anything
+
+A failing job, empty logs or a deleted host do not show that a service is
+unused. On 2026-11-01 the hub was retired because its Hetzner sync failed; it
+had moved to HeavyPad and phi, other repos and the presence webhook were
+still reading it. Before removing a service, table, deployment or file:
+
+- Find where it is served now: `~/tangled.org/zzstoatzz.io/home/deploy/cloudflared.yml`
+  (public hostnames on HeavyPad), `deploy/prefect-edge/` (`nginx.conf`,
+  `services.toml`, units), `systemctl --user list-units` and
+  `DOCKER_HOST=unix:///var/run/docker.sock docker ps` on HeavyPad.
+- Find who reads it: `rg` its hostname, path, table or file name across
+  `~/tangled.org` and `~/github.com`, plus proxy access logs for real traffic.
+- Check `docs/analytics.md` for the table and consumer map; update it with
+  any change.
+- Move files aside instead of deleting them, and say what you moved.
+- If any consumer remains, stop and ask nate before removing it.
+
+Known live readers of `hub.waow.tech` (HeavyPad `prefect-hub`, port 13000):
+phi `/api/agents/discovery-pool`, cost exports `/api/costs.json`, presence
+`/api/presence`, and the page.
+
+Flows run DuckDB unpinned (2.x) while Dagster's dbt is locked to 1.5. A
+DuckDB file one of them creates must use `STORAGE_VERSION 'v1.0.0'`
+(storage version 64) or the other cannot open it.
+
 ## workflow behavior
 
 - Dagster owns hub dbt asset execution and metadata on HeavyPad. Prefect's
