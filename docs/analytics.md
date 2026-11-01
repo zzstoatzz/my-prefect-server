@@ -11,14 +11,21 @@ that is actually read.
 
 | table | written by | read by |
 |---|---|---|
-| `raw_github_issues` | `ingest` (notifications, authored, stored-open refresh) | Grafana "github intelligence", `ingest`'s open-item refresh |
-| `raw_emails`, `raw_email_classifications` | `ingest`, `classify-emails` | `classify-emails`, `email-triage` |
+| `raw_github_issues` | `ingest` (notifications, authored, stored-open refresh) | hub, Grafana "github intelligence", `ingest`'s open-item refresh |
+| `raw_tangled_items` | `ingest` | dbt `int_tangled_items_scored` |
+| `raw_emails`, `raw_email_classifications` | `ingest`, `classify-emails` | `classify-emails`, `email-triage`, dbt `int_emails_scored` |
 | `raw_email_triage` | `email-triage` | decision history (append per run) |
-| `raw_liked_posts` | `ingest` (likes from the last 7 days, resolved once) | `phi-memory-synthesis` |
+| `raw_liked_posts` | `ingest` (likes from the last 7 days, resolved once) | `phi-memory-synthesis`, hub discovery pool (phi reads it) |
 | `raw_phi_observations`, `raw_phi_interactions` | `ingest` (copy of phi's TurboPuffer `phi-users-*`) | dbt `int_phi_user_profiles`, `phi-memory-synthesis` |
 | `raw_phi_dockets` | `docket` | docket history (append per run) |
 | `raw_llm_spend` | Dagster `llm_spend` (from `llm-spend.jsonl`) | ad hoc queries |
 | `int_phi_user_profiles` | dbt | `phi-memory-synthesis`, which writes relationship summaries phi reads |
+| `hub_action_items` (from the `int_*_scored` models) | dbt | `brief`, hub export |
+
+The hub (`hub.waow.tech`, served from HeavyPad through the Cloudflare tunnel)
+reads `hub.duckdb`, which Dagster's `hub_export` writes after dbt. Besides the
+page, it serves `/api/agents/discovery-pool` (phi), `/api/costs.json` (cost
+exports in other repos) and `/api/presence`.
 
 Grafana reads a copy refreshed by `prefect-grafana-snapshot` when the file
 changes; it never opens the live file.

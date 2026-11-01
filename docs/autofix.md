@@ -243,7 +243,7 @@ happening, and whether it is*, and eventually be a place to talk to the
 agent. concretely for this design:
 
 - **schedule vs reality**: the hub already knows the deployment table
-  (`docs/archive/2026-11-01-hub.md`). add a "runs" panel: per deployment, last expected run,
+  (`docs/hub.md`). add a "runs" panel: per deployment, last expected run,
   last actual, state. this is a read of `/api/flow_runs/filter` + the
   deployment schedule, no new data source.
 - **autofix timeline**: the `autofix.*` events above render as a thread per

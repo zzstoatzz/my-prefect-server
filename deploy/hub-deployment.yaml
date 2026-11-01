@@ -1,0 +1,119 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hub
+  namespace: prefect
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hub
+  template:
+    metadata:
+      labels:
+        app: hub
+    spec:
+      hostAliases:
+        - ip: 100.96.216.23
+          hostnames: [heavypad.tailb660b6.ts.net]
+      imagePullSecrets:
+        - name: atcr-creds
+      containers:
+        - name: hub
+          image: atcr.io/zzstoatzz.io/hub:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          env:
+            - name: CF_ACCESS_ISSUER
+              value: https://zzstoatzz-io.cloudflareaccess.com
+            - name: CF_ACCESS_AUDIENCE
+              value: 87f2a109ecc1f5c82749a973ef356cfe89c52a616521a95e5809c4eb5f3922d5
+            - name: GARDENER_API_URL
+              value: https://heavypad.tailb660b6.ts.net:10443/api
+            - name: GARDENER_API_AUTH_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: prefect-auth-ro
+                  key: auth-string
+                  optional: true
+            - name: PRESENCE_WEBHOOK_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: presence-ingress
+                  key: webhook-token
+                  optional: true
+            - name: PRESENCE_PREFECT_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: presence-heavypad
+                  key: prefect-api-url
+                  optional: true
+            - name: PRESENCE_PREFECT_API_AUTH_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: presence-heavypad
+                  key: prefect-api-auth
+                  optional: true
+            - name: PRESENCE_PREFECT_DEPLOYMENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: presence-heavypad
+                  key: deployment-id
+                  optional: true
+            - name: PREFECT_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: presence-ingress
+                  key: prefect-api-url
+                  optional: true
+            - name: PREFECT_API_AUTH_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: presence-ingress
+                  key: prefect-api-auth
+                  optional: true
+            - name: PRESENCE_DEPLOYMENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: presence-ingress
+                  key: deployment-id
+                  optional: true
+            - name: DUCKDB_PATH
+              # slim hub-only db built by flows/transform.py:export_hub_db.
+              # the full analytics.duckdb (~1 GB, mostly raw_phi_observations
+              # which hub never queries) sits next to it on the same hostPath
+              # for dbt + grafana to keep using.
+              value: /analytics/hub.duckdb
+          volumeMounts:
+            - name: analytics
+              mountPath: /analytics
+              readOnly: true
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 50m
+            limits:
+              # back down from 1536Mi now that hub mmaps hub.duckdb (~50–100Mi)
+              # instead of analytics.duckdb (~1 GB, mostly raw_phi_observations
+              # that hub never queries). leaves ~3x headroom over the file size
+              # for node runtime + query plans.
+              memory: 384Mi
+              cpu: 500m
+      volumes:
+        - name: analytics
+          hostPath:
+            path: /var/lib/prefect-analytics
+            type: Directory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hub
+  namespace: prefect
+spec:
+  selector:
+    app: hub
+  ports:
+    - port: 3000
+      targetPort: 3000

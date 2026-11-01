@@ -1,11 +1,4 @@
-# hub (retired 2026-11-01)
-
-> Retired. Its host, the Hetzner node, was deleted in the October 27 home
-> migration and the page went unnoticed for five days. The web app, `brief`,
-> the hub export, the sync cron and the hub-only dbt models were removed on
-> 2026-11-01. Phi's relationship summaries, ingest and the remaining dbt
-> models continue; see [analytics](../analytics.md). This file describes the
-> system as it was.
+# hub
 
 action item dashboard and intelligence pipeline at [hub.waow.tech](https://hub.waow.tech). aggregates issues and PRs from github and [tangled.org](https://tangled.org), scores them by importance, generates a daily briefing with an LLM, and maintains phi's long-term memory.
 

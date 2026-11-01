@@ -170,6 +170,57 @@ def write_github_issues(items: list, db_path: str) -> int:
         return _count(con, "raw_github_issues")
 
 
+def write_tangled_items(items: list, db_path: str) -> int:
+    """Upsert TangledItem objects into raw_tangled_items. Returns total row count."""
+    with _write_conn(db_path) as con:
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS raw_tangled_items (
+                repo VARCHAR, kind VARCHAR, title VARCHAR,
+                body VARCHAR, url VARCHAR, at_uri VARCHAR,
+                author_did VARCHAR, author_handle VARCHAR,
+                created_at VARCHAR, parent_uri VARCHAR,
+                fetched_at TIMESTAMP DEFAULT now(),
+                PRIMARY KEY (at_uri)
+            )
+        """)
+        rows = [
+            (
+                item.repo,
+                item.kind,
+                item.title,
+                item.body,
+                item.url,
+                item.at_uri,
+                item.author_did,
+                item.author_handle,
+                item.created_at,
+                item.parent_uri,
+                datetime.datetime.now(datetime.UTC),
+            )
+            for item in items
+        ]
+        _upsert_changed(
+            con,
+            "raw_tangled_items",
+            ("at_uri",),
+            (
+                "repo",
+                "kind",
+                "title",
+                "body",
+                "url",
+                "at_uri",
+                "author_did",
+                "author_handle",
+                "created_at",
+                "parent_uri",
+                "fetched_at",
+            ),
+            rows,
+        )
+        return _count(con, "raw_tangled_items")
+
+
 def write_phi_observations(items: list[PhiObservation], db_path: str) -> int:
     """Upsert phi observations into raw_phi_observations. Returns total row count."""
     with _write_conn(db_path) as con:

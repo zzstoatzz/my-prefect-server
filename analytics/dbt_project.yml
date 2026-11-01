@@ -11,3 +11,5 @@ models:
       +materialized: view
     enrichment:
       +materialized: table
+    marts:
+      +materialized: table

@@ -7,6 +7,11 @@ from tempfile import TemporaryDirectory
 
 from mps.spend import RAW_LLM_SPEND_SCHEMA
 
+# Tables hub serves. Anything not on this list is dropped from hub.duckdb so
+# the file stays small (hub mmaps everything in it). Keep this in sync with
+# web/src/lib/server/{loaders,discovery}.ts.
+HUB_TABLES = ("hub_action_items", "raw_github_issues", "raw_liked_posts")
+
 # DuckDB sizes its buffer pool from the cgroup's MemoryMax; under the Dagster
 # unit's lower MemoryHigh the kernel throttles it instead, stalling builds.
 DUCKDB_MEMORY_LIMIT = "2GB"
@@ -15,6 +20,44 @@ DUCKDB_MEMORY_LIMIT = "2GB"
 # a new file gets the writing version's storage format. A rewrite must keep the
 # original format (storage version 64) so every reader can still open it.
 ANALYTICS_STORAGE_VERSION = "v1.0.0"
+
+
+def export_hub_db(src: Path, dst: Path) -> int:
+    """Write a hub-only duckdb containing just the tables hub queries.
+
+    Hub used to mount the full analytics.duckdb (~1 GB, mostly
+    raw_phi_observations which hub never queries) and OOMed periodically
+    because duckdb mmaps the whole file. This pulls just the three tables
+    hub actually reads into a separate file (~50–100 MB).
+
+    Atomic via tmp-file + rename: hub's snapshot logic mtime-checks the
+    source path on each request, so the rename triggers a clean refresh
+    on the next request.
+    """
+    import duckdb
+
+    logger = logging.getLogger(__name__)
+    tmp = dst.with_suffix(dst.suffix + ".new")
+    if tmp.exists():
+        tmp.unlink()
+
+    # open the new hub file as the RW main connection, then ATTACH source
+    # READ_ONLY (dbt may still be reading it). attaching the other way
+    # around inherits the parent connection's read-only mode and CREATE
+    # TABLE fails with "database does not exist" on the writer side.
+    con = duckdb.connect(str(tmp), config={"memory_limit": DUCKDB_MEMORY_LIMIT})
+    try:
+        con.execute(f"ATTACH '{src}' AS analytics (READ_ONLY)")
+        for tbl in HUB_TABLES:
+            con.execute(f"CREATE OR REPLACE TABLE {tbl} AS SELECT * FROM analytics.main.{tbl}")
+        con.execute("DETACH analytics")
+    finally:
+        con.close()
+
+    os.replace(tmp, dst)
+    size_mb = dst.stat().st_size / 1024 / 1024
+    logger.info(f"wrote {dst} ({size_mb:.1f} MB) with tables: {', '.join(HUB_TABLES)}")
+    return int(size_mb)
 
 
 def import_spend_log(log_path: Path, analytics_db: Path) -> int:
@@ -116,18 +159,11 @@ def import_spend_log(log_path: Path, analytics_db: Path) -> int:
         con.close()
 
 
-# Relations the pipeline used to produce and nothing writes or reads any more.
+# Relations nothing writes or reads any more.
 # dbt never drops a model removed from the project, so compaction does.
 OBSOLETE_RELATIONS = (
-    "hub_action_items",
-    "int_emails_scored",
-    "int_github_issues_scored",
-    "int_tangled_items_scored",
-    "known_contributors",
     "raw_likes",
-    "raw_tangled_items",
     "stg_likes",
-    "stg_tangled_items",
 )
 
 

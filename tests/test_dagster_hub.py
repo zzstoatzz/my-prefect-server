@@ -8,10 +8,21 @@ from uuid import uuid4
 import dagster as dg
 import duckdb
 import pytest
+from mps.analytics import export_hub_db
 from prefect.settings import PREFECT_API_URL, temporary_settings
 
 from hub_dagster.assets import build_definitions
 from hub_dagster.bridge import submit_and_wait
+
+
+def test_export_failure_preserves_last_good_database(tmp_path):
+    source, published = tmp_path / "source.duckdb", tmp_path / "hub.duckdb"
+    with duckdb.connect(str(source)) as db:
+        db.execute("CREATE TABLE unrelated AS SELECT 1 AS n")
+    published.write_bytes(b"previous export")
+    with pytest.raises(duckdb.Error):
+        export_hub_db(source, published)
+    assert published.read_bytes() == b"previous export"
 
 
 @pytest.mark.parametrize("status", [dg.DagsterRunStatus.SUCCESS, dg.DagsterRunStatus.FAILURE])
@@ -33,7 +44,9 @@ def test_bridge_reuses_terminal_run_and_propagates_failure(tmp_path, monkeypatch
 
 
 @pytest.mark.parametrize("fails", [False, True])
-def test_real_dbt_build_propagates_failure_and_records_metadata(tmp_path, monkeypatch, fails):
+def test_real_dbt_build_and_metadata_release_database_before_other_assets(
+    tmp_path, monkeypatch, fails
+):
     project = tmp_path / "dbt"
     (project / "models").mkdir(parents=True)
     (project / "profiles").mkdir()
@@ -46,7 +59,7 @@ def test_real_dbt_build_propagates_failure_and_records_metadata(tmp_path, monkey
     (project / "profiles/profiles.yml").write_text(
         f"failure_check:\n  target: dev\n  outputs:\n    dev:\n      type: duckdb\n      path: '{database}'\n      threads: 1\n"
     )
-    (project / "models/example_model.sql").write_text(
+    (project / "models/hub_action_items.sql").write_text(
         "select * from missing_source_table" if fails else "select 1 as n"
     )
     with duckdb.connect(str(database)) as db:
@@ -66,9 +79,12 @@ def test_real_dbt_build_propagates_failure_and_records_metadata(tmp_path, monkey
         capture_output=True,
     )
     monkeypatch.setenv("PREFECT_API_URL", "")
-    defs = build_definitions(project, database, tmp_path / "missing-spend.jsonl")
+    export = tmp_path / "hub.duckdb"
+    export.write_bytes(b"last good export")
+    defs = build_definitions(project, database, tmp_path / "missing-spend.jsonl", export)
     graph = defs.resolve_asset_graph()
-    assert dg.AssetKey("llm_spend") not in graph.get(dg.AssetKey("example_model")).parent_keys
+    assert dg.AssetKey("llm_spend") not in graph.get(dg.AssetKey("hub_action_items")).parent_keys
+    assert len(graph.get(dg.AssetKey("hub_export")).parent_keys) == 3
     with temporary_settings({PREFECT_API_URL: None}):
         result = defs.resolve_job_def("hub_transform").execute_in_process(raise_on_error=False)
     if fails:
@@ -78,12 +94,17 @@ def test_real_dbt_build_propagates_failure_and_records_metadata(tmp_path, monkey
             and "missing_source_table" in str(event.event_specific_data)
             for event in result.all_events
         )
+        assert export.read_bytes() == b"last good export"
+        assert not any(
+            e.asset_key == dg.AssetKey("hub_export")
+            for e in result.get_asset_materialization_events()
+        )
     else:
         assert result.success
-        with duckdb.connect(str(database), read_only=True) as db:
-            assert db.execute("SELECT * FROM example_model").fetchall() == [(1,)]
+        with duckdb.connect(str(export), read_only=True) as db:
+            assert db.execute("SELECT * FROM hub_action_items").fetchall() == [(1,)]
         events = result.get_asset_materialization_events()
-        model = next(e for e in events if e.asset_key == dg.AssetKey("example_model"))
+        model = next(e for e in events if e.asset_key == dg.AssetKey("hub_action_items"))
         assert "dagster/column_schema" in model.event_specific_data.materialization.metadata
 
 
@@ -115,7 +136,7 @@ def test_snapshot_validation_uses_its_own_catalog_and_preserves_source_project(t
         "snapshot:\n  target: dev\n  outputs:\n    dev:\n      type: duckdb\n"
         "      path: \"{{ env_var('ANALYTICS_DB_PATH') }}\"\n      threads: 1\n"
     )
-    (project / "models/example_model.sql").write_text("select 1 as n")
+    (project / "models/hub_action_items.sql").write_text("select 1 as n")
     database = tmp_path / "production.duckdb"
     with duckdb.connect(str(database)) as db:
         db.execute("CREATE TABLE raw_github_issues AS SELECT 1 AS n")
@@ -144,8 +165,8 @@ def test_snapshot_validation_uses_its_own_catalog_and_preserves_source_project(t
     )
     assert result.returncode == 0, result.stderr
     report = json.loads((report_dir / "verification.json").read_text())
-    assert report["equal_row_counts"] == {"example_model": 1, "raw_llm_spend": 0}
-    assert "dagster/column_schema" in report["materialization_metadata"]["example_model"]
+    assert report["equal_row_counts"] == {"hub_action_items": 1, "raw_llm_spend": 0}
+    assert "dagster/column_schema" in report["materialization_metadata"]["hub_action_items"]
     assert not (project / "target").exists()
 
 

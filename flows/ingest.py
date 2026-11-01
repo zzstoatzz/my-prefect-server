@@ -1,5 +1,5 @@
 """
-Fetch GitHub notifications, likes, email and phi memory, persist them to DuckDB.
+Fetch GitHub notifications, tangled.org items, likes, email and phi memory into DuckDB.
 
 Combines the sources into one flow so DuckDB's single-writer lock is never
 contested — the persists happen sequentially in the same process.
@@ -25,6 +25,7 @@ from mps.db import (
     write_liked_posts,
     write_phi_interactions,
     write_phi_observations,
+    write_tangled_items,
 )
 from mps.email import (
     EmailItem,
@@ -34,7 +35,7 @@ from mps.github import IssueOrPR, IssueRef, gh_headers
 from mps.likes import LikedPost, LikeRecord, fetch_likes, summarize_embed
 from mps.lock import analytics_write_slot
 from mps.phi import PhiInteraction, PhiObservation, restore_handle, row_strings, row_text
-from mps.tangled import PDS_BASE
+from mps.tangled import PDS_BASE, TangledItem, fetch_items, fetch_repo_at_uris
 from prefect import flow, get_run_logger, task, unmapped
 from prefect.artifacts import create_table_artifact
 from prefect.cache_policies import CachePolicy
@@ -66,6 +67,13 @@ def gh_client(token: str, transport: httpx.BaseTransport | None = None) -> httpx
     # numeric /repositories/<id>/ url and httpx won't follow by default
     return httpx.Client(headers=gh_headers(token), follow_redirects=True, transport=transport)
 
+
+TANGLED_COLLECTIONS = [
+    "sh.tangled.repo.issue",
+    "sh.tangled.repo.pull",
+    "sh.tangled.repo.issue.comment",
+    "sh.tangled.repo.pull.comment",
+]
 
 # bump to invalidate all cached results (e.g. when fetch shape changes)
 _CACHE_VERSION = "v3"
@@ -242,6 +250,26 @@ def stored_open_refs() -> list[IssueRef]:
     refs = [IssueRef(repo=repo, number=number, subject_type=type_) for repo, number, type_ in rows]
     logger.info(f"re-verifying {len(refs)} stored-open issues/PRs")
     return refs
+
+
+# --- tangled tasks ---
+
+
+@task(**NETWORK_RETRIES)
+def fetch_all_tangled_items() -> list[TangledItem]:
+    """Fetch issues, PRs, and comments from the tangled.org PDS."""
+    logger = get_run_logger()
+    with httpx.Client(base_url=PDS_BASE, timeout=30) as client:
+        repo_uris = fetch_repo_at_uris(client)
+        logger.info(f"found {len(repo_uris)} target repos on PDS")
+
+        items: list[TangledItem] = []
+        for collection in TANGLED_COLLECTIONS:
+            batch = fetch_items(client, collection, repo_uris)
+            logger.info(f"{collection}: {len(batch)} records")
+            items.extend(batch)
+
+    return items
 
 
 # --- email tasks ---
@@ -486,6 +514,11 @@ def persist_github(items: list[IssueOrPR]) -> int:
 # --- flow ---
 
 
+@task
+def persist_tangled(items: list[TangledItem]) -> int:
+    return write_tangled_items(items, _db_path())
+
+
 def _tolerate[T](
     future: PrefectFuture[T],
     source: str,
@@ -496,7 +529,7 @@ def _tolerate[T](
     """Resolve a fetch that stayed down through all its retries.
 
     Every persist below is already guarded on an empty source, so one dead
-    upstream should cost us that source for an hour — not the github, likes
+    upstream should cost us that source for an hour — not the github, tangled
     and phi rows the same run already fetched successfully.
     """
     value = future.result(raise_on_failure=False)
@@ -510,14 +543,15 @@ def _tolerate[T](
 @flow(name="ingest", log_prints=True, timeout_seconds=1800)
 def ingest(only_unread: bool = True):
     """
-    Fetch GitHub, likes, email and phi memory concurrently, then persist sequentially.
+    Fetch GitHub, tangled.org, likes, email and phi memory concurrently, then persist sequentially.
     """
     logger = get_run_logger()
     degraded: list[str] = []
 
     token = load_token()
 
-    # kick off phi, likes and email fetches immediately (no deps on github token)
+    # kick off tangled + phi + likes fetches immediately (no deps on github token)
+    tangled_future = fetch_all_tangled_items.submit()
     likes_future = fetch_nate_likes.submit()
     email_future = fetch_emails.submit()
 
@@ -550,6 +584,9 @@ def ingest(only_unread: bool = True):
         gh_items = [r for r in futures.result() if r is not None]
     logger.info(f"resolved {len(gh_items)} github issues/PRs")
 
+    tangled_items = _tolerate(tangled_future, "tangled", [], degraded, logger)
+    logger.info(f"fetched {len(tangled_items)} tangled items")
+
     phi_observations, phi_interactions = _tolerate(phi_future, "phi", ([], []), degraded, logger)
 
     likes = _tolerate(likes_future, "likes", [], degraded, logger)
@@ -561,6 +598,12 @@ def ingest(only_unread: bool = True):
     if gh_items:
         total = persist_github(gh_items)
         logger.info(f"upserted {len(gh_items)} github rows; {total} total in raw_github_issues")
+
+    if tangled_items:
+        total = persist_tangled(tangled_items)
+        logger.info(
+            f"persisted {len(tangled_items)} tangled rows; {total} total in raw_tangled_items"
+        )
 
     if likes:
         liked_posts = resolve_liked_posts(likes, _db_path())
@@ -585,6 +628,7 @@ def ingest(only_unread: bool = True):
         key="ingest-counts",
         table=[
             {"source": "github", "fetched": len(gh_items)},
+            {"source": "tangled", "fetched": len(tangled_items)},
             {"source": "email", "fetched": len(emails)},
             {"source": "likes", "fetched": len(likes)},
             {"source": "phi observations", "fetched": len(phi_observations)},

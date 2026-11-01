@@ -1,15 +1,15 @@
 # Hub dbt on Dagster
 
-Dagster owns execution, materializations, and schema/column lineage for the
-complete dbt project in `analytics/`. It runs on HeavyPad, beside the
+Dagster owns execution, materializations, schema/column lineage, and the hub export
+for the complete dbt project in `analytics/`. It runs on HeavyPad, beside the
 analytics database. The existing Prefect `transform` deployment is now only a
-handoff: it submits a Dagster run and waits for success. Its completion triggers
-`phi-memory-synthesis`; ingest and classification are unchanged. The hub export
-and `brief` were retired on 2026-11-01 ([analytics](../../docs/analytics.md)).
+handoff: it submits a Dagster run and waits for success. Its completion still
+triggers `brief` and `phi-memory-synthesis`; ingest and classification are unchanged.
 
 The Prefect flow UUID is also the Dagster run UUID. A retry reattaches to that run
 rather than building twice, and a Dagster failure fails the handoff. No downstream
-completion event is emitted until Dagster has built all models.
+completion event is emitted until Dagster has built all models and atomically
+exported `hub.duckdb`.
 
 ## Hosting and limits
 
@@ -23,14 +23,14 @@ completion event is emitted until Dagster has built all models.
   so child cgroups have no CPU controller. Affinity bounds placement/concurrency,
   not CPU duty cycle.
   Webserver: `MemoryHigh=1G`, `MemoryMax=2G`.
-- DuckDB connections in this unit (dbt, spend import) set
+- DuckDB connections in this unit (dbt, spend import, export) set
   `memory_limit` to 2GB. Unset, DuckDB sizes itself from `MemoryMax` and the
   kernel throttles it at `MemoryHigh`: on 2026-11-01 that stalled a 0.4s model
   for 1000+ seconds and systemd-oomd killed the unit.
 - Persistent local run/event storage: `~/.local/share/dagster-hub`.
 - Dagster queue allows one run. The job uses an in-process executor so one
   `analytics-duckdb-writer` Prefect lease covers spend import, every dbt model,
-  and metadata queries. This also serializes with existing ingest/docket
+  metadata queries, and export. This also serializes with existing ingest/docket
   writers. Dagster still needs the Prefect API for that shared lock.
 - Run monitoring enforces a 25-minute maximum; the handoff waits up to 28 minutes.
 - Spend-log ingestion validates the same JSONL records, then writes a private normalized batch
@@ -39,6 +39,9 @@ completion event is emitted until Dagster has built all models.
   SQL casts by log order, preserving last-event-wins behavior, including replay
   against existing rows. A failed batch rolls back as a unit. Full-log scanning
   remains deliberate; there is no checkpoint that can skip rewritten events.
+- The 3 GiB analytics file stays at home. Only the existing slim hub export and
+  append-only spend log sync to Hetzner. That sync now caps transfer at 256 KiB/s
+  and skips overlapping invocations. The public hub continues serving at Hetzner.
 
 ```sh
 ssh -N -L 3030:127.0.0.1:3030 stoat@heavypad

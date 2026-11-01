@@ -33,7 +33,7 @@ just storage           # analytics hostPath + results PVC, kubernetes-pool base 
 ```
 
 then point DNS at `just server-ip`: `$DOMAIN`, `$GRAFANA_DOMAIN` (default
-`prefect-metrics.waow.tech`).
+`prefect-metrics.waow.tech`), and `hub.waow.tech`.
 
 the prefect server is the zig port at
 [prefect-server](https://tangled.org/zzstoatzz.io/prefect-server), built on
@@ -45,7 +45,10 @@ Running and `/health` 200 have both been true while every run crashed.
 
 most flow execution runs on the home box as a systemd process worker for
 `home-pool`, polling the server outbound over Tailscale. no ingress, no
-port-forward. the installer and unit are in [deploy/home-worker/](../deploy/home-worker/).
+port-forward. the installer and unit are in [deploy/home-worker/](../deploy/home-worker/);
+[deploy/hub-data-sync/](../deploy/hub-data-sync/) rsyncs `hub.duckdb` and
+`llm-spend.jsonl` to the VM every few minutes so the hub serves fresh data
+without a round trip home.
 
 `gardener-exe` runs selected gardener jobs in exe.dev VMs, one per flow-run
 attempt. That includes `pi-agent/investigate`, the deployment phi's
@@ -125,10 +128,19 @@ just ssh               # the VM
 just dashboards        # reload grafana from deploy/dashboards/
 ```
 
+## the hub
+
+```sh
+just publish-web-remote   # build the sveltekit image on the node, import into k3s, roll the pod
+```
+
+`just web` is the older local docker build-and-push path. the hub itself is
+described in [hub.md](hub.md).
+
 ## analytics
 
 ```sh
-just init-analytics    # first time: dbt deps, compile
+just init-analytics    # first time: dbt deps, seed, compile
 ```
 
 `analytics.duckdb` is single-writer. every read-write open holds the

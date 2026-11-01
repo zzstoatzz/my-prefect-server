@@ -8,6 +8,7 @@ image: nixos
 dependencies:
   - uv
   - python314
+  - bun
   - ruff
   - ty
   - stdenv.cc.cc.lib
@@ -28,4 +29,8 @@ steps:
       ruff format --check .
       ty check
       uv run --extra dagster --extra inbox pytest -q -x
+      cd web
+      bun install --frozen-lockfile
+      bun run check
+      bun run lint
 

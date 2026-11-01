@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 import duckdb
-from mps.analytics import import_spend_log
+from mps.analytics import HUB_TABLES, export_hub_db, import_spend_log
 from mps.lock import analytics_write_slot
 
 
@@ -54,9 +54,11 @@ def main():
             env=env,
             check=True,
         )
+        export_hub_db(baseline, root / "baseline-hub.duckdb")
     else:
         baseline_result = json.loads((root / "baseline-target/run_results.json").read_text())
         assert all(r["status"] == "success" for r in baseline_result["results"])
+        assert (root / "baseline-hub.duckdb").is_file()
     os.environ["ANALYTICS_DB_PATH"] = str(shadow)
     os.environ["PREFECT_API_URL"] = ""
     subprocess.run(
@@ -74,7 +76,9 @@ def main():
 
     from hub_dagster.assets import build_definitions
 
-    definitions = build_definitions(project, shadow, root / "spend.jsonl")
+    definitions = build_definitions(
+        project, shadow, root / "spend.jsonl", root / "shadow-hub.duckdb"
+    )
     instance_dir = root / "dagster"
     instance_dir.mkdir(exist_ok=True)
     (instance_dir / "dagster.yaml").write_text("telemetry:\n  enabled: false\n")
@@ -102,6 +106,14 @@ def main():
             keys = sorted(event.asset_materialization.metadata)
             assert "dagster/column_schema" in keys, f"missing schema for {name}"
             metadata[name] = keys
+        with duckdb.connect(str(root / "shadow-hub.duckdb"), read_only=True) as db:
+            assert {r[0] for r in db.execute("SHOW TABLES").fetchall()} == set(HUB_TABLES)
+            db.execute(f"ATTACH '{root / 'baseline-hub.duckdb'}' AS baseline_hub (READ_ONLY)")
+            for name in HUB_TABLES:
+                difference = db.execute(
+                    f"SELECT count(*) FROM ((SELECT * FROM main.{name} EXCEPT ALL SELECT * FROM baseline_hub.main.{name}) UNION ALL (SELECT * FROM baseline_hub.main.{name} EXCEPT ALL SELECT * FROM main.{name}))"
+                ).fetchone()[0]
+                assert difference == 0, f"export {name}: {difference} differing rows"
         report = {
             "run_id": result.run_id,
             "equal_row_counts": checks,
