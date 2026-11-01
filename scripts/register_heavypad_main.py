@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path.home() / ".local/share/prefect-home/registration"
 REPO = "https://github.com/zzstoatzz/my-prefect-server.git"
-CI = "https://spindle.zzstoatzz.io/xrpc/sh.tangled.ci.queryPipelines"
+CI = "https://spindle.zzstoatzz.io/xrpc/org.tangled.ci.queryPipelines"
 REPO_DID = "did:plc:xrndz6e42qj6ygbclfmruugv"
 
 
