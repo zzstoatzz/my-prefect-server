@@ -116,6 +116,20 @@ deployments:
         timezone: UTC
         active: true
 
+  - name: phi-fastmcp-watch
+    entrypoint: flows/phi_trigger.py:phi_trigger
+    tags: [phi, heavypad]
+    work_pool: *heavypad_phi
+    parameters:
+      slot: fastmcp-watch
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+      - cron: "42 16 * * 1"
+        timezone: UTC
+        active: true
+
   - name: phi-editorial
     entrypoint: flows/phi_trigger.py:phi_trigger
     tags: [phi, heavypad]
