@@ -43,6 +43,11 @@ github notifications ──► watch-fastmcp (*/5) ──► github.<reason> eve
 
 ## Observability
 
+The laptop `fastmcp-triage` that fed this dashboard was removed on 2026-10-22,
+so it records no new runs. Current backlog, contributor wait and stuck PRs come
+from the warehouse ([analytics](analytics.md#fastmcp-triage)), which phi reads
+weekly through `/api/agents/fastmcp-triage`.
+
 [FastMCP triage in Logfire](https://logfire-us.pydantic.dev/waow/zig-prefect-server/dashboards/fastmcp-triage)
 opens with a plain-language activity status, live draft/review/problem totals,
 and a dated snapshot of the first three proposed fixes. Setup checks and dry
@@ -79,7 +84,7 @@ This exercises the real laptop worker, secret resolution, and the Deferred path.
 
 ## backlog series
 
-`fastmcp-backlog` (every 30 min, home pool) appends one row of open issue and
+`fastmcp-backlog` (every 30 min, `heavypad-pool`) appends one row of open issue and
 PR counts to `/home/stoat/prefect-analytics/fastmcp-backlog.jsonl`: totals, age
 buckets (`lt_7d`, `d7_30`, `d30_90`, `gt_90d`), unlabeled, awaiting reporter
 (`needs more info` / `needs MRE`), and for PRs draft and bot-authored. Rows with
