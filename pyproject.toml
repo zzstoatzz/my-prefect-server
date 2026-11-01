@@ -99,6 +99,10 @@ python-version = "3.14"
 python-platform = "linux"
 python = ".venv"
 
+[tool.ty.analysis]
+# installed only in the job environments of the deployments that import them
+allowed-unresolved-imports = ["atproto_docs_ingest.**"]
+
 [tool.ty.terminal]
 error-on-warning = true
 

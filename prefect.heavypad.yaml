@@ -194,10 +194,7 @@ deployments:
         active: true
 
   - name: atproto-docs
-    # the flow ships in the atproto-docs-mcp package, pinned below; no source
-    # checkout, so the entrypoint is a dotted import path
-    entrypoint: atproto_docs_ingest.main.refresh_atproto_docs
-    pull: []
+    entrypoint: flows/atproto_docs.py:atproto_docs
     tags: [publish, heavypad]
     parameters:
       namespace: atproto-docs-v1
@@ -209,6 +206,7 @@ deployments:
           --with 'atproto-docs-ingest @ git+https://tangled.org/zzstoatzz.io/atproto-docs-mcp.git@d58bb827b8945d7639019e762d55615daec105ca#subdirectory=packages/ingestion_pipeline'
           prefect flow-run execute
         env:
+          MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
     concurrency_limit:
       limit: 1
