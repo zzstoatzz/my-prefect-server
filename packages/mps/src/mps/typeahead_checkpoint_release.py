@@ -121,8 +121,12 @@ def run_cloud_release(
         or not 60 <= timeout_seconds <= 5400
     ):
         raise ValueError("Bounded cloud-only release required")
+    if run is None or run.deployment_id is None:
+        raise ValueError("Cloud release requires a deployment flow execution")
     with get_client(sync_client=True) as client:
         deployment = client.read_deployment(run.deployment_id)
+        if deployment.work_pool_name is None:
+            raise ValueError("Owned ephemeral cloud execution required")
         pool = client.read_work_pool(deployment.work_pool_name)
         execution = client.read_flow_run(run.id)
         if (

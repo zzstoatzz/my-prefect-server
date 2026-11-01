@@ -95,6 +95,8 @@ exclude = ["**/__pycache__", ".venv", ".git"]
 
 [tool.ty.environment]
 python-version = "3.14"
+# flows run on linux workers; checking as macOS marks linux-only code unreachable
+python-platform = "linux"
 python = ".venv"
 
 [tool.ty.terminal]

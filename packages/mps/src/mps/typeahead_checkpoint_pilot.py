@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 from mps.typeahead_checkpoint import fetch_checkpoint
 from mps.typeahead_sqlite_seed import checkpoint_fixture
@@ -158,8 +159,12 @@ def run_cloud_pilot(repository):
         or os.environ.get("TA_RETRIEVAL_STRATEGY") != "global-merge"
     ):
         raise ValueError("Checkpoint data work is cloud-only")
+    if run is None or run.deployment_id is None:
+        raise ValueError("Pilot requires a deployment flow run")
     with get_client(sync_client=True) as client:
         deployment = client.read_deployment(run.deployment_id)
+        if deployment.work_pool_name is None:
+            raise ValueError("Owned ephemeral cloud worker required")
         pool = client.read_work_pool(deployment.work_pool_name)
         current = client.read_flow_run(run.id)
         if (
@@ -173,7 +178,7 @@ def run_cloud_pilot(repository):
     logger = get_run_logger()
     parent = home / "checkpoint-pilots"
     parent.mkdir(parents=True, exist_ok=True)
-    report = {
+    report: dict[str, Any] = {
         "scope": "cloud-checkpoint-partial-import-pilot",
         "flow_run_id": str(run.id),
         "production_changed": False,
