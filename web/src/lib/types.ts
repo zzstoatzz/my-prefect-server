@@ -141,7 +141,7 @@ export interface FastmcpWeek {
 	old_enough_7d: number;
 	responded_7d: number;
 	old_enough_14d: number;
-	resolved_14d: number;
+	merged_14d: number;
 	median_hours_to_first_response: number | null;
 	median_hours_to_merge: number | null;
 }

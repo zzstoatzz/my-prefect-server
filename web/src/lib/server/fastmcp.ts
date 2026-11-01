@@ -25,7 +25,7 @@ export async function loadFastmcpTriage(
 		SELECT week::VARCHAR AS week, triage_reviewed, prs::INT AS prs, merged::INT AS merged,
 		       still_open::INT AS still_open, old_enough_7d::INT AS old_enough_7d,
 		       responded_7d::INT AS responded_7d, old_enough_14d::INT AS old_enough_14d,
-		       resolved_14d::INT AS resolved_14d,
+		       merged_14d::INT AS merged_14d,
 		       median_hours_to_first_response, median_hours_to_merge
 		FROM fastmcp_weekly
 		WHERE week > current_date - ${weeks * 7}
