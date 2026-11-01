@@ -168,3 +168,23 @@ def test_snapshot_validation_uses_its_own_catalog_and_preserves_source_project(t
     assert report["equal_row_counts"] == {"hub_action_items": 1, "raw_llm_spend": 0}
     assert "dagster/column_schema" in report["materialization_metadata"]["hub_action_items"]
     assert not (project / "target").exists()
+
+
+def test_duckdb_memory_limit_stays_under_daemon_memory_high():
+    import yaml
+    from mps.analytics import DUCKDB_MEMORY_LIMIT
+
+    root = Path(__file__).resolve().parents[1]
+    profile = yaml.safe_load((root / "analytics/profiles/profiles.yml").read_text())
+    settings = profile["github_intelligence"]["outputs"]["dev"]["settings"]
+    assert settings["memory_limit"] == DUCKDB_MEMORY_LIMIT
+
+    unit = (root / "deploy/dagster/dagster-hub-daemon.service").read_text()
+    high = next(
+        line.split("=", 1)[1] for line in unit.splitlines() if line.startswith("MemoryHigh=")
+    )
+
+    def gib(value: str) -> float:
+        return float(value.rstrip("GB").rstrip("G"))
+
+    assert gib(DUCKDB_MEMORY_LIMIT) <= gib(high) / 2

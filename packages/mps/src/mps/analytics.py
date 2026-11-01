@@ -12,6 +12,10 @@ from mps.spend import RAW_LLM_SPEND_SCHEMA
 # web/src/lib/server/{loaders,discovery}.ts.
 HUB_TABLES = ("hub_action_items", "raw_github_issues", "raw_liked_posts")
 
+# DuckDB sizes its buffer pool from the cgroup's MemoryMax; under the Dagster
+# unit's lower MemoryHigh the kernel throttles it instead, stalling builds.
+DUCKDB_MEMORY_LIMIT = "2GB"
+
 
 def export_hub_db(src: Path, dst: Path) -> int:
     """Write a hub-only duckdb containing just the tables hub queries.
@@ -36,7 +40,7 @@ def export_hub_db(src: Path, dst: Path) -> int:
     # READ_ONLY (dbt may still be reading it). attaching the other way
     # around inherits the parent connection's read-only mode and CREATE
     # TABLE fails with "database does not exist" on the writer side.
-    con = duckdb.connect(str(tmp))
+    con = duckdb.connect(str(tmp), config={"memory_limit": DUCKDB_MEMORY_LIMIT})
     try:
         con.execute(f"ATTACH '{src}' AS analytics (READ_ONLY)")
         for tbl in HUB_TABLES:
@@ -56,7 +60,7 @@ def import_spend_log(log_path: Path, analytics_db: Path) -> int:
     import duckdb
 
     logger = logging.getLogger(__name__)
-    con = duckdb.connect(str(analytics_db))
+    con = duckdb.connect(str(analytics_db), config={"memory_limit": DUCKDB_MEMORY_LIMIT})
     try:
         con.execute("SET threads = 1")
         con.execute(RAW_LLM_SPEND_SCHEMA)

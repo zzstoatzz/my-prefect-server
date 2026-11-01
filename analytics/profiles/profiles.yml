@@ -5,3 +5,5 @@ github_intelligence:
       type: duckdb
       path: "{{ env_var('ANALYTICS_DB_PATH', '/prefect-analytics/analytics.duckdb') }}"
       threads: 4
+      settings:
+        memory_limit: "2GB"

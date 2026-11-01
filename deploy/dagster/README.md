@@ -23,6 +23,10 @@ exported `hub.duckdb`.
   so child cgroups have no CPU controller. Affinity bounds placement/concurrency,
   not CPU duty cycle.
   Webserver: `MemoryHigh=1G`, `MemoryMax=2G`.
+- DuckDB connections in this unit (dbt, spend import, export) set
+  `memory_limit` to 2GB. Unset, DuckDB sizes itself from `MemoryMax` and the
+  kernel throttles it at `MemoryHigh`: on 2026-11-01 that stalled a 0.4s model
+  for 1000+ seconds and systemd-oomd killed the unit.
 - Persistent local run/event storage: `~/.local/share/dagster-hub`.
 - Dagster queue allows one run. The job uses an in-process executor so one
   `analytics-duckdb-writer` Prefect lease covers spend import, every dbt model,
