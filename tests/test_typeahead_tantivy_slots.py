@@ -954,3 +954,56 @@ def test_start_reconciles_rejected_request_over_provider_http(
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+class _SequencedRuntime:
+    """healthy() returns successive statuses; validate_runtime raises what each one carries."""
+
+    def __init__(self, outcomes):
+        self.outcomes = list(outcomes)
+        self.reads = 0
+        self.installer = self
+
+    def healthy(self, _target):
+        self.reads += 1
+        return {"index": {"outcome": self.outcomes[min(self.reads, len(self.outcomes)) - 1]}}
+
+    def tantivy_adapter(self):
+        return self
+
+    def validate_runtime(self, status, _manifest):
+        if status["outcome"] is not None:
+            raise ValueError(status["outcome"])
+
+
+def _settling_slots(tmp_path, monkeypatch, outcomes, settle=120):
+    from mps import typeahead_tantivy_slots as slots_module
+
+    monkeypatch.setattr(slots_module, "POLL_SETTLE_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr(slots_module, "POLL_SETTLE_SECONDS", settle)
+    runtime = _SequencedRuntime(outcomes)
+    return Slots(runtime, tmp_path / "journals", timeout_seconds=2), runtime
+
+
+def test_retirement_freshness_waits_for_a_completed_poll_cycle(tmp_path, monkeypatch):
+    from mps.typeahead_tantivy_slots import POLL_CYCLE_INCOMPLETE
+
+    slots, runtime = _settling_slots(tmp_path, monkeypatch, [POLL_CYCLE_INCOMPLETE, POLL_CYCLE_INCOMPLETE, None])
+    assert slots.retirement_freshness({}, {}) == {"outcome": None}
+    assert runtime.reads == 3
+
+
+def test_retirement_freshness_fails_other_gates_immediately(tmp_path, monkeypatch):
+    slots, runtime = _settling_slots(tmp_path, monkeypatch, ["Source polling is not fresh", None])
+    with pytest.raises(ValueError, match="Source polling is not fresh"):
+        slots.retirement_freshness({}, {})
+    assert runtime.reads == 1
+
+
+def test_retirement_freshness_gives_up_on_a_cycle_that_never_completes(tmp_path, monkeypatch):
+    from mps.typeahead_tantivy_slots import POLL_CYCLE_INCOMPLETE
+
+    slots, runtime = _settling_slots(tmp_path, monkeypatch, [POLL_CYCLE_INCOMPLETE], settle=0)
+    with pytest.raises(ValueError, match="actually completed remote poll cycle"):
+        slots.retirement_freshness({}, {})
+    assert runtime.reads == 1

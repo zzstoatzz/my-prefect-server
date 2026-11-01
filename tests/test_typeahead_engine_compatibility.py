@@ -1076,3 +1076,10 @@ def test_automatic_flow_fences_before_any_build_or_cleanup(controller, monkeypat
         publisher.typeahead_index.fn(snapshot_format="compact", automatic_refresh=True)
     assert controller.s3.writes == []
     assert controller.s3.deletions == []
+
+
+def test_retirement_waits_on_the_pinned_adapters_poll_cycle_message(pinned_adapter):
+    from mps.typeahead_tantivy_slots import POLL_CYCLE_INCOMPLETE
+
+    source = Path(os.environ["INDEX_TANTIVY_ADAPTER_PATH"]).read_text()
+    assert f"raise ValueError('{POLL_CYCLE_INCOMPLETE}')" in source

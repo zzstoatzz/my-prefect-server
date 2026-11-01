@@ -108,6 +108,12 @@ def validate_release_proof(raw, expected_sha256, binding):
     return proof
 
 
+# The pinned adapter's exact message for a status read mid-poll-cycle.
+POLL_CYCLE_INCOMPLETE = "Checkpoint handoff requires an actually completed remote poll cycle"
+POLL_SETTLE_SECONDS = 120
+POLL_SETTLE_INTERVAL_SECONDS = 2
+
+
 class Slots:
     def __init__(self, service, journal_root: Path, *, timeout_seconds=3600):
         if (
@@ -917,9 +923,19 @@ class Slots:
         self.confirm(state, name + "-confirmed")
 
     def retirement_freshness(self, target, manifest):
-        status = self.service.healthy(target)["index"]
-        self.service.tantivy_adapter().installer.validate_runtime(status, manifest)
-        return status
+        deadline = time.monotonic() + POLL_SETTLE_SECONDS
+        while True:
+            status = self.service.healthy(target)["index"]
+            try:
+                self.service.tantivy_adapter().installer.validate_runtime(status, manifest)
+                return status
+            except ValueError as error:
+                # A backend sampled between the pages of one poll cycle reports
+                # this; the cycle completes within seconds. Every other gate
+                # failure, and a cycle that never completes, still fails.
+                if str(error) != POLL_CYCLE_INCOMPLETE or time.monotonic() >= deadline:
+                    raise
+            time.sleep(POLL_SETTLE_INTERVAL_SECONDS)
 
     def retire_previous(self, state, key, digest):
         route = state["route"]
