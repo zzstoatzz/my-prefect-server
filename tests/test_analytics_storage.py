@@ -96,6 +96,18 @@ def test_compaction_drops_dead_versions_and_obsolete_relations(tmp_path):
     assert not list(tmp_path.glob("*.compacting*"))
 
 
+def test_compaction_keeps_the_storage_version_older_readers_open(tmp_path):
+    import struct
+
+    db = tmp_path / "analytics.duckdb"
+    with duckdb.connect(str(db)) as con:
+        con.execute("CREATE TABLE raw_github_issues AS SELECT 1 AS n")
+    compact_database(db)
+    header = db.read_bytes()[:20]
+    assert header[8:12] == b"DUCK"
+    assert struct.unpack("<Q", header[12:20])[0] == 64
+
+
 def test_failed_compaction_leaves_the_original_in_place(tmp_path, monkeypatch):
     db = tmp_path / "analytics.duckdb"
     with duckdb.connect(str(db)) as con:

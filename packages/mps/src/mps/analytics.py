@@ -11,6 +11,11 @@ from mps.spend import RAW_LLM_SPEND_SCHEMA
 # unit's lower MemoryHigh the kernel throttles it instead, stalling builds.
 DUCKDB_MEMORY_LIMIT = "2GB"
 
+# Flows resolve DuckDB unpinned (2.x) while Dagster's dbt is locked to 1.5, and
+# a new file gets the writing version's storage format. A rewrite must keep the
+# original format (storage version 64) so every reader can still open it.
+ANALYTICS_STORAGE_VERSION = "v1.0.0"
+
 
 def import_spend_log(log_path: Path, analytics_db: Path) -> int:
     """Materialize the live append-only spend log into analytics.duckdb."""
@@ -164,7 +169,9 @@ def compact_database(analytics_db: Path) -> dict[str, int]:
     try:
         with duckdb.connect(config={"memory_limit": DUCKDB_MEMORY_LIMIT}) as con:
             con.execute(f"ATTACH '{analytics_db}' AS src (READ_ONLY)")
-            con.execute(f"ATTACH '{staging}' AS dst")
+            con.execute(
+                f"ATTACH '{staging}' AS dst (STORAGE_VERSION '{ANALYTICS_STORAGE_VERSION}')"
+            )
             con.execute("COPY FROM DATABASE src TO dst")
             con.execute("CHECKPOINT dst")
             for name, expected in counts.items():
