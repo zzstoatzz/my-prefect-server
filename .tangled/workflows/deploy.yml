@@ -10,6 +10,7 @@ dependencies:
   - python314
   - bun
   - ruff
+  - ty
   - stdenv.cc.cc.lib
   - git
 
@@ -26,7 +27,7 @@ steps:
       uv sync --extra dagster --extra inbox
       ruff check .
       ruff format --check .
-      uv run ty check
+      ty check
       uv run --extra dagster --extra inbox pytest -q -x
       cd web
       bun install --frozen-lockfile
