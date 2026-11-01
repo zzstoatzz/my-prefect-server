@@ -21,11 +21,15 @@ that is actually read.
 | `raw_llm_spend` | Dagster `llm_spend` (from `llm-spend.jsonl`) | ad hoc queries |
 | `int_phi_user_profiles` | dbt | `phi-memory-synthesis`, which writes relationship summaries phi reads |
 | `hub_action_items` (from the `int_*_scored` models) | dbt | `brief`, hub export |
+| `raw_fastmcp_items` | `fastmcp-warehouse` (hourly at :45, GraphQL) | dbt `models/fastmcp` |
+| `fastmcp_daily`, `fastmcp_weekly`, `fastmcp_stuck` (from `fastmcp_pr_flow`) | dbt | hub export, `/api/agents/fastmcp-triage`, phi's `inspect_fastmcp_triage` and weekly `fastmcp-watch` |
 
 The hub (`hub.waow.tech`, served from HeavyPad through the Cloudflare tunnel)
 reads `hub.duckdb`, which Dagster's `hub_export` writes after dbt. Besides the
-page, it serves `/api/agents/discovery-pool` (phi), `/api/costs.json` (cost
-exports in other repos) and `/api/presence`.
+page, it serves `/api/agents/discovery-pool` (phi), `/api/agents/fastmcp-triage`
+(phi), `/api/costs.json` (cost exports in other repos) and `/api/presence`.
+Cloudflare Access exempts public paths one by one; a new agent route needs its
+own bypass before phi (on fly.io) can read it.
 
 Grafana reads a copy refreshed by `prefect-grafana-snapshot` when the file
 changes; it never opens the live file.
@@ -53,3 +57,13 @@ fetched row, and the file reached 5.1 GiB for about 82 MiB of live data
 
 All read-write opens hold the `analytics-duckdb-writer` lease; readers copy
 the file first.
+
+## fastmcp triage
+
+`raw_fastmcp_items` holds every PrefectHQ/fastmcp issue and PR. A maintainer
+response is a comment or review by a human OWNER, MEMBER or COLLABORATOR other
+than the author, or the merge itself; bot accounts carry contributor-level
+`authorAssociation` and are excluded. `fastmcp_weekly` reports merges within 14
+days, not closures, because automation (the issue-link gate, auto-close) closes
+many contributor PRs. Days are America/Chicago, matching the public status site
+at prefecthq.github.io/fastmcp, whose totals the models reproduce.
