@@ -193,6 +193,31 @@ deployments:
         timezone: UTC
         active: true
 
+  - name: atproto-docs
+    # the flow ships in the atproto-docs-mcp package, pinned below; no source
+    # checkout, so the entrypoint is a dotted import path
+    entrypoint: atproto_docs_ingest.main.refresh_atproto_docs
+    pull: []
+    tags: [publish, heavypad]
+    parameters:
+      namespace: atproto-docs-v1
+    work_pool:
+      name: heavypad-background-pool
+      job_variables:
+        command: >-
+          uv run --no-project --with prefect==3.8.2 --with 'nodejs-wheel>=22'
+          --with 'atproto-docs-ingest @ git+https://tangled.org/zzstoatzz.io/atproto-docs-mcp.git@d58bb827b8945d7639019e762d55615daec105ca#subdirectory=packages/ingestion_pipeline'
+          prefect flow-run execute
+        env:
+          PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+      - cron: "27 */2 * * *"
+        timezone: UTC
+        active: true
+
   - name: bisk-snapshot
     entrypoint: flows/bisk.py:bisk_snapshot
     tags: [publish, heavypad]
