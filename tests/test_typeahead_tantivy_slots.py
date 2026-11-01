@@ -1009,3 +1009,49 @@ def test_retirement_freshness_gives_up_on_a_cycle_that_never_completes(tmp_path,
     with pytest.raises(ValueError, match="actually completed remote poll cycle"):
         slots.retirement_freshness({}, {})
     assert runtime.reads == 1
+
+
+def _waiting_slots(tmp_path, monkeypatch, guard_outcomes):
+    from mps import typeahead_tantivy_slots as slots_module
+
+    monkeypatch.setattr(slots_module.time, "sleep", lambda _s: None)
+    slots = Slots(object(), tmp_path / "journals", timeout_seconds=2)
+    outcomes = list(guard_outcomes)
+    calls = {"guard": 0, "qualify": 0}
+
+    def guard(_state):
+        calls["guard"] += 1
+        outcome = outcomes[min(calls["guard"], len(outcomes)) - 1]
+        if outcome is not None:
+            raise outcome
+
+    def qualify(_state, _bound):
+        calls["qualify"] += 1
+        return "qualified", "provider"
+
+    slots.guard = guard
+    slots.qualify = qualify
+    return slots, calls
+
+
+def test_wait_qualified_rides_out_a_serving_slot_that_briefly_reads_not_ready(
+    tmp_path, monkeypatch
+):
+    from mps.typeahead_refresh import BackendNotReady
+
+    slots, calls = _waiting_slots(
+        tmp_path, monkeypatch, [BackendNotReady("Backend is not fresh and ready"), None]
+    )
+    assert slots.wait_qualified({}, {}) == ("qualified", "provider")
+    assert calls == {"guard": 2, "qualify": 1}
+
+
+def test_wait_qualified_still_stops_when_routing_changes(tmp_path, monkeypatch):
+    slots, calls = _waiting_slots(
+        tmp_path,
+        monkeypatch,
+        [RuntimeError("Routing changed; same preparation intent must be reconciled")],
+    )
+    with pytest.raises(RuntimeError, match="Routing changed"):
+        slots.wait_qualified({}, {})
+    assert calls["qualify"] == 0

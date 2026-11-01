@@ -23,6 +23,14 @@ TANTIVY_FORMAT = "tantivy-0.27-f32-did-expiry-v4"
 BUILD_PATTERN = r"b[0-9]{10}-[A-Za-z0-9_-]+"
 
 
+class BackendNotReady(RuntimeError):
+    """A backend's /health reports it not ready or past its sync-lag bound.
+
+    A serving slot's readiness follows its poll lag, so this can clear on the
+    next read; callers that wait can retry it.
+    """
+
+
 class FlyAPIError(RuntimeError):
     def __init__(self, method, app, path, status_code):
         self.status_code = status_code
@@ -276,7 +284,7 @@ class Refresh:
             or not health["ready"]
             or (require_fresh and not 0 <= health["sync_lag_s"] < 600)
         ):
-            raise RuntimeError("Backend is not fresh and ready")
+            raise BackendNotReady("Backend is not fresh and ready")
         code, index, index_headers = self.get(target["origin"], "/index/status")
         if (
             code != 200

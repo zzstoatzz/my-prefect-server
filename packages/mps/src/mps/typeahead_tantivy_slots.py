@@ -14,6 +14,7 @@ from pathlib import Path
 import httpx
 from botocore.exceptions import ClientError
 
+from mps.typeahead_refresh import BackendNotReady
 from mps.typeahead_tantivy import durable_receipt
 
 OWNER = "typeahead-snapshot-refresh"
@@ -547,7 +548,9 @@ class Slots:
                 raise RuntimeError("Inactive candidate runtime qualification timed out")
             try:
                 self.guard(state)
-            except httpx.TransportError:
+            except (httpx.TransportError, BackendNotReady):
+                # a serving slot reads not-ready while one poll runs long; keep
+                # waiting, and qualify only once the guard passes again
                 pass
             else:
                 try:
