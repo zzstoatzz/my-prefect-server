@@ -96,15 +96,18 @@ between flow runs. Revisit when `diagnostics` shows disk free trending down.
 ## flows
 
 `prefect.yaml` owns schedules, triggers, tags, parameters, and per-deployment
-job variables. every push to `main` registers all of them through
-`.tangled/workflows/deploy.yml`. Git-backed jobs using MPS_PIN track the pushed
-commit; explicit legacy pins and wheel routes retain their declared versions.
-The static [validator](deployments-validation.md) runs before registration.
+job variables. `.tangled/workflows/deploy.yml` only checks each push to `main`;
+it does not register deployments. Register changed deployments by hand with the
+pushed commit as MPS_PIN, after `just push` so the GitHub mirror has it too
+(checked 2026-11-01: a passing CI run left `typeahead-index` on its old pin).
+Git-backed jobs run the commit their registration pinned; explicit legacy pins
+and wheel routes retain their declared versions. Run the static
+[validator](deployments-validation.md) before registering.
 
 ```sh
 just check                                       # what CI runs before it deploys
 MPS_PIN="@$(git rev-parse HEAD)" just validate-deployments --release # check the intended pin
-# Use the same MPS_PIN with just prefect-legacy deploy for manual registration.
+MPS_PIN="@$(git rev-parse HEAD)" just prefect deploy --name <deployment>  # register one
 just prefect-legacy deployment run 'diagnostics/diagnostics' --watch   # exercise the real worker
 just automations                                 # apply deploy/automations.yaml (idempotent)
 just work-pool                                   # apply deploy/work-pools templates
