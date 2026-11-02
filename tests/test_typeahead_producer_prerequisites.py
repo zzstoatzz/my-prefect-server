@@ -1,5 +1,6 @@
 import hashlib
 import logging
+import os
 import subprocess
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -71,6 +72,10 @@ def test_code_download_checksum_cache_and_failure_cleanup(tmp_path):
 
 
 def test_isolated_exact_commit_checkouts_are_independent(tmp_path, monkeypatch):
+    # `git rebase -x` exports GIT_DIR and friends; without this the fixture's
+    # init/config/commit would write into the repository under test.
+    for name in [name for name in os.environ if name.startswith("GIT_")]:
+        monkeypatch.delenv(name)
     source = tmp_path / "source"
     source.mkdir()
 
