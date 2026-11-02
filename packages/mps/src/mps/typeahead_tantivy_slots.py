@@ -115,6 +115,10 @@ POLL_SETTLE_SECONDS = 120
 POLL_SETTLE_INTERVAL_SECONDS = 2
 
 
+def without(value, field):
+    return {key: item for key, item in value.items() if key != field}
+
+
 class Slots:
     def __init__(self, service, journal_root: Path, *, timeout_seconds=3600):
         if (
@@ -324,7 +328,7 @@ class Slots:
         before = self.read(key, 4096)
         if before is None:
             self.immutable(key, raw_json(value))
-        elif json.loads(before) != value:
+        elif without(json.loads(before), "legacy_build_id") != value:
             raise RuntimeError("A different prepared candidate owns this slot")
 
     def unprotect(self, state):
@@ -575,6 +579,9 @@ class Slots:
     def config(self, state, bound, image):
         key = f"control/tantivy-slots/{state['app']}/{state['request_id']}.json"
         raw = raw_json(bound)
+        before = self.read(key)
+        if before is not None and without(json.loads(before), "source_manifest_key") == bound:
+            raw = before
         digest = hashlib.sha256(raw).hexdigest()
         self.immutable(key, raw)
         state.update(deployment_key=key, deployment_sha256=digest)

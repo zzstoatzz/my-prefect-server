@@ -24,6 +24,7 @@ from tests.test_typeahead_engine_compatibility import (
     controller as controller,
     pinned_adapter as pinned_adapter,
     seed_checkpoint_publication,
+    seed_stub_publication,
     seed_tantivy_publication,
 )
 
@@ -360,6 +361,52 @@ def test_retained_previous_slot_needs_only_its_bundle(controller, tmp_path, pinn
     controller.s3.seed(manifest["object_key"], b"x")
     with pytest.raises(ValueError, match="bundle is missing or changed size"):
         slots.retained(target)
+
+
+def test_preparation_resumes_records_written_with_retired_provenance(controller, tmp_path):
+    slots = slot_service(controller, tmp_path)
+    seed_stub_publication(controller, TANTIVY, legacy=True)
+    manifest, raw = seed_stub_publication(
+        controller, {**TANTIVY, "build_id": "b1793236000-slot"}, legacy=True
+    )
+    state = {
+        "request_id": "f" * 32,
+        "app": APPS[1],
+        "build_id": manifest["active_build"],
+        "source_build_id": manifest["source_build_id"],
+        "legacy_build_id": manifest["legacy_build_id"],
+        "artifact_manifest_sha256": hashlib.sha256(raw).hexdigest(),
+        "volume_id": "vol_fixture",
+    }
+    pending_key = f"control/tantivy-slots/{APPS[1]}/pending.json"
+    pending = {
+        "schema_version": 1,
+        "owner": OWNER,
+        "request_id": state["request_id"],
+        "app": APPS[1],
+        "build_id": state["build_id"],
+        "source_build_id": state["source_build_id"],
+        "legacy_build_id": state["legacy_build_id"],
+        "artifact_manifest_sha256": state["artifact_manifest_sha256"],
+    }
+    controller.s3.seed(pending_key, raw_json(pending))
+    slots.protect(state)
+    assert json.loads(controller.s3.path(pending_key).read_bytes()) == pending
+    assert manifest["active_build"] in controller.retained_build_ids()
+    controller.s3.seed(pending_key, raw_json({**pending, "build_id": "b1793236001-other"}))
+    with pytest.raises(RuntimeError, match="different prepared candidate"):
+        slots.protect(state)
+
+    bound = {**manifest, "provider_app": APPS[1], "request_id": state["request_id"]}
+    key = f"control/tantivy-slots/{APPS[1]}/{state['request_id']}.json"
+    written = raw_json({**bound, "source_manifest_key": "releases/search/b1/manifest.json"})
+    controller.s3.seed(key, written)
+    slots.config(state, bound, "registry.fly.io/fixture@sha256:" + "d" * 64)
+    assert state["deployment_sha256"] == hashlib.sha256(written).hexdigest()
+    with pytest.raises(RuntimeError, match="Immutable slot metadata changed"):
+        slots.config(
+            state, {**bound, "volume_id": "vol_other"}, "registry.fly.io/x@sha256:" + "d" * 64
+        )
 
 
 def exercise_real_rust_preparation(
