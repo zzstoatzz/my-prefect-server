@@ -1071,7 +1071,7 @@ class _SequencedRuntime:
     def tantivy_adapter(self):
         return self
 
-    def validate_runtime(self, status, _manifest):
+    def validate_runtime(self, status, _manifest, *_args):
         if status["outcome"] is not None:
             raise ValueError(status["outcome"])
 
@@ -1155,3 +1155,44 @@ def test_wait_qualified_still_stops_when_routing_changes(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="Routing changed"):
         slots.wait_qualified({}, {})
     assert calls["qualify"] == 0
+
+
+def test_coverage_stale_is_tolerated_only_past_the_installers_own_deadline(pinned_adapter):
+    import copy
+    import importlib.util
+    import os
+    from pathlib import Path
+
+    from mps.typeahead_tantivy_slots import COVERAGE_STALE, coverage_stale
+
+    spec = importlib.util.spec_from_file_location(
+        "typeahead_coverage_fixture",
+        Path(os.environ["TA_REPOSITORY"]) / "scripts/snapshot_refresh/test_tantivy_install.py",
+    )
+    fixtures = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fixtures)
+    manifest, status, now = fixtures.AdmissionTests().checkpoint_status()
+    installer = pinned_adapter.installer
+    fixture = {"allow_checkpoint_fixture": True}
+    assert coverage_stale(installer, status, manifest, now, **fixture) is False
+
+    later = now + 90000
+    polled = copy.deepcopy(status)
+    polled["watermark"] = polled["source_cursor"]["through"] = later - 5
+    polled["source_cursor"]["actors"]["updated_at"] = later - 5
+    polled["source_cursor"]["tombstones"]["deleted_at"] = later - 5
+    polled["moderation"]["source_observed_at"] = later - 5
+    with pytest.raises(ValueError, match="coverage or actual remote polling is stale"):
+        installer.validate_runtime(polled, manifest, later, **fixture)
+    assert coverage_stale(installer, polled, manifest, later, **fixture) is True
+
+    unpolled = copy.deepcopy(status)
+    with pytest.raises(ValueError, match=COVERAGE_STALE):
+        coverage_stale(installer, unpolled, manifest, now + 200, **fixture)
+
+    miscounted = copy.deepcopy(polled)
+    miscounted["input_actors"] = 3
+    with pytest.raises(ValueError, match="count mismatch"):
+        coverage_stale(installer, miscounted, manifest, later, **fixture)
+    with pytest.raises(ValueError, match="Fixture checkpoint"):
+        coverage_stale(installer, polled, manifest, later)

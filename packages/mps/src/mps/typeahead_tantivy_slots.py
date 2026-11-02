@@ -111,8 +111,30 @@ def validate_release_proof(raw, expected_sha256, binding):
 
 # The pinned adapter's exact message for a status read mid-poll-cycle.
 POLL_CYCLE_INCOMPLETE = "Checkpoint handoff requires an actually completed remote poll cycle"
+COVERAGE_STALE = "Checkpoint coverage or actual remote polling is stale"
 POLL_SETTLE_SECONDS = 120
 POLL_SETTLE_INTERVAL_SECONDS = 2
+
+
+def coverage_stale(installer, status, manifest, now=None, **bounds):
+    """Whether a serving slot fails runtime admission only because its coverage expired.
+
+    Slots keep serving past their checkpoint coverage deadline, and replacing
+    such a slot is the only way to renew it, so expired coverage must not block
+    preparing or promoting the replacement. Any other admission failure raises.
+    """
+    now = int(time.time()) if now is None else now
+    try:
+        installer.validate_runtime(status, manifest, now, **bounds)
+        return False
+    except ValueError as error:
+        if str(error) != COVERAGE_STALE:
+            raise
+        coverage = installer.checkpoint_coverage(status, manifest, now, **bounds)
+        if coverage is None or now <= coverage["coverage_deadline"]:
+            raise
+    installer.validate_metadata(status, manifest, now, require_source_ready=False, **bounds)
+    return True
 
 
 def without(value, field):
@@ -924,7 +946,11 @@ class Slots:
         while True:
             status = self.service.healthy(target)["index"]
             try:
-                self.service.tantivy_adapter().installer.validate_runtime(status, manifest)
+                installer = self.service.tantivy_adapter().installer
+                if coverage_stale(installer, status, manifest):
+                    self.service.logger.warning(
+                        "serving_slot_coverage_stale build=%s", target["build_id"]
+                    )
                 return status
             except ValueError as error:
                 # A backend sampled between the pages of one poll cycle reports

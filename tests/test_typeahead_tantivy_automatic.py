@@ -422,3 +422,85 @@ def test_every_flow_mode_requires_an_immutable_source_revision(monkeypatch, revi
     for options in ({}, {"tantivy_operation": {"operation": "cancel"}}):
         with pytest.raises(ValueError, match="immutable Typeahead source revision"):
             flow.typeahead_index.fn(**options)
+
+
+class CoverageInstaller:
+    """Admission outcome for a reachable, ready serving slot, keyed by `failure`."""
+
+    def __init__(self, failure, deadline_passed=True):
+        self.failure = failure
+        self.deadline_passed = deadline_passed
+        self.metadata_checks = 0
+
+    def validate_runtime(self, status, manifest, now, **_):
+        if self.failure is not None:
+            raise ValueError(self.failure)
+
+    def checkpoint_coverage(self, status, manifest, now, **_):
+        return {"coverage_deadline": now - 1 if self.deadline_passed else now + 1}
+
+    def validate_metadata(self, status, manifest, now, **_):
+        self.metadata_checks += 1
+
+
+def coverage_refresh(controller, tmp_path, installer):
+    from types import SimpleNamespace
+
+    slots, (route, etag) = active(controller, tmp_path)
+    current = route["current"]
+    controller.tantivy_adapter = lambda: SimpleNamespace(installer=installer)
+    slots.require_release = lambda *_: {"test_only": True}
+    slots.admission_record = lambda target: ({}, {"image_digest": IMAGE})
+    slots.artifact = lambda build_id: ({"active_build": build_id}, b"{}")
+    calls = []
+
+    def prepare(build_id, image, **kwargs):
+        calls.append(("prepare", build_id, kwargs["app"], kwargs["serving_unavailable"]))
+        assert kwargs["expected_route"] == route and kwargs["expected_etag"] == etag
+        return {"plan_sha256": "p" * 64, "plan": {"expected_current_etag": etag}}
+
+    def promote(plan_sha256, expected_current_etag, key, digest):
+        calls.append(("promote", plan_sha256, expected_current_etag))
+        return {"phase": "promoted"}
+
+    slots.prepare = prepare
+    slots.promote = promote
+
+    def publish():
+        calls.append(("build",))
+        return "b1793300000-next"
+
+    return slots, current, etag, calls, publish
+
+
+def test_coverage_stale_serving_slot_is_replaced_and_promoted(controller, tmp_path):
+    from mps.typeahead_tantivy_slots import COVERAGE_STALE
+
+    installer = CoverageInstaller(COVERAGE_STALE)
+    slots, current, etag, calls, publish = coverage_refresh(controller, tmp_path, installer)
+    assert controller.healthy(current)["health"]["ready"] is True
+    assert refresh(controller, slots, publish, **PROOF) == {"phase": "promoted"}
+    assert calls == [
+        ("build",),
+        ("prepare", "b1793300000-next", APPS[1], False),
+        ("promote", "p" * 64, etag),
+    ]
+    assert installer.metadata_checks == 1
+
+
+@pytest.mark.parametrize(
+    "failure, deadline_passed",
+    [
+        ("Moderation policy is missing or stale", True),
+        ("Live runtime binary or retrieval strategy mismatch", True),
+        ("Checkpoint coverage or actual remote polling is stale", False),
+    ],
+)
+def test_serving_slot_failing_other_admission_gates_still_fails_the_run(
+    controller, tmp_path, failure, deadline_passed
+):
+    installer = CoverageInstaller(failure, deadline_passed)
+    slots, _, _, calls, publish = coverage_refresh(controller, tmp_path, installer)
+    with pytest.raises(ValueError, match=failure):
+        refresh(controller, slots, publish, **PROOF)
+    assert calls == []
