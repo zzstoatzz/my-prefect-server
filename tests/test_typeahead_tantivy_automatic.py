@@ -7,6 +7,8 @@ not manufacture a positive production proof or perform provider mutations.
 import json
 
 import pytest
+from mps import typeahead_tantivy_automatic
+from mps.typeahead_refresh import Refresh
 from mps.typeahead_tantivy_automatic import _continue_refresh, refresh
 from mps.typeahead_tantivy_slots import APPS, OWNER, raw_json
 
@@ -48,6 +50,54 @@ def test_native_route_and_missing_real_release_proof_refuse_before_publication(
     with pytest.raises(ValueError, match="release proof is missing"):
         refresh(controller, slots, lambda: calls.append("build"), **PROOF)
     assert calls == [] and controller.s3.writes == []
+
+
+def unreachable_current(controller, tmp_path, monkeypatch, *, recover_after=None):
+    monkeypatch.setattr(typeahead_tantivy_automatic, "UNAVAILABLE_PROBE_INTERVAL_SECONDS", 0)
+    slots = slot_service(controller, tmp_path)
+    current = {**TANTIVY, "origin": f"https://{APPS[0]}.fly.dev"}
+    route = {"version": 1, "current": current, "previous": NATIVE, "native_rollback": NATIVE}
+    controller.s3.seed("control/search-routing.json", raw_json(route))
+    probes = []
+    original_get = controller.get
+
+    def get(base, path):
+        if base != current["origin"]:
+            return original_get(base, path)
+        probes.append(path)
+        if recover_after is not None and len(probes) > recover_after:
+            return original_get(TANTIVY["origin"], path)
+        return Refresh.get(controller, "http://127.0.0.1:9", path)
+
+    controller.get = get
+    return slots, current, probes
+
+
+def test_unreachable_current_slot_rolls_back_to_native_without_building(
+    controller, tmp_path, monkeypatch
+):
+    slots, current, probes = unreachable_current(controller, tmp_path, monkeypatch)
+
+    def forbidden_build():
+        raise AssertionError("A dead serving slot must not start another export")
+
+    report = refresh(controller, slots, forbidden_build, **PROOF)
+    assert report["phase"] == "rolled-back" and "ConnectError" in report["reason"]
+    assert report["rollback"]["passed"] is True
+    assert probes == ["/health"] * typeahead_tantivy_automatic.UNAVAILABLE_PROBES
+    route, _ = controller.route()
+    assert route["current"] == NATIVE and route["previous"] == current
+    with pytest.raises(RuntimeError, match="initial native-to-Tantivy"):
+        refresh(controller, slots, forbidden_build, **PROOF)
+
+
+def test_transiently_unreachable_current_slot_keeps_its_route(controller, tmp_path, monkeypatch):
+    slots, current, probes = unreachable_current(controller, tmp_path, monkeypatch, recover_after=1)
+    with pytest.raises(ValueError, match="release proof is missing"):
+        refresh(controller, slots, lambda: None, **PROOF)
+    assert probes[:2] == ["/health", "/health"]
+    assert controller.route()[0]["current"] == current
+    assert controller.s3.writes == []
 
 
 def test_native_rollback_during_publication_wins_and_artifact_is_retained(controller, tmp_path):

@@ -137,6 +137,15 @@ worker budget bounds failure; it is not a promise that a refresh finishes in tha
 time. Do not introduce a second publisher clock or infer successful refreshes from
 the presence of a schedule.
 
+If the serving Tantivy slot fails three `/health` probes 20 seconds apart
+(unreachable, not ready, or a non-JSON reply), automatic continuation does not
+prepare a replacement: preparation requires a serving current slot, so this
+would fence every later run. It performs the standard native rollback and the
+same run continues with the native refresh. An expired checkpoint, which stops
+the slot, takes this path. A reachable slot that fails validation still fails
+the run. Returning to Tantivy is an explicit slot operation, as with the
+initial cutover.
+
 An automatic pending journal resumes its exact request and immutable artifact
 before another bulk export. Manual candidates remain fenced for operator review.
 `resume_rollout:true` with no pending operation fails instead of starting a new

@@ -4,9 +4,27 @@ from __future__ import annotations
 
 import json
 import re
+import time
 
-from mps.typeahead_refresh import target_engine
+import httpx
+
+from mps.typeahead_refresh import BackendNotReady, target_engine
 from mps.typeahead_tantivy_slots import APPS, OWNER
+
+UNAVAILABLE_PROBES = 3
+UNAVAILABLE_PROBE_INTERVAL_SECONDS = 20
+
+
+def unavailable(service, target):
+    for attempt in range(UNAVAILABLE_PROBES):
+        if attempt:
+            time.sleep(UNAVAILABLE_PROBE_INTERVAL_SECONDS)
+        try:
+            service.healthy(target, require_fresh=False)
+            return None
+        except (BackendNotReady, httpx.HTTPError, json.JSONDecodeError) as error:
+            failure = f"{type(error).__name__}: {error}"
+    return failure
 
 
 def settings(environment):
@@ -35,6 +53,16 @@ def refresh(service, slots, publish, *, release_key, release_sha256, resume_only
     current = route["current"]
     if target_engine(current) != "tantivy":
         raise RuntimeError("Automatic initial native-to-Tantivy cutover is forbidden")
+    failure = unavailable(service, current)
+    if failure is not None:
+        # Preparation requires a serving current slot, so a dead one (e.g. expired
+        # checkpoint coverage) would fence every later refresh. Restore the native
+        # anchor instead; returning to Tantivy is an explicit slot operation.
+        return {
+            "phase": "rolled-back",
+            "reason": failure,
+            "rollback": service.rollback_to_native(),
+        }
     slots.require_release(current, release_key, release_sha256)
     _, deployment = slots.admission_record(current)
     image = deployment["image_digest"]
