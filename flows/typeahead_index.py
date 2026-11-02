@@ -877,22 +877,15 @@ def typeahead_index(
                         release_sha256=config["release_sha256"],
                         resume_only=resume_rollout,
                     )
-                    if report.get("phase") == "rolled-back" and not resume_rollout:
-                        get_run_logger().warning(
-                            "Serving Tantivy slot unavailable (%s); rolled back to native and "
-                            "continuing with the native refresh",
-                            report["reason"],
-                        )
-                    elif (
+                    if (
                         report.get("phase") != "promoted"
                         or report.get("public_verified") is not True
                     ):
                         raise RuntimeError("Automatic promotion is not confirmed; retention fenced")
-                    else:
-                        if publication is not None:
-                            retire_tantivy_generation(publication)
-                        prune_snapshot_artifacts()
-                        return report
+                    if publication is not None:
+                        retire_tantivy_generation(publication)
+                    prune_snapshot_artifacts()
+                    return report
                 finally:
                     if previous_adapter is None:
                         os.environ.pop("INDEX_TANTIVY_ADAPTER_PATH", None)

@@ -21,10 +21,10 @@ def unavailable(service, target):
             time.sleep(UNAVAILABLE_PROBE_INTERVAL_SECONDS)
         try:
             service.healthy(target, require_fresh=False)
-            return None
-        except (BackendNotReady, httpx.HTTPError, json.JSONDecodeError) as error:
-            failure = f"{type(error).__name__}: {error}"
-    return failure
+            return False
+        except (BackendNotReady, httpx.HTTPError, json.JSONDecodeError):
+            pass
+    return True
 
 
 def settings(environment):
@@ -53,21 +53,13 @@ def refresh(service, slots, publish, *, release_key, release_sha256, resume_only
     current = route["current"]
     if target_engine(current) != "tantivy":
         raise RuntimeError("Automatic initial native-to-Tantivy cutover is forbidden")
-    failure = unavailable(service, current)
-    if failure is not None:
-        # Preparation requires a serving current slot, so a dead one (e.g. expired
-        # checkpoint coverage) would fence every later refresh. Restore the native
-        # anchor instead; returning to Tantivy is an explicit slot operation.
-        return {
-            "phase": "rolled-back",
-            "reason": failure,
-            "rollback": service.rollback_to_native(),
-        }
+    serving_unavailable = unavailable(service, current)
     slots.require_release(current, release_key, release_sha256)
     _, deployment = slots.admission_record(current)
     image = deployment["image_digest"]
-    manifest, _ = slots.artifact(current["build_id"])
-    slots.retirement_freshness(current, manifest)
+    if not serving_unavailable:
+        manifest, _ = slots.artifact(current["build_id"])
+        slots.retirement_freshness(current, manifest)
     return _continue_refresh(
         service,
         slots,
@@ -78,11 +70,22 @@ def refresh(service, slots, publish, *, release_key, release_sha256, resume_only
         release_key=release_key,
         release_sha256=release_sha256,
         resume_only=resume_only,
+        serving_unavailable=serving_unavailable,
     )
 
 
 def _continue_refresh(
-    service, slots, publish, route, etag, image, *, release_key, release_sha256, resume_only=False
+    service,
+    slots,
+    publish,
+    route,
+    etag,
+    image,
+    *,
+    release_key,
+    release_sha256,
+    resume_only=False,
+    serving_unavailable=False,
 ):
     current = route["current"]
     pending = []
@@ -153,6 +156,7 @@ def _continue_refresh(
         expected_route=baseline,
         expected_etag=etag,
         automatic_refresh=True,
+        serving_unavailable=serving_unavailable,
     )
     if service.route()[0] != baseline:
         raise RuntimeError("Routing changed after automatic preparation")

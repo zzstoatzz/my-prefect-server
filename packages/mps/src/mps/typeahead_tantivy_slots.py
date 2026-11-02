@@ -258,7 +258,9 @@ class Slots:
         except OSError:
             self.service.logger.warning("Slot journal persisted remotely; local cache unavailable")
 
-    def guard(self, state, *, fresh=False, serving_health=True):
+    def guard(self, state, *, fresh=False, serving_health=None):
+        if serving_health is None:
+            serving_health = not state.get("serving_unavailable", False)
         if state.get("app") not in APPS:
             raise ValueError("Only approved inactive Tantivy apps may be mutated")
         route, etag = self.service.route()
@@ -282,7 +284,7 @@ class Slots:
                 raise RuntimeError("Public serving identity is unavailable or changed")
         return route, etag
 
-    def acquire(self, state, *, expected_etag=None, serving_health=True):
+    def acquire(self, state, *, expected_etag=None, serving_health=None):
         route, etag = self.service.route()
         if expected_etag is not None and etag != expected_etag:
             raise RuntimeError("Automatic preparation route ETag changed before lease")
@@ -895,8 +897,9 @@ class Slots:
             )
             self.service.healthy(state["native_rollback"], require_fresh=False)
             self.guard(state, fresh=True)
-            manifest, _ = self.artifact(state["route"]["current"]["build_id"])
-            self.retirement_freshness(state["route"]["current"], manifest)
+            if not state.get("serving_unavailable"):
+                manifest, _ = self.artifact(state["route"]["current"]["build_id"])
+                self.retirement_freshness(state["route"]["current"], manifest)
             self.action(
                 state, name, method, path + ("/stop" if name == "retire-stop" else ""), body
             )
@@ -955,8 +958,9 @@ class Slots:
             raise RuntimeError("Retained previous Tantivy slot is fenced by default")
         self.require_release(route["current"], key, digest)
         self.guard(state, fresh=True)
-        current_manifest, _ = self.artifact(route["current"]["build_id"])
-        self.retirement_freshness(route["current"], current_manifest)
+        if not state.get("serving_unavailable"):
+            current_manifest, _ = self.artifact(route["current"]["build_id"])
+            self.retirement_freshness(route["current"], current_manifest)
         self.service.healthy(state["native_rollback"], require_fresh=False)
         record, bound = self.admission_record(previous)
         if state.get("retirement_intent") is None:
@@ -1010,6 +1014,7 @@ class Slots:
         expected_route=None,
         expected_etag=None,
         automatic_refresh=False,
+        serving_unavailable=False,
     ):
         import fcntl
         from uuid import uuid4
@@ -1047,6 +1052,7 @@ class Slots:
                     != hashlib.sha256(artifact_raw).hexdigest()
                     or state.get("retire_previous_tantivy") != retire_previous_tantivy
                     or state.get("automatic_refresh", False) != automatic_refresh
+                    or state.get("serving_unavailable", False) != serving_unavailable
                     or (app is not None and state.get("app") != app)
                 ):
                     raise ValueError("Preparation resume identity changed")
@@ -1085,8 +1091,12 @@ class Slots:
                 anchor = (
                     current if target_engine(current) == "native" else native_rollback_target(route)
                 )
-                self.service.healthy(anchor, require_fresh=False)
-                status = self.service.healthy(current, require_fresh=False)["index"]
+                anchor_status = self.service.healthy(anchor, require_fresh=False)["index"]
+                status = (
+                    anchor_status
+                    if serving_unavailable
+                    else self.service.healthy(current, require_fresh=False)["index"]
+                )
                 if manifest["source_actor_count"] < max(1, status.get("actor_count", 0) // 2):
                     raise ValueError("Candidate source regresses the serving corpus floor")
                 state = {
@@ -1105,6 +1115,7 @@ class Slots:
                     "native_rollback": anchor,
                     "retire_previous_tantivy": retire_previous_tantivy,
                     "automatic_refresh": automatic_refresh,
+                    "serving_unavailable": serving_unavailable,
                     "volume_name": "tv_" + request_id[:20],
                     "machine_name": "tv-" + request_id[:20],
                     "pending_action": None,

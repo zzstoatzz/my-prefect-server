@@ -73,22 +73,78 @@ def unreachable_current(controller, tmp_path, monkeypatch, *, recover_after=None
     return slots, current, probes
 
 
-def test_unreachable_current_slot_rolls_back_to_native_without_building(
+def test_unreachable_current_slot_continues_into_the_inactive_slot(
     controller, tmp_path, monkeypatch
 ):
     slots, current, probes = unreachable_current(controller, tmp_path, monkeypatch)
+    route, etag = controller.route()
+    builds = []
 
-    def forbidden_build():
-        raise AssertionError("A dead serving slot must not start another export")
+    class PrepareBoundary(RuntimeError):
+        pass
 
-    report = refresh(controller, slots, forbidden_build, **PROOF)
-    assert report["phase"] == "rolled-back" and "ConnectError" in report["reason"]
-    assert report["rollback"]["passed"] is True
+    def prepare(build_id, image, **kwargs):
+        assert build_id == "b1793300000-next" and image == IMAGE
+        assert kwargs["app"] == APPS[1] and kwargs["serving_unavailable"] is True
+        assert kwargs["expected_route"] == route and kwargs["expected_etag"] == etag
+        raise PrepareBoundary("Reached inactive slot preparation")
+
+    slots.prepare = prepare
+    with pytest.raises(PrepareBoundary):
+        _continue_refresh(
+            controller,
+            slots,
+            lambda: builds.append("build") or "b1793300000-next",
+            route,
+            etag,
+            IMAGE,
+            serving_unavailable=True,
+            **PROOF,
+        )
+    assert builds == ["build"]
+    assert controller.route() == (route, etag)
+    with pytest.raises(ValueError, match="release proof is missing"):
+        refresh(controller, slots, lambda: None, **PROOF)
     assert probes == ["/health"] * typeahead_tantivy_automatic.UNAVAILABLE_PROBES
-    route, _ = controller.route()
-    assert route["current"] == NATIVE and route["previous"] == current
-    with pytest.raises(RuntimeError, match="initial native-to-Tantivy"):
-        refresh(controller, slots, forbidden_build, **PROOF)
+    assert controller.route()[0]["current"] == current
+
+
+@pytest.mark.parametrize("serving_unavailable", [True, False])
+def test_preparation_past_a_dead_serving_slot_uses_the_native_floor(
+    controller, tmp_path, monkeypatch, serving_unavailable
+):
+    import httpx
+
+    slots, current, _ = unreachable_current(controller, tmp_path, monkeypatch)
+    manifest = {
+        "source_actor_count": 3,
+        "source_build_id": "b1793290000-source",
+        "legacy_build_id": "b1793290000-native",
+        "source_manifest_sha256": "c" * 64,
+    }
+    slots.artifact = lambda build_id: (manifest, raw_json(manifest))
+    slots.protect = lambda state: None
+
+    class AllocationBoundary(RuntimeError):
+        pass
+
+    def allocate(state, _manifest):
+        assert state["serving_unavailable"] is True and state["app"] == APPS[1]
+        assert state["native_rollback"] == NATIVE
+        assert controller.route()[0]["mutation"]["request_id"] == state["request_id"]
+        raise AllocationBoundary("Reached inactive slot allocation")
+
+    slots.allocate = allocate
+    expected = AllocationBoundary if serving_unavailable else httpx.ConnectError
+    with pytest.raises(expected):
+        slots.prepare(
+            "b1793300000-next",
+            IMAGE,
+            request_id="f" * 32,
+            automatic_refresh=True,
+            serving_unavailable=serving_unavailable,
+        )
+    assert controller.route()[0]["current"] == current
 
 
 def test_transiently_unreachable_current_slot_keeps_its_route(controller, tmp_path, monkeypatch):
