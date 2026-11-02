@@ -117,7 +117,6 @@ def test_preparation_past_a_dead_serving_slot_uses_the_admitted_artifact_floor(
     candidate = {
         "source_actor_count": candidate_actors,
         "source_build_id": "b1793300000-next",
-        "legacy_build_id": "b1793290000-legacy",
         "source_manifest_sha256": "c" * 64,
     }
     artifacts = {current["build_id"]: serving, "b1793300000-next": candidate}
@@ -203,7 +202,6 @@ def test_pending_candidate_is_resolved_before_any_bulk_build(controller, tmp_pat
         "app": APPS[1],
         "build_id": "b1793300000-pending",
         "source_build_id": "b1793290000-source",
-        "legacy_build_id": "b1793290000-native",
         "image_digest": IMAGE,
         "artifact_manifest_sha256": "a" * 64,
         "route": route,
@@ -259,7 +257,7 @@ def test_prepare_route_fence_checks_actual_head_before_any_machine_action(
 ):
     slots, (route, etag) = active(controller, tmp_path)
     controller.tantivy_adapter = lambda: pinned_adapter
-    manifest, _ = seed_checkpoint_publication(controller, TANTIVY)
+    manifest = seed_checkpoint_publication(controller, TANTIVY)
     changed = {"version": 1, "current": TANTIVY, "previous": route["current"]}
     controller._put_route(dict(changed), etag)
     with pytest.raises(RuntimeError, match="route ETag changed"):

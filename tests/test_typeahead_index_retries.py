@@ -78,7 +78,7 @@ def test_flow_retry_resumes_after_finished_checkpoint_stages(tmp_path, monkeypat
         if not attempts:
             attempts.append(1)
             raise RuntimeError("freeze interrupted")
-        return Path("publication"), Path("native-anchor")
+        return Path("publication")
 
     monkeypatch.setattr(release, "freeze_cloud_checkpoint", freeze)
 
@@ -94,7 +94,7 @@ def test_flow_retry_resumes_after_finished_checkpoint_stages(tmp_path, monkeypat
         def release_once():
             return publisher.prepare_checkpoint_generation(tmp_path, storage)
 
-        assert release_once() == (Path("publication"), Path("native-anchor"))
+        assert release_once() == Path("publication")
     assert calls == ["export", "import", "freeze", "freeze"]
 
 

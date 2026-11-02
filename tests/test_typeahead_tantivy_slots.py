@@ -11,18 +11,20 @@ from types import MethodType
 import httpx
 import pytest
 from mps import typeahead_refresh as refresh
-from mps.typeahead_refresh import anchor_manifest_key
 from mps.typeahead_tantivy_slots import APPS, GATES, OWNER, Slots, raw_json, validate_release_proof
 
 from tests.test_typeahead_engine_compatibility import (
     NATIVE,
     PREVIOUS,
+    SOURCE,
     TANTIVY,
     ConditionalWriteFailed,
     DiskBucket,
+    bucket_keys,
     controller as controller,
     pinned_adapter as pinned_adapter,
     seed_checkpoint_publication,
+    seed_tantivy_publication,
 )
 
 
@@ -161,7 +163,6 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
         "image_digest": "registry.fly.io/fixture@sha256:" + "d" * 64,
         "artifact_manifest_sha256": "e" * 64,
         "source_build_id": "b1793236000-source-px05",
-        "legacy_build_id": "b1793236000-source",
         "region": "ewr",
         "machine_name": "candidate",
         "volume_name": "candidate",
@@ -258,7 +259,7 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
     manifest = {"source_build_id": state["source_build_id"]}
     if checkpoint:
         target = {**TANTIVY, "build_id": state["build_id"]}
-        manifest, _ = seed_checkpoint_publication(controller, target)
+        manifest = seed_checkpoint_publication(controller, target)
     try:
         if retired_state in ("created", "attached"):
             with pytest.raises(RuntimeError, match="unrelated or retained volume"):
@@ -269,10 +270,8 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
         first_config = json.loads(statefile.read_text())["machines"][0]["config"]
         assert bound["guest"] == {"cpu_kind": "shared", "cpus": 2, "memory_mb": 1024}
         assert bound["volume_size_gib"] == 20
-        assert bound["source_manifest_key"] == anchor_manifest_key(manifest)
-        if checkpoint:
-            anchor = manifest["rollback_native_anchor"]["build_id"]
-            assert bound["source_manifest_key"] == f"releases/search/{anchor}/manifest.json"
+        assert not {"source_manifest_key", "rollback_native_anchor", "legacy_build_id"} & set(bound)
+        assert bucket_keys(controller, "releases/search") == []
         slots.start(state)
         slots.stop(state)
         slots.start(state)
@@ -328,14 +327,15 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
         thread.join()
 
 
-def test_retained_previous_slot_needs_its_bundle_and_anchor_but_no_native_payloads(
-    controller, tmp_path, pinned_adapter
-):
+@pytest.mark.parametrize("legacy", [False, True])
+def test_retained_previous_slot_needs_only_its_bundle(controller, tmp_path, pinned_adapter, legacy):
     controller.tantivy_adapter = lambda: pinned_adapter
     slots = slot_service(controller, tmp_path)
     target = {**TANTIVY, "origin": f"https://{APPS[0]}.fly.dev"}
-    manifest, native_raw = seed_checkpoint_publication(controller, target)
+    manifest = seed_checkpoint_publication(controller, target, legacy=legacy)
     bound = {**manifest, "provider_app": APPS[0]}
+    if legacy:
+        bound["source_manifest_key"] = "releases/search/b1792000000-rollback-px05/manifest.json"
     deployment_raw = raw_json(bound)
     deployment_key = "control/tantivy-slots/fixture-deployment.json"
     controller.s3.seed(deployment_key, deployment_raw)
@@ -353,33 +353,26 @@ def test_retained_previous_slot_needs_its_bundle_and_anchor_but_no_native_payloa
             }
         ),
     )
-    anchor_key = anchor_manifest_key(manifest)
-    for path in (controller.s3.root / "releases/search").rglob("*"):
-        if path.is_file() and str(path.relative_to(controller.s3.root)) != anchor_key:
-            path.unlink()
+    assert bucket_keys(controller, "releases/search") == []
     retained = slots.retained(target)
-    assert retained["anchor_manifest_key"] == anchor_key
+    assert "anchor_manifest_key" not in retained
     assert [item["key"] for item in retained["objects"]] == [manifest["object_key"]]
     controller.s3.seed(manifest["object_key"], b"x")
     with pytest.raises(ValueError, match="bundle is missing or changed size"):
         slots.retained(target)
-    controller.s3.seed(manifest["object_key"], b"x" * manifest["byte_size"])
-    controller.s3.seed(anchor_key, native_raw + b" ")
-    with pytest.raises(ValueError, match="rollback-native manifest bytes"):
-        slots.retained(target)
 
 
 def exercise_real_rust_preparation(
-    controller, tmp_path, adapter, portable, source, bundle, binary, fixtures
+    controller, tmp_path, adapter, portable, bundle, binary, fixtures
 ):
     import os
 
     slots = slot_service(controller, tmp_path)
     controller.tantivy_adapter = lambda: adapter
+    seed_tantivy_publication(controller, controller.route()[0]["current"], SOURCE)
     controller.s3.seed(
         f"releases/search-tantivy/{portable['active_build']}/manifest.json", raw_json(portable)
     )
-    controller.s3.seed(f"releases/search/{portable['source_build_id']}/manifest.json", source)
     records = {"machines": [], "volumes": []}
     process = None
     public = None
@@ -423,9 +416,7 @@ def exercise_real_rust_preparation(
                 env = config["env"]
                 bound = json.loads(controller.s3.path(env["TANTIVY_DEPLOYMENT_KEY"]).read_bytes())
                 if installation is None:
-                    receipt = adapter.install(
-                        bundle, tmp_path / "slot-cache", bound, binary, source
-                    )
+                    receipt = adapter.install(bundle, tmp_path / "slot-cache", bound, binary)
                     installation = dict(
                         receipt,
                         deployment_sha256=env["EXPECTED_DEPLOYMENT_SHA256"],
@@ -473,7 +464,7 @@ def exercise_real_rust_preparation(
     def qualify(url, bound, receipt, provider):
         assert url == f"https://{APPS[0]}.fly.dev"
         return adapter.qualify(
-            public, bound, receipt, dict(provider, test_only=True), source, allow_loopback=True
+            public, bound, receipt, dict(provider, test_only=True), allow_loopback=True
         )
 
     controller.qualify_tantivy_candidate = qualify
@@ -503,6 +494,13 @@ def exercise_real_rust_preparation(
         assert calls.count(("POST", f"/{APPS[0]}/machines")) == 1
         assert calls.count(("POST", f"/{APPS[0]}/volumes")) == 1
         assert portable["active_build"] in controller.retained_build_ids()
+        assert bucket_keys(controller, "releases/search") == []
+        deployment = json.loads(
+            controller.s3.path(slots.journal("d" * 32)["deployment_key"]).read_bytes()
+        )
+        assert not {"source_manifest_key", "rollback_native_anchor", "legacy_build_id"} & set(
+            deployment
+        )
         with pytest.raises(ValueError, match="Test-only"):
             slots.promote(
                 result["plan_sha256"], result["plan"]["expected_current_etag"], None, None

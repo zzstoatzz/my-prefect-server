@@ -73,20 +73,6 @@ def fetch_pds_fallback(destination, sha256):
         client.close()
 
 
-def read_anchor(service):
-    """Return the exact native provenance manifest the serving artifact binds.
-
-    The fixed Tantivy slot image refuses a checkpoint artifact without this
-    anchor, so each new build carries the serving artifact's anchor forward
-    from R2; no native backend is read.
-    """
-    route, _etag = service.route()
-    manifest = service.tantivy_publication(route["current"])
-    if manifest is None:
-        raise ValueError("The serving Tantivy publication is missing")
-    return service.tantivy_source_manifest(manifest)
-
-
 def cloud_release_guard(repository):
     """Return the run, indexer home, revision and adapter of an owned cloud release."""
     from prefect.client.orchestration import get_client
@@ -163,17 +149,10 @@ def owned_root(exported, home, run):
 def export_cloud_checkpoint(repository, *, timeout_seconds=2700):
     from prefect import get_run_logger
 
-    from mps.typeahead_refresh import Refresh
-
     run, home, _revision, _adapter = cloud_release_guard(repository)
     if not 60 <= timeout_seconds <= 3600:
         raise ValueError("Bounded cloud-only release required")
     logger = get_run_logger()
-    service = Refresh(logger)
-    try:
-        anchor = read_anchor(service)
-    finally:
-        service.close()
     root = release_root(home, run)
     if root.exists():
         shutil.rmtree(root)
@@ -184,9 +163,6 @@ def export_cloud_checkpoint(repository, *, timeout_seconds=2700):
     if configured_mapping is not None:
         pds_fallback_sha256 = configured_mapping
         pds_fallback_path = fetch_pds_fallback(root / "pds-fallback.sqlite", configured_mapping)
-    source = root / "native-anchor"
-    source.mkdir()
-    (source / "manifest.json").write_bytes(anchor)
     fetch_cloud_binary(root / "code/typeahead-tantivy", BINARY_SHA, root / "code")
 
     def progress(event):
@@ -240,7 +216,6 @@ def import_cloud_checkpoint(repository, exported, *, timeout_seconds=5400):
     binary = fetch_cloud_binary(root / "code/typeahead-tantivy", BINARY_SHA, root / "code")
     raw = (root / "checkpoint.json").read_bytes()
     checkpoint = json.loads(raw)
-    anchor = (root / "native-anchor/manifest.json").read_bytes()
     smoke = measure_sample(
         root / "source.db", root / "sample", Path(repository), binary, checkpoint, 100000
     )
@@ -258,8 +233,6 @@ def import_cloud_checkpoint(repository, exported, *, timeout_seconds=5400):
         receipt_sha256=hashlib.sha256(raw).hexdigest(),
         expected_source_origin_sha256=checkpoint["source_origin_sha256"],
         expected_file_witness=file_witness(root / "source.db"),
-        native_manifest_bytes=anchor,
-        native_manifest_sha256=hashlib.sha256(anchor).hexdigest(),
         build_id=build,
         environment=dict(os.environ),
         timeout=remaining,
@@ -289,7 +262,6 @@ def freeze_cloud_checkpoint(repository, exported, built):
         shutil.rmtree(root / "publication")
     (root / "preparation.json").unlink(missing_ok=True)
     binary = fetch_cloud_binary(root / "code/typeahead-tantivy", BINARY_SHA, root / "code")
-    anchor = (root / "native-anchor/manifest.json").read_bytes()
     checkpoint = json.loads((root / "checkpoint.json").read_bytes())
     build, imported = built["build"], built["imported"]
     manifest = dict(imported["manifest_fields"])
@@ -318,7 +290,7 @@ def freeze_cloud_checkpoint(repository, exported, built):
             else []
         ),
     )
-    portable = adapter.freeze(root / "data", root / "publication", manifest, binary, anchor)
+    portable = adapter.freeze(root / "data", root / "publication", manifest, binary)
     report = {
         "engine": "tantivy",
         "active_build": portable["active_build"],
@@ -346,4 +318,4 @@ def freeze_cloud_checkpoint(repository, exported, built):
         portable["byte_size"],
         time.monotonic() - started,
     )
-    return root / "publication", root / "native-anchor"
+    return root / "publication"

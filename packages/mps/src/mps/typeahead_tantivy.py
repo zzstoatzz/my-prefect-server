@@ -56,20 +56,16 @@ class TantivyAdapter:
     def validate_manifest(self, manifest: dict) -> dict:
         return self.installer.validate_artifact_manifest(manifest, manifest.get("active_build"))
 
-    def validate_source(self, manifest: dict, source_raw: bytes) -> dict:
-        return self.installer.validate_source_manifest(manifest, source_raw)
+    def validate_source(self, manifest: dict) -> dict | None:
+        return self.installer.validate_source_provenance(manifest)
 
-    def install(
-        self, bundle: Path, destination: Path, manifest: dict, binary: Path, source_manifest: bytes
-    ) -> dict:
-        self.validate_source(manifest, source_manifest)
+    def install(self, bundle: Path, destination: Path, manifest: dict, binary: Path) -> dict:
+        self.validate_source(manifest)
         return self.installer.install_bundle(bundle, destination, manifest, binary)
 
-    def freeze(
-        self, data: Path, destination: Path, manifest: dict, binary: Path, source_manifest: bytes
-    ) -> dict:
-        self.validate_source(manifest, source_manifest)
-        return self.installer.freeze_bundle(data, destination, manifest, source_manifest, binary)
+    def freeze(self, data: Path, destination: Path, manifest: dict, binary: Path) -> dict:
+        self.validate_source(manifest)
+        return self.installer.freeze_bundle(data, destination, manifest, binary)
 
     def qualify(
         self,
@@ -77,11 +73,10 @@ class TantivyAdapter:
         manifest: dict,
         installation: dict,
         provider_attestation: dict,
-        source_manifest: bytes,
         *,
         allow_loopback: bool = False,
     ) -> dict:
-        self.validate_source(manifest, source_manifest)
+        self.validate_source(manifest)
         return self.installer.qualify_runtime(
             url,
             manifest,

@@ -105,19 +105,6 @@ def checkpoint_source(root, repository, labels=None, missing_pds=False, clock_of
             source.url, source.source_secret, database, allow_test_loopback=True, max_seconds=10
         )
         raw = json.dumps(receipt, indent=2).encode() + b"\n"
-        native = json.dumps(
-            {
-                "manifest_version": 2,
-                "format_version": 5,
-                "normalize_version": "v2-cjk-bigram",
-                "active_build": "b1793230000-native",
-                "actor_count": 123456,
-                "source_watermark": 1793230000,
-                "sha256": "a" * 64,
-                "prefix_map": {"sha256": "b" * 64},
-                "legacy_twin": {"build_id": "b1793230000-legacy", "source_watermark": 1793230000},
-            }
-        ).encode()
         yield (
             source,
             database,
@@ -126,8 +113,6 @@ def checkpoint_source(root, repository, labels=None, missing_pds=False, clock_of
                 "receipt_sha256": hashlib.sha256(raw).hexdigest(),
                 "expected_source_origin_sha256": receipt["source_origin_sha256"],
                 "expected_file_witness": file_witness(database),
-                "native_manifest_bytes": native,
-                "native_manifest_sha256": hashlib.sha256(native).hexdigest(),
                 "build_id": f"b{source.now}-checkpoint-build",
                 "environment": dict(
                     os.environ, TURSO_URL=source.url, TURSO_AUTH_TOKEN=source.source_secret
@@ -220,7 +205,7 @@ class Tests(unittest.TestCase):
             self.assertNotIn("last_completed_at", cursor.get("reconciliation", {}))
             self.assertGreater(status["source_observation_revision"], 1)
             self.assertEqual(fields["source_build_id"], status["source_manifest"]["build_id"])
-            self.assertEqual(fields["rollback_native_anchor"]["actor_count"], 123456)
+            self.assertFalse({"rollback_native_anchor", "legacy_build_id"} & set(fields))
             self.assertEqual(fields["source_manifest_sha256"], options["receipt_sha256"])
             self.assertEqual(
                 status["expiry_coverage"]["verified_input_actors_sha256"],
@@ -265,7 +250,6 @@ class Tests(unittest.TestCase):
                 Path(result["data_path"]),
                 self.root / "publication",
                 manifest,
-                options["native_manifest_bytes"],
                 self.binary,
                 allow_checkpoint_fixture=True,
             )
@@ -276,15 +260,10 @@ class Tests(unittest.TestCase):
                 status["expiry_coverage"]["verified_input_actors_sha256"],
             )
             self.assertEqual(portable["source_manifest_sha256"], options["receipt_sha256"])
-            self.assertEqual(
-                portable["rollback_native_anchor"]["manifest_sha256"],
-                options["native_manifest_sha256"],
-            )
+            self.assertFalse({"rollback_native_anchor", "legacy_build_id"} & set(portable))
             self.assertTrue(portable["test_only"])
             installer.validate_artifact_manifest(portable, options["build_id"])
-            installer.validate_checkpoint_provenance(
-                portable, options["receipt_bytes"], options["native_manifest_bytes"]
-            )
+            installer.validate_checkpoint_provenance(portable, options["receipt_bytes"])
             with (self.root / "publication/index.tar").open("rb") as bundle:
                 self.assertEqual(
                     portable["sha256"], hashlib.file_digest(bundle, "sha256").hexdigest()
@@ -334,7 +313,6 @@ class Tests(unittest.TestCase):
                 data,
                 self.root / "publication",
                 manifest,
-                options["native_manifest_bytes"],
                 self.binary,
                 allow_checkpoint_fixture=True,
             )
@@ -413,7 +391,6 @@ class Tests(unittest.TestCase):
             }
             request.update(database=str(database), repository=str(self.repository), max_seconds=1)
             request["receipt_bytes"] = request["receipt_bytes"].decode()
-            request["native_manifest_bytes"] = request["native_manifest_bytes"].decode()
             path = self.root / "request.json"
             path.write_text(json.dumps(request))
             started = time.monotonic()

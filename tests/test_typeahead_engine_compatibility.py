@@ -299,22 +299,24 @@ def test_real_http_tantivy_identity_rejects_wrong_body_or_transport(controller):
 
 
 class StubAdapter:
-    """Binds the anchor manifest by checksum, as the pinned installer does."""
+    """Accepts any manifest; the pinned installer's checks have their own tests."""
 
     def validate_manifest(self, manifest):
         return manifest
 
-    def validate_source(self, manifest, raw):
-        if hashlib.sha256(raw).hexdigest() != manifest["rollback_native_anchor"]["manifest_sha256"]:
-            raise ValueError("Exact rollback-native manifest bytes differ")
+    def validate_source(self, manifest):
+        return None
 
 
 PREVIOUS = {**TANTIVY, "build_id": "b1792999999-previous-engine"}
+LEGACY_PROVENANCE = {
+    "legacy_build_id": "b1792908655-legacy",
+    "rollback_native_anchor": {"build_id": "b1792908655-native-px05", "manifest_sha256": "9" * 64},
+}
 
 
-def seed_stub_publication(controller, target, *, payload=True):
-    """Publish a checkpoint-shaped artifact whose anchor names NATIVE's manifest."""
-    anchor = json.dumps({"active_build": NATIVE["build_id"], "manifest_version": 2}).encode()
+def seed_stub_publication(controller, target, *, payload=True, legacy=False):
+    """Publish a checkpoint-shaped artifact; `legacy` adds retired provenance fields."""
     manifest = {
         "engine": "tantivy",
         "active_build": target["build_id"],
@@ -323,35 +325,35 @@ def seed_stub_publication(controller, target, *, payload=True):
         "retrieval_strategy": target["retrieval_strategy"],
         "source_kind": "sqlite-committed-prefix",
         "source_build_id": target["build_id"],
-        "legacy_build_id": NATIVE["build_id"].removesuffix("-px05"),
         "source_actor_count": 4,
         "object_key": f"releases/search-tantivy/{target['build_id']}/index.tar",
-        "rollback_native_anchor": {
-            "build_id": NATIVE["build_id"],
-            "manifest_sha256": hashlib.sha256(anchor).hexdigest(),
-        },
     }
+    if legacy:
+        manifest.update(LEGACY_PROVENANCE)
     controller.tantivy_adapter = StubAdapter
-    controller.s3.seed(f"releases/search/{NATIVE['build_id']}/manifest.json", anchor)
     raw = json.dumps(manifest).encode()
     controller.s3.seed(f"releases/search-tantivy/{target['build_id']}/manifest.json", raw)
     if payload:
         controller.s3.seed(manifest["object_key"], b"bundle")
-    return manifest, raw, anchor
+    return manifest, raw
 
 
-def test_prune_deletes_only_unrouted_tantivy_generations(controller):
+def bucket_keys(controller, prefix):
+    return sorted(
+        str(path.relative_to(controller.s3.root))
+        for path in (controller.s3.root / prefix).rglob("*")
+        if path.is_file()
+    )
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_prune_deletes_only_unrouted_tantivy_generations(controller, legacy):
     route = {"version": 1, "current": TANTIVY, "previous": PREVIOUS}
     controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
-    seed_stub_publication(controller, TANTIVY)
-    seed_stub_publication(controller, PREVIOUS)
+    seed_stub_publication(controller, TANTIVY, legacy=legacy)
+    seed_stub_publication(controller, PREVIOUS, legacy=legacy)
     seed_stub_publication(controller, {**TANTIVY, "build_id": "b1792800000-disposable"})
-    native = [
-        f"releases/search/{NATIVE['build_id']}/{name}" for name in ("index.db", "index.db.prefix")
-    ]
-    native.append("releases/search/b1792800000-disposable-native/index.db")
-    for key in native:
-        controller.s3.seed(key, b"native")
+    assert bucket_keys(controller, "releases/search") == []
     assert controller.retained_build_ids() == {TANTIVY["build_id"], PREVIOUS["build_id"]}
     report = controller.prune_artifacts()
     assert report["deleted_objects"] == 2
@@ -359,8 +361,18 @@ def test_prune_deletes_only_unrouted_tantivy_generations(controller):
         "releases/search-tantivy/b1792800000-disposable/index.tar",
         "releases/search-tantivy/b1792800000-disposable/manifest.json",
     ]
-    assert all(controller.s3.path(key).exists() for key in native)
-    assert controller.s3.path(f"releases/search/{NATIVE['build_id']}/manifest.json").exists()
+
+
+def test_prune_leaves_retired_native_objects_to_the_one_off_cleanup(controller):
+    seed_stub_publication(controller, TANTIVY)
+    retired = [
+        "releases/search/b1792908655-native-px05/index.db",
+        "releases/search/b1792908655-native-px05/manifest.json",
+    ]
+    for key in retired:
+        controller.s3.seed(key, b"retired")
+    assert controller.prune_artifacts()["deleted_objects"] == 0
+    assert bucket_keys(controller, "releases/search") == retired
 
 
 def test_missing_routed_publication_blocks_all_artifact_cleanup(controller):
@@ -371,15 +383,6 @@ def test_missing_routed_publication_blocks_all_artifact_cleanup(controller):
     with pytest.raises(RuntimeError, match="publication is missing"):
         controller.prune_artifacts()
     assert controller.s3.deletions == []
-
-
-def anchored_route():
-    return {
-        "version": 1,
-        "current": TANTIVY,
-        "previous": PREVIOUS,
-        "native_rollback": NATIVE,
-    }
 
 
 @pytest.fixture
@@ -395,21 +398,6 @@ def pinned_adapter(monkeypatch):
 
 
 def seed_tantivy_publication(controller, target, source_build):
-    native = {
-        "manifest_version": 2,
-        "format_version": 5,
-        "active_build": source_build,
-        "source_watermark": 1792950000,
-        "actor_count": 1,
-        "normalize_version": "v2-cjk-bigram",
-        "sha256": "2" * 64,
-        "prefix_map": {"sha256": "3" * 64},
-        "legacy_twin": {
-            "build_id": source_build.removesuffix("-px05"),
-            "source_watermark": 1792950000,
-        },
-    }
-    raw = json.dumps(native).encode()
     manifest = {
         "engine": "tantivy",
         "manifest_version": 1,
@@ -426,23 +414,22 @@ def seed_tantivy_publication(controller, target, source_build):
         "byte_size": 10240,
         "source_actor_count": 1,
         "source_build_id": source_build,
-        "legacy_build_id": native["legacy_twin"]["build_id"],
-        "source_manifest_sha256": hashlib.sha256(raw).hexdigest(),
-        "source_watermark": native["source_watermark"],
-        "source_database_sha256": native["sha256"],
-        "source_prefix_sha256": native["prefix_map"]["sha256"],
+        "source_manifest_sha256": "1" * 64,
+        "source_watermark": 1792950000,
+        "source_database_sha256": "2" * 64,
+        "source_prefix_sha256": "3" * 64,
         "source_actors_sha256": "f" * 64,
         "object_key": f"releases/search-tantivy/{target['build_id']}/index.tar",
         "files": [{"path": "index/meta.json", "byte_size": 1, "sha256": "a" * 64}],
     }
-    controller.s3.seed(f"releases/search/{source_build}/manifest.json", raw)
     controller.s3.seed(
         f"releases/search-tantivy/{target['build_id']}/manifest.json", json.dumps(manifest).encode()
     )
     return manifest
 
 
-def seed_checkpoint_publication(controller, target):
+def seed_checkpoint_publication(controller, target, *, legacy=False):
+    """Publish the pinned installer's checkpoint fixture; `legacy` adds retired fields."""
     repository = Path(os.environ["TA_REPOSITORY"])
     spec = importlib.util.spec_from_file_location(
         "typeahead_checkpoint_retention_fixture",
@@ -450,7 +437,8 @@ def seed_checkpoint_publication(controller, target):
     )
     fixtures = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixtures)
-    manifest, _, native_raw = fixtures.AdmissionTests().checkpoint_manifest()
+    reference = fixtures.AdmissionTests()
+    manifest, _, native_raw = reference.checkpoint_manifest()
     for field in (
         "provider_app",
         "image_digest",
@@ -466,70 +454,50 @@ def seed_checkpoint_publication(controller, target):
         retrieval_strategy=target["retrieval_strategy"],
         object_key=f"releases/search-tantivy/{target['build_id']}/index.tar",
     )
-    native = json.loads(native_raw)
-    native_build = native["active_build"]
-    native.update(snapshot_url=f"releases/search/{native_build}/index.db", byte_size=16)
-    native["prefix_map"].update(object_key=native["snapshot_url"] + ".prefix", byte_size=8)
-    twin = {
-        "active_build": manifest["legacy_build_id"],
-        "source_watermark": native["source_watermark"],
-        "snapshot_url": f"releases/search/{manifest['legacy_build_id']}/index.db",
-        "byte_size": 4,
-    }
-    twin_raw = json.dumps(twin).encode()
-    twin_key = f"releases/search/{twin['active_build']}/manifest.json"
-    native["legacy_twin"]["manifest"] = {
-        "object_key": twin_key,
-        "byte_size": len(twin_raw),
-        "sha256": hashlib.sha256(twin_raw).hexdigest(),
-    }
-    native_raw = json.dumps(native).encode()
-    manifest["rollback_native_anchor"]["manifest_sha256"] = hashlib.sha256(native_raw).hexdigest()
-    controller.s3.seed(f"releases/search/{native_build}/manifest.json", native_raw)
-    controller.s3.seed(twin_key, twin_raw)
-    for key, size in [
-        (manifest["object_key"], manifest["byte_size"]),
-        (native["snapshot_url"], native["byte_size"]),
-        (native["prefix_map"]["object_key"], native["prefix_map"]["byte_size"]),
-        (twin["snapshot_url"], twin["byte_size"]),
-    ]:
-        controller.s3.seed(key, b"x" * size)
+    if legacy:
+        manifest.update(reference.legacy_native_fields(native_raw))
+    controller.s3.seed(manifest["object_key"], b"x" * manifest["byte_size"])
     controller.s3.seed(
         f"releases/search-tantivy/{manifest['active_build']}/manifest.json",
         json.dumps(manifest).encode(),
     )
-    return manifest, native_raw
+    return manifest
 
 
-def test_checkpoint_retention_keeps_the_generation_and_never_touches_native_objects(
-    controller, pinned_adapter
+@pytest.mark.parametrize("legacy", [False, True])
+def test_checkpoint_publication_is_retained_and_pruned_without_native_objects(
+    controller, pinned_adapter, legacy
 ):
     controller.tantivy_adapter = lambda: pinned_adapter
-    manifest, native_raw = seed_checkpoint_publication(controller, TANTIVY)
-    native_build = manifest["rollback_native_anchor"]["build_id"]
-    assert controller.tantivy_source_manifest(manifest) == native_raw
+    manifest = seed_checkpoint_publication(controller, TANTIVY, legacy=legacy)
+    assert ("rollback_native_anchor" in manifest) is legacy
+    assert ("legacy_build_id" in manifest) is legacy
+    assert bucket_keys(controller, "releases/search") == []
+    assert controller.tantivy_publication(TANTIVY) == manifest
     assert controller.retained_build_ids() == {manifest["active_build"]}
-    native = sorted(
-        str(path.relative_to(controller.s3.root))
-        for path in (controller.s3.root / "releases/search").rglob("*")
-        if path.is_file()
-    )
-    assert f"releases/search/{native_build}/manifest.json" in native
-    controller.s3.seed("releases/search/b1791000000-disposable/index.db", b"native")
     controller.s3.seed("releases/search-tantivy/b1791000000-disposable/index.tar", b"discard")
     assert controller.prune_artifacts()["deleted_objects"] == 1
     assert controller.s3.deletions == ["releases/search-tantivy/b1791000000-disposable/index.tar"]
-    assert controller.s3.path("releases/search/b1791000000-disposable/index.db").is_file()
-    anchor_key = f"releases/search/{native_build}/manifest.json"
-    controller.s3.seed(anchor_key, native_raw + b" ")
-    with pytest.raises(ValueError, match="rollback-native manifest bytes"):
-        controller.retained_build_ids()
+
+
+def test_checkpoint_receipt_tamper_blocks_retention_before_deletion(controller, pinned_adapter):
+    controller.tantivy_adapter = lambda: pinned_adapter
+    manifest = seed_checkpoint_publication(controller, TANTIVY)
+    manifest["source_bootstrap"]["checkpoint_receipt_json"] += " "
+    controller.s3.seed(
+        f"releases/search-tantivy/{manifest['active_build']}/manifest.json",
+        json.dumps(manifest).encode(),
+    )
+    controller.s3.seed("releases/search-tantivy/b1791000000-disposable/index.tar", b"discard")
+    with pytest.raises(ValueError, match="checkpoint receipt"):
+        controller.prune_artifacts()
+    assert controller.s3.deletions == []
 
 
 def test_portable_retention_resolves_two_tantivy_generations_without_old_endpoint(
     controller, pinned_adapter
 ):
-    route = anchored_route()
+    route = {"version": 1, "current": TANTIVY, "previous": PREVIOUS}
     controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
     current = seed_tantivy_publication(controller, route["current"], SOURCE)
     previous = seed_tantivy_publication(
@@ -545,16 +513,7 @@ def test_portable_retention_resolves_two_tantivy_generations_without_old_endpoin
         controller.s3.path(f"releases/search-tantivy/{entry['build_id']}/index.tar").exists()
         for entry in (route["current"], route["previous"])
     )
-
-
-def test_source_manifest_byte_tamper_blocks_retention_before_deletion(controller, pinned_adapter):
-    manifest = seed_tantivy_publication(controller, TANTIVY, SOURCE)
-    key = f"releases/search/{SOURCE}/manifest.json"
-    controller.s3.seed(key, controller.s3.path(key).read_bytes() + b" ")
-    with pytest.raises(ValueError, match="byte identity"):
-        controller.prune_artifacts()
-    assert controller.s3.deletions == []
-    assert manifest["source_build_id"] == SOURCE
+    assert bucket_keys(controller, "releases/search") == []
 
 
 def test_installer_checksum_mismatch_is_rejected_before_source_execution(tmp_path, pinned_adapter):
@@ -585,23 +544,6 @@ def test_actual_bundle_install_restart_and_http_qualification_through_adapter(
     spec.loader.exec_module(fixtures)
     reference = fixtures.AdmissionTests()
     manifest = reference.manifest()
-    native = {
-        "manifest_version": 2,
-        "format_version": 5,
-        "active_build": manifest["source_build_id"],
-        "snapshot_url": f"releases/search/{manifest['source_build_id']}/index.db",
-        "actor_count": 1,
-        "source_watermark": manifest["source_watermark"],
-        "normalize_version": manifest["normalize_version"],
-        "sha256": manifest["source_database_sha256"],
-        "prefix_map": {"sha256": manifest["source_prefix_sha256"]},
-        "legacy_twin": {
-            "build_id": manifest["legacy_build_id"],
-            "source_watermark": manifest["source_watermark"],
-        },
-    }
-    source = json.dumps(native).encode()
-    manifest["source_manifest_sha256"] = hashlib.sha256(source).hexdigest()
     actor = fixtures.smoke.actor(1, "real.test", "Real Actor")
     lines = json.dumps(actor, separators=(",", ":")).encode() + b"\n"
     manifest["source_actors_sha256"] = hashlib.sha256(lines).hexdigest()
@@ -675,12 +617,12 @@ def test_actual_bundle_install_restart_and_http_qualification_through_adapter(
             fixtures.smoke.stop(child)
     manifest["binary_sha256"] = hashlib.sha256(binary.read_bytes()).hexdigest()
     published = tmp_path / "publication"
-    portable = pinned_adapter.freeze(data, published, manifest, binary, source)
+    portable = pinned_adapter.freeze(data, published, manifest, binary)
     assert "volume_id" not in portable and "provider_app" not in portable
     bundle = published / "index.tar"
     manifest.update(portable)
     destination = tmp_path / "installed"
-    receipt = pinned_adapter.install(bundle, destination, manifest, binary, source)
+    receipt = pinned_adapter.install(bundle, destination, manifest, binary)
     assert receipt["passed"] and receipt["runtime_qualified"] is False
     with (tmp_path / "restart.log").open("wb") as log:
         child, public, _ = fixtures.start_strict(
@@ -692,7 +634,6 @@ def test_actual_bundle_install_restart_and_http_qualification_through_adapter(
                 manifest,
                 receipt,
                 reference.provider(int(time.time())),
-                source,
                 allow_loopback=True,
             )
             assert qualified["admission"]["test_only"] is True
@@ -709,7 +650,6 @@ def test_actual_bundle_install_restart_and_http_qualification_through_adapter(
                     manifest,
                     bad,
                     reference.provider(int(time.time())),
-                    source,
                     allow_loopback=True,
                 )
         finally:
@@ -723,7 +663,6 @@ def test_actual_bundle_install_restart_and_http_qualification_through_adapter(
         tmp_path / "slot-lifecycle",
         pinned_adapter,
         portable,
-        source,
         bundle,
         binary,
         fixtures,

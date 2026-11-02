@@ -241,13 +241,13 @@ def import_checkpoint(repo: Path, exported: dict) -> dict:
     persist_result=True,
     cache_policy=STAGE_CACHE,
 )
-def freeze_checkpoint(repo: Path, exported: dict, built: dict) -> tuple[Path, Path]:
+def freeze_checkpoint(repo: Path, exported: dict, built: dict) -> Path:
     from mps.typeahead_checkpoint_release import freeze_cloud_checkpoint
 
     return freeze_cloud_checkpoint(repo, exported, built)
 
 
-def prepare_checkpoint_generation(repo: Path, storage) -> tuple[Path, Path]:
+def prepare_checkpoint_generation(repo: Path, storage) -> Path:
     exported = export_checkpoint.with_options(result_storage=storage)(repo)
     built = import_checkpoint.with_options(result_storage=storage)(repo, exported)
     return freeze_checkpoint.with_options(result_storage=storage)(repo, exported, built)
@@ -274,7 +274,7 @@ def tantivy_workspace(generation: Path) -> Path:
     cache_policy=STAGE_CACHE,
 )
 def publish_tantivy_generation(
-    repo: Path, generation: Path, source: Path, config: Path | None = None
+    repo: Path, generation: Path, config: Path | None = None
 ) -> Path:
     from mps.typeahead_tantivy import durable_receipt
 
@@ -298,8 +298,6 @@ def publish_tantivy_generation(
             "tantivy",
             "--generation",
             str(generation),
-            "--source-manifest",
-            str(source / "manifest.json"),
         ]
         + (["--verify-only"] if verify_only else [])
         + (["--config", str(config)] if config is not None else []),
@@ -382,8 +380,8 @@ def typeahead_index(
     if not automatic_refresh:
         with pinned_typeahead() as repo:
             storage = run_coro_as_sync(save_result_storage())
-            prepared, source = prepare_checkpoint_generation(repo, storage)
-            publish_tantivy_generation.with_options(result_storage=storage)(repo, prepared, source)
+            prepared = prepare_checkpoint_generation(repo, storage)
+            publish_tantivy_generation.with_options(result_storage=storage)(repo, prepared)
             retire_tantivy_generation(prepared)
         return None
     from mps.typeahead_refresh import Refresh, prune_snapshot_artifacts
@@ -399,9 +397,9 @@ def typeahead_index(
 
             def publish():
                 nonlocal publication
-                publication, source = prepare_checkpoint_generation(repo, storage)
+                publication = prepare_checkpoint_generation(repo, storage)
                 publish_tantivy_generation.with_options(result_storage=storage)(
-                    repo, publication, source
+                    repo, publication
                 )
                 return json.loads((publication / "manifest.json").read_bytes())["active_build"]
 

@@ -154,8 +154,6 @@ def build_checkpoint(
     receipt_sha256,
     expected_source_origin_sha256,
     expected_file_witness,
-    native_manifest_bytes,
-    native_manifest_sha256,
     build_id,
     environment,
     timeout=1800,
@@ -229,11 +227,9 @@ def build_checkpoint(
             "pds_fallback_sha256": pds_fallback_sha256,
             "repository": str(repository),
             "receipt_bytes": receipt_bytes.decode("utf8"),
-            "native_manifest_bytes": native_manifest_bytes.decode("utf8"),
             "receipt_sha256": receipt_sha256,
             "expected_source_origin_sha256": expected_source_origin_sha256,
             "expected_file_witness": expected_file_witness,
-            "native_manifest_sha256": native_manifest_sha256,
             "build_id": build_id,
             "allow_fixture": allow_fixture,
             "max_seconds": max(1, int(remaining())),
@@ -621,8 +617,6 @@ def build_checkpoint(
                 "source_manifest_sha256": receipt_sha256,
                 "source_actors_sha256": stream["actors_sha256"],
                 "source_bootstrap": bootstrap,
-                "rollback_native_anchor": header["rollback_native_anchor"],
-                "legacy_build_id": header["legacy_build_id"],
                 "normalize_version": header["normalize_version"],
                 "canonical_rules_source_sha256": header["canonical_rules_source_sha256"],
                 "checkpoint_reconciliation_sha256": adapter.digest_json(record),
@@ -689,7 +683,6 @@ def main():
         database = request.pop("database")
         repository = request.pop("repository")
         request["receipt_bytes"] = request["receipt_bytes"].encode()
-        request["native_manifest_bytes"] = request["native_manifest_bytes"].encode()
         result = stream_checkpoint(
             database, sys.stdout.buffer, repository, max_seconds=seconds, **request
         )

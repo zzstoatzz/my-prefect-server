@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 from botocore.exceptions import ClientError
 
-from mps.typeahead_refresh import BackendNotReady, anchor_manifest_key, normalize_route
+from mps.typeahead_refresh import BackendNotReady, normalize_route
 from mps.typeahead_tantivy import durable_receipt
 
 OWNER = "typeahead-snapshot-refresh"
@@ -222,8 +222,7 @@ class Slots:
             )
         ):
             raise ValueError("A portable immutable Tantivy publication is required")
-        source = self.service.tantivy_source_manifest(manifest)
-        self.service.tantivy_adapter().validate_source(manifest, source)
+        self.service.tantivy_adapter().validate_source(manifest)
         return manifest, raw
 
     def save(self, state, phase=None):
@@ -320,7 +319,6 @@ class Slots:
             "app": state["app"],
             "build_id": state["build_id"],
             "source_build_id": state["source_build_id"],
-            "legacy_build_id": state["legacy_build_id"],
             "artifact_manifest_sha256": state["artifact_manifest_sha256"],
         }
         before = self.read(key, 4096)
@@ -726,7 +724,6 @@ class Slots:
             "request_id": state["request_id"],
             "artifact_manifest_key": f"releases/search-tantivy/{state['build_id']}/manifest.json",
             "artifact_manifest_sha256": state["artifact_manifest_sha256"],
-            "source_manifest_key": anchor_manifest_key(manifest),
         }
         state["config"] = self.config(state, bound, state["image_digest"])
         self.save(state, "deployment-ready")
@@ -857,7 +854,6 @@ class Slots:
         return {
             "artifact_manifest_sha256": hashlib.sha256(raw).hexdigest(),
             "source_manifest_sha256": manifest["source_manifest_sha256"],
-            "anchor_manifest_key": anchor_manifest_key(manifest),
             "verification": "immutable-manifest-linkage-and-object-presence-size",
             "payload_checksums_revalidated_on_restore": True,
             "objects": [
@@ -1092,7 +1088,6 @@ class Slots:
                     "image_digest": image,
                     "artifact_manifest_sha256": hashlib.sha256(artifact_raw).hexdigest(),
                     "source_build_id": manifest["source_build_id"],
-                    "legacy_build_id": manifest["legacy_build_id"],
                     "source_manifest_sha256": manifest["source_manifest_sha256"],
                     "route": route,
                     "retire_previous_tantivy": retire_previous_tantivy,

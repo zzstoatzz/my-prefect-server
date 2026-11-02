@@ -116,25 +116,11 @@ def provider_checkpoint(tmp_path, mutation=None):
 
 def arguments(path, receipt):
     raw = json.dumps(receipt, indent=2).encode() + b"\n"
-    anchor = json.dumps(
-        {
-            "manifest_version": 2,
-            "format_version": 5,
-            "active_build": "b1793230000-old-native",
-            "source_watermark": 1793230000,
-            "actor_count": 123456,
-            "sha256": "a" * 64,
-            "prefix_map": {"sha256": "b" * 64},
-            "legacy_twin": {"build_id": "b1793230000-old-legacy", "source_watermark": 1793230000},
-        }
-    ).encode()
     return {
         "receipt_bytes": raw,
         "receipt_sha256": hashlib.sha256(raw).hexdigest(),
         "expected_source_origin_sha256": receipt["source_origin_sha256"],
         "expected_file_witness": file_witness(path),
-        "native_manifest_bytes": anchor,
-        "native_manifest_sha256": hashlib.sha256(anchor).hexdigest(),
         "build_id": "b1793236000-checkpoint-stream",
         "allow_fixture": True,
     }
@@ -169,8 +155,7 @@ def test_complete_wal_stream_fields_counts_policy_and_raw_provenance(tmp_path, r
         assert bootstrap["checkpoint_receipt"] == proof
         assert "actors_sha256" not in bootstrap
         assert header["source_watermark"] == 1793235700
-        assert header["rollback_native_anchor"]["actor_count"] == 123456
-        assert header["legacy_build_id"] == "b1793230000-old-legacy"
+        assert not {"rollback_native_anchor", "legacy_build_id"} & set(header)
         assert header["source_kind"] == "sqlite-committed-prefix"
         assert header["source_policy"] == "sqlite-checkpoint-observations-v1"
         assert "source_prefix_sha256" not in header
@@ -221,7 +206,6 @@ def test_complete_wal_stream_fields_counts_policy_and_raw_provenance(tmp_path, r
         "witness",
         "database",
         "sidecar",
-        "anchor",
         "origin",
         "documents",
         "bytes",
@@ -244,8 +228,6 @@ def test_rejects_unbound_or_exhausted_inputs_without_footer(tmp_path, repository
             options["expected_file_witness"] = file_witness(path)
         elif failure == "sidecar":
             Path(str(path) + "-wal").touch()
-        elif failure == "anchor":
-            options["native_manifest_sha256"] = "0" * 64
         elif failure == "origin":
             options["expected_source_origin_sha256"] = "0" * 64
         elif failure == "documents":

@@ -166,33 +166,6 @@ def checkpoint_identity(raw, expected_sha256, expected_origin, allow_fixture):
     return value
 
 
-def rollback_anchor(raw, expected_sha256):
-    value = bound_json(raw, expected_sha256)
-    if (
-        value.get("manifest_version") != 2
-        or value.get("format_version") != 5
-        or not isinstance(value.get("active_build"), str)
-        or not BUILD.fullmatch(value["active_build"])
-    ):
-        raise ValueError("Independent FLATPX05 rollback manifest required")
-    twin = value.get("legacy_twin", {})
-    if (
-        not isinstance(twin.get("build_id"), str)
-        or not BUILD.fullmatch(twin["build_id"])
-        or twin.get("source_watermark") != value.get("source_watermark")
-    ):
-        raise ValueError("Rollback native twin differs")
-    return {
-        "build_id": value["active_build"],
-        "manifest_sha256": expected_sha256,
-        "database_sha256": digest(value.get("sha256")),
-        "prefix_sha256": digest(value.get("prefix_map", {}).get("sha256")),
-        "actor_count": integer(value.get("actor_count"), "native rollback count", 1),
-        "source_watermark": integer(value.get("source_watermark"), "native rollback watermark", 1),
-        "legacy_build_id": twin["build_id"],
-    }
-
-
 def stream_checkpoint(
     database,
     output,
@@ -202,8 +175,6 @@ def stream_checkpoint(
     receipt_sha256,
     expected_source_origin_sha256,
     expected_file_witness,
-    native_manifest_bytes,
-    native_manifest_sha256,
     build_id,
     overlap_seconds=300,
     max_seconds=1800,
@@ -232,7 +203,6 @@ def stream_checkpoint(
     checkpoint = checkpoint_identity(
         receipt_bytes, receipt_sha256, expected_source_origin_sha256, allow_fixture
     )
-    anchor = rollback_anchor(native_manifest_bytes, native_manifest_sha256)
     database, repository = Path(database), Path(repository)
     if (
         not database.is_absolute()
@@ -416,8 +386,6 @@ def stream_checkpoint(
             "source_policy": "sqlite-checkpoint-observations-v1",
             "source_database_sha256": checkpoint["database_sha256"],
             "source_bootstrap": bootstrap,
-            "rollback_native_anchor": anchor,
-            "legacy_build_id": anchor["legacy_build_id"],
             "canonical_rules_source_sha256": rules_sha,
         }
         if fallback is not None:
@@ -543,8 +511,6 @@ def main():
     parser.add_argument("--checkpoint-receipt-sha256", required=True)
     parser.add_argument("--source-origin-sha256", required=True)
     parser.add_argument("--file-witness", type=Path, required=True)
-    parser.add_argument("--native-manifest", type=Path, required=True)
-    parser.add_argument("--native-manifest-sha256", required=True)
     parser.add_argument("--build-id", required=True)
     parser.add_argument("--overlap-seconds", type=int, default=300)
     parser.add_argument("--max-seconds", type=int, default=1800)
@@ -568,8 +534,6 @@ def main():
             receipt_sha256=args.checkpoint_receipt_sha256,
             expected_source_origin_sha256=args.source_origin_sha256,
             expected_file_witness=json.loads(args.file_witness.read_bytes()),
-            native_manifest_bytes=args.native_manifest.read_bytes(),
-            native_manifest_sha256=args.native_manifest_sha256,
             build_id=args.build_id,
             overlap_seconds=args.overlap_seconds,
             max_seconds=args.max_seconds,

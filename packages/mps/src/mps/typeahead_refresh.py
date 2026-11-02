@@ -106,19 +106,6 @@ def response_identity(target: dict, body: dict, headers):
         raise RuntimeError("Tantivy backend/transport identity mismatch")
 
 
-def anchor_manifest_key(manifest: dict) -> str:
-    """R2 key of the native provenance manifest a Tantivy artifact is bound to.
-
-    The fixed slot image (typeahead c476fc5) fetches and checks this manifest
-    before it installs an artifact, so it must stay in releases/search/.
-    """
-    if manifest.get("source_kind") == "sqlite-committed-prefix":
-        build = manifest["rollback_native_anchor"]["build_id"]
-    else:
-        build = manifest["source_build_id"]
-    return f"releases/search/{build}/manifest.json"
-
-
 class Refresh:
     def execution_identity(self):
         from prefect.runtime import flow_run
@@ -285,9 +272,7 @@ class Refresh:
                 or pending.get("app") != app
             ):
                 raise ValueError("Invalid pending candidate retention record")
-            builds = [
-                pending.get(field) for field in ("build_id", "source_build_id", "legacy_build_id")
-            ]
+            builds = [pending.get(field) for field in ("build_id", "source_build_id")]
             if any(
                 not isinstance(value, str) or not re.fullmatch(BUILD_PATTERN, value)
                 for value in builds
@@ -304,10 +289,8 @@ class Refresh:
             ):
                 raise ValueError("Pending artifact manifest identity changed")
             manifest = json.loads(raw)
-            self.tantivy_adapter().validate_source(manifest, self.tantivy_source_manifest(manifest))
-            if [
-                manifest[field] for field in ("active_build", "source_build_id", "legacy_build_id")
-            ] != builds:
+            self.tantivy_adapter().validate_source(manifest)
+            if [manifest[field] for field in ("active_build", "source_build_id")] != builds:
                 raise ValueError("Pending artifact source linkage changed")
             keep.add(manifest["active_build"])
         return keep
@@ -364,21 +347,8 @@ class Refresh:
             )
         ):
             raise ValueError("Routed Tantivy publication identity mismatch")
-        source = self.tantivy_source_manifest(manifest)
-        adapter.validate_source(manifest, source)
+        adapter.validate_source(manifest)
         return manifest
-
-    def tantivy_source_manifest(self, manifest: dict) -> bytes:
-        self.tantivy_adapter().validate_manifest(manifest)
-        body = self.s3.get_object(Bucket=self.bucket, Key=anchor_manifest_key(manifest))["Body"]
-        try:
-            raw = body.read(1024 * 1024 + 1)
-        finally:
-            body.close()
-        if len(raw) > 1024 * 1024:
-            raise ValueError("Anchor manifest exceeds its byte budget")
-        self.tantivy_adapter().validate_source(manifest, raw)
-        return raw
 
     def qualify_tantivy_candidate(
         self, url: str, manifest: dict, installation: dict, provider_attestation: dict
@@ -388,7 +358,6 @@ class Refresh:
             manifest,
             installation,
             provider_attestation,
-            self.tantivy_source_manifest(manifest),
         )
 
     def prune_artifacts(self):
