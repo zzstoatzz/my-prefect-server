@@ -48,8 +48,6 @@ REMAINING_BLOCKS = {
     "index-r2-bucket",
     "index-r2-access-key-id",
     "index-r2-secret-access-key",
-    "typeahead-startup-fly-deploy-token",
-    "typeahead-refresh-fly-deploy-token",
 }
 PHI_BLOCKS = {"phi-control-token", "anthropic-api-key"}
 WORKFLOW_BLOCKS = {

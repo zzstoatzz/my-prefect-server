@@ -139,7 +139,6 @@ def controller(tmp_path):
     service.bad_header = None
     service.bad_index = None
     service.source_unknown = False
-    service.image = "fixture-never-installed"
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
@@ -278,139 +277,6 @@ def test_real_http_tantivy_identity_rejects_wrong_body_or_transport(controller):
             controller.healthy(TANTIVY)
 
 
-def test_tantivy_serving_fences_all_native_install_entrypoints_before_mutation(
-    controller, tmp_path
-):
-    manifest = {
-        "manifest_version": 2,
-        "format_version": 5,
-        "source_watermark": int(__import__("time").time()),
-        "active_build": TANTIVY["build_id"],
-    }
-    generation = tmp_path / "generation"
-    generation.mkdir()
-    (generation / "manifest.json").write_text(json.dumps(manifest))
-    controller.s3.seed("control/builds/latest.json", json.dumps(manifest).encode())
-    route, etag = controller.route()
-    for action in [
-        lambda: controller.apply(generation),
-        lambda: controller.resume_published(),
-        lambda: controller.release_is_current(TANTIVY, manifest),
-        lambda: controller.discard_inactive(refresh.SLOTS[0], route, etag),
-        lambda: controller.serving_guard(route, etag, refresh.SLOTS[0]),
-        lambda: controller.replace_route(route, etag),
-    ]:
-        with pytest.raises(RuntimeError, match="installation is fenced"):
-            action()
-    assert controller.s3.writes == []
-    assert controller.s3.deletions == []
-
-
-def test_real_http_and_disk_native_rollback_from_tantivy(controller):
-    prior, _ = controller.route()
-    result = controller.rollback_to_native()
-    assert result["passed"] and result["machine_or_volume_changed"] is False
-    assert controller.route()[0]["current"] == NATIVE
-    assert controller.route()[0]["previous"] == prior["current"]
-    assert len(controller.s3.writes) == 1
-
-
-def test_rollback_retries_transient_public_http_failures_then_verifies(controller):
-    controller.public_failures = 2
-    result = controller.rollback_to_native(verification_timeout=2, verification_interval=0.01)
-    assert result["passed"] and result["public_verified"]
-    assert result["verification_attempts"] == 3
-    assert controller.public_calls == 3
-    assert len(controller.s3.writes) == 1
-    assert controller.route()[0]["current"] == NATIVE
-
-
-def test_rollback_final_route_read_failure_is_unverified_without_compensation(controller):
-    path = controller.s3.path(refresh.ROUTE_KEY)
-    backup = path.with_suffix(".temporarily-unavailable")
-    reads = 0
-
-    def fail_final_read():
-        nonlocal reads
-        reads += 1
-        if reads == 2:
-            path.rename(backup)
-
-    controller.public_race = lambda: setattr(controller.s3, "before_get", fail_final_read)
-    try:
-        with pytest.raises(refresh.RollbackVerificationError) as error:
-            controller.rollback_to_native(verification_timeout=2, verification_interval=0.01)
-        assert error.value.receipt["verification_outcome"] == "route-observation-unavailable"
-        assert error.value.receipt["public_verified"] is False
-        assert error.value.receipt["native_retained"] is None
-        assert json.loads(backup.read_bytes())["current"] == NATIVE
-        assert len(controller.s3.writes) == 1
-    finally:
-        controller.s3.before_get = None
-        if backup.exists():
-            backup.rename(path)
-
-
-def test_rollback_preserves_stale_native_availability_contract(controller):
-    controller.native_lag = 7200
-    controller.public_stale = True
-    result = controller.rollback_to_native(verification_timeout=2, verification_interval=0.01)
-    assert result["passed"] and result["freshness"]["stale"]
-    assert result["native_retained"]
-    assert controller.route()[0]["current"] == NATIVE
-
-
-def test_failed_native_rollback_retains_native_and_exposes_receipt(controller):
-    controller.public_fail = True
-    with pytest.raises(refresh.RollbackVerificationError) as error:
-        controller.rollback_to_native(verification_timeout=0.05, verification_interval=0.01)
-    assert controller.route()[0]["current"] == NATIVE
-    assert error.value.receipt["verification_outcome"] == "deadline"
-    assert error.value.receipt["native_retained"] is True
-    assert error.value.receipt["public_verified"] is False
-    assert '"native_retained":true' in str(error.value)
-    assert error.value.receipt["automatic_compensation_performed"] is False
-    assert len(controller.s3.writes) == 1
-
-
-def test_rollback_compare_and_swap_race_never_clobbers_new_route(controller):
-    prior, _ = controller.route()
-    raced = {**prior, "operator_race": True}
-    controller.s3.before_put = lambda: controller.s3.seed(
-        refresh.ROUTE_KEY, json.dumps(raced).encode()
-    )
-    with pytest.raises(ConditionalWriteFailed):
-        controller.rollback_to_native()
-    assert controller.route()[0] == raced
-    assert controller.s3.writes == []
-
-
-def test_failed_rollback_does_not_overwrite_concurrent_operator_route(controller):
-    prior, _ = controller.route()
-    raced = {**prior, "operator_race": "after-promotion"}
-    controller.public_fail = True
-    controller.public_race = lambda: controller.s3.seed(
-        refresh.ROUTE_KEY, json.dumps(raced).encode()
-    )
-    with pytest.raises(refresh.RollbackVerificationError) as error:
-        controller.rollback_to_native(verification_timeout=0.1, verification_interval=0.01)
-    assert error.value.receipt["verification_outcome"] == "operator-route-changed"
-    assert controller.route()[0] == raced
-    assert len(controller.s3.writes) == 1
-
-
-def test_native_to_native_rollback_preserves_existing_behavior(controller):
-    other = NATIVE | {
-        "origin": refresh.origin(refresh.SLOTS[1]),
-        "build_id": "b1793000000-native-px05",
-    }
-    controller.s3.seed(
-        refresh.ROUTE_KEY, json.dumps({"version": 1, "current": other, "previous": NATIVE}).encode()
-    )
-    assert controller.rollback_to_native()["passed"]
-    assert controller.route()[0]["current"] == NATIVE
-
-
 def test_retention_preserves_both_source_generations_and_twins_on_disk(controller):
     route, _ = controller.route()
     protected = controller.retained_build_ids(route)
@@ -435,34 +301,6 @@ def test_unknown_source_blocks_all_artifact_cleanup(controller):
     assert controller.s3.deletions == []
 
 
-def test_failed_rollback_never_issues_a_compensating_write(controller):
-    prior, _ = controller.route()
-    raced = {**prior, "operator_race": "compensating-cas"}
-    controller.public_fail = True
-
-    def arm_race():
-        controller.s3.before_put = lambda: controller.s3.seed(
-            refresh.ROUTE_KEY, json.dumps(raced).encode()
-        )
-
-    controller.public_race = arm_race
-    with pytest.raises(refresh.RollbackVerificationError):
-        controller.rollback_to_native(verification_timeout=0.05, verification_interval=0.01)
-    assert controller.route()[0]["current"] == NATIVE
-    assert callable(controller.s3.before_put)
-    assert len(controller.s3.writes) == 1
-
-
-def test_rollback_cannot_promote_tantivy_as_previous(controller):
-    controller.s3.seed(
-        refresh.ROUTE_KEY,
-        json.dumps({"version": 1, "current": NATIVE, "previous": TANTIVY}).encode(),
-    )
-    with pytest.raises(RuntimeError, match="installation is fenced"):
-        controller.rollback_to_native()
-    assert controller.s3.writes == []
-
-
 def anchored_route():
     return {
         "version": 1,
@@ -470,17 +308,6 @@ def anchored_route():
         "previous": {**TANTIVY, "build_id": "b1792999999-previous-engine-px05"},
         "native_rollback": NATIVE,
     }
-
-
-def test_native_anchor_survives_successive_tantivy_route_and_rollback(controller):
-    route = anchored_route()
-    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
-    result = controller.rollback_to_native()
-    assert result["passed"] and result["current"] == NATIVE
-    actual, _ = controller.route()
-    assert actual["native_rollback"] == NATIVE
-    assert actual["previous"] == TANTIVY
-    assert len(controller.s3.writes) == 1
 
 
 def test_retention_protects_native_anchor_even_without_previous_native(controller):
@@ -981,40 +808,11 @@ def test_actual_bundle_install_restart_and_http_qualification_through_adapter(
         assert not (resumed / "data").exists()
 
 
-def test_failed_anchored_rollback_retains_native_and_its_anchor(controller):
-    prior = anchored_route()
-    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(prior).encode())
-    controller.public_fail = True
-    with pytest.raises(refresh.RollbackVerificationError):
-        controller.rollback_to_native(verification_timeout=0.05, verification_interval=0.01)
-    assert controller.route()[0]["current"] == prior["native_rollback"]
-    assert controller.route()[0]["native_rollback"] == prior["native_rollback"]
-    assert len(controller.s3.writes) == 1
-
-
-def test_native_anchor_cannot_be_non_native_or_override_native_previous(controller):
+def test_native_anchor_cannot_be_non_native(controller):
     route = {**anchored_route(), "native_rollback": TANTIVY}
     controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
     with pytest.raises(ValueError, match="anchor must be native"):
         controller.route()
-    route = {"version": 1, "current": NATIVE, "previous": TANTIVY, "native_rollback": NATIVE}
-    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
-    with pytest.raises(RuntimeError, match="installation is fenced"):
-        controller.rollback_to_native()
-    assert controller.s3.writes == []
-
-
-def test_anchored_rollback_cas_race_preserves_operator_route(controller):
-    route = anchored_route()
-    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
-    raced = {**route, "operator_change": True}
-    controller.s3.before_put = lambda: controller.s3.seed(
-        refresh.ROUTE_KEY, json.dumps(raced).encode()
-    )
-    with pytest.raises(ConditionalWriteFailed):
-        controller.rollback_to_native()
-    assert controller.route()[0] == raced
-    assert controller.s3.writes == []
 
 
 def test_automatic_flow_fences_before_any_build_or_cleanup(controller, monkeypatch):

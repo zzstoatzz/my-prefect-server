@@ -159,9 +159,11 @@ def main():
             assert target["work_pool_name"] == declared[name]["work_pool"]["name"], name
             if name == "typeahead-index":
                 assert (
-                    target["job_variables"]["env"]["INDEX_REFRESH_IMAGE"]
-                    == declared[name]["work_pool"]["job_variables"]["env"]["INDEX_REFRESH_IMAGE"]
-                ), "Cloud publisher image/source drift"
+                    target["job_variables"]["env"]["INDEX_TANTIVY_SOURCE_REVISION"]
+                    == declared[name]["work_pool"]["job_variables"]["env"][
+                        "INDEX_TANTIVY_SOURCE_REVISION"
+                    ]
+                ), "Cloud publisher source drift"
 
             def clock(schedule, active):
                 return {
