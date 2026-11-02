@@ -57,11 +57,6 @@ extraEnv:
     value: "1209600"   # 14d for flow_runs; events use PREFECT_SERVER_EVENTS_RETENTION_PERIOD default 7d
   - name: PREFECT_SERVER_UI_SHOW_PROMOTIONAL_CONTENT
     value: "false"
-  - name: LOGFIRE_TOKEN
-    valueFrom:
-      secretKeyRef:
-        name: logfire
-        key: token
 
 auth:
   enabled: true
