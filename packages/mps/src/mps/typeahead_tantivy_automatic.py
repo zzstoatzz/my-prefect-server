@@ -8,7 +8,7 @@ import time
 
 import httpx
 
-from mps.typeahead_refresh import BackendNotReady, target_engine
+from mps.typeahead_refresh import BackendNotReady
 from mps.typeahead_tantivy_slots import APPS, OWNER
 
 UNAVAILABLE_PROBES = 3
@@ -51,8 +51,6 @@ def settings(environment):
 def refresh(service, slots, publish, *, release_key, release_sha256, resume_only=False):
     route, etag = service.route()
     current = route["current"]
-    if target_engine(current) != "tantivy":
-        raise RuntimeError("Automatic initial native-to-Tantivy cutover is forbidden")
     serving_unavailable = unavailable(service, current)
     slots.require_release(current, release_key, release_sha256)
     _, deployment = slots.admission_record(current)

@@ -11,10 +11,12 @@ from types import MethodType
 import httpx
 import pytest
 from mps import typeahead_refresh as refresh
+from mps.typeahead_refresh import anchor_manifest_key
 from mps.typeahead_tantivy_slots import APPS, GATES, OWNER, Slots, raw_json, validate_release_proof
 
 from tests.test_typeahead_engine_compatibility import (
     NATIVE,
+    PREVIOUS,
     TANTIVY,
     ConditionalWriteFailed,
     DiskBucket,
@@ -46,7 +48,7 @@ def slot_service(controller, tmp_path):
     return Slots(controller, tmp_path / "journals", timeout_seconds=2)
 
 
-def test_lease_preserves_route_etag_race_and_native_compensation(controller, tmp_path):
+def test_lease_preserves_route_etag_race_and_compensation(controller, tmp_path):
     slots = slot_service(controller, tmp_path)
     original, _ = controller.route()
     state = {
@@ -63,17 +65,52 @@ def test_lease_preserves_route_etag_race_and_native_compensation(controller, tmp
         controller._put_route(
             {**leased, "current": {**TANTIVY, "origin": f"https://{APPS[0]}.fly.dev"}}, etag
         )
-    # Existing native rollback preserves the lease; failed public verification
-    # can compensate only the same exact route and ETag.
-    failed = {"version": 1, "current": NATIVE, "previous": TANTIVY, "native_rollback": NATIVE}
+    # A controlled update to another target preserves the lease; failed public
+    # verification can compensate only the same exact route and ETag.
+    failed = {"version": 1, "current": {**TANTIVY, "build_id": "b1793000001-operator"}}
     written = controller._put_route(failed, etag)
     assert failed["mutation"] == leased["mutation"]
     restored = controller._restore_previous_route(leased, failed, written)
     assert controller.route() == (leased, restored)
-    controller.s3.seed(refresh.ROUTE_KEY, raw_json({**leased, "operator_change": True}))
+    controller.s3.seed(refresh.ROUTE_KEY, raw_json({**leased, "previous": PREVIOUS}))
     with pytest.raises(RuntimeError, match="Routing changed"):
         controller._restore_previous_route(leased, failed, written)
-    assert controller.route()[0]["operator_change"] is True
+    assert controller.route()[0]["previous"] == PREVIOUS
+
+
+def test_journal_and_plan_routes_written_before_native_removal_still_match(controller, tmp_path):
+    slots = slot_service(controller, tmp_path)
+    legacy = {"version": 1, "current": TANTIVY, "previous": NATIVE, "native_rollback": NATIVE}
+    controller.s3.seed(refresh.ROUTE_KEY, raw_json(legacy))
+    route, etag = controller.route()
+    state = {
+        "request_id": "9" * 32,
+        "owner": OWNER,
+        "app": APPS[0],
+        "route": legacy,
+        "native_rollback": NATIVE,
+        "promotion_target": legacy,
+        "execution_id": "execution-one",
+    }
+    slots.save(state, "planned")
+    restored = slots.journal(state["request_id"])
+    assert restored["route"] == restored["promotion_target"] == route
+    assert slots.guard(restored, serving_health=False) == (route, etag)
+    plan = raw_json(
+        {
+            "schema_version": 1,
+            "owner": OWNER,
+            "request_id": state["request_id"],
+            "app": APPS[0],
+            "expected_route": legacy,
+            "native_rollback": NATIVE,
+        }
+    )
+    digest = hashlib.sha256(plan).hexdigest()
+    controller.s3.seed(f"control/tantivy-plans/{digest}.json", plan)
+    restored["plan_sha256"] = digest
+    slots.save(restored)
+    assert slots.load_plan(digest)[0]["expected_route"] == route
 
 
 def test_remote_journal_survives_local_loss_and_rejects_active_owner(controller, tmp_path):
@@ -232,8 +269,10 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
         first_config = json.loads(statefile.read_text())["machines"][0]["config"]
         assert bound["guest"] == {"cpu_kind": "shared", "cpus": 2, "memory_mb": 1024}
         assert bound["volume_size_gib"] == 20
-        native_build = controller.tantivy_source_binding(manifest)[0]
-        assert bound["source_manifest_key"] == f"releases/search/{native_build}/manifest.json"
+        assert bound["source_manifest_key"] == anchor_manifest_key(manifest)
+        if checkpoint:
+            anchor = manifest["rollback_native_anchor"]["build_id"]
+            assert bound["source_manifest_key"] == f"releases/search/{anchor}/manifest.json"
         slots.start(state)
         slots.stop(state)
         slots.start(state)
@@ -289,13 +328,13 @@ def test_actual_provider_http_lost_ack_resume_and_cached_restart(
         thread.join()
 
 
-def test_checkpoint_retained_slot_verifies_anchor_twin_at_its_own_watermark(
+def test_retained_previous_slot_needs_its_bundle_and_anchor_but_no_native_payloads(
     controller, tmp_path, pinned_adapter
 ):
     controller.tantivy_adapter = lambda: pinned_adapter
     slots = slot_service(controller, tmp_path)
     target = {**TANTIVY, "origin": f"https://{APPS[0]}.fly.dev"}
-    manifest, _ = seed_checkpoint_publication(controller, target)
+    manifest, native_raw = seed_checkpoint_publication(controller, target)
     bound = {**manifest, "provider_app": APPS[0]}
     deployment_raw = raw_json(bound)
     deployment_key = "control/tantivy-slots/fixture-deployment.json"
@@ -314,15 +353,19 @@ def test_checkpoint_retained_slot_verifies_anchor_twin_at_its_own_watermark(
             }
         ),
     )
+    anchor_key = anchor_manifest_key(manifest)
+    for path in (controller.s3.root / "releases/search").rglob("*"):
+        if path.is_file() and str(path.relative_to(controller.s3.root)) != anchor_key:
+            path.unlink()
     retained = slots.retained(target)
-    assert retained["rollback_native_build_id"] == manifest["rollback_native_anchor"]["build_id"]
-    assert retained["rollback_native_manifest_sha256"] != retained["source_manifest_sha256"]
-    assert len(retained["objects"]) == 4
-    assert manifest["source_watermark"] != manifest["rollback_native_anchor"]["source_watermark"]
-    native = json.loads(controller.tantivy_source_manifest(manifest))
-    twin_key = native["legacy_twin"]["manifest"]["object_key"]
-    controller.s3.seed(twin_key, controller.s3.path(twin_key).read_bytes() + b" ")
-    with pytest.raises(ValueError, match="twin manifest"):
+    assert retained["anchor_manifest_key"] == anchor_key
+    assert [item["key"] for item in retained["objects"]] == [manifest["object_key"]]
+    controller.s3.seed(manifest["object_key"], b"x")
+    with pytest.raises(ValueError, match="bundle is missing or changed size"):
+        slots.retained(target)
+    controller.s3.seed(manifest["object_key"], b"x" * manifest["byte_size"])
+    controller.s3.seed(anchor_key, native_raw + b" ")
+    with pytest.raises(ValueError, match="rollback-native manifest bytes"):
         slots.retained(target)
 
 
@@ -494,10 +537,11 @@ def exercise_real_rust_preparation(
 
 def test_failed_public_verification_compensates_only_exact_head(controller, tmp_path):
     slots = slot_service(controller, tmp_path)
-    before = {"version": 1, "current": NATIVE, "previous": TANTIVY, "native_rollback": NATIVE}
+    before = {"version": 1, "current": TANTIVY}
     controller.s3.seed(refresh.ROUTE_KEY, raw_json(before))
     _, etag = controller.route()
-    target = {"version": 1, "current": TANTIVY, "previous": NATIVE, "native_rollback": NATIVE}
+    candidate = {**TANTIVY, "origin": f"https://{APPS[0]}.fly.dev", "build_id": "b1793300000-next"}
+    target = {"version": 1, "current": candidate, "previous": TANTIVY}
     written = controller._put_route(target, etag)
     state = {
         "request_id": "e" * 32,
@@ -513,7 +557,7 @@ def test_failed_public_verification_compensates_only_exact_head(controller, tmp_
     assert slots.journal("e" * 32)["phase"] == "compensated"
     _, etag = controller.route()
     written = controller._put_route(target, etag)
-    changed = {**before, "operator_change": "wins"}
+    changed = {**before, "previous": PREVIOUS}
     controller.public_race = lambda: controller.s3.seed(refresh.ROUTE_KEY, raw_json(changed))
     with pytest.raises(RuntimeError, match="refusing compensating rollback"):
         slots.complete_promotion(
@@ -524,10 +568,11 @@ def test_failed_public_verification_compensates_only_exact_head(controller, tmp_
 
 def test_public_transport_identity_and_canary_primitive_uses_real_http(controller, tmp_path):
     slots = slot_service(controller, tmp_path)
-    before = {"version": 1, "current": NATIVE, "previous": TANTIVY, "native_rollback": NATIVE}
+    serving = {**TANTIVY, "origin": f"https://{APPS[0]}.fly.dev", "build_id": "b1792999999-old"}
+    before = {"version": 1, "current": serving}
     controller.s3.seed(refresh.ROUTE_KEY, raw_json(before))
     _, etag = controller.route()
-    target = {"version": 1, "current": TANTIVY, "previous": NATIVE, "native_rollback": NATIVE}
+    target = {"version": 1, "current": TANTIVY, "previous": serving}
     written = controller._put_route(target, etag)
 
     class Handler(BaseHTTPRequestHandler):
@@ -672,10 +717,17 @@ def test_retirement_rechecks_strict_source_age_over_actual_http(tmp_path, pinned
 def test_qualification_guard_transport_retry_preserves_route_fence_and_deadline(
     controller, tmp_path, behavior
 ):
-    initial = {"version": 1, "current": NATIVE, "previous": None}
+    initial = {"version": 1, "current": TANTIVY, "previous": None}
     controller.s3.seed(refresh.ROUTE_KEY, raw_json(initial))
     counts = {"health": 0, "candidate": 0}
     timeout_errors = []
+    identity = {
+        "X-Typeahead-Engine": "tantivy",
+        "X-Typeahead-Build": TANTIVY["build_id"],
+        "X-Typeahead-Format": TANTIVY["format"],
+        "X-Typeahead-Binary-Sha256": TANTIVY["binary_sha256"],
+        "X-Typeahead-Retrieval-Strategy": TANTIVY["retrieval_strategy"],
+    }
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -688,16 +740,21 @@ def test_qualification_guard_transport_retry_preserves_route_fence_and_deadline(
                             raw_json(
                                 {
                                     **initial,
-                                    "current": {**NATIVE, "build_id": "b1792908655-changed"},
+                                    "current": {**TANTIVY, "build_id": "b1792908655-changed"},
                                 }
                             ),
                         )
                     time.sleep(0.15)
-                value = {"ready": True, "sync_lag_s": 0}
+                value = {
+                    "ready": True,
+                    "sync_lag_s": 0,
+                    "engine": "tantivy",
+                    "build_id": TANTIVY["build_id"],
+                }
             elif self.path == "/index/status":
-                value = {**NATIVE, "snapshot_format": "FLATPX05"}
+                value = {**TANTIVY, "ready": True, "snapshot_watermark": 1792950000}
             elif self.path == "/health/freshness":
-                value = {"ok": True, "probe_ok": True, "build_id": NATIVE["build_id"]}
+                value = {"ok": True, "probe_ok": True, "build_id": TANTIVY["build_id"]}
             elif self.path == "/candidate":
                 counts["candidate"] += 1
                 value = {"qualified": True}
@@ -706,6 +763,8 @@ def test_qualification_guard_transport_retry_preserves_route_fence_and_deadline(
                 return
             raw = raw_json(value)
             self.send_response(200)
+            for key, header in identity.items():
+                self.send_header(key, header)
             self.send_header("Content-Length", str(len(raw)))
             self.end_headers()
             with suppress(BrokenPipeError):
@@ -766,7 +825,7 @@ def test_qualification_guard_transport_retry_preserves_route_fence_and_deadline(
 
 @pytest.mark.parametrize("behavior", ["recover", "deadline", "unauthorized"])
 def test_qualification_candidate_urllib_startup_failure_is_bounded(controller, tmp_path, behavior):
-    initial = {"version": 1, "current": NATIVE, "previous": None}
+    initial = {"version": 1, "current": TANTIVY, "previous": None}
     controller.s3.seed(refresh.ROUTE_KEY, raw_json(initial))
     calls = []
 
@@ -843,7 +902,7 @@ def test_promotion_route_guard_survives_unavailable_public_serving(controller, t
     assert leased["mutation"] == state["mutation"]
     slots.acquire(state, serving_health=False)
     slots.guard(state, serving_health=False)
-    controller.s3.seed(refresh.ROUTE_KEY, raw_json({**leased, "operator_change": True}))
+    controller.s3.seed(refresh.ROUTE_KEY, raw_json({**leased, "previous": PREVIOUS}))
     with pytest.raises(RuntimeError, match="Routing changed"):
         slots.guard(state, serving_health=False)
 
@@ -904,7 +963,7 @@ def test_start_reconciles_rejected_request_over_provider_http(
                 if behavior == "route-change":
                     current, _ = controller.route()
                     controller.s3.seed(
-                        refresh.ROUTE_KEY, raw_json({**current, "operator_change": True})
+                        refresh.ROUTE_KEY, raw_json({**current, "previous": PREVIOUS})
                     )
                 if behavior == "config-change":
                     machine["config"]["guest"]["memory_mb"] = 2048

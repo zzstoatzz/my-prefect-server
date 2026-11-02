@@ -19,7 +19,7 @@ from mps import typeahead_refresh as refresh
 from mps.typeahead_tantivy import TantivyAdapter
 
 NATIVE = {
-    "origin": refresh.origin(refresh.SLOTS[0]),
+    "origin": "https://typeahead-startup-20261024.fly.dev",
     "build_id": "b1792908655-native-px05",
     "source_watermark": 1792908655,
     "machine_id": "native-owned",
@@ -104,14 +104,8 @@ class DiskBucket:
 
 class FixtureRefresh(refresh.Refresh):
     def get(self, base, path):
-        assert base in {NATIVE["origin"], TANTIVY["origin"], refresh.PUBLIC}
-        role = (
-            "public"
-            if base == refresh.PUBLIC
-            else "tantivy"
-            if base == TANTIVY["origin"]
-            else "native"
-        )
+        assert base in {TANTIVY["origin"], refresh.PUBLIC}, "no other backend may be read"
+        role = "public" if base == refresh.PUBLIC else "tantivy"
         return super().get(self.base, "/" + role + path)
 
     def fly(self, *args, **kwargs):
@@ -127,12 +121,11 @@ def controller(tmp_path):
     service.s3 = DiskBucket(tmp_path / "bucket")
     service.s3.seed(
         refresh.ROUTE_KEY,
-        json.dumps({"version": 1, "current": TANTIVY, "previous": NATIVE}).encode(),
+        json.dumps({"version": 1, "current": TANTIVY}).encode(),
     )
     service.public_fail = False
     service.public_failures = 0
     service.public_calls = 0
-    service.native_lag = 0
     service.public_stale = False
     service.public_race = None
     service.bad_header = None
@@ -163,27 +156,24 @@ def controller(tmp_path):
                 elif service.public_stale:
                     status = 503
             elif path == "health":
-                target = TANTIVY if role == "tantivy" else NATIVE
                 body = {
                     "ready": True,
-                    "sync_lag_s": service.native_lag if role == "native" else 0,
-                    "build_id": target["build_id"],
+                    "sync_lag_s": 0,
+                    "build_id": TANTIVY["build_id"],
+                    "engine": "tantivy",
                 }
-                if role == "tantivy":
-                    body["engine"] = "tantivy"
             elif path == "index/status":
-                target = TANTIVY if role == "tantivy" else NATIVE
-                body = {**target, "snapshot_format": "FLATPX05", "ready": True}
-                if role == "tantivy":
-                    body.update(
-                        source_build_id=None if service.source_unknown else SOURCE,
-                        snapshot_watermark=1792950000,
-                        source_manifest={"build_id": SOURCE, "source_watermark": 1792950000},
-                        full_source=True,
-                        import_complete=True,
-                    )
-                    if service.bad_index:
-                        body[service.bad_index] = "wrong"
+                body = {
+                    **TANTIVY,
+                    "ready": True,
+                    "source_build_id": None if service.source_unknown else SOURCE,
+                    "snapshot_watermark": 1792950000,
+                    "source_manifest": {"build_id": SOURCE, "source_watermark": 1792950000},
+                    "full_source": True,
+                    "import_complete": True,
+                }
+                if service.bad_index:
+                    body[service.bad_index] = "wrong"
             else:
                 query = parse_qs(parsed.query)
                 pds = query.get("pds", [None])[0]
@@ -232,16 +222,14 @@ def controller(tmp_path):
             thread.join()
 
 
-def test_route_union_matches_worker_and_rejects_allowlist_only_tantivy():
-    assert refresh.route_target({"version": 1, "current": NATIVE}) == NATIVE
+def test_route_schema_accepts_only_tantivy_targets():
     assert refresh.route_target({"version": 1, "current": TANTIVY}) == TANTIVY
     for app in refresh.TANTIVY_SLOTS:
         target = {**TANTIVY, "origin": f"https://{app}.fly.dev"}
         assert refresh.route_target({"version": 1, "current": target}) == target
-    assert (
-        refresh.route_target({"version": 1, "current": {**NATIVE, "engine": "native"}})["engine"]
-        == "native"
-    )
+    for current in [NATIVE, {**NATIVE, "engine": "native"}]:
+        with pytest.raises(ValueError, match="Tantivy route identity"):
+            refresh.route_target({"version": 1, "current": current})
     for delta in [
         {"engine": "unknown"},
         {"engine": None},
@@ -254,7 +242,41 @@ def test_route_union_matches_worker_and_rejects_allowlist_only_tantivy():
         with pytest.raises(ValueError):
             refresh.route_target({"version": 1, "current": TANTIVY | delta})
     with pytest.raises(ValueError):
-        refresh.route_target({"version": True, "current": NATIVE})
+        refresh.route_target({"version": True, "current": TANTIVY})
+
+
+def test_route_records_reject_native_targets_and_fields():
+    refresh.validate_route_record({"version": 1, "current": TANTIVY, "previous": PREVIOUS})
+    for record in [
+        {"version": 1, "current": TANTIVY, "previous": NATIVE},
+        {"version": 1, "current": TANTIVY, "native_rollback": NATIVE},
+        {"version": 1, "current": TANTIVY, "rollback": True},
+    ]:
+        with pytest.raises(ValueError):
+            refresh.validate_route_record(record)
+
+
+def test_legacy_route_record_drops_native_entries_on_read(controller):
+    legacy = {
+        "version": 1,
+        "current": TANTIVY,
+        "previous": NATIVE,
+        "native_rollback": NATIVE,
+        "promoted_at": 1792950000,
+        "rollback": True,
+    }
+    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(legacy).encode())
+    assert controller.route()[0] == {"version": 1, "current": TANTIVY}
+    legacy["previous"] = PREVIOUS
+    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(legacy).encode())
+    route, etag = controller.route()
+    assert route == {"version": 1, "current": TANTIVY, "previous": PREVIOUS}
+    controller._put_route(dict(route), etag)
+    written = json.loads(controller.s3.path(refresh.ROUTE_KEY).read_bytes())
+    assert written == {"version": 1, "current": TANTIVY, "previous": PREVIOUS}
+    controller.s3.seed(refresh.ROUTE_KEY, json.dumps({**legacy, "current": NATIVE}).encode())
+    with pytest.raises(ValueError, match="Tantivy route identity"):
+        controller.route()
 
 
 def test_real_http_tantivy_identity_rejects_wrong_body_or_transport(controller):
@@ -706,13 +728,6 @@ def test_actual_bundle_install_restart_and_http_qualification_through_adapter(
         binary,
         fixtures,
     )
-
-
-def test_native_anchor_cannot_be_non_native(controller):
-    route = {**anchored_route(), "native_rollback": TANTIVY}
-    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
-    with pytest.raises(ValueError, match="anchor must be native"):
-        controller.route()
 
 
 def test_automatic_flow_fences_before_any_build_or_cleanup(controller, monkeypatch):

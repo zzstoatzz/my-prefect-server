@@ -4,6 +4,7 @@ These failure tests enter the continuation below the release-proof gate. They do
 not manufacture a positive production proof or perform provider mutations.
 """
 
+import hashlib
 import json
 
 import pytest
@@ -28,8 +29,7 @@ PROOF = {"release_key": "test-only-authorization-boundary", "release_sha256": "e
 def active(controller, tmp_path):
     slots = slot_service(controller, tmp_path)
     current = {**TANTIVY, "origin": f"https://{APPS[0]}.fly.dev"}
-    route = {"version": 1, "current": current, "previous": NATIVE, "native_rollback": NATIVE}
-    controller.s3.seed("control/search-routing.json", raw_json(route))
+    controller.s3.seed("control/search-routing.json", raw_json({"version": 1, "current": current}))
     original_get = controller.get
     controller.get = lambda base, path: original_get(
         TANTIVY["origin"] if base == current["origin"] else base, path
@@ -44,7 +44,7 @@ def test_native_route_and_missing_real_release_proof_refuse_before_publication(
     slots = slot_service(controller, tmp_path)
     calls = []
     controller.s3.seed("control/search-routing.json", raw_json({"version": 1, "current": NATIVE}))
-    with pytest.raises(RuntimeError, match="initial native-to-Tantivy"):
+    with pytest.raises(ValueError, match="Tantivy route identity"):
         refresh(controller, slots, lambda: calls.append("build"), **PROOF)
     controller.s3.seed("control/search-routing.json", raw_json({"version": 1, "current": TANTIVY}))
     with pytest.raises(ValueError, match="release proof is missing"):
@@ -56,8 +56,7 @@ def unreachable_current(controller, tmp_path, monkeypatch, *, recover_after=None
     monkeypatch.setattr(typeahead_tantivy_automatic, "UNAVAILABLE_PROBE_INTERVAL_SECONDS", 0)
     slots = slot_service(controller, tmp_path)
     current = {**TANTIVY, "origin": f"https://{APPS[0]}.fly.dev"}
-    route = {"version": 1, "current": current, "previous": NATIVE, "native_rollback": NATIVE}
-    controller.s3.seed("control/search-routing.json", raw_json(route))
+    controller.s3.seed("control/search-routing.json", raw_json({"version": 1, "current": current}))
     probes = []
     original_get = controller.get
 
@@ -109,20 +108,22 @@ def test_unreachable_current_slot_continues_into_the_inactive_slot(
     assert controller.route()[0]["current"] == current
 
 
-@pytest.mark.parametrize("serving_unavailable", [True, False])
-def test_preparation_past_a_dead_serving_slot_uses_the_native_floor(
-    controller, tmp_path, monkeypatch, serving_unavailable
+@pytest.mark.parametrize("candidate_actors, reached", [(4, True), (2, False)])
+def test_preparation_past_a_dead_serving_slot_uses_the_admitted_artifact_floor(
+    controller, tmp_path, monkeypatch, candidate_actors, reached
 ):
-    import httpx
-
-    slots, current, _ = unreachable_current(controller, tmp_path, monkeypatch)
-    manifest = {
-        "source_actor_count": 3,
-        "source_build_id": "b1793290000-source",
-        "legacy_build_id": "b1793290000-native",
+    slots, current, probes = unreachable_current(controller, tmp_path, monkeypatch)
+    serving = {"source_actor_count": 6}
+    candidate = {
+        "source_actor_count": candidate_actors,
+        "source_build_id": "b1793300000-next",
+        "legacy_build_id": "b1793290000-legacy",
         "source_manifest_sha256": "c" * 64,
     }
-    slots.artifact = lambda build_id: (manifest, raw_json(manifest))
+    artifacts = {current["build_id"]: serving, "b1793300000-next": candidate}
+    slots.artifact = lambda build_id: (artifacts[build_id], raw_json(artifacts[build_id]))
+    admitted = {"artifact_manifest_sha256": hashlib.sha256(raw_json(serving)).hexdigest()}
+    slots.admission_record = lambda target: ({}, admitted)
     slots.protect = lambda state: None
 
     class AllocationBoundary(RuntimeError):
@@ -130,21 +131,39 @@ def test_preparation_past_a_dead_serving_slot_uses_the_native_floor(
 
     def allocate(state, _manifest):
         assert state["serving_unavailable"] is True and state["app"] == APPS[1]
-        assert state["native_rollback"] == NATIVE
+        assert "native_rollback" not in state
         assert controller.route()[0]["mutation"]["request_id"] == state["request_id"]
         raise AllocationBoundary("Reached inactive slot allocation")
 
     slots.allocate = allocate
-    expected = AllocationBoundary if serving_unavailable else httpx.ConnectError
-    with pytest.raises(expected):
+    expected = AllocationBoundary if reached else ValueError
+    with pytest.raises(expected, match=None if reached else "corpus floor"):
         slots.prepare(
             "b1793300000-next",
             IMAGE,
             request_id="f" * 32,
             automatic_refresh=True,
-            serving_unavailable=serving_unavailable,
+            serving_unavailable=True,
         )
+    assert probes == []
     assert controller.route()[0]["current"] == current
+    admitted["artifact_manifest_sha256"] = "0" * 64
+    with pytest.raises(ValueError, match="differs from its admitted deployment"):
+        slots.admitted_actor_count(current)
+
+
+def test_preparation_with_a_live_serving_slot_reads_its_live_floor(
+    controller, tmp_path, monkeypatch
+):
+    import httpx
+
+    slots, _, probes = unreachable_current(controller, tmp_path, monkeypatch)
+    manifest = {"source_actor_count": 3}
+    slots.artifact = lambda build_id: (manifest, raw_json(manifest))
+    slots.admission_record = lambda target: pytest.fail("A live slot supplies its own floor")
+    with pytest.raises(httpx.ConnectError):
+        slots.prepare("b1793300000-next", IMAGE, request_id="f" * 32, automatic_refresh=True)
+    assert probes == ["/health"]
 
 
 def test_transiently_unreachable_current_slot_keeps_its_route(controller, tmp_path, monkeypatch):
@@ -156,24 +175,19 @@ def test_transiently_unreachable_current_slot_keeps_its_route(controller, tmp_pa
     assert controller.s3.writes == []
 
 
-def test_native_rollback_during_publication_wins_and_artifact_is_retained(controller, tmp_path):
+def test_route_change_during_publication_wins_and_artifact_is_retained(controller, tmp_path):
     slots, (route, etag) = active(controller, tmp_path)
     artifact = tmp_path / "immutable-publication.json"
-    rolled_back = {
-        "version": 1,
-        "current": NATIVE,
-        "previous": route["current"],
-        "native_rollback": NATIVE,
-    }
+    changed = {"version": 1, "current": {**route["current"], "build_id": "b1793000001-operator"}}
 
     def publish():
         artifact.write_bytes(raw_json({"test_only": True, "build_id": "b1793300000-next"}))
-        controller._put_route(rolled_back, etag)
+        controller._put_route(dict(changed), etag)
         return "b1793300000-next"
 
     with pytest.raises(RuntimeError, match="Routing changed during automatic publication"):
         _continue_refresh(controller, slots, publish, route, etag, IMAGE, **PROOF)
-    assert controller.route()[0] == rolled_back
+    assert controller.route()[0] == changed
     assert artifact.is_file()
     assert not list(controller.s3.root.glob("control/tantivy-slots/*/pending.json"))
 
@@ -246,13 +260,8 @@ def test_prepare_route_fence_checks_actual_head_before_any_machine_action(
     slots, (route, etag) = active(controller, tmp_path)
     controller.tantivy_adapter = lambda: pinned_adapter
     manifest, _ = seed_checkpoint_publication(controller, TANTIVY)
-    changed = {
-        "version": 1,
-        "current": NATIVE,
-        "previous": route["current"],
-        "native_rollback": NATIVE,
-    }
-    controller._put_route(changed, etag)
+    changed = {"version": 1, "current": TANTIVY, "previous": route["current"]}
+    controller._put_route(dict(changed), etag)
     with pytest.raises(RuntimeError, match="route ETag changed"):
         slots.prepare(
             manifest["active_build"],
@@ -265,57 +274,44 @@ def test_prepare_route_fence_checks_actual_head_before_any_machine_action(
     assert not list(controller.s3.root.glob("control/tantivy-slots/*/pending.json"))
 
 
-def test_initial_promotion_requires_fresh_native_anchor_over_actual_http(controller, tmp_path):
-    import threading
-    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-    from mps.typeahead_refresh import Refresh
-
+def test_promotion_writes_a_tantivy_only_route_and_reads_no_native_origin(controller, tmp_path):
     slots, (route, etag) = active(controller, tmp_path)
-    requested = []
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            requested.append(self.path)
-            raw = raw_json({"ready": True, "sync_lag_s": 601})
-            self.send_response(200)
-            self.send_header("Content-Length", str(len(raw)))
-            self.end_headers()
-            self.wfile.write(raw)
-
-        def log_message(self, *_):
-            pass
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    old_get = controller.get
-    controller.get = lambda base, path: (
-        Refresh.get(controller, f"http://127.0.0.1:{server.server_port}", path)
-        if base == NATIVE["origin"]
-        else old_get(base, path)
-    )
+    candidate = {**TANTIVY, "origin": f"https://{APPS[1]}.fly.dev", "build_id": "b1793300000-next"}
+    state = {
+        "schema_version": 1,
+        "owner": OWNER,
+        "request_id": "c" * 32,
+        "execution_id": "execution-one",
+        "app": APPS[1],
+        "route": route,
+        "native_rollback": NATIVE,
+        "deployment_key": "control/tantivy-slots/fixture.json",
+    }
     plan = {
         "test_only": False,
         "expected_current_etag": etag,
         "expected_route": route,
         "native_rollback": NATIVE,
-        "candidate": {**TANTIVY, "origin": f"https://{APPS[1]}.fly.dev"},
+        "candidate": candidate,
     }
-    # A negative freshness test below the separately-tested proof gate; no release
-    # proof is created, published or accepted as production evidence.
-    slots.load_plan = lambda _: (plan, {})
+    # Below the separately tested proof and qualification gates; nothing here is
+    # production evidence.
+    slots.load_plan = lambda _: (plan, state)
     slots.require_release = lambda *_: {"test_only": True}
-    try:
-        with pytest.raises(RuntimeError, match="not fresh and ready"):
-            slots.promote("fixture-plan", etag, "fixture-proof", "e" * 64)
-        assert requested == ["/health"]
-        assert controller.route() == (route, etag)
-        assert controller.s3.writes == []
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join()
+    slots.read = lambda key, maximum=0: raw_json({})
+    slots.qualify = lambda state, bound: ({"route": candidate}, {})
+    written = {}
+
+    def complete(state, plan_sha256, before, target, etag, proof):
+        written.update(target)
+        return {"phase": "promoted", "route": target}
+
+    slots.complete_promotion = complete
+    slots.promote("fixture-plan", etag, "fixture-proof", "e" * 64)
+    assert written == {"version": 1, "current": candidate, "previous": route["current"]}
+    stored = json.loads(controller.s3.path("control/search-routing.json").read_bytes())
+    assert stored == written
+    assert "native_rollback" not in json.dumps(stored)
 
 
 @pytest.mark.parametrize("drift", [None, "guest", "volume"])

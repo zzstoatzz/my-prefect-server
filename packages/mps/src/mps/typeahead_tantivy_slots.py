@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 from botocore.exceptions import ClientError
 
-from mps.typeahead_refresh import BackendNotReady
+from mps.typeahead_refresh import BackendNotReady, anchor_manifest_key, normalize_route
 from mps.typeahead_tantivy import durable_receipt
 
 OWNER = "typeahead-snapshot-refresh"
@@ -154,6 +154,9 @@ class Slots:
             or type(state.get("journal_revision")) is not int
         ):
             raise ValueError("Invalid durable slot operation identity")
+        for field in ("route", "promotion_before", "promotion_target"):
+            if isinstance(state.get(field), dict):
+                state[field] = normalize_route(state[field])
         previous = state.get("execution_id")
         execution = self.service.execution_identity()
         if previous != execution and not self.service.execution_finished(previous):
@@ -723,7 +726,7 @@ class Slots:
             "request_id": state["request_id"],
             "artifact_manifest_key": f"releases/search-tantivy/{state['build_id']}/manifest.json",
             "artifact_manifest_sha256": state["artifact_manifest_sha256"],
-            "source_manifest_key": f"releases/search/{self.service.tantivy_source_binding(manifest)[0]}/manifest.json",
+            "source_manifest_key": anchor_manifest_key(manifest),
         }
         state["config"] = self.config(state, bound, state["image_digest"])
         self.save(state, "deployment-ready")
@@ -832,6 +835,14 @@ class Slots:
         proof = validate_release_proof(raw, digest, self.release_binding(target))
         return {"key": key, "sha256": digest, "passed": proof["passed"]}
 
+    def admitted_actor_count(self, target):
+        """Corpus size of the artifact admitted into the serving slot, read from R2."""
+        _, bound = self.admission_record(target)
+        manifest, raw = self.artifact(target["build_id"])
+        if hashlib.sha256(raw).hexdigest() != bound.get("artifact_manifest_sha256"):
+            raise ValueError("Serving artifact differs from its admitted deployment")
+        return manifest["source_actor_count"]
+
     def retained(self, target):
         manifest, raw = self.artifact(target["build_id"])
         record, bound = self.admission_record(target)
@@ -840,44 +851,22 @@ class Slots:
             or bound.get("sha256") != manifest["sha256"]
         ):
             raise ValueError("Retained artifact differs from installed admission")
-        source = json.loads(self.service.tantivy_source_manifest(manifest))
-        native_build, native_manifest_sha = self.service.tantivy_source_binding(manifest)
-        native_watermark = source["source_watermark"]
-        twin_ref = source.get("legacy_twin", {}).get("manifest", {})
-        twin_raw = self.read(twin_ref.get("object_key"), 1024 * 1024)
-        if (
-            twin_raw is None
-            or hashlib.sha256(twin_raw).hexdigest() != twin_ref.get("sha256")
-            or len(twin_raw) != twin_ref.get("byte_size")
-        ):
-            raise ValueError("Native rollback twin manifest is not retained exactly")
-        twin = json.loads(twin_raw)
-        if (
-            twin.get("active_build") != manifest["legacy_build_id"]
-            or twin.get("source_watermark") != native_watermark
-        ):
-            raise ValueError("Native rollback twin identity differs")
-        objects = [
-            (manifest["object_key"], manifest["byte_size"]),
-            (source["snapshot_url"], source["byte_size"]),
-            (source["prefix_map"]["object_key"], source["prefix_map"]["byte_size"]),
-            (twin["snapshot_url"], twin["byte_size"]),
-        ]
-        witnesses = []
-        for key, size in objects:
-            result = self.service.s3.head_object(Bucket=self.service.bucket, Key=key)
-            if result.get("ContentLength") != size:
-                raise ValueError("Referenced rollback artifact is missing or changed size")
-            witnesses.append({"key": key, "byte_size": size, "etag": result.get("ETag")})
+        result = self.service.s3.head_object(Bucket=self.service.bucket, Key=manifest["object_key"])
+        if result.get("ContentLength") != manifest["byte_size"]:
+            raise ValueError("Retained Tantivy bundle is missing or changed size")
         return {
             "artifact_manifest_sha256": hashlib.sha256(raw).hexdigest(),
             "source_manifest_sha256": manifest["source_manifest_sha256"],
-            "rollback_native_build_id": native_build,
-            "rollback_native_manifest_sha256": native_manifest_sha,
-            "legacy_build_id": manifest["legacy_build_id"],
+            "anchor_manifest_key": anchor_manifest_key(manifest),
             "verification": "immutable-manifest-linkage-and-object-presence-size",
             "payload_checksums_revalidated_on_restore": True,
-            "objects": witnesses,
+            "objects": [
+                {
+                    "key": manifest["object_key"],
+                    "byte_size": manifest["byte_size"],
+                    "etag": result.get("ETag"),
+                }
+            ],
         }
 
     def retirement_step(self, state, name, path, method, body=None):
@@ -895,7 +884,6 @@ class Slots:
                 state["release_receipt_key"],
                 state["release_receipt_sha256"],
             )
-            self.service.healthy(state["native_rollback"], require_fresh=False)
             self.guard(state, fresh=True)
             if not state.get("serving_unavailable"):
                 manifest, _ = self.artifact(state["route"]["current"]["build_id"])
@@ -961,7 +949,6 @@ class Slots:
         if not state.get("serving_unavailable"):
             current_manifest, _ = self.artifact(route["current"]["build_id"])
             self.retirement_freshness(route["current"], current_manifest)
-        self.service.healthy(state["native_rollback"], require_fresh=False)
         record, bound = self.admission_record(previous)
         if state.get("retirement_intent") is None:
             machines = [
@@ -1086,18 +1073,14 @@ class Slots:
                     raise RuntimeError("Retained previous Tantivy slot is fenced by default")
                 if previous.get("origin") == f"https://{selected}.fly.dev":
                     self.require_release(current, release_receipt_key, release_receipt_sha256)
-                from mps.typeahead_refresh import native_rollback_target, target_engine
-
-                anchor = (
-                    current if target_engine(current) == "native" else native_rollback_target(route)
-                )
-                anchor_status = self.service.healthy(anchor, require_fresh=False)["index"]
-                status = (
-                    anchor_status
+                floor = (
+                    self.admitted_actor_count(current)
                     if serving_unavailable
-                    else self.service.healthy(current, require_fresh=False)["index"]
+                    else self.service.healthy(current, require_fresh=False)["index"].get(
+                        "actor_count", 0
+                    )
                 )
-                if manifest["source_actor_count"] < max(1, status.get("actor_count", 0) // 2):
+                if manifest["source_actor_count"] < max(1, floor // 2):
                     raise ValueError("Candidate source regresses the serving corpus floor")
                 state = {
                     "schema_version": 1,
@@ -1112,7 +1095,6 @@ class Slots:
                     "legacy_build_id": manifest["legacy_build_id"],
                     "source_manifest_sha256": manifest["source_manifest_sha256"],
                     "route": route,
-                    "native_rollback": anchor,
                     "retire_previous_tantivy": retire_previous_tantivy,
                     "automatic_refresh": automatic_refresh,
                     "serving_unavailable": serving_unavailable,
@@ -1157,7 +1139,6 @@ class Slots:
                 "candidate": qualified["route"],
                 "expected_route": route,
                 "expected_current_etag": etag,
-                "native_rollback": state["native_rollback"],
                 "deployment_key": state["deployment_key"],
                 "deployment_sha256": state["deployment_sha256"],
                 "artifact_manifest_sha256": state["artifact_manifest_sha256"],
@@ -1194,6 +1175,7 @@ class Slots:
         plan = json.loads(raw)
         if plan.get("schema_version") != 1 or plan.get("owner") != OWNER:
             raise ValueError("Invalid prepared plan ownership")
+        plan["expected_route"] = normalize_route(plan["expected_route"])
         state = self.journal(plan["request_id"])
         if state is None or state.get("plan_sha256") != plan_sha256:
             raise ValueError("Prepared journal does not bind this plan")
@@ -1221,7 +1203,6 @@ class Slots:
         route, _ = self.service.route()
         if route["current"]["origin"] == f"https://{state['app']}.fly.dev":
             raise RuntimeError("Serving candidate cannot be canceled")
-        # A native rollback may have changed the head while retaining our lease.
         if route.get("mutation") is not None and route["mutation"] != state.get("mutation"):
             raise RuntimeError("Another preparation owns the mutation lease")
         state["route"] = {key: value for key, value in route.items() if key != "mutation"}
@@ -1247,8 +1228,6 @@ class Slots:
     def promote(
         self, plan_sha256, expected_current_etag, release_receipt_key, release_receipt_sha256
     ):
-        from mps.typeahead_refresh import native_rollback_target, target_engine
-
         plan, state = self.load_plan(plan_sha256)
         if plan.get("test_only") is not False:
             raise ValueError("Test-only preparation cannot be promoted")
@@ -1269,7 +1248,6 @@ class Slots:
             proof = self.require_release(
                 plan["candidate"], release_receipt_key, release_receipt_sha256
             )
-            self.service.healthy(plan["native_rollback"], require_fresh=False)
             qualified, _ = self.qualify(
                 state, json.loads(self.read(state["deployment_key"], 1024 * 1024))
             )
@@ -1302,7 +1280,6 @@ class Slots:
         route = route_without_lease
         candidate = plan["candidate"]
         proof = self.require_release(candidate, release_receipt_key, release_receipt_sha256)
-        self.service.healthy(plan["native_rollback"], require_fresh=True)
         self.acquire(state, serving_health=False)
         qualified, _ = self.qualify(
             state, json.loads(self.read(state["deployment_key"], 1024 * 1024))
@@ -1321,14 +1298,7 @@ class Slots:
         actual, cas_etag = self.service.route()
         if actual != route:
             raise RuntimeError("Routing changed before promotion CAS")
-        target = {
-            "version": 1,
-            "current": candidate,
-            "previous": route["current"],
-            "native_rollback": route["current"]
-            if target_engine(route["current"]) == "native"
-            else native_rollback_target(route),
-        }
+        target = {"version": 1, "current": candidate, "previous": route["current"]}
         state["promotion_before"] = route
         state["promotion_target"] = target
         state["promotion_etag"] = cas_etag

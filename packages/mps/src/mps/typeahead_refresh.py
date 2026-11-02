@@ -11,9 +11,7 @@ import httpx
 from botocore.exceptions import ClientError
 from prefect import task
 
-SLOTS = ("typeahead-startup-20261024", "typeahead-search-refresh")
 ROUTE_KEY = "control/search-routing.json"
-ROUTER = "https://typeahead-search-transport.n8-3e9.workers.dev"
 PUBLIC = "https://typeahead.waow.tech"
 OWNER = "typeahead-snapshot-refresh"
 TANTIVY_ORIGIN = "https://typeahead-tantivy-dev.fly.dev"
@@ -36,19 +34,6 @@ class FlyAPIError(RuntimeError):
         super().__init__(f"Fly {method} {app}/{path} failed: HTTP {status_code}")
 
 
-def origin(app: str) -> str:
-    if app not in SLOTS:
-        raise ValueError("Unmanaged refresh app")
-    return f"https://{app}.fly.dev"
-
-
-def target_engine(target: dict) -> str:
-    engine = target.get("engine", "native")
-    if engine not in ("native", "tantivy"):
-        raise ValueError("Unsupported route engine")
-    return engine
-
-
 def route_target(route: dict) -> dict:
     target = route["current"]
     if type(route["version"]) is not int or route["version"] != 1 or not isinstance(target, dict):
@@ -57,11 +42,9 @@ def route_target(route: dict) -> dict:
         BUILD_PATTERN, target["build_id"]
     ):
         raise ValueError("Invalid route identity")
-    if target_engine(target) == "native":
-        if target["origin"] not in [origin(slot) for slot in SLOTS]:
-            raise ValueError("Unmanaged routing target")
-    elif (
-        target.get("origin")
+    if (
+        target.get("engine") != "tantivy"
+        or target.get("origin")
         not in (TANTIVY_ORIGIN, *(f"https://{app}.fly.dev" for app in TANTIVY_SLOTS))
         or target.get("format") != TANTIVY_FORMAT
         or target.get("retrieval_strategy") not in ("per-segment", "global-merge")
@@ -74,42 +57,34 @@ def route_target(route: dict) -> dict:
     return target
 
 
-def require_native_refresh(target: dict):
-    if target_engine(target) != "native":
-        raise RuntimeError(
-            "Tantivy serving: automatic native installation is fenced pending engine-specific refresh qualification"
-        )
-
-
 def validate_route_record(route: dict):
+    if set(route) - {"version", "current", "previous", "mutation"}:
+        raise ValueError("Unknown routing record field")
     route_target(route)
-    for field in ("previous", "native_rollback"):
-        if route.get(field) is not None:
-            target = route_target({"version": 1, "current": route[field]})
-            if field == "native_rollback" and target_engine(target) != "native":
-                raise ValueError("Rollback anchor must be native")
+    if route.get("previous") is not None:
+        route_target({"version": 1, "current": route["previous"]})
     if route.get("mutation") is not None:
         from mps.typeahead_tantivy_slots import validate_mutation
 
         validate_mutation(route["mutation"])
 
 
-def native_rollback_target(route: dict) -> dict:
-    validate_route_record(route)
-    target = (
-        route.get("native_rollback") or route.get("previous")
-        if target_engine(route["current"]) == "tantivy"
-        else route.get("previous")
-    )
-    if target is None:
-        raise RuntimeError("No retained native rollback backend is available")
-    require_native_refresh(target)
-    return target
+def normalize_route(route: dict) -> dict:
+    # Records written while the native engine existed carry native_rollback,
+    # rollback/promoted_at markers and possibly a native previous. None of them
+    # can serve or be restored now, so they are dropped rather than rejected.
+    normalized = {
+        key: value
+        for key, value in route.items()
+        if key not in ("native_rollback", "rollback", "promoted_at")
+    }
+    previous = normalized.get("previous")
+    if isinstance(previous, dict) and previous.get("engine", "native") == "native":
+        del normalized["previous"]
+    return normalized
 
 
 def response_identity(target: dict, body: dict, headers):
-    if target_engine(target) != "tantivy":
-        return
     expected = {
         "engine": "tantivy",
         "build_id": target["build_id"],
@@ -129,6 +104,19 @@ def response_identity(target: dict, body: dict, headers):
         for key, value in expected.items()
     ):
         raise RuntimeError("Tantivy backend/transport identity mismatch")
+
+
+def anchor_manifest_key(manifest: dict) -> str:
+    """R2 key of the native provenance manifest a Tantivy artifact is bound to.
+
+    The fixed slot image (typeahead c476fc5) fetches and checks this manifest
+    before it installs an artifact, so it must stay in releases/search/.
+    """
+    if manifest.get("source_kind") == "sqlite-committed-prefix":
+        build = manifest["rollback_native_anchor"]["build_id"]
+    else:
+        build = manifest["source_build_id"]
+    return f"releases/search/{build}/manifest.json"
 
 
 class Refresh:
@@ -191,7 +179,7 @@ class Refresh:
         raw = result["Body"].read(16385)
         if len(raw) > 16384:
             raise ValueError("Routing record too large")
-        route = json.loads(raw)
+        route = normalize_route(json.loads(raw))
         validate_route_record(route)
         return route, result["ETag"]
 
@@ -251,34 +239,26 @@ class Refresh:
             code != 200
             or index["build_id"] != target["build_id"]
             or (
-                target_engine(target) == "native"
-                and index["source_watermark"] != target["source_watermark"]
-            )
-            or (
-                target_engine(target) == "tantivy"
-                and "source_watermark" in target
+                "source_watermark" in target
                 and index.get("snapshot_watermark") != target["source_watermark"]
             )
         ):
             raise RuntimeError("Backend snapshot identity mismatch")
-        if target_engine(target) == "tantivy":
-            if index.get("ready") is not True:
-                raise RuntimeError("Tantivy index is not ready")
-            response_identity(target, index, index_headers)
-            for key, header in [
-                ("engine", "X-Typeahead-Engine"),
-                ("build_id", "X-Typeahead-Build"),
-                ("format", "X-Typeahead-Format"),
-                ("binary_sha256", "X-Typeahead-Binary-Sha256"),
-                ("retrieval_strategy", "X-Typeahead-Retrieval-Strategy"),
-            ]:
-                wanted = "tantivy" if key == "engine" else target[key]
-                if health_headers.get(header) != wanted:
-                    raise RuntimeError("Tantivy health transport identity mismatch")
-            if health.get("engine") != "tantivy" or health.get("build_id") != target["build_id"]:
-                raise RuntimeError("Tantivy health identity mismatch")
-        elif index.get("snapshot_format") != "FLATPX05":
-            raise RuntimeError("Backend format mismatch")
+        if index.get("ready") is not True:
+            raise RuntimeError("Tantivy index is not ready")
+        response_identity(target, index, index_headers)
+        for key, header in [
+            ("engine", "X-Typeahead-Engine"),
+            ("build_id", "X-Typeahead-Build"),
+            ("format", "X-Typeahead-Format"),
+            ("binary_sha256", "X-Typeahead-Binary-Sha256"),
+            ("retrieval_strategy", "X-Typeahead-Retrieval-Strategy"),
+        ]:
+            wanted = "tantivy" if key == "engine" else target[key]
+            if health_headers.get(header) != wanted:
+                raise RuntimeError("Tantivy health transport identity mismatch")
+        if health.get("engine") != "tantivy" or health.get("build_id") != target["build_id"]:
+            raise RuntimeError("Tantivy health identity mismatch")
         return {"health": health, "index": index}
 
     def retained_build_ids(self, route: dict | None = None) -> set[str]:
@@ -286,11 +266,9 @@ class Refresh:
         if route is None:
             route, _ = self.route()
         validate_route_record(route)
-        if target_engine(route["current"]) != "tantivy":
-            raise RuntimeError("Only a Tantivy route can authorize artifact cleanup")
         keep = set()
         for entry in (route["current"], route.get("previous")):
-            if entry is None or target_engine(entry) != "tantivy":
+            if entry is None:
                 continue
             if self.tantivy_publication(entry) is None:
                 raise RuntimeError(
@@ -390,41 +368,17 @@ class Refresh:
         adapter.validate_source(manifest, source)
         return manifest
 
-    def tantivy_source_binding(self, manifest: dict) -> tuple[str, str | None]:
-        if manifest.get("source_kind") == "sqlite-committed-prefix":
-            anchor = manifest["rollback_native_anchor"]
-            return anchor["build_id"], anchor["manifest_sha256"]
-        return manifest["source_build_id"], manifest.get("source_manifest_sha256")
-
     def tantivy_source_manifest(self, manifest: dict) -> bytes:
         self.tantivy_adapter().validate_manifest(manifest)
-        native_build, _ = self.tantivy_source_binding(manifest)
-        body = self.s3.get_object(
-            Bucket=self.bucket,
-            Key=f"releases/search/{native_build}/manifest.json",
-        )["Body"]
+        body = self.s3.get_object(Bucket=self.bucket, Key=anchor_manifest_key(manifest))["Body"]
         try:
             raw = body.read(1024 * 1024 + 1)
         finally:
             body.close()
         if len(raw) > 1024 * 1024:
-            raise ValueError("Native rollback manifest is too large")
+            raise ValueError("Anchor manifest exceeds its byte budget")
         self.tantivy_adapter().validate_source(manifest, raw)
         return raw
-
-    def install_tantivy_bundle(
-        self, bundle: Path, destination: Path, manifest: dict, binary: Path
-    ) -> dict:
-        return self.tantivy_adapter().install(
-            bundle, destination, manifest, binary, self.tantivy_source_manifest(manifest)
-        )
-
-    def freeze_tantivy_bundle(
-        self, data: Path, destination: Path, manifest: dict, binary: Path
-    ) -> dict:
-        return self.tantivy_adapter().freeze(
-            data, destination, manifest, binary, self.tantivy_source_manifest(manifest)
-        )
 
     def qualify_tantivy_candidate(
         self, url: str, manifest: dict, installation: dict, provider_attestation: dict

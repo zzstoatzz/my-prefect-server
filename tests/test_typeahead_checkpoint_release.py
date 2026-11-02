@@ -16,18 +16,7 @@ from tests.test_typeahead_engine_compatibility import (
 )
 
 
-def no_native_reads(controller):
-    original = controller.get
-
-    def get(base, path):
-        assert base != NATIVE["origin"], "the anchor must come from R2, not a native backend"
-        return original(base, path)
-
-    controller.get = get
-
-
 def test_anchor_comes_from_the_serving_artifact_without_a_native_backend(controller):
-    no_native_reads(controller)
     _, _, anchor = seed_stub_publication(controller, TANTIVY)
     route = controller.s3.path(ROUTE_KEY).read_bytes()
     assert read_anchor(controller) == anchor
@@ -36,7 +25,6 @@ def test_anchor_comes_from_the_serving_artifact_without_a_native_backend(control
 
 
 def test_changed_anchor_bytes_or_missing_publication_are_rejected(controller):
-    no_native_reads(controller)
     _, _, anchor = seed_stub_publication(controller, TANTIVY)
     key = f"releases/search/{NATIVE['build_id']}/manifest.json"
     controller.s3.seed(key, anchor + b" ")
@@ -49,7 +37,6 @@ def test_changed_anchor_bytes_or_missing_publication_are_rejected(controller):
 
 
 def test_pinned_installer_accepts_the_carried_anchor(controller, pinned_adapter):
-    no_native_reads(controller)
     controller.tantivy_adapter = lambda: pinned_adapter
     manifest, native_raw = seed_checkpoint_publication(controller, TANTIVY)
     assert read_anchor(controller) == native_raw
