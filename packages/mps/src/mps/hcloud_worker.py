@@ -92,6 +92,9 @@ class BuilderSSH(ExeClient):
 class BuilderConfiguration(ExeJobConfiguration):
     server_type: str = "cpx32"
     location: str = "fsn1"
+    fallback_server_types: list[str] = Field(default_factory=lambda: ["cx43", "cpx42"])
+    fallback_locations: list[str] = Field(default_factory=lambda: ["hel1", "fsn1", "nbg1"])
+    capacity_wait_seconds: int = Field(default=1800, ge=0, le=3600)
     timeout_seconds: int = Field(default=43200, ge=60, le=43200)
     requirements: list[str] = Field(default_factory=lambda: ["prefect==3.8.2"])
     working_dir: str = "/var/lib/typeahead-indexer"
@@ -208,6 +211,9 @@ class BuilderClient(BuilderSSH):
             config.server_type,
             config.location,
             pool=self.ownership,
+            fallback_server_types=config.fallback_server_types,
+            fallback_locations=config.fallback_locations,
+            capacity_wait_seconds=config.capacity_wait_seconds,
         )
         (root / "resource.json").write_text(
             json.dumps(

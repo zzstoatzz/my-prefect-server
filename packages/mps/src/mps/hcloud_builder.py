@@ -13,6 +13,25 @@ from mps.builder_billing import record
 
 OWNER = "my-prefect-server"
 PURPOSE = "ephemeral-builder"
+CAPACITY_CODES = frozenset({"resource_unavailable", "placement_error"})
+
+
+class HCloudError(RuntimeError):
+    def __init__(self, message: str, status_code: int, code: str):
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+
+
+def placements(
+    server_type: str,
+    location: str,
+    fallback_server_types: tuple[str, ...] | list[str] = (),
+    fallback_locations: tuple[str, ...] | list[str] = (),
+) -> list[tuple[str, str]]:
+    types = list(dict.fromkeys([server_type, *fallback_server_types]))
+    locations = list(dict.fromkeys([location, *fallback_locations]))
+    return [(kind, where) for kind in types for where in locations]
 
 
 def labels_for(run_id: UUID, attempt: int, timeout: int) -> dict[str, str]:
@@ -53,7 +72,11 @@ class HCloud:
             return None
         if response.is_error:
             code = response.json().get("error", {}).get("code", "unknown")
-            raise RuntimeError(f"Hetzner {method} {path}: HTTP {response.status_code} ({code})")
+            raise HCloudError(
+                f"Hetzner {method} {path}: HTTP {response.status_code} ({code})",
+                response.status_code,
+                code,
+            )
         return response.json() if response.content else {}
 
     async def owned_servers(self) -> list[dict]:
@@ -98,9 +121,17 @@ class HCloud:
         server_type: str = "cpx32",
         location: str = "fsn1",
         pool: str = "canary",
+        fallback_server_types: tuple[str, ...] | list[str] = (),
+        fallback_locations: tuple[str, ...] | list[str] = (),
+        capacity_wait_seconds: float = 0,
+        capacity_retry_seconds: float = 300,
     ) -> dict:
         name = resource_name(run_id, attempt)
-        labels = {**labels_for(run_id, attempt, timeout), "pool": pool, "cost-project": "typeahead"}
+        labels = {
+            **labels_for(run_id, attempt, timeout + int(capacity_wait_seconds)),
+            "pool": pool,
+            "cost-project": "typeahead",
+        }
         existing = [s for s in await self.owned_servers() if s["name"] == name]
         if existing:
             if len(existing) != 1:
@@ -127,31 +158,46 @@ class HCloud:
             )
             assert result is not None
             key = result["ssh_key"]
-        try:
-            result = await self.request(
-                "POST",
-                "servers",
-                json={
-                    "name": name,
-                    "server_type": server_type,
-                    "location": location,
-                    "image": "ubuntu-24.04",
-                    "ssh_keys": [key["id"]],
-                    "labels": labels,
-                    "user_data": user_data,
-                    "public_net": {"enable_ipv4": True, "enable_ipv6": False},
-                },
-            )
-            assert result is not None
-            server = result["server"]
-        except (httpx.TransportError, RuntimeError):
-            resolved = [s for s in await self.owned_servers() if s["name"] == name]
-            if not resolved:
-                await self.request("DELETE", f"ssh_keys/{key['id']}")
-                raise
-            if len(resolved) != 1:
-                raise RuntimeError("Ambiguous server creation identity") from None
-            server = resolved[0]
+        options = placements(server_type, location, fallback_server_types, fallback_locations)
+        deadline = time.monotonic() + capacity_wait_seconds
+        index = 0
+        while True:
+            kind, where = options[index % len(options)]
+            try:
+                result = await self.request(
+                    "POST",
+                    "servers",
+                    json={
+                        "name": name,
+                        "server_type": kind,
+                        "location": where,
+                        "image": "ubuntu-24.04",
+                        "ssh_keys": [key["id"]],
+                        "labels": labels,
+                        "user_data": user_data,
+                        "public_net": {"enable_ipv4": True, "enable_ipv6": False},
+                    },
+                )
+                assert result is not None
+                server = result["server"]
+                break
+            except (httpx.TransportError, RuntimeError) as error:
+                resolved = [s for s in await self.owned_servers() if s["name"] == name]
+                if not resolved and isinstance(error, HCloudError) and error.code in CAPACITY_CODES:
+                    index += 1
+                    if index % len(options):
+                        continue
+                    remaining = deadline - time.monotonic()
+                    if remaining > 0:
+                        await asyncio.sleep(min(capacity_retry_seconds, remaining))
+                        continue
+                if not resolved:
+                    await self.request("DELETE", f"ssh_keys/{key['id']}")
+                    raise
+                if len(resolved) != 1:
+                    raise RuntimeError("Ambiguous server creation identity") from None
+                server = resolved[0]
+                break
         self.check_owned(server, run_id)
         try:
             await self.bill(server, "created")

@@ -12,6 +12,14 @@ a separate SSH identity. Server names, ownership labels, run IDs and pool IDs
 must agree before mutation. IP cleanup retries eventual assignment state;
 saved resource receipts allow cleanup after a server has already disappeared.
 
+A capacity rejection (`resource_unavailable` or `placement_error`) is not final.
+Creation tries the configured location first, then `fallback_locations`, then
+the same locations for each of `fallback_server_types` (x86 types with at least
+160 GB disk: cx43, cpx42). After a full round of rejections it waits and repeats
+for up to `capacity_wait_seconds` (default 30 minutes) and extends the expiry
+label by that wait. Any other rejection fails at once. On 2026-11-02 one hel1
+rejection skipped a scheduled refresh and let the serving Tantivy slot expire.
+
 `uv run python scripts/qualify_hcloud_builder.py --output /tmp/qualification.json`
 creates a real VM and checks success, failure, timeout, cancellation, restart
 without replay, 104 GiB available scratch, the Zig compiler, and absence of the
