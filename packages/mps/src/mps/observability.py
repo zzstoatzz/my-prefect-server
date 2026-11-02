@@ -23,7 +23,6 @@ def configure_logfire(service_name: str, **kwargs: Any) -> None:
             send_to_logfire="if-token-present",
             **kwargs,
         )
-        logfire.instrument_httpx()
         _configured = True
     except Exception:
         return
