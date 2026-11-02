@@ -37,7 +37,7 @@ automations:
       within: 60
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "{{ deployment.name }} {{ state.name }}"
         body: |-
           {{ state.message }}
@@ -113,7 +113,7 @@ automations:
       within: 60
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "🟡 Fleet · checks need attention"
         body: "{{ payload.summary }}"
 
@@ -132,7 +132,7 @@ automations:
       within: 60
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "{{ resource.name }}"
         body: "{{ payload.brief }}"
 
@@ -151,7 +151,7 @@ automations:
       within: 60
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "{{ resource.name }}"
         body: "{{ payload.summary }}"
 
@@ -170,7 +170,7 @@ automations:
       within: 60
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "email"
         body: "{{ payload.body }}"
 
@@ -187,7 +187,7 @@ automations:
       within: 60
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "email"
         body: "{{ payload.body }}"
 
@@ -259,7 +259,7 @@ automations:
       for_each: [prefect.resource.id, autofix.outcome]
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "autofix: {{ resource.name }}"
         body: "{{ payload.summary }}\nfailed run: {{ payload.failed_run_url }}\nfull diagnosis: {{ payload.autofix_url }}"
 
@@ -277,7 +277,7 @@ automations:
       within: 60
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "autofix PR: {{ resource.name }}"
         body: "{{ payload.title }}\n{{ payload.pr_url }}\nfull diagnosis: {{ payload.autofix_url }}"
 
@@ -296,7 +296,7 @@ automations:
       within: 60
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "sustained cpu burn on {{ resource.name }}"
         body: "{{ payload.burners }}"
 
@@ -314,7 +314,7 @@ automations:
       within: 60
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "autofix revise: {{ resource.name }}"
         body: "{{ payload.reply }}"
 
@@ -379,7 +379,7 @@ automations:
       within: 60
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "merge? {{ resource.name }}"
         body: "{{ payload.summary }}\n{{ payload.pull }}"
 
@@ -397,7 +397,7 @@ automations:
       within: 60
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "tests failed: {{ resource.name }}"
         body: "{{ payload.title }}\n{{ payload.pull }}\n{{ payload.tail }}"
 
@@ -414,7 +414,7 @@ automations:
       within: 60
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "merged: {{ resource.name }}"
         body: "{{ payload.title }} -> {{ payload.sha }}\n{{ payload.pull }}"
 
@@ -429,7 +429,7 @@ automations:
       within: 0
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "bandwidth watchdog: {{ resource.name }}"
         body: "{{ payload.summary }}"
 
@@ -444,7 +444,7 @@ automations:
       within: 0
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "heavypad is running hot"
         body: "{{ payload.summary }}"
 
@@ -462,8 +462,7 @@ automations:
       type: event
       posture: Proactive
       expect: [prefect.flow-run.Completed]
-      match_related:
-        prefect.resource.id: prefect.deployment.a0c0ce9c-5bab-4bdc-8512-39984c322a74
+      deployment: typeahead-index
       threshold: 1
       within: 46800
     actions:
@@ -473,7 +472,7 @@ automations:
         parameters:
           automatic_refresh: true
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "typeahead refresh missed: retry started"
         body: >-
           No typeahead-index run has completed in 13 hours. The serving Tantivy
@@ -495,6 +494,6 @@ automations:
       within: 300
     actions:
       - type: send-notification
-        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        block: discord-alerts
         subject: "bandwidth watchdog missing on heavypad"
         body: "No bandwidth heartbeat for five minutes. Inspect systemctl --user status bandwidth-watchdog on heavypad; monitoring coverage is unknown."

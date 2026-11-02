@@ -17,7 +17,11 @@ server that are *not* in the file are left alone and reported — `prefect deplo
 owns the `*__automation_1` ones, and deleting them here would fight it.
 
 `deployment: <name>` in an action is resolved to a deployment_id at apply time,
-so the file does not carry UUIDs that differ per environment.
+`block: <name>` in an action to a block_document_id, and `deployment: <name>` in
+a trigger to a match_related constraint on that deployment, so the file does not
+carry UUIDs that differ per environment. The block IDs once written here were
+the retired server's; the live automations only worked because they had been
+migrated separately, so re-applying the file would have silenced every alert.
 
 usage:
     PREFECT_API_URL=... PREFECT_API_AUTH_STRING=... ./scripts/apply_automations.py
@@ -51,6 +55,12 @@ def resolve_deployments(client: httpx.Client, base: str) -> dict[str, str]:
     return {d["name"]: d["id"] for d in r.json()}
 
 
+def resolve_blocks(client: httpx.Client, base: str) -> dict[str, str]:
+    r = client.post(f"{base}/block_documents/filter", json={"limit": 500})
+    r.raise_for_status()
+    return {b["name"]: b["id"] for b in r.json() if b.get("name")}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true")
@@ -72,6 +82,7 @@ def main() -> int:
 
     with httpx.Client(auth=auth(), timeout=30.0) as client:
         deployments = resolve_deployments(client, base)
+        blocks = resolve_blocks(client, base)
 
         r = client.post(f"{base}/automations/filter", json={})
         r.raise_for_status()
@@ -81,7 +92,22 @@ def main() -> int:
             body = {k: v for k, v in item.items() if k != "description"}
             body.setdefault("description", (item.get("description") or "").strip())
 
+            trigger_deployment = body["trigger"].pop("deployment", None)
+            if trigger_deployment is not None:
+                if trigger_deployment not in deployments:
+                    print(f"✗ {item['name']}: no deployment named {trigger_deployment!r}")
+                    return 1
+                body["trigger"]["match_related"] = {
+                    "prefect.resource.id": f"prefect.deployment.{deployments[trigger_deployment]}"
+                }
+
             for action in body.get("actions", []):
+                block = action.pop("block", None)
+                if block is not None:
+                    if block not in blocks:
+                        print(f"✗ {item['name']}: no block document named {block!r}")
+                        return 1
+                    action["block_document_id"] = blocks[block]
                 name = action.pop("deployment", None)
                 if name is None:
                     continue
