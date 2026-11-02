@@ -66,31 +66,17 @@ def fetch_pds_fallback(destination, sha256):
 
 
 def read_anchor(service):
-    from mps.typeahead_refresh import target_engine
+    """Return the exact native provenance manifest the serving artifact binds.
 
+    The fixed Tantivy slot image refuses a checkpoint artifact without this
+    anchor, so each new build carries the serving artifact's anchor forward
+    from R2; no native backend is read.
+    """
     route, _etag = service.route()
-    target = route["current"]
-    if target_engine(target) != "native":
-        target = route.get("native_rollback")
-    if not isinstance(target, dict) or target_engine(target) != "native":
-        raise ValueError("A retained native rollback target is required")
-    service.healthy(target)
-    key = f"releases/search/{target['build_id']}/manifest.json"
-    result = service.s3.get_object(Bucket=service.bucket, Key=key)
-    body = result["Body"]
-    try:
-        raw = body.read(1024 * 1024 + 1)
-    finally:
-        body.close()
-    if len(raw) > 1024 * 1024:
-        raise ValueError("Native rollback manifest exceeds metadata bound")
-    native = json.loads(raw)
-    if (
-        native.get("active_build") != target["build_id"]
-        or native.get("source_watermark") != target["source_watermark"]
-    ):
-        raise ValueError("Native rollback manifest differs from the serving target")
-    return raw
+    manifest = service.tantivy_publication(route["current"])
+    if manifest is None:
+        raise ValueError("The serving Tantivy publication is missing")
+    return service.tantivy_source_manifest(manifest)
 
 
 def run_cloud_release(

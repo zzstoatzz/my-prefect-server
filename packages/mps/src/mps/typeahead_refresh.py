@@ -422,9 +422,8 @@ class Refresh:
 
     def tantivy_source_binding(self, manifest: dict) -> tuple[str, str | None]:
         if manifest.get("source_kind") == "sqlite-committed-prefix":
-            adapter = self.tantivy_adapter()
-            adapter.validate_manifest(manifest)
-            return adapter.installer.native_anchor_binding(manifest)
+            anchor = manifest["rollback_native_anchor"]
+            return anchor["build_id"], anchor["manifest_sha256"]
         return manifest["source_build_id"], manifest.get("source_manifest_sha256")
 
     def tantivy_retained_builds(self, manifest: dict) -> set[str]:
