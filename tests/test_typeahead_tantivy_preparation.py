@@ -12,7 +12,6 @@ import pytest
 from mps.typeahead_tantivy import import_snapshot, reconcile_checkpoint
 
 import flows.typeahead_index as indexer
-from flows.typeahead_index import typeahead_index
 
 LINUX_EXERCISE = r"""
 import importlib.util,json,os,sys,tempfile
@@ -39,15 +38,6 @@ with tempfile.TemporaryDirectory(prefix='mps-preparation-') as tmp:
     assert json.loads(check.stdout)['import_complete'] is True
     print(json.dumps({'passed':True,'actors':128,'exported_via_pipe':True,'unready_source_rejected':True,'external_network':False}))
 """
-
-
-def test_tantivy_automatic_install_is_fenced_before_any_preparation(tmp_path):
-    before = list(tmp_path.iterdir())
-    with pytest.raises(ValueError, match="automatic installation remains fenced"):
-        typeahead_index.fn(
-            snapshot_engine="tantivy", snapshot_format="compact", automatic_refresh=True
-        )
-    assert list(tmp_path.iterdir()) == before
 
 
 @pytest.fixture

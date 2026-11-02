@@ -70,7 +70,7 @@ def test_code_download_checksum_cache_and_failure_cleanup(tmp_path):
         thread.join()
 
 
-def test_isolated_exact_commit_checkouts_preserve_native_checkout(tmp_path, monkeypatch):
+def test_isolated_exact_commit_checkouts_are_independent(tmp_path, monkeypatch):
     source = tmp_path / "source"
     source.mkdir()
 
@@ -86,20 +86,15 @@ def test_isolated_exact_commit_checkouts_preserve_native_checkout(tmp_path, monk
     first = git("rev-parse", "HEAD")
     (source / "value").write_text("second")
     git("commit", "--quiet", "-am", "second")
-    native = tmp_path / "native"
-    native.mkdir()
-    (native / "dirty").write_text("preserve")
     monkeypatch.setattr(index, "INDEXER_HOME", tmp_path / "work")
-    monkeypatch.setattr(index, "REPO_DIR", native)
     monkeypatch.setattr(index, "REPO_URL", str(tmp_path / "unavailable"))
     monkeypatch.setattr(index, "REPO_URL_FALLBACK", str(source))
     monkeypatch.setattr(index, "get_run_logger", lambda: logging.getLogger(__name__))
-    a = index.clone_repo.fn(first, isolated=True)
-    b = index.clone_repo.fn(first, isolated=True)
+    a = index.clone_repo.fn(first)
+    b = index.clone_repo.fn(first)
     assert a != b
     assert (a / "value").read_text() == (b / "value").read_text() == "first"
     assert (
         subprocess.check_output(["git", "-C", str(a), "rev-parse", "HEAD"], text=True).strip()
         == first
     )
-    assert (native / "dirty").read_text() == "preserve"

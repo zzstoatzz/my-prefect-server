@@ -318,66 +318,6 @@ def test_initial_promotion_requires_fresh_native_anchor_over_actual_http(control
         thread.join()
 
 
-def test_automatic_dispatch_rejects_conflicting_source_ref_before_checkout(controller, monkeypatch):
-    import mps.typeahead_refresh as owner
-
-    import flows.typeahead_index as flow
-
-    monkeypatch.setattr(owner, "Refresh", lambda _: controller)
-    monkeypatch.setattr(flow, "get_run_logger", lambda: controller.logger)
-    for name, value in {
-        "INDEX_TANTIVY_SOURCE_REVISION": "1" * 40,
-        "INDEX_TANTIVY_ADAPTER_SHA256": "2" * 64,
-        "INDEX_TANTIVY_RELEASE_RECEIPT_KEY": "fixture-only-proof",
-        "INDEX_TANTIVY_RELEASE_RECEIPT_SHA256": "3" * 64,
-    }.items():
-        monkeypatch.setenv(name, value)
-
-    def forbidden(*_, **__):
-        raise AssertionError("Conflicting ref cannot begin checkout/publication/retirement")
-
-    for name in [
-        "clone_repo",
-        "prepare_checkpoint_generation",
-        "publish_tantivy_generation",
-        "retire_tantivy_generation",
-    ]:
-        monkeypatch.setattr(flow, name, forbidden)
-    with pytest.raises(ValueError, match="ref conflicts"):
-        flow.typeahead_index.fn(
-            snapshot_format="compact", automatic_refresh=True, ref="mutable-branch"
-        )
-    assert controller.s3.writes == [] and controller.s3.deletions == []
-
-
-def test_existing_native_automatic_path_does_not_require_tantivy_proof(controller, monkeypatch):
-    import mps.typeahead_refresh as owner
-    import mps.typeahead_tantivy_automatic as automatic
-
-    import flows.typeahead_index as flow
-
-    controller.s3.seed("control/search-routing.json", raw_json({"version": 1, "current": NATIVE}))
-    monkeypatch.setattr(owner, "Refresh", lambda _: controller)
-    monkeypatch.setattr(flow, "get_run_logger", lambda: controller.logger)
-    monkeypatch.setattr(flow, "prune_builds", lambda *_: None)
-
-    class NativeBuildBoundary(RuntimeError):
-        pass
-
-    def native_build():
-        raise NativeBuildBoundary("Reached existing native build path")
-
-    monkeypatch.setattr(flow, "require_build_space", native_build)
-    monkeypatch.setattr(
-        automatic, "settings", lambda _: pytest.fail("Native does not require Tantivy settings")
-    )
-    with pytest.raises(NativeBuildBoundary):
-        flow.typeahead_index.fn(
-            snapshot_format="compact", automatic_refresh=True, ref="existing-native-ref"
-        )
-    assert controller.s3.writes == [] and controller.s3.deletions == []
-
-
 @pytest.mark.parametrize("drift", [None, "guest", "volume"])
 def test_release_binding_observes_actual_provider_resources(
     controller, tmp_path, monkeypatch, drift
@@ -460,17 +400,31 @@ def test_release_binding_observes_actual_provider_resources(
         thread.join()
 
 
-def test_explicit_availability_rollback_is_not_intercepted_by_automatic_dispatch(monkeypatch):
-    import mps.typeahead_refresh as owner
-
+@pytest.mark.parametrize(
+    "options, message",
+    [
+        ({"tantivy_operation": {"operation": "cancel"}, "automatic_refresh": True}, "combined"),
+        ({"tantivy_operation": {"operation": "cancel"}, "resume_rollout": True}, "combined"),
+        ({"resume_rollout": True}, "requires automatic refresh"),
+    ],
+)
+def test_flow_rejects_conflicting_modes_before_checkout(monkeypatch, options, message):
     import flows.typeahead_index as flow
 
-    def forbidden(_):
-        raise AssertionError("Explicit rollback must use its existing availability owner")
+    monkeypatch.setattr(flow, "clone_repo", lambda *_: pytest.fail("No checkout may start"))
+    with pytest.raises(ValueError, match=message):
+        flow.typeahead_index.fn(**options)
 
-    monkeypatch.setattr(owner, "Refresh", forbidden)
-    monkeypatch.setattr(owner, "rollback_snapshot", lambda: {"freshness": {"stale": True}})
-    state = flow.typeahead_index.fn(
-        snapshot_format="compact", automatic_refresh=True, rollback=True
-    )
-    assert state.name == "Degraded"
+
+@pytest.mark.parametrize("revision", [None, "main", "1" * 39])
+def test_every_flow_mode_requires_an_immutable_source_revision(monkeypatch, revision):
+    import flows.typeahead_index as flow
+
+    if revision is None:
+        monkeypatch.delenv("INDEX_TANTIVY_SOURCE_REVISION", raising=False)
+    else:
+        monkeypatch.setenv("INDEX_TANTIVY_SOURCE_REVISION", revision)
+    monkeypatch.setattr(flow, "clone_repo", lambda *_: pytest.fail("No checkout may start"))
+    for options in ({}, {"tantivy_operation": {"operation": "cancel"}}):
+        with pytest.raises(ValueError, match="immutable Typeahead source revision"):
+            flow.typeahead_index.fn(**options)

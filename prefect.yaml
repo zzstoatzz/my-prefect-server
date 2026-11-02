@@ -502,12 +502,7 @@ deployments:
     tags: [publish]
     entrypoint: flows/typeahead_index.py:typeahead_index
     parameters:
-      ref: pds-compact-31ec142-20261020
-      snapshot_format: compact
       automatic_refresh: true
-    # Full artifacts are built on cloud SSD. The controller installs only on
-    # the idle Fly slot, verifies it, then atomically changes the routing record.
-    # Full rollout, rollback and prepared-candidate recovery passed October 25.
     work_pool:
       name: typeahead-cloud-pool
       job_variables:
@@ -521,9 +516,7 @@ deployments:
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           # typeahead-specific turso blocks — the shared `turso-url`/`turso-token`
-          # blocks point at the LEAFLET db (they're the atlas flow's). These hold
-          # the full libsql:// URL; the flow strips the scheme to the bare host
-          # the indexer's TursoClient expects.
+          # blocks point at the LEAFLET db (they're the atlas flow's).
           TURSO_URL: prefect-block://typeahead-turso-url
           TURSO_AUTH_TOKEN: prefect-block://typeahead-turso-token
           INDEX_R2_ENDPOINT: prefect-block://index-r2-endpoint
@@ -532,21 +525,11 @@ deployments:
           INDEX_R2_SECRET_ACCESS_KEY: prefect-block://index-r2-secret-access-key
           # persistent NVMe paths — process runs execute in ephemeral /tmp.
           INDEXER_HOME: /var/lib/typeahead-indexer/work
-          INDEX_QUIET: "0"
           INDEX_BUILD_ROOT: /var/lib/typeahead-indexer/active
-          INDEX_ARCHIVE_ROOT: /var/lib/typeahead-indexer/builds/archive
-          INDEX_MIN_FREE_GIB: "96"
           INDEX_MIN_REMAIN_GIB: "8"
-          INDEX_CHANNEL: managed
           INDEX_REFRESH_IMAGE: registry.fly.io/typeahead-search-refresh@sha256:d4c3111ee8ad058cb08f7ef02ffeb0a2826e1c328b61c12c29a6e9d3e93ca0ed
           FLY_PRIMARY_TOKEN: prefect-block://typeahead-startup-fly-deploy-token
           FLY_REFRESH_TOKEN: prefect-block://typeahead-refresh-fly-deploy-token
-          INDEX_ALLOW_PROD: "0"
-          # 0 = full corpus. The binary DEFAULTS to a 1000-actor sample, which
-          # the App B floor guard rejects — must be explicit (as the old Fly
-          # machine was).
-          INDEX_SAMPLE_LIMIT: "0"
-          INDEX_PDS_MAX_ACTORS: "10000"
           INDEXER_VERSION: hetzner-cloud
           # This transfer runs entirely on cloud infrastructure.
           RCLONE_BWLIMIT: "80M"

@@ -6,7 +6,6 @@ import pytest
 from mps.typeahead_checkpoint_release import read_anchor
 from mps.typeahead_refresh import ROUTE_KEY
 
-from flows.typeahead_index import typeahead_index
 from tests.test_typeahead_engine_compatibility import (
     NATIVE,
     TANTIVY,
@@ -39,11 +38,3 @@ def test_native_anchor_mismatched_watermark_is_rejected(controller):
     with pytest.raises(ValueError, match="differs"):
         read_anchor(controller)
     assert controller.s3.writes == controller.s3.deletions == []
-
-
-@pytest.mark.parametrize(
-    "options", [{"reuse_source": "/retired/source"}, {"resume_generation": "/retired/generation"}]
-)
-def test_retired_tantivy_preparation_cannot_start_another_source_build(options):
-    with pytest.raises(ValueError, match="one new owned cloud checkpoint"):
-        typeahead_index.fn(snapshot_engine="tantivy", snapshot_format="compact", **options)

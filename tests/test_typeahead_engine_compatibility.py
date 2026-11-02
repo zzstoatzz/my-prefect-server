@@ -19,8 +19,6 @@ import pytest
 from mps import typeahead_refresh as refresh
 from mps.typeahead_tantivy import TantivyAdapter, prepare_generation
 
-from flows.typeahead_index import builds_to_prune, prune_builds
-
 NATIVE = {
     "origin": refresh.origin(refresh.SLOTS[0]),
     "build_id": "b1792908655-native-px05",
@@ -413,9 +411,7 @@ def test_native_to_native_rollback_preserves_existing_behavior(controller):
     assert controller.route()[0]["current"] == NATIVE
 
 
-def test_retention_preserves_both_source_generations_and_twins_on_disk(
-    controller, tmp_path, monkeypatch
-):
+def test_retention_preserves_both_source_generations_and_twins_on_disk(controller):
     route, _ = controller.route()
     protected = controller.retained_build_ids(route)
     assert {
@@ -430,33 +426,13 @@ def test_retention_preserves_both_source_generations_and_twins_on_disk(
             controller.s3.seed(f"releases/search/{bid}/{file}", b"fixture")
     assert controller.prune_artifacts()["deleted_objects"] == 3
     assert all(controller.s3.path(f"releases/search/{bid}/index.db").exists() for bid in protected)
-    archive = tmp_path / "archive"
-    for bid in [*protected, "b1792000000-disposable", "b1793100000-new", "b1793200000-new"]:
-        path = archive / ("build-" + bid)
-        path.mkdir(parents=True)
-        (path / "index.db").write_bytes(b"owned-fixture")
-    monkeypatch.setattr(
-        refresh, "protected_source_build_ids", lambda logger: controller.retained_build_ids()
-    )
-    prune_builds.fn(str(archive))
-    assert all((archive / ("build-" + bid)).exists() for bid in protected)
-    assert not (archive / "build-b1792000000-disposable").exists()
-    assert builds_to_prune(list(archive.iterdir()), set()) == []
 
 
-def test_unknown_source_blocks_all_artifact_and_local_cleanup(controller, tmp_path, monkeypatch):
+def test_unknown_source_blocks_all_artifact_cleanup(controller):
     controller.source_unknown = True
     with pytest.raises(RuntimeError, match="source identity unknown"):
         controller.prune_artifacts()
     assert controller.s3.deletions == []
-    for i in range(5):
-        (tmp_path / ("build-b1792000000-" + str(i))).mkdir()
-    monkeypatch.setattr(
-        refresh, "protected_source_build_ids", lambda logger: controller.retained_build_ids()
-    )
-    with pytest.raises(RuntimeError, match="retention blocked"):
-        prune_builds.fn(str(tmp_path))
-    assert len(list(tmp_path.glob("build-*"))) == 5
 
 
 def test_failed_rollback_never_issues_a_compensating_write(controller):
@@ -1041,39 +1017,24 @@ def test_anchored_rollback_cas_race_preserves_operator_route(controller):
     assert controller.s3.writes == []
 
 
-def test_local_retention_rechecks_routed_sources_before_deletion(tmp_path, monkeypatch):
-    for build in ["b1792000000-old", "b1792100000-old", "b1793100000-new", "b1793200000-new"]:
-        path = tmp_path / ("build-" + build)
-        path.mkdir()
-        (path / "index.db").write_bytes(b"preserve-on-route-change")
-    observations = iter([{NATIVE["build_id"]}, {SOURCE}])
-    monkeypatch.setattr(refresh, "protected_source_build_ids", lambda logger: next(observations))
-    with pytest.raises(RuntimeError, match="identities changed"):
-        prune_builds.fn(str(tmp_path))
-    assert len(list(tmp_path.glob("build-*"))) == 4
-
-
 def test_automatic_flow_fences_before_any_build_or_cleanup(controller, monkeypatch):
     import flows.typeahead_index as publisher
 
     def forbidden(*args, **kwargs):
-        raise AssertionError("Corpus preparation or cleanup must not start while Tantivy serves")
+        raise AssertionError("Corpus preparation or cleanup must not start without release proof")
 
     monkeypatch.setattr(refresh, "Refresh", lambda logger: controller)
     monkeypatch.setattr(publisher, "get_run_logger", lambda: controller.logger)
+    monkeypatch.delenv("INDEX_TANTIVY_RELEASE_RECEIPT_SHA256", raising=False)
     for operation in [
-        "prune_builds",
-        "require_build_space",
         "clone_repo",
-        "build_binary",
-        "run_indexer",
-        "publish_compact",
-        "publish_completed_generation",
-        "archive_builds",
+        "prepare_checkpoint_generation",
+        "publish_tantivy_generation",
+        "retire_tantivy_generation",
     ]:
         monkeypatch.setattr(publisher, operation, forbidden)
     with pytest.raises(ValueError, match="immutable source and release proof"):
-        publisher.typeahead_index.fn(snapshot_format="compact", automatic_refresh=True)
+        publisher.typeahead_index.fn(automatic_refresh=True)
     assert controller.s3.writes == []
     assert controller.s3.deletions == []
 
