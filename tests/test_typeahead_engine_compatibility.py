@@ -276,26 +276,77 @@ def test_real_http_tantivy_identity_rejects_wrong_body_or_transport(controller):
             controller.healthy(TANTIVY)
 
 
-def test_retention_preserves_both_source_generations_and_twins_on_disk(controller):
-    route, _ = controller.route()
-    protected = controller.retained_build_ids(route)
-    assert {
-        NATIVE["build_id"],
-        NATIVE["build_id"].removesuffix("-px05"),
-        TANTIVY["build_id"],
-        SOURCE,
-        SOURCE.removesuffix("-px05"),
-    } <= protected
-    for bid in [*protected, "b1792800000-disposable"]:
-        for file in ["index.db", "index.db.prefix", "manifest.json"]:
-            controller.s3.seed(f"releases/search/{bid}/{file}", b"fixture")
-    assert controller.prune_artifacts()["deleted_objects"] == 3
-    assert all(controller.s3.path(f"releases/search/{bid}/index.db").exists() for bid in protected)
+class StubAdapter:
+    """Binds the anchor manifest by checksum, as the pinned installer does."""
+
+    def validate_manifest(self, manifest):
+        return manifest
+
+    def validate_source(self, manifest, raw):
+        if hashlib.sha256(raw).hexdigest() != manifest["rollback_native_anchor"]["manifest_sha256"]:
+            raise ValueError("Exact rollback-native manifest bytes differ")
 
 
-def test_unknown_source_blocks_all_artifact_cleanup(controller):
-    controller.source_unknown = True
-    with pytest.raises(RuntimeError, match="source identity unknown"):
+PREVIOUS = {**TANTIVY, "build_id": "b1792999999-previous-engine"}
+
+
+def seed_stub_publication(controller, target, *, payload=True):
+    """Publish a checkpoint-shaped artifact whose anchor names NATIVE's manifest."""
+    anchor = json.dumps({"active_build": NATIVE["build_id"], "manifest_version": 2}).encode()
+    manifest = {
+        "engine": "tantivy",
+        "active_build": target["build_id"],
+        "backend_format": target["format"],
+        "binary_sha256": target["binary_sha256"],
+        "retrieval_strategy": target["retrieval_strategy"],
+        "source_kind": "sqlite-committed-prefix",
+        "source_build_id": target["build_id"],
+        "legacy_build_id": NATIVE["build_id"].removesuffix("-px05"),
+        "source_actor_count": 4,
+        "object_key": f"releases/search-tantivy/{target['build_id']}/index.tar",
+        "rollback_native_anchor": {
+            "build_id": NATIVE["build_id"],
+            "manifest_sha256": hashlib.sha256(anchor).hexdigest(),
+        },
+    }
+    controller.tantivy_adapter = StubAdapter
+    controller.s3.seed(f"releases/search/{NATIVE['build_id']}/manifest.json", anchor)
+    raw = json.dumps(manifest).encode()
+    controller.s3.seed(f"releases/search-tantivy/{target['build_id']}/manifest.json", raw)
+    if payload:
+        controller.s3.seed(manifest["object_key"], b"bundle")
+    return manifest, raw, anchor
+
+
+def test_prune_deletes_only_unrouted_tantivy_generations(controller):
+    route = {"version": 1, "current": TANTIVY, "previous": PREVIOUS}
+    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
+    seed_stub_publication(controller, TANTIVY)
+    seed_stub_publication(controller, PREVIOUS)
+    seed_stub_publication(controller, {**TANTIVY, "build_id": "b1792800000-disposable"})
+    native = [
+        f"releases/search/{NATIVE['build_id']}/{name}" for name in ("index.db", "index.db.prefix")
+    ]
+    native.append("releases/search/b1792800000-disposable-native/index.db")
+    for key in native:
+        controller.s3.seed(key, b"native")
+    assert controller.retained_build_ids() == {TANTIVY["build_id"], PREVIOUS["build_id"]}
+    report = controller.prune_artifacts()
+    assert report["deleted_objects"] == 2
+    assert sorted(controller.s3.deletions) == [
+        "releases/search-tantivy/b1792800000-disposable/index.tar",
+        "releases/search-tantivy/b1792800000-disposable/manifest.json",
+    ]
+    assert all(controller.s3.path(key).exists() for key in native)
+    assert controller.s3.path(f"releases/search/{NATIVE['build_id']}/manifest.json").exists()
+
+
+def test_missing_routed_publication_blocks_all_artifact_cleanup(controller):
+    route = {"version": 1, "current": TANTIVY, "previous": PREVIOUS}
+    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
+    seed_stub_publication(controller, TANTIVY)
+    seed_stub_publication(controller, {**TANTIVY, "build_id": "b1792800000-disposable"})
+    with pytest.raises(RuntimeError, match="publication is missing"):
         controller.prune_artifacts()
     assert controller.s3.deletions == []
 
@@ -304,20 +355,9 @@ def anchored_route():
     return {
         "version": 1,
         "current": TANTIVY,
-        "previous": {**TANTIVY, "build_id": "b1792999999-previous-engine-px05"},
+        "previous": PREVIOUS,
         "native_rollback": NATIVE,
     }
-
-
-def test_retention_protects_native_anchor_even_without_previous_native(controller):
-    route = {**anchored_route(), "previous": TANTIVY}
-    controller.s3.seed(refresh.ROUTE_KEY, json.dumps(route).encode())
-    protected = controller.retained_build_ids()
-    assert {NATIVE["build_id"], NATIVE["build_id"].removesuffix("-px05")} <= protected
-    for bid in [*protected, "b1792800000-disposable"]:
-        controller.s3.seed(f"releases/search/{bid}/index.db", b"fixture")
-    assert controller.prune_artifacts()["deleted_objects"] == 1
-    assert controller.s3.path(f"releases/search/{NATIVE['build_id']}/index.db").exists()
 
 
 @pytest.fixture
@@ -439,28 +479,25 @@ def seed_checkpoint_publication(controller, target):
     return manifest, native_raw
 
 
-def test_checkpoint_retention_preserves_independent_native_anchor_without_primary_native_artifact(
+def test_checkpoint_retention_keeps_the_generation_and_never_touches_native_objects(
     controller, pinned_adapter
 ):
     controller.tantivy_adapter = lambda: pinned_adapter
     manifest, native_raw = seed_checkpoint_publication(controller, TANTIVY)
     native_build = manifest["rollback_native_anchor"]["build_id"]
     assert controller.tantivy_source_manifest(manifest) == native_raw
-    assert not controller.s3.path(
-        f"releases/search/{manifest['source_build_id']}/manifest.json"
-    ).exists()
-    retained = controller.retained_build_ids()
-    assert {
-        manifest["active_build"],
-        manifest["source_build_id"],
-        native_build,
-        manifest["legacy_build_id"],
-    } <= retained
-    disposable = "releases/search/b1791000000-disposable/index.db"
-    controller.s3.seed(disposable, b"discard")
+    assert controller.retained_build_ids() == {manifest["active_build"]}
+    native = sorted(
+        str(path.relative_to(controller.s3.root))
+        for path in (controller.s3.root / "releases/search").rglob("*")
+        if path.is_file()
+    )
+    assert f"releases/search/{native_build}/manifest.json" in native
+    controller.s3.seed("releases/search/b1791000000-disposable/index.db", b"native")
+    controller.s3.seed("releases/search-tantivy/b1791000000-disposable/index.tar", b"discard")
     assert controller.prune_artifacts()["deleted_objects"] == 1
-    assert controller.s3.path(f"releases/search/{native_build}/index.db").is_file()
-    assert not controller.s3.path(disposable).exists()
+    assert controller.s3.deletions == ["releases/search-tantivy/b1791000000-disposable/index.tar"]
+    assert controller.s3.path("releases/search/b1791000000-disposable/index.db").is_file()
     anchor_key = f"releases/search/{native_build}/manifest.json"
     controller.s3.seed(anchor_key, native_raw + b" ")
     with pytest.raises(ValueError, match="rollback-native manifest bytes"):
@@ -477,16 +514,7 @@ def test_portable_retention_resolves_two_tantivy_generations_without_old_endpoin
         controller, route["previous"], "b1792940000-previous-source-px05"
     )
     controller.source_unknown = True
-    retained = controller.retained_build_ids()
-    assert {
-        NATIVE["build_id"],
-        current["active_build"],
-        current["source_build_id"],
-        current["legacy_build_id"],
-        previous["active_build"],
-        previous["source_build_id"],
-        previous["legacy_build_id"],
-    } <= retained
+    assert controller.retained_build_ids() == {current["active_build"], previous["active_build"]}
     for entry in (route["current"], route["previous"]):
         controller.s3.seed(f"releases/search-tantivy/{entry['build_id']}/index.tar", b"retained")
     controller.s3.seed("releases/search-tantivy/b1792000000-disposable/index.tar", b"disposable")

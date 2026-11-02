@@ -459,11 +459,7 @@ def exercise_real_rust_preparation(
         )
         assert calls.count(("POST", f"/{APPS[0]}/machines")) == 1
         assert calls.count(("POST", f"/{APPS[0]}/volumes")) == 1
-        assert {
-            portable["active_build"],
-            portable["source_build_id"],
-            portable["legacy_build_id"],
-        } <= controller.retained_build_ids()
+        assert portable["active_build"] in controller.retained_build_ids()
         with pytest.raises(ValueError, match="Test-only"):
             slots.promote(
                 result["plan_sha256"], result["plan"]["expected_current_etag"], None, None

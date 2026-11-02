@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -15,7 +16,6 @@ ROUTE_KEY = "control/search-routing.json"
 ROUTER = "https://typeahead-search-transport.n8-3e9.workers.dev"
 PUBLIC = "https://typeahead.waow.tech"
 OWNER = "typeahead-snapshot-refresh"
-ARTIFACT_PREFIX = "releases/search/"
 TANTIVY_ORIGIN = "https://typeahead-tantivy-dev.fly.dev"
 TANTIVY_SLOTS = ("typeahead-tantivy-a", "typeahead-tantivy-b")
 TANTIVY_FORMAT = "tantivy-0.27-f32-did-expiry-v4"
@@ -282,49 +282,21 @@ class Refresh:
         return {"health": health, "index": index}
 
     def retained_build_ids(self, route: dict | None = None) -> set[str]:
+        """Tantivy generations that routing or a pending candidate still needs."""
         if route is None:
             route, _ = self.route()
-        keep = set()
         validate_route_record(route)
-        for entry in [route_target(route), route.get("previous"), route.get("native_rollback")]:
-            if entry is None:
+        if target_engine(route["current"]) != "tantivy":
+            raise RuntimeError("Only a Tantivy route can authorize artifact cleanup")
+        keep = set()
+        for entry in (route["current"], route.get("previous")):
+            if entry is None or target_engine(entry) != "tantivy":
                 continue
-            route_target({"version": 1, "current": entry})
-            source = entry["build_id"]
-            if target_engine(entry) == "tantivy":
-                published = self.tantivy_publication(entry)
-                if published is not None:
-                    keep.update(self.tantivy_retained_builds(published))
-                    continue
-                index = self.healthy(entry, require_fresh=False)["index"]
-                source = index.get("source_build_id")
-                manifest = index.get("source_manifest") or {}
-                if manifest.get("source_kind") == "sqlite-committed-prefix":
-                    raise RuntimeError("Checkpoint artifact provenance unknown; refusing cleanup")
-                if (
-                    not isinstance(source, str)
-                    or not re.fullmatch(BUILD_PATTERN, source)
-                    or manifest.get("build_id") != source
-                    or type(index.get("snapshot_watermark")) is not int
-                    or manifest.get("source_watermark") != index["snapshot_watermark"]
-                    or index.get("full_source") is not True
-                    or index.get("import_complete") is not True
-                ):
-                    raise RuntimeError("Tantivy source identity unknown; refusing artifact cleanup")
-            twin = entry.get("legacy_build_id", source.removesuffix("-px05"))
-            if not isinstance(twin, str) or not re.fullmatch(BUILD_PATTERN, twin):
-                raise RuntimeError("Legacy source identity unknown; refusing artifact cleanup")
-            keep.update([entry["build_id"], source, source.removesuffix("-px05"), twin])
-        latest = self.optional_metadata("control/builds/latest.json", 1024 * 1024)
-        if latest is not None:
-            source = latest["active_build"]
-            twin = latest["legacy_twin"]["build_id"]
-            if any(
-                not isinstance(value, str) or not re.fullmatch(BUILD_PATTERN, value)
-                for value in (source, twin)
-            ):
-                raise ValueError("Invalid retained publisher generation")
-            keep.update([source, twin])
+            if self.tantivy_publication(entry) is None:
+                raise RuntimeError(
+                    "Routed Tantivy publication is missing; refusing artifact cleanup"
+                )
+            keep.add(entry["build_id"])
         for app in TANTIVY_SLOTS:
             pending = self.optional_metadata(f"control/tantivy-slots/{app}/pending.json", 4096)
             if pending is None:
@@ -349,8 +321,6 @@ class Refresh:
                 raw = result["Body"].read(1024 * 1024 + 1)
             finally:
                 result["Body"].close()
-            import hashlib
-
             if len(raw) > 1024 * 1024 or hashlib.sha256(raw).hexdigest() != pending.get(
                 "artifact_manifest_sha256"
             ):
@@ -361,7 +331,7 @@ class Refresh:
                 manifest[field] for field in ("active_build", "source_build_id", "legacy_build_id")
             ] != builds:
                 raise ValueError("Pending artifact source linkage changed")
-            keep.update(self.tantivy_retained_builds(manifest))
+            keep.add(manifest["active_build"])
         return keep
 
     def optional_metadata(self, key, limit):
@@ -426,15 +396,6 @@ class Refresh:
             return anchor["build_id"], anchor["manifest_sha256"]
         return manifest["source_build_id"], manifest.get("source_manifest_sha256")
 
-    def tantivy_retained_builds(self, manifest: dict) -> set[str]:
-        native_build, _ = self.tantivy_source_binding(manifest)
-        return {
-            manifest["active_build"],
-            manifest["source_build_id"],
-            manifest["legacy_build_id"],
-            native_build,
-        }
-
     def tantivy_source_manifest(self, manifest: dict) -> bytes:
         self.tantivy_adapter().validate_manifest(manifest)
         native_build, _ = self.tantivy_source_binding(manifest)
@@ -482,22 +443,18 @@ class Refresh:
             raise RuntimeError("Inactive mutation is pending; artifact cleanup is fenced")
         keep = self.retained_build_ids(route)
         victims = []
-        for prefix, names in (
-            (ARTIFACT_PREFIX, ("index.db", "index.db.prefix", "manifest.json")),
-            ("releases/search-tantivy/", ("index.tar", "manifest.json")),
+        for page in self.s3.get_paginator("list_objects_v2").paginate(
+            Bucket=self.bucket, Prefix="releases/search-tantivy/"
         ):
-            for page in self.s3.get_paginator("list_objects_v2").paginate(
-                Bucket=self.bucket, Prefix=prefix
-            ):
-                for item in page.get("Contents", []):
-                    parts = item["Key"].split("/")
-                    if (
-                        len(parts) == 4
-                        and re.fullmatch(r"b[0-9]{10}-[A-Za-z0-9_-]+", parts[2])
-                        and parts[2] not in keep
-                        and parts[3] in names
-                    ):
-                        victims.append(item)
+            for item in page.get("Contents", []):
+                parts = item["Key"].split("/")
+                if (
+                    len(parts) == 4
+                    and re.fullmatch(BUILD_PATTERN, parts[2])
+                    and parts[2] not in keep
+                    and parts[3] in ("index.tar", "manifest.json")
+                ):
+                    victims.append(item)
         for start in range(0, len(victims), 1000):
             current, actual_etag = self.route()
             if actual_etag != etag or current != route or self.retained_build_ids(route) != keep:
