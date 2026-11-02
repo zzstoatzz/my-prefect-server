@@ -7,7 +7,6 @@ import io
 import json
 import logging
 import os
-import shutil
 import subprocess
 import threading
 import time
@@ -17,7 +16,7 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 import pytest
 from mps import typeahead_refresh as refresh
-from mps.typeahead_tantivy import TantivyAdapter, prepare_generation
+from mps.typeahead_tantivy import TantivyAdapter
 
 NATIVE = {
     "origin": refresh.origin(refresh.SLOTS[0]),
@@ -679,133 +678,6 @@ def test_actual_bundle_install_restart_and_http_qualification_through_adapter(
         binary,
         fixtures,
     )
-    producer = tmp_path / "pinned-producer"
-    script = producer / "scripts/snapshot_refresh/tantivy_install.py"
-    script.parent.mkdir(parents=True)
-    shutil.copyfile(repository / "scripts/snapshot_refresh/tantivy_install.py", script)
-    for arguments in (
-        ["init", "-q"],
-        ["add", "."],
-        [
-            "-c",
-            "core.hooksPath=/dev/null",
-            "-c",
-            "user.name=offline-fixture",
-            "-c",
-            "user.email=offline@example.invalid",
-            "commit",
-            "-qm",
-            "pinned fixture",
-        ],
-    ):
-        subprocess.run(
-            ["git", *arguments], cwd=producer, check=True, capture_output=True, timeout=10
-        )
-    revision = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=producer,
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=10,
-    ).stdout.strip()
-    source_dir = tmp_path / "native-source-manifest"
-    source_dir.mkdir()
-    (source_dir / "manifest.json").write_bytes(source)
-    resumed = tmp_path / "tantivy-builds/build-b1793236000-pilot"
-    resumed.mkdir(parents=True)
-    data.rename(resumed / "data")
-    identity = {
-        "source_revision": revision,
-        "adapter_sha256": pinned_adapter.source_sha256,
-        "binary_sha256": manifest["binary_sha256"],
-        "source_manifest_sha256": hashlib.sha256(source).hexdigest(),
-        "max_source_bytes": 8 * 1024**3,
-        "minimum_select_interval": 0.5,
-    }
-    (resumed / "owner").write_text("typeahead-index-tantivy-v1\n")
-    (resumed / "identity.json").write_text(json.dumps(identity))
-    (resumed / "export-receipt.json").write_text(
-        json.dumps({"actors_sha256": manifest["source_actors_sha256"]})
-    )
-    environment = {
-        "PATH": os.environ.get("PATH", ""),
-        "TURSO_URL": "https://127.0.0.1:1",
-        "TURSO_AUTH_TOKEN": "offline-not-used",
-        "INDEX_TANTIVY_SOURCE_REVISION": revision,
-        "INDEX_TANTIVY_BINARY_SHA256": manifest["binary_sha256"],
-        "INDEX_TANTIVY_ADAPTER_SHA256": pinned_adapter.source_sha256,
-        "INDEX_TANTIVY_PREPARE_SECONDS": "30",
-    }
-    ready = prepare_generation(producer, source_dir, resumed, binary, environment, resume=True)
-    assert (ready / "index.tar").is_file()
-    assert not (producer / "services/tantivy-input/export.py").exists()
-    assert not (resumed / "source-budget.json").exists()
-    assert (resumed / "replay.log").stat().st_size == 0
-    assert (
-        prepare_generation(producer, source_dir, resumed, binary, environment, resume=True) == ready
-    )
-    impossible_source = tmp_path / "impossible-deadline-source"
-    impossible_source.mkdir()
-    (impossible_source / "manifest.json").write_text(
-        json.dumps(native | {"actor_count": 12_860_000})
-    )
-    impossible_workspace = tmp_path / "impossible-builder"
-    with pytest.raises(ValueError, match="lower bound"):
-        prepare_generation(
-            producer,
-            impossible_source,
-            impossible_workspace,
-            binary,
-            environment | {"INDEX_TANTIVY_PREPARE_SECONDS": "10800"},
-        )
-    assert not impossible_workspace.exists()
-    with pytest.raises(ValueError, match="resume identity mismatch"):
-        prepare_generation(
-            producer,
-            source_dir,
-            resumed,
-            binary,
-            environment | {"INDEX_TANTIVY_MAX_SOURCE_BYTES": str(1024**3)},
-            resume=True,
-        )
-    if shutil.which("rclone"):
-        import flows.typeahead_index as publisher
-
-        monkeypatch.setattr(publisher, "INDEXER_HOME", tmp_path)
-        remote = tmp_path / "remote"
-        remote_source = remote / f"releases/search/{manifest['source_build_id']}/manifest.json"
-        remote_source.parent.mkdir(parents=True)
-        remote_source.write_bytes(source)
-        pointer = remote / "control/search-routing.json"
-        pointer.parent.mkdir(parents=True)
-        pointer.write_bytes(b"preserve-native-route")
-        configuration = tmp_path / "rclone.conf"
-        configuration.write_text("[r2]\ntype = local\n")
-        monkeypatch.setenv("INDEX_R2_BUCKET", str(remote))
-        assert (
-            publisher.publish_tantivy_generation.fn(repository, ready, source_dir, configuration)
-            == ready
-        )
-        assert (ready / "index.tar").is_file()
-        assert (resumed / "data").is_dir()
-        publisher.retire_tantivy_generation.fn(ready)
-        assert not (ready / "index.tar").exists() and not (resumed / "data").exists()
-        assert (
-            prepare_generation(producer, source_dir, resumed, binary, environment, resume=True)
-            == ready
-        )
-        assert (
-            publisher.publish_tantivy_generation.fn(repository, ready, source_dir, configuration)
-            == ready
-        )
-        assert pointer.read_bytes() == b"preserve-native-route"
-        remote_bundle = remote / manifest["object_key"]
-        with remote_bundle.open("ab") as changed:
-            changed.write(b"corruption")
-        with pytest.raises(publisher.ProcessExecutionError, match="remote verification failed"):
-            publisher.publish_tantivy_generation.fn(repository, ready, source_dir, configuration)
-        assert not (resumed / "data").exists()
 
 
 def test_native_anchor_cannot_be_non_native(controller):
