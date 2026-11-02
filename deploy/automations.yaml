@@ -448,6 +448,40 @@ automations:
         subject: "heavypad is running hot"
         body: "{{ payload.summary }}"
 
+  - name: typeahead refresh missing -> retry + discord
+    description: >-
+      A serving Tantivy slot's checkpoint coverage lasts 24 hours and refreshes
+      run at 06:00 and 18:00 UTC, so one missed run leaves no margin. On
+      2026-11-02 the 06:00 run crashed and its generic failure line went
+      unnoticed until search was stale twelve hours later. When no
+      typeahead-index run completes for 13 hours this retries the automatic
+      refresh at once and says what is at stake. The deployment's concurrency
+      limit cancels the retry if a run is already active.
+    enabled: true
+    trigger:
+      type: event
+      posture: Proactive
+      expect: [prefect.flow-run.Completed]
+      match_related:
+        prefect.resource.id: prefect.deployment.a0c0ce9c-5bab-4bdc-8512-39984c322a74
+      threshold: 1
+      within: 46800
+    actions:
+      - type: run-deployment
+        source: selected
+        deployment: typeahead-index
+        parameters:
+          automatic_refresh: true
+      - type: send-notification
+        block_document_id: f9c9d7b1-3419-4056-84b0-5565f71fa944
+        subject: "typeahead refresh missed: retry started"
+        body: >-
+          No typeahead-index run has completed in 13 hours. The serving Tantivy
+          slot reports stale 24 hours after its checkpoint. A retry of the
+          automatic refresh has started; if it fails too, act now:
+          https://prefect-server.waow.tech/deployments and
+          https://typeahead.waow.tech/health/freshness
+
   - name: bandwidth watchdog missing -> discord
     description: The independent host monitor has stopped reporting for five minutes.
     enabled: true
