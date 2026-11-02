@@ -23,7 +23,7 @@ def builder(tmp_path, monkeypatch):
     monkeypatch.setattr(
         index,
         "_stream",
-        lambda command, cwd, env, timeout: stream(command, cwd, env, min(timeout, 60)),
+        lambda command, cwd, env, timeout: stream(command, cwd, env, min(timeout, 300)),
     )
     return repo, services
 

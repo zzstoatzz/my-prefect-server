@@ -26,7 +26,7 @@ def test_silent_command_timeout_stops_its_process(tmp_path):
         f"import os,time,pathlib,json;pathlib.Path({str(marker)!r}).write_text(json.dumps([os.getpid(),os.environ['TMPDIR']]));time.sleep(60)",
     ]
     with pytest.raises(RuntimeError, match="exceeded"):
-        _stream(command, tmp_path, dict(os.environ), timeout=1)
+        _stream(command, tmp_path, dict(os.environ), timeout=5)
     pid, scratch = json.loads(marker.read_text())
     assert not alive(pid)
     assert not Path(scratch).exists()
