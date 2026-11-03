@@ -10,8 +10,9 @@ Approved automatic refreshes promote only after the same qualification gates. Cu
 [October 31 retrospective](https://tangled.org/zzstoatzz.io/typeahead/blob/main/docs/retros/2026-10-31-search-expiry-outage.md).
 The publisher runs at 06:00 and 18:00 UTC; exact immutable pins live in
 `prefect.heavypad.yaml`. Check actual completed refreshes and the serving coverage
-deadline before reserving a slot. The worker has a three-hour outer bound: observed
-checkpoint preparation plus installation can exceed the former two-hour bound.
+deadline before reserving a slot. The worker has a four-hour outer bound: observed
+checkpoint preparation plus installation can exceed two hours, and a flow retry
+resumes after the last finished stage on the same VM.
 This is a failure cutoff, not a refresh-time guarantee. Each readiness phase has
 a one-hour bound: the verified cold installation on a 1 GiB slot took about
 38 minutes, too close to the previous 40-minute bound. The restart phase gets its
@@ -132,7 +133,7 @@ preparation, guarded promotion and post-promotion retention.
 
 The normal deployment uses the twelve-hour cadence documented above because a
 checkpoint has a one-day coverage lifetime unless a genuine remote round renews
-it. Keep this cadence until renewal is independently proven. The three-hour outer
+it. Keep this cadence until renewal is independently proven. The four-hour outer
 worker budget bounds failure; it is not a promise that a refresh finishes in that
 time. Do not introduce a second publisher clock or infer successful refreshes from
 the presence of a schedule.

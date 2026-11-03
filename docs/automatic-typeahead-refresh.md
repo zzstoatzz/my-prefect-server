@@ -11,7 +11,7 @@ engine was removed on 2026-11-02; its history is in the
 ## Deployment
 
 The deployment runs on the `typeahead-ephemeral` pool at 06:00 and 18:00 UTC with
-`automatic_refresh: true`. Each run gets a three-hour worker bound. The flow takes
+`automatic_refresh: true`. Each run gets a four-hour worker bound, which leaves room for one flow retry. The flow takes
 three optional parameters:
 
 | Parameters | Effect |
