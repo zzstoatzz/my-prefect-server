@@ -188,13 +188,14 @@ def save_result_storage() -> None:
     """Save the R2 result storage from the credentials this run already resolved."""
     from prefect_aws import AwsCredentials, S3Bucket
     from prefect_aws.client_parameters import AwsClientParameters
+    from pydantic import SecretStr
 
     S3Bucket(
         bucket_name=os.environ["INDEX_R2_BUCKET"],
         bucket_folder="prefect-results/typeahead-index",
         credentials=AwsCredentials(
             aws_access_key_id=os.environ["INDEX_R2_ACCESS_KEY_ID"],
-            aws_secret_access_key=os.environ["INDEX_R2_SECRET_ACCESS_KEY"],
+            aws_secret_access_key=SecretStr(os.environ["INDEX_R2_SECRET_ACCESS_KEY"]),
             region_name="auto",
             aws_client_parameters=AwsClientParameters(endpoint_url=os.environ["INDEX_R2_ENDPOINT"]),
         ),
