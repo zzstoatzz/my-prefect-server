@@ -285,3 +285,14 @@ def test_progress_contains_only_bounded_transfer_metadata(provider, tmp_path):
     assert events[-1]["received_bytes"] == receipt["received_source_bytes"]
     assert events[-1]["requests"] == receipt["source_requests"]
     assert all(event["elapsed_seconds"] >= 0 for event in events)
+
+
+@pytest.mark.parametrize("seconds", [0, 3601])
+def test_checkpoint_deadline_bounds(provider, tmp_path, seconds):
+    with pytest.raises(CheckpointError, match="bounds"):
+        fetch(provider, tmp_path / "checkpoint.db", max_seconds=seconds)
+
+
+def test_checkpoint_accepts_an_hour_long_budget(provider, tmp_path):
+    receipt = fetch(provider, tmp_path / "slow.db", max_seconds=3600)
+    assert receipt["sqlite_replay_verified"] is True

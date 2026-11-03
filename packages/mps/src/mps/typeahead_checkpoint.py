@@ -62,7 +62,7 @@ class Export:
             raise CheckpointError("Invalid source origin")
         if not token or any(character in token for character in "\r\n\0"):
             raise CheckpointError("Invalid source credential")
-        if not 1 <= seconds <= 900 or not PAGE <= maximum <= 16 * 1024**3:
+        if not 1 <= seconds <= 3600 or not PAGE <= maximum <= 16 * 1024**3:
             raise CheckpointError("Invalid checkpoint bounds")
         self.origin = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))
         self.token, self.maximum = token, maximum

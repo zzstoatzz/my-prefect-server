@@ -174,7 +174,7 @@ def run_cloud_release(
         os.environ["TURSO_URL"],
         os.environ["TURSO_AUTH_TOKEN"],
         root / "source.db",
-        max_seconds=min(900, timeout_seconds - 30),
+        max_seconds=min(2700, timeout_seconds - 30),
         progress=progress,
     )
     raw = json.dumps(checkpoint, sort_keys=True).encode() + b"\n"

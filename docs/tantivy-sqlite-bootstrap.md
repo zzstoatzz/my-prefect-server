@@ -18,7 +18,9 @@ base/WAL/materialized hashes, bytes and verified frame count. It makes no live
 freshness or moderation claim.
 
 Acquisition defaults to eight GiB of source bytes,64MiB of WAL and180 seconds,
-with a maximum900-second application deadline. Progress reports only phase,
+with a maximum 3,600-second application deadline. The cloud release allows
+2,700 seconds, so a slow but moving export completes; every request read still
+times out after 10 seconds without bytes, so a stalled transfer fails fast. Progress reports only phase,
 bytes, requests and elapsed time. Blocking I/O can overrun the application check;
 the caller must also impose a hard flow/worker deadline. Failed bulk transfers
 are not retried automatically. The cloud VM owner handles forced-exit cleanup.
