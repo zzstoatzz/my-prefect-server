@@ -82,11 +82,14 @@ coverage expires after24 hours unless a genuine complete remote round renews
 it. The slot supervisor stops both reader and reconciler before expiry and
 refuses an expired cached restart. Ordinary timestamp polling cannot renew it.
 
-`mps.typeahead_checkpoint_release.run_cloud_release` is cloud-only. It downloads
-once, smoke-tests a100,000-document sample, imports the full database, catches up
-live state and freezes an immutable bundle. The existing publisher verifies the
-bundle and independent native anchor. No routing pointer changes in this path.
-The preparation task is limited to 90 minutes and requires a separate hard worker
+`mps.typeahead_checkpoint_release` is cloud-only and runs in three stages.
+`export_cloud_checkpoint` downloads the checkpoint once.
+`import_cloud_checkpoint` smoke-tests a 100,000-document sample, imports the
+full database and catches up live state. `freeze_cloud_checkpoint` freezes an
+immutable bundle. Each stage re-checks the owned cloud execution and can be
+retried on its own. The existing publisher verifies the bundle and independent
+native anchor. No routing pointer changes in this path. Export is limited to 50
+minutes, import to 90 and freeze to 30, and the worker imposes a separate hard
 timeout. Serving qualification, recovery and cutover approval remain separate.
 
 ## Evidence and remaining qualification

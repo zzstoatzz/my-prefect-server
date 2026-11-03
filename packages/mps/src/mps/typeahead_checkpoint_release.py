@@ -1,10 +1,18 @@
-"""One cloud checkpoint, bounded smoke/import, then an immutable portable release."""
+"""One cloud checkpoint, bounded smoke/import, then an immutable portable release.
+
+The release runs as three stages so the flow can persist each result and a
+retry resumes after the last finished stage: `export_cloud_checkpoint` pulls
+the Turso checkpoint, `import_cloud_checkpoint` builds the Tantivy index from
+it and `freeze_cloud_checkpoint` writes the portable bundle. Every stage
+re-checks that it runs inside the owned ephemeral cloud execution.
+"""
 
 from __future__ import annotations
 
 import hashlib
 import json
 import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -79,16 +87,10 @@ def read_anchor(service):
     return service.tantivy_source_manifest(manifest)
 
 
-def run_cloud_release(
-    repository, *, timeout_seconds=5400, pds_fallback_path=None, pds_fallback_sha256=None
-):
-    from prefect import get_run_logger
-    from prefect.artifacts import create_table_artifact
+def cloud_release_guard(repository):
+    """Return the run, indexer home, revision and adapter of an owned cloud release."""
     from prefect.client.orchestration import get_client
     from prefect.context import FlowRunContext, TaskRunContext, get_run_context
-
-    from mps.typeahead_checkpoint_build import build_checkpoint
-    from mps.typeahead_refresh import Refresh
 
     context = get_run_context()
     if isinstance(context, TaskRunContext):
@@ -101,11 +103,7 @@ def run_cloud_release(
     else:
         raise ValueError("Cloud release requires a flow execution")
     home = Path(os.environ["INDEXER_HOME"])
-    if (
-        sys.platform != "linux"
-        or home != Path("/var/lib/typeahead-indexer/work")
-        or not 60 <= timeout_seconds <= 5400
-    ):
+    if sys.platform != "linux" or home != Path("/var/lib/typeahead-indexer/work"):
         raise ValueError("Bounded cloud-only release required")
     if run is None or run.deployment_id is None:
         raise ValueError("Cloud release requires a deployment flow execution")
@@ -145,27 +143,51 @@ def run_cloud_release(
         Path(repository) / "scripts/snapshot_refresh/tantivy_install.py",
         os.environ["INDEX_TANTIVY_ADAPTER_SHA256"],
     )
+    return run, home, revision, adapter
+
+
+def release_root(home, run):
+    return home / "tantivy-builds" / ("checkpoint-" + run.id.hex)
+
+
+def owned_root(exported, home, run):
+    root = Path(exported["root"])
+    if (
+        root != release_root(home, run)
+        or (root / "owner").read_text() != "typeahead-index-tantivy-v1\n"
+    ):
+        raise ValueError("Checkpoint export belongs to another release")
+    return root
+
+
+def export_cloud_checkpoint(repository, *, timeout_seconds=2700):
+    from prefect import get_run_logger
+
+    from mps.typeahead_refresh import Refresh
+
+    run, home, _revision, _adapter = cloud_release_guard(repository)
+    if not 60 <= timeout_seconds <= 3600:
+        raise ValueError("Bounded cloud-only release required")
     logger = get_run_logger()
     service = Refresh(logger)
     try:
         anchor = read_anchor(service)
     finally:
         service.close()
-    root = home / "tantivy-builds" / ("checkpoint-" + run.id.hex)
-    root.mkdir(parents=True, exist_ok=False)
+    root = release_root(home, run)
+    if root.exists():
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
     (root / "owner").write_text("typeahead-index-tantivy-v1\n")
-    started = time.monotonic()
-    deadline = started + timeout_seconds
+    pds_fallback_path = pds_fallback_sha256 = None
     configured_mapping = os.environ.get("INDEX_PDS_FALLBACK_SHA256")
     if configured_mapping is not None:
-        if pds_fallback_path is not None or pds_fallback_sha256 is not None:
-            raise ValueError("Specify one archive mapping source")
         pds_fallback_sha256 = configured_mapping
         pds_fallback_path = fetch_pds_fallback(root / "pds-fallback.sqlite", configured_mapping)
     source = root / "native-anchor"
     source.mkdir()
     (source / "manifest.json").write_bytes(anchor)
-    binary = fetch_cloud_binary(root / "code/typeahead-tantivy", BINARY_SHA, root / "code")
+    fetch_cloud_binary(root / "code/typeahead-tantivy", BINARY_SHA, root / "code")
 
     def progress(event):
         logger.info("checkpoint_progress %s", json.dumps(event, sort_keys=True))
@@ -174,18 +196,58 @@ def run_cloud_release(
         os.environ["TURSO_URL"],
         os.environ["TURSO_AUTH_TOKEN"],
         root / "source.db",
-        max_seconds=min(2700, timeout_seconds - 30),
+        max_seconds=timeout_seconds,
         progress=progress,
     )
-    raw = json.dumps(checkpoint, sort_keys=True).encode() + b"\n"
-    (root / "checkpoint.json").write_bytes(raw)
+    (root / "checkpoint.json").write_bytes(json.dumps(checkpoint, sort_keys=True).encode() + b"\n")
+    logger.info(
+        "checkpoint_exported %s",
+        json.dumps(
+            {
+                key: checkpoint[key]
+                for key in (
+                    "generation",
+                    "base_db_sha256",
+                    "base_db_bytes",
+                    "committed_frame",
+                    "wall_seconds",
+                )
+            },
+            sort_keys=True,
+        ),
+    )
+    return {
+        "root": str(root),
+        "pds_fallback_path": None if pds_fallback_path is None else str(pds_fallback_path),
+        "pds_fallback_sha256": pds_fallback_sha256,
+    }
+
+
+def import_cloud_checkpoint(repository, exported, *, timeout_seconds=5400):
+    from prefect import get_run_logger
+
+    from mps.typeahead_checkpoint_build import build_checkpoint
+
+    run, home, _revision, _adapter = cloud_release_guard(repository)
+    if not 60 <= timeout_seconds <= 5400:
+        raise ValueError("Bounded cloud-only release required")
+    started = time.monotonic()
+    logger = get_run_logger()
+    root = owned_root(exported, home, run)
+    for leftover in ("sample", "build", "data"):
+        if (root / leftover).exists():
+            shutil.rmtree(root / leftover)
+    binary = fetch_cloud_binary(root / "code/typeahead-tantivy", BINARY_SHA, root / "code")
+    raw = (root / "checkpoint.json").read_bytes()
+    checkpoint = json.loads(raw)
+    anchor = (root / "native-anchor/manifest.json").read_bytes()
     smoke = measure_sample(
         root / "source.db", root / "sample", Path(repository), binary, checkpoint, 100000
     )
     logger.info("checkpoint_sample %s", json.dumps(smoke, sort_keys=True))
-    remaining = int(deadline - time.monotonic()) - 120
+    remaining = int(started + timeout_seconds - time.monotonic()) - 120
     if remaining < 60:
-        raise TimeoutError("Checkpoint download/smoke left insufficient full-import budget")
+        raise TimeoutError("Checkpoint smoke left insufficient full-import budget")
     build = f"b{checkpoint['source_clock_before']}-cp-{run.id.hex[:10]}"
     imported = build_checkpoint(
         Path(repository),
@@ -201,8 +263,10 @@ def run_cloud_release(
         build_id=build,
         environment=dict(os.environ),
         timeout=remaining,
-        pds_fallback_path=pds_fallback_path,
-        pds_fallback_sha256=pds_fallback_sha256,
+        pds_fallback_path=None
+        if exported["pds_fallback_path"] is None
+        else Path(exported["pds_fallback_path"]),
+        pds_fallback_sha256=exported["pds_fallback_sha256"],
     )
     if (
         imported.get("consumer_verified") is not True
@@ -210,6 +274,24 @@ def run_cloud_release(
     ):
         raise ValueError("Complete import and genuine live catch-up are required")
     (root / "build/data").rename(root / "data")
+    return {"build": build, "imported": imported, "sample": smoke}
+
+
+def freeze_cloud_checkpoint(repository, exported, built):
+    from prefect import get_run_logger
+    from prefect.artifacts import create_table_artifact
+
+    run, home, revision, adapter = cloud_release_guard(repository)
+    started = time.monotonic()
+    logger = get_run_logger()
+    root = owned_root(exported, home, run)
+    if (root / "publication").exists():
+        shutil.rmtree(root / "publication")
+    (root / "preparation.json").unlink(missing_ok=True)
+    binary = fetch_cloud_binary(root / "code/typeahead-tantivy", BINARY_SHA, root / "code")
+    anchor = (root / "native-anchor/manifest.json").read_bytes()
+    checkpoint = json.loads((root / "checkpoint.json").read_bytes())
+    build, imported = built["build"], built["imported"]
     manifest = dict(imported["manifest_fields"])
     manifest.update(
         engine="tantivy",
@@ -243,7 +325,7 @@ def run_cloud_release(
         "source_revision": revision,
         "adapter_sha256": adapter.source_sha256,
         "checkpoint": checkpoint,
-        "sample": smoke,
+        "sample": built["sample"],
         "import_seconds": imported["wall_seconds"],
         "promotion_permitted": False,
         "release_qualified": False,
@@ -264,4 +346,4 @@ def run_cloud_release(
         portable["byte_size"],
         time.monotonic() - started,
     )
-    return root / "publication", source
+    return root / "publication", root / "native-anchor"

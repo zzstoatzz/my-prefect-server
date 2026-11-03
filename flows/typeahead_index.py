@@ -178,11 +178,30 @@ def pinned_typeahead():
         shutil.rmtree(repo)
 
 
-@task(retries=0, timeout_seconds=5400)
-def prepare_checkpoint_generation(repo: Path) -> tuple[Path, Path]:
-    from mps.typeahead_checkpoint_release import run_cloud_release
+@task(retries=2, retry_delay_seconds=[60, 300], timeout_seconds=3000)
+def export_checkpoint(repo: Path) -> dict:
+    from mps.typeahead_checkpoint_release import export_cloud_checkpoint
 
-    return run_cloud_release(repo)
+    return export_cloud_checkpoint(repo)
+
+
+@task(timeout_seconds=5400)
+def import_checkpoint(repo: Path, exported: dict) -> dict:
+    from mps.typeahead_checkpoint_release import import_cloud_checkpoint
+
+    return import_cloud_checkpoint(repo, exported)
+
+
+@task(retries=1, timeout_seconds=1800)
+def freeze_checkpoint(repo: Path, exported: dict, built: dict) -> tuple[Path, Path]:
+    from mps.typeahead_checkpoint_release import freeze_cloud_checkpoint
+
+    return freeze_cloud_checkpoint(repo, exported, built)
+
+
+def prepare_checkpoint_generation(repo: Path) -> tuple[Path, Path]:
+    exported = export_checkpoint(repo)
+    return freeze_checkpoint(repo, exported, import_checkpoint(repo, exported))
 
 
 def tantivy_workspace(generation: Path) -> Path:

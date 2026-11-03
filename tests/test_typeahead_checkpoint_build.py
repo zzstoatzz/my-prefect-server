@@ -26,7 +26,7 @@ def release_manifest(imported, build, adapter, binary_sha):
     function = next(
         node
         for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == "run_cloud_release"
+        if isinstance(node, ast.FunctionDef) and node.name == "freeze_cloud_checkpoint"
     )
     index = next(
         index
@@ -560,7 +560,7 @@ def test_actual_linux_d1_checkpoint_build():
 
 def test_cloud_release_resolves_real_task_context_before_cloud_guard(tmp_path, monkeypatch):
     import pytest
-    from mps.typeahead_checkpoint_release import run_cloud_release
+    from mps.typeahead_checkpoint_release import export_cloud_checkpoint
     from prefect import flow, task
     from prefect.cache_policies import NO_CACHE
     from prefect.context import TaskRunContext, get_run_context
@@ -574,7 +574,7 @@ def test_cloud_release_resolves_real_task_context_before_cloud_guard(tmp_path, m
         assert isinstance(context, TaskRunContext)
         assert context.task_run.flow_run_id is not None
         with pytest.raises(ValueError, match="Bounded cloud-only release required"):
-            run_cloud_release(tmp_path)
+            export_cloud_checkpoint(tmp_path)
         return str(context.task_run.flow_run_id)
 
     @flow
