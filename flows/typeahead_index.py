@@ -26,10 +26,15 @@ import time
 from collections import deque
 from contextlib import contextmanager, suppress
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from prefect import flow, get_run_logger, task
 from prefect.cache_policies import RUN_ID, TASK_SOURCE
 from prefect.exceptions import MissingContextError
+from prefect.utilities.asyncutils import run_coro_as_sync
+
+if TYPE_CHECKING:
+    from prefect_aws import S3Bucket
 from prefect.tasks import exponential_backoff
 
 REPO_URL = "https://tangled.org/zzstoatzz.io/typeahead.git"
@@ -40,8 +45,10 @@ REPO_URL_FALLBACK = "https://github.com/zzstoatzz/typeahead.git"
 INDEXER_HOME = Path(os.environ.get("INDEXER_HOME") or (Path.home() / ".typeahead-index"))
 
 # each stage runs once per flow run; persisting its result to R2 lets a flow
-# retry on the same VM skip every stage that already finished.
-RESULT_STORAGE = "s3-bucket/typeahead-index-results"
+# retry on the same VM skip every stage that already finished. stages receive
+# the saved block instance because the server's block documents omit the
+# nested schema's block type, so a slug like "s3-bucket/..." cannot be loaded.
+RESULT_STORAGE = "typeahead-index-results"
 STAGE_CACHE = RUN_ID + TASK_SOURCE
 
 
@@ -184,13 +191,13 @@ def pinned_typeahead():
         shutil.rmtree(repo)
 
 
-def save_result_storage() -> None:
+async def save_result_storage() -> "S3Bucket":
     """Save the R2 result storage from the credentials this run already resolved."""
     from prefect_aws import AwsCredentials, S3Bucket
     from prefect_aws.client_parameters import AwsClientParameters
     from pydantic import SecretStr
 
-    S3Bucket(
+    storage = S3Bucket(
         bucket_name=os.environ["INDEX_R2_BUCKET"],
         bucket_folder="prefect-results/typeahead-index",
         credentials=AwsCredentials(
@@ -199,7 +206,9 @@ def save_result_storage() -> None:
             region_name="auto",
             aws_client_parameters=AwsClientParameters(endpoint_url=os.environ["INDEX_R2_ENDPOINT"]),
         ),
-    ).save(RESULT_STORAGE.split("/", 1)[1], overwrite=True)
+    )
+    await storage.asave(RESULT_STORAGE, overwrite=True)
+    return storage
 
 
 @task(
@@ -207,7 +216,6 @@ def save_result_storage() -> None:
     retry_delay_seconds=[60, 300],
     timeout_seconds=3000,
     persist_result=True,
-    result_storage=RESULT_STORAGE,
     cache_policy=STAGE_CACHE,
 )
 def export_checkpoint(repo: Path) -> dict:
@@ -219,7 +227,6 @@ def export_checkpoint(repo: Path) -> dict:
 @task(
     timeout_seconds=5400,
     persist_result=True,
-    result_storage=RESULT_STORAGE,
     cache_policy=STAGE_CACHE,
 )
 def import_checkpoint(repo: Path, exported: dict) -> dict:
@@ -232,7 +239,6 @@ def import_checkpoint(repo: Path, exported: dict) -> dict:
     retries=1,
     timeout_seconds=1800,
     persist_result=True,
-    result_storage=RESULT_STORAGE,
     cache_policy=STAGE_CACHE,
 )
 def freeze_checkpoint(repo: Path, exported: dict, built: dict) -> tuple[Path, Path]:
@@ -241,9 +247,10 @@ def freeze_checkpoint(repo: Path, exported: dict, built: dict) -> tuple[Path, Pa
     return freeze_cloud_checkpoint(repo, exported, built)
 
 
-def prepare_checkpoint_generation(repo: Path) -> tuple[Path, Path]:
-    exported = export_checkpoint(repo)
-    return freeze_checkpoint(repo, exported, import_checkpoint(repo, exported))
+def prepare_checkpoint_generation(repo: Path, storage) -> tuple[Path, Path]:
+    exported = export_checkpoint.with_options(result_storage=storage)(repo)
+    built = import_checkpoint.with_options(result_storage=storage)(repo, exported)
+    return freeze_checkpoint.with_options(result_storage=storage)(repo, exported, built)
 
 
 def tantivy_workspace(generation: Path) -> Path:
@@ -264,7 +271,6 @@ def tantivy_workspace(generation: Path) -> Path:
     retry_delay_seconds=[2, 5, 10],
     retry_jitter_factor=1,
     persist_result=True,
-    result_storage=RESULT_STORAGE,
     cache_policy=STAGE_CACHE,
 )
 def publish_tantivy_generation(
@@ -375,9 +381,9 @@ def typeahead_index(
         raise ValueError("Rollout recovery requires automatic refresh")
     if not automatic_refresh:
         with pinned_typeahead() as repo:
-            save_result_storage()
-            prepared, source = prepare_checkpoint_generation(repo)
-            publish_tantivy_generation(repo, prepared, source)
+            storage = run_coro_as_sync(save_result_storage())
+            prepared, source = prepare_checkpoint_generation(repo, storage)
+            publish_tantivy_generation.with_options(result_storage=storage)(repo, prepared, source)
             retire_tantivy_generation(prepared)
         return None
     from mps.typeahead_refresh import Refresh, prune_snapshot_artifacts
@@ -388,13 +394,15 @@ def typeahead_index(
     service = Refresh(get_run_logger())
     try:
         with pinned_typeahead() as repo:
-            save_result_storage()
+            storage = run_coro_as_sync(save_result_storage())
             publication = None
 
             def publish():
                 nonlocal publication
-                publication, source = prepare_checkpoint_generation(repo)
-                publish_tantivy_generation(repo, publication, source)
+                publication, source = prepare_checkpoint_generation(repo, storage)
+                publish_tantivy_generation.with_options(result_storage=storage)(
+                    repo, publication, source
+                )
                 return json.loads((publication / "manifest.json").read_bytes())["active_build"]
 
             slots = Slots(service, INDEXER_HOME / "tantivy-slot-journals")

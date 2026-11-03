@@ -82,20 +82,30 @@ def test_flow_retry_resumes_after_finished_checkpoint_stages(tmp_path, monkeypat
 
     monkeypatch.setattr(release, "freeze_cloud_checkpoint", freeze)
 
+    monkeypatch.setattr(
+        publisher, "freeze_checkpoint", publisher.freeze_checkpoint.with_options(retries=0)
+    )
+
     with prefect_test_harness():
         storage = LocalFileSystem(basepath=str(tmp_path / "results"))
         storage.save("stage-results")
-        for name in ("export_checkpoint", "import_checkpoint", "freeze_checkpoint"):
-            stage = getattr(publisher, name)
-            monkeypatch.setattr(
-                publisher,
-                name,
-                stage.with_options(result_storage="local-file-system/stage-results", retries=0),
-            )
 
         @flow(retries=1, retry_delay_seconds=0)
         def release_once():
-            return publisher.prepare_checkpoint_generation(tmp_path)
+            return publisher.prepare_checkpoint_generation(tmp_path, storage)
 
         assert release_once() == (Path("publication"), Path("native-anchor"))
     assert calls == ["export", "import", "freeze", "freeze"]
+
+
+def test_stage_tasks_take_their_result_storage_as_a_block_instance():
+    import flows.typeahead_index as publisher
+
+    for stage in (
+        publisher.export_checkpoint,
+        publisher.import_checkpoint,
+        publisher.freeze_checkpoint,
+        publisher.publish_tantivy_generation,
+    ):
+        assert stage.persist_result is True
+        assert not isinstance(stage.result_storage, str), stage.name
