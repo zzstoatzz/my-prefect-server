@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
@@ -51,3 +52,50 @@ def test_stream_timeout_kills_descendants(tmp_path):
         _stream([sys.executable, "-c", parent], tmp_path, dict(os.environ), timeout=0.3)
     time.sleep(1)
     assert not marker.exists()
+
+
+def test_flow_retry_resumes_after_finished_checkpoint_stages(tmp_path, monkeypatch):
+    import mps.typeahead_checkpoint_release as release
+    from prefect import flow
+    from prefect.filesystems import LocalFileSystem
+    from prefect.testing.utilities import prefect_test_harness
+
+    import flows.typeahead_index as publisher
+
+    calls = []
+    monkeypatch.setattr(
+        release, "export_cloud_checkpoint", lambda repo: calls.append("export") or {"root": "r"}
+    )
+    monkeypatch.setattr(
+        release,
+        "import_cloud_checkpoint",
+        lambda repo, exported: calls.append("import") or {"build": "b"},
+    )
+    attempts = []
+
+    def freeze(repo, exported, built):
+        calls.append("freeze")
+        if not attempts:
+            attempts.append(1)
+            raise RuntimeError("freeze interrupted")
+        return Path("publication"), Path("native-anchor")
+
+    monkeypatch.setattr(release, "freeze_cloud_checkpoint", freeze)
+
+    with prefect_test_harness():
+        storage = LocalFileSystem(basepath=str(tmp_path / "results"))
+        storage.save("stage-results")
+        for name in ("export_checkpoint", "import_checkpoint", "freeze_checkpoint"):
+            stage = getattr(publisher, name)
+            monkeypatch.setattr(
+                publisher,
+                name,
+                stage.with_options(result_storage="local-file-system/stage-results", retries=0),
+            )
+
+        @flow(retries=1, retry_delay_seconds=0)
+        def release_once():
+            return publisher.prepare_checkpoint_generation(tmp_path)
+
+        assert release_once() == (Path("publication"), Path("native-anchor"))
+    assert calls == ["export", "import", "freeze", "freeze"]

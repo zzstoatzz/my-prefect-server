@@ -22,6 +22,7 @@ dependencies = [
     "typesafe-sdk>=0.7.0",
     "websockets>=15",
     "boto3>=1.43.88",
+    "prefect-aws>=0.7.11",
 ]
 
 [build-system]

@@ -28,6 +28,7 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 
 from prefect import flow, get_run_logger, task
+from prefect.cache_policies import RUN_ID, TASK_SOURCE
 from prefect.exceptions import MissingContextError
 from prefect.tasks import exponential_backoff
 
@@ -37,6 +38,11 @@ REPO_URL_FALLBACK = "https://github.com/zzstoatzz/typeahead.git"
 # persistent working root. process flow runs execute in an ephemeral /tmp, so
 # the deployment sets INDEXER_HOME to a real persistent path on the build host.
 INDEXER_HOME = Path(os.environ.get("INDEXER_HOME") or (Path.home() / ".typeahead-index"))
+
+# each stage runs once per flow run; persisting its result to R2 lets a flow
+# retry on the same VM skip every stage that already finished.
+RESULT_STORAGE = "s3-bucket/typeahead-index-results"
+STAGE_CACHE = RUN_ID + TASK_SOURCE
 
 
 class ProcessExecutionError(RuntimeError):
@@ -178,21 +184,56 @@ def pinned_typeahead():
         shutil.rmtree(repo)
 
 
-@task(retries=2, retry_delay_seconds=[60, 300], timeout_seconds=3000)
+def save_result_storage() -> None:
+    """Save the R2 result storage from the credentials this run already resolved."""
+    from prefect_aws import AwsCredentials, S3Bucket
+    from prefect_aws.client_parameters import AwsClientParameters
+
+    S3Bucket(
+        bucket_name=os.environ["INDEX_R2_BUCKET"],
+        bucket_folder="prefect-results/typeahead-index",
+        credentials=AwsCredentials(
+            aws_access_key_id=os.environ["INDEX_R2_ACCESS_KEY_ID"],
+            aws_secret_access_key=os.environ["INDEX_R2_SECRET_ACCESS_KEY"],
+            region_name="auto",
+            aws_client_parameters=AwsClientParameters(endpoint_url=os.environ["INDEX_R2_ENDPOINT"]),
+        ),
+    ).save(RESULT_STORAGE.split("/", 1)[1], overwrite=True)
+
+
+@task(
+    retries=2,
+    retry_delay_seconds=[60, 300],
+    timeout_seconds=3000,
+    persist_result=True,
+    result_storage=RESULT_STORAGE,
+    cache_policy=STAGE_CACHE,
+)
 def export_checkpoint(repo: Path) -> dict:
     from mps.typeahead_checkpoint_release import export_cloud_checkpoint
 
     return export_cloud_checkpoint(repo)
 
 
-@task(timeout_seconds=5400)
+@task(
+    timeout_seconds=5400,
+    persist_result=True,
+    result_storage=RESULT_STORAGE,
+    cache_policy=STAGE_CACHE,
+)
 def import_checkpoint(repo: Path, exported: dict) -> dict:
     from mps.typeahead_checkpoint_release import import_cloud_checkpoint
 
     return import_cloud_checkpoint(repo, exported)
 
 
-@task(retries=1, timeout_seconds=1800)
+@task(
+    retries=1,
+    timeout_seconds=1800,
+    persist_result=True,
+    result_storage=RESULT_STORAGE,
+    cache_policy=STAGE_CACHE,
+)
 def freeze_checkpoint(repo: Path, exported: dict, built: dict) -> tuple[Path, Path]:
     from mps.typeahead_checkpoint_release import freeze_cloud_checkpoint
 
@@ -217,7 +258,14 @@ def tantivy_workspace(generation: Path) -> Path:
     return workspace
 
 
-@task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
+@task(
+    retries=3,
+    retry_delay_seconds=[2, 5, 10],
+    retry_jitter_factor=1,
+    persist_result=True,
+    result_storage=RESULT_STORAGE,
+    cache_policy=STAGE_CACHE,
+)
 def publish_tantivy_generation(
     repo: Path, generation: Path, source: Path, config: Path | None = None
 ) -> Path:
@@ -296,7 +344,13 @@ def retire_tantivy_generation(generation: Path) -> Path:
     return generation
 
 
-@flow(name="typeahead-index", log_prints=True, timeout_seconds=43200)
+@flow(
+    name="typeahead-index",
+    log_prints=True,
+    timeout_seconds=43200,
+    retries=1,
+    retry_delay_seconds=300,
+)
 def typeahead_index(
     automatic_refresh: bool = False,
     resume_rollout: bool = False,
@@ -320,6 +374,7 @@ def typeahead_index(
         raise ValueError("Rollout recovery requires automatic refresh")
     if not automatic_refresh:
         with pinned_typeahead() as repo:
+            save_result_storage()
             prepared, source = prepare_checkpoint_generation(repo)
             publish_tantivy_generation(repo, prepared, source)
             retire_tantivy_generation(prepared)
@@ -332,6 +387,7 @@ def typeahead_index(
     service = Refresh(get_run_logger())
     try:
         with pinned_typeahead() as repo:
+            save_result_storage()
             publication = None
 
             def publish():

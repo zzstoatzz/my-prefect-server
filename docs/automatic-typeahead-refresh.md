@@ -37,8 +37,16 @@ subprocesses.
 
 ## Publication
 
-`run_cloud_release` takes one Turso checkpoint, smoke-imports a sample, imports
-the full checkpoint with live catch-up and freezes the bundle. Typeahead's
+Publication runs as separate Prefect tasks. `export_checkpoint` takes one Turso
+checkpoint and retries twice on failure. `import_checkpoint` smoke-imports a
+sample and imports the full checkpoint with live catch-up. `freeze_checkpoint`
+freezes the bundle. Each task persists its result to the
+`typeahead-index-results` S3Bucket block (R2, under
+`prefect-results/typeahead-index/`) with a run-scoped cache, and the flow
+retries once after five minutes. A retry on the same VM therefore resumes after
+the last finished stage instead of downloading the checkpoint again. The flow
+saves that block at start from the R2 credentials the run already resolved, so
+it holds no value the secret store does not. Typeahead's
 `scripts/snapshot_compaction/publish.py --engine tantivy` uploads it under
 `releases/search-tantivy/<build>/` with full readback and writes the manifest
 last. It changes no pointer. Only after readback are the local index and tar
