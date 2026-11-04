@@ -102,6 +102,19 @@ deployments:
         timezone: UTC
         active: true
 
+  - name: watch-stream
+    entrypoint: flows/watch_stream.py:watch_stream
+    tags: [phi, watch, heavypad]
+    description: Detect sustained firehose activity above twice the hourly median and wake Phi
+    work_pool: *heavypad_phi
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+      - cron: "*/5 * * * *"
+        timezone: UTC
+        active: true
+
   - name: phi-likes-review
     entrypoint: flows/phi_trigger.py:phi_trigger
     tags: [phi, heavypad]
