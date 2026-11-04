@@ -107,3 +107,13 @@ def test_missing_or_nonfinite_metrics_fail_instead_of_inventing_zero():
     )
     with pytest.raises(ValueError):
         sample_metrics(text, AT)
+
+
+def test_one_delayed_high_window_still_needs_confirmation():
+    state, _ = advance({}, 0)
+    state, _ = observe(
+        state, sample(AT + 600, state["sample"]["seq"] + 892 * 600), PROFILE, verdict()
+    )
+    assert "pending" not in state
+    state, _ = advance(state, 15)
+    assert "pending" in state

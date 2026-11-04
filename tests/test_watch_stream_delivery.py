@@ -16,7 +16,7 @@ async def test_real_http_delivery_retry_and_persisted_episode(monkeypatch):
     seq = 1000000
 
     class Handler(BaseHTTPRequestHandler):
-        def log_message(self, *args):
+        def log_message(self, format, *args):
             pass
 
         def do_GET(self):
@@ -66,6 +66,7 @@ async def test_real_http_delivery_retry_and_persisted_episode(monkeypatch):
             assert len(delivered) == 2
             assert delivered[0] == delivered[1]
             state = await Variable.aget(watcher.STATE)
+            assert isinstance(state, dict)
             assert state["active"] == delivered[0]["event_id"]
             assert "pending" not in state
             await watcher.watch_stream()

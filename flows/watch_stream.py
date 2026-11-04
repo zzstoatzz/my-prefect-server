@@ -95,8 +95,9 @@ def observe(state: dict, sample: dict, profile: dict, verdict: dict) -> tuple[di
     report = {"status": "observed", "rate": rate, "typical": typical, "ratio": ratio}
     if ratio >= 2:
         result.pop("low_since", None)
+        confirming = "high_since" in result
         since = result.setdefault("high_since", previous["at"])
-        if not result.get("active") and sample["at"] - since >= 540:
+        if confirming and not result.get("active") and sample["at"] - since >= 540:
             event_id = f"stream-activity:{int(since)}"
             result["pending"] = {
                 "event_id": event_id,
