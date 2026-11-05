@@ -35,6 +35,27 @@ app-scoped `FLY_TANTIVY_A_TOKEN` and `FLY_TANTIVY_B_TOKEN` Secret blocks.
 `INDEX_BUILD_ROOT` and `INDEX_MIN_REMAIN_GIB` bound the disk reserve of streamed
 subprocesses.
 
+## Source poller lifetime
+
+The qualified November 5 continuous-poller image keeps the source process alive
+across its durable hourly byte-budget windows. The preceding image rechecked a
+1.5 GB immutable PDS mapping on each hourly process restart, pausing source reads
+for roughly 88 seconds and repeatedly failing the reader's 120-second readiness
+limit. The new image retains the reader, installer, admission checks and source
+byte limits. Managed inactive-slot installation and cached restart passed;
+guarded promotion and observation of the first hourly boundary are tracked in the
+[Typeahead release record](https://tangled.org/zzstoatzz.io/typeahead/tree/main/docs/ops/poller-readiness-20261104).
+
+The configured release proof is
+`control/tantivy-releases/2cb383df761467c5d7afcb374e9baa01e040faf35170d78b518ac655d3e6b4ba.json`,
+bound to image
+`registry.fly.io/typeahead-tantivy-b@sha256:bc66ce9eec3aca5d568135e6d0637f2e2be6e0c305095fc29e4fd50c15d0d34d`.
+Automatic continuation inherits its image from the serving admission; this proof
+must match that image after cutover. The publisher's source, binary, mapping,
+06:00/18:00 UTC schedule and automatic-refresh parameters are unchanged.
+Reusing the current artifact for this image release does not renew checkpoint
+coverage; the next scheduled full refresh remains necessary.
+
 ## Publication
 
 Publication runs as separate Prefect tasks. `export_checkpoint` takes one Turso
