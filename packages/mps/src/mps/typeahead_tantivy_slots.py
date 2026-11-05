@@ -1131,6 +1131,8 @@ class Slots:
                     "pending_action": None,
                     "execution_id": self.service.execution_identity(),
                 }
+                if automatic_refresh:
+                    state["publication_execution_id"] = state["execution_id"]
                 self.save(state, "planned")
             self.acquire(state, expected_etag=expected_etag)
             self.protect(state)
@@ -1392,6 +1394,7 @@ class Slots:
             "route": target,
             "release_proof": proof,
             "public_verified": True,
+            "publication_execution_id": state.get("publication_execution_id"),
         }
 
 

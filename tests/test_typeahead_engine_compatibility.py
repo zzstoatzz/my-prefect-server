@@ -525,8 +525,9 @@ def test_installer_checksum_mismatch_is_rejected_before_source_execution(tmp_pat
     assert not marker.exists()
 
 
+@pytest.mark.parametrize("automatic", [False, True])
 def test_actual_bundle_install_restart_and_http_qualification_through_adapter(
-    tmp_path, pinned_adapter, monkeypatch, controller
+    tmp_path, pinned_adapter, monkeypatch, controller, automatic
 ):
     repository = Path(os.environ["TA_REPOSITORY"])
     binary = Path(
@@ -666,6 +667,7 @@ def test_actual_bundle_install_restart_and_http_qualification_through_adapter(
         bundle,
         binary,
         fixtures,
+        automatic=automatic,
     )
 
 

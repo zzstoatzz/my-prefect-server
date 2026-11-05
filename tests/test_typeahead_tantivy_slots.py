@@ -116,9 +116,14 @@ def test_journal_and_plan_routes_written_before_native_removal_still_match(contr
     assert slots.load_plan(digest)[0]["expected_route"] == route
 
 
-def test_remote_journal_survives_local_loss_and_rejects_active_owner(controller, tmp_path):
+@pytest.mark.parametrize("publication_owner", [None, "execution-one"])
+def test_remote_journal_survives_local_loss_and_rejects_active_owner(
+    controller, tmp_path, publication_owner
+):
     slots = slot_service(controller, tmp_path)
     state = {"request_id": "b" * 32, "owner": OWNER, "execution_id": "execution-one"}
+    if publication_owner:
+        state["publication_execution_id"] = publication_owner
     slots.save(state, "planned")
     (slots.root / ("b" * 32 + ".json")).unlink()
     recovered = Slots(controller, tmp_path / "other", timeout_seconds=2)
@@ -127,7 +132,9 @@ def test_remote_journal_survives_local_loss_and_rejects_active_owner(controller,
     with pytest.raises(RuntimeError, match="still active"):
         recovered.journal("b" * 32)
     controller.execution_finished = lambda _: True
-    assert recovered.journal("b" * 32)["execution_id"] == "execution-two"
+    resumed = recovered.journal("b" * 32)
+    assert resumed["execution_id"] == "execution-two"
+    assert resumed.get("publication_execution_id") == publication_owner
 
 
 def test_fixture_release_proof_cannot_enable_production():
@@ -410,7 +417,7 @@ def test_preparation_resumes_records_written_with_retired_provenance(controller,
 
 
 def exercise_real_rust_preparation(
-    controller, tmp_path, adapter, portable, bundle, binary, fixtures
+    controller, tmp_path, adapter, portable, bundle, binary, fixtures, *, automatic=False
 ):
     import os
 
@@ -521,18 +528,28 @@ def exercise_real_rust_preparation(
             portable["active_build"],
             portable.get("image_digest", "registry.fly.io/fixture@sha256:" + "f" * 64),
             request_id="d" * 32,
+            automatic_refresh=automatic,
         )
         assert result["routing_target_changed"] is False
         assert result["plan"]["test_only"] is True
         assert result["plan"]["promotion_permitted"] is False
         assert starts == 2 and installs == 1
+        assert result["preparation_receipt"].get("publication_execution_id") == (
+            "execution-one" if automatic else None
+        )
+        controller.execution_identity = lambda: "execution-two"
+        controller.execution_finished = lambda _: True
         repeated = slots.prepare(
             portable["active_build"],
             portable.get("image_digest", "registry.fly.io/fixture@sha256:" + "f" * 64),
             request_id="d" * 32,
+            automatic_refresh=automatic,
         )
         assert repeated["plan_sha256"] == result["plan_sha256"]
         assert starts == 2 and installs == 1
+        resumed = slots.journal("d" * 32)
+        assert resumed["execution_id"] == "execution-two"
+        assert resumed.get("publication_execution_id") == ("execution-one" if automatic else None)
         assert controller.route()[0] == before
         assert (
             fixtures.smoke.request(public, "/search?q=real")[2]["actors"][0]["handle"]
@@ -611,7 +628,10 @@ def test_failed_public_verification_compensates_only_exact_head(controller, tmp_
     assert controller.route()[0] == changed
 
 
-def test_public_transport_identity_and_canary_primitive_uses_real_http(controller, tmp_path):
+@pytest.mark.parametrize("publication_owner", [None, "execution-one"])
+def test_public_transport_identity_and_canary_primitive_uses_real_http(
+    controller, tmp_path, publication_owner
+):
     slots = slot_service(controller, tmp_path)
     serving = {**TANTIVY, "origin": f"https://{APPS[0]}.fly.dev", "build_id": "b1792999999-old"}
     before = {"version": 1, "current": serving}
@@ -657,12 +677,15 @@ def test_public_transport_identity_and_canary_primitive_uses_real_http(controlle
         "execution_id": "execution-one",
         "app": APPS[0],
     }
+    if publication_owner:
+        state["publication_execution_id"] = publication_owner
     try:
         result = slots.complete_promotion(
             state, "fixture-plan", before, target, written, {"test_only": True}
         )
         assert result["public_verified"] is True
         assert result["release_proof"]["test_only"] is True
+        assert result["publication_execution_id"] == publication_owner
         assert controller.route()[0] == target
     finally:
         server.shutdown()

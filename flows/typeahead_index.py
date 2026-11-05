@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING
 from prefect import flow, get_run_logger, task
 from prefect.cache_policies import RUN_ID, TASK_SOURCE
 from prefect.exceptions import MissingContextError
-from prefect.states import Completed
+from prefect.states import Completed, State
 from prefect.utilities.asyncutils import run_coro_as_sync
 
 if TYPE_CHECKING:
@@ -348,6 +348,12 @@ def retire_tantivy_generation(generation: Path) -> Path:
     return generation
 
 
+def automatic_completion(report: dict, execution_id: str) -> dict | State:
+    if report.get("publication_execution_id") == execution_id:
+        return report
+    return Completed(name="RolloutResumed", data=report)
+
+
 @flow(
     name="typeahead-index",
     log_prints=True,
@@ -415,8 +421,6 @@ def typeahead_index(
             if publication is not None:
                 retire_tantivy_generation(publication)
             prune_snapshot_artifacts()
-            if publication is None:
-                return Completed(name="RolloutResumed", data=report)
-            return report
+            return automatic_completion(report, service.execution_identity())
     finally:
         service.close()

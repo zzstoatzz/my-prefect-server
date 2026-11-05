@@ -74,6 +74,14 @@ pin and compatible installer until the new runtime passes release qualification.
 The staged export/import/freeze tasks and persisted retry results are preserved;
 freezing now returns only the publication path, without a native-anchor directory.
 
+Pending automatic journals also retain `publication_execution_id` separately
+from the current lease holder. A retry of the flow that published the generation
+still finishes as ordinary `Completed`; a separate recovery run, or an older
+journal without that publication owner, finishes as `RolloutResumed`. Explicit
+slot operations and publication-only runs use `SlotOperationCompleted` and
+`GenerationPublished`. Only full-refresh completion resets the existing
+13-hour missed-refresh clock. These producer changes are not registered yet.
+
 The combined runtime and checkpoint helpers passed 36 real-I/O fixture tests on
 disposable cloud compute, including restart past coverage expiry while stale
 admission remains rejected. That does not establish full-data performance or a

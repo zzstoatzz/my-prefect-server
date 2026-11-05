@@ -109,3 +109,48 @@ def test_stage_tasks_take_their_result_storage_as_a_block_instance():
     ):
         assert stage.persist_result is True
         assert not isinstance(stage.result_storage, str), stage.name
+
+
+def test_full_refresh_success_survives_retry_without_counting_another_runs_recovery(tmp_path):
+    import json
+    from uuid import UUID
+
+    from prefect import flow
+    from prefect.client.orchestration import get_client
+    from prefect.runtime import flow_run
+    from prefect.testing.utilities import prefect_test_harness
+
+    from flows.typeahead_index import automatic_completion
+
+    executions = []
+
+    @flow(retries=1, retry_delay_seconds=0)
+    def refresh_once(marker: Path, fail_after_publication: bool):
+        executions.append(UUID(str(flow_run.id)))
+        if not marker.exists():
+            marker.write_text(json.dumps({"publication_execution_id": flow_run.id}))
+            if fail_after_publication:
+                raise RuntimeError("Interrupted after durable publication")
+        return automatic_completion(json.loads(marker.read_text()), str(flow_run.id))
+
+    with prefect_test_harness():
+        for retry in [False, True]:
+            marker = tmp_path / f"publication-{retry}.json"
+            refresh_once(marker, retry)
+            with get_client(sync_client=True) as client:
+                run = client.read_flow_run(executions[-1])
+                assert run.run_count == (2 if retry else 1)
+                assert run.state is not None
+                assert run.state.name == "Completed"
+                assert json.loads(marker.read_text())["publication_execution_id"] == str(run.id)
+            refresh_once(marker, False)
+            with get_client(sync_client=True) as client:
+                run = client.read_flow_run(executions[-1])
+                assert run.state is not None and run.state.is_completed()
+                assert run.state.name == "RolloutResumed"
+        legacy = tmp_path / "legacy.json"
+        legacy.write_text("{}")
+        refresh_once(legacy, False)
+        with get_client(sync_client=True) as client:
+            run = client.read_flow_run(executions[-1])
+            assert run.state is not None and run.state.name == "RolloutResumed"
