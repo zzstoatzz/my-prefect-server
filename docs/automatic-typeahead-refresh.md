@@ -58,6 +58,15 @@ coverage; the next scheduled full refresh remains necessary.
 
 ### Pending lifecycle transition
 
+Before another slot operation, qualify the server's in-process retry ownership
+fix with the manual `mps.hcloud_retry_probe:cloud_builder_retry_probe` flow on
+`typeahead-ephemeral`. It intentionally fails once, waits 90 seconds, and requires
+the second attempt to use the original PID and hostname. Use a temporary,
+unscheduled deployment with concurrency one, a 15-minute infrastructure bound,
+and no database, bucket or Fly credentials. Verify one VM submission and resource
+cleanup in the worker's observations, then remove the temporary deployment.
+This probe is qualification tooling; it has no registered schedule.
+
 The controller source removes legacy native-manifest provenance and can replace
 a reachable slot whose checkpoint coverage has expired. Those changes are not
 registered in production: the deployment retains its immutable staged-publisher
