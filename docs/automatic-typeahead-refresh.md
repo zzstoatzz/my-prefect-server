@@ -83,6 +83,18 @@ These distinctions passed real Prefect-engine cloud tests; actual manual
 prepare and promote emitted the named event. The normal scheduled full-refresh
 event still needs verification.
 
+### Pending cleanup-retry guard
+
+A retry after successful promotion and pending-marker removal previously entered
+publication/preparation again. Stage caching kept export/import work, but the
+same artifact could be installed into the other slot unnecessarily. The new
+controller first checks the admitted slot's durable journal. Only a healthy,
+already-promoted automatic operation whose immutable publication owner is this
+same execution can reuse the completed promotion. The existing plan, release,
+route/ETag, qualification and public canary checks still run. A different execution
+still starts a fresh full refresh; changed routing still fences transaction
+recovery. This guard is tested locally but not registered yet.
+
 ## Publication
 
 Publication runs as separate Prefect tasks. `export_checkpoint` takes one Turso

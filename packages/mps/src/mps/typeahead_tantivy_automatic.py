@@ -58,6 +58,27 @@ def refresh(service, slots, publish, *, release_key, release_sha256, resume_only
     if not serving_unavailable:
         manifest, _ = slots.artifact(current["build_id"])
         slots.retirement_freshness(current, manifest)
+        request_id = deployment.get("request_id")
+        if request_id:
+            raw = slots.read(f"control/tantivy-operations/{request_id}.json", 65536)
+            if raw is not None:
+                state = json.loads(raw)
+                if state.get("request_id") != request_id or state.get("owner") != OWNER:
+                    raise ValueError("Admitted automatic rollout journal identity changed")
+                if (
+                    state.get("automatic_refresh") is True
+                    and state.get("phase") == "promoted"
+                    and state.get("publication_execution_id") == service.execution_identity()
+                ):
+                    plan, _ = slots.load_plan(state["plan_sha256"])
+                    if plan["request_id"] != request_id:
+                        raise ValueError("Admitted automatic rollout plan identity changed")
+                    return slots.promote(
+                        state["plan_sha256"],
+                        plan["expected_current_etag"],
+                        release_key,
+                        release_sha256,
+                    )
     return _continue_refresh(
         service,
         slots,

@@ -630,14 +630,21 @@ def test_failed_public_verification_compensates_only_exact_head(controller, tmp_
 
 @pytest.mark.parametrize("publication_owner", [None, "execution-one"])
 def test_public_transport_identity_and_canary_primitive_uses_real_http(
-    controller, tmp_path, publication_owner
+    controller, tmp_path, publication_owner, pinned_adapter
 ):
     slots = slot_service(controller, tmp_path)
+    controller.tantivy_adapter = lambda: pinned_adapter
     serving = {**TANTIVY, "origin": f"https://{APPS[0]}.fly.dev", "build_id": "b1792999999-old"}
     before = {"version": 1, "current": serving}
     controller.s3.seed(refresh.ROUTE_KEY, raw_json(before))
     _, etag = controller.route()
-    target = {"version": 1, "current": TANTIVY, "previous": serving}
+    admission = {"bundle_sha256": "0" * 64}
+    candidate = {
+        **TANTIVY,
+        "origin": f"https://{APPS[1]}.fly.dev",
+        "admission_sha256": pinned_adapter.installer.digest_json(admission),
+    }
+    target = {"version": 1, "current": candidate, "previous": serving}
     written = controller._put_route(target, etag)
 
     class Handler(BaseHTTPRequestHandler):
@@ -668,7 +675,7 @@ def test_public_transport_identity_and_canary_primitive_uses_real_http(
     def get(base, path):
         if base == refresh.PUBLIC and path.startswith("/xrpc/"):
             return refresh.Refresh.get(controller, f"http://127.0.0.1:{server.server_port}", path)
-        return old_get(base, path)
+        return old_get(TANTIVY["origin"] if base == candidate["origin"] else base, path)
 
     controller.get = get
     state = {
@@ -677,16 +684,113 @@ def test_public_transport_identity_and_canary_primitive_uses_real_http(
         "execution_id": "execution-one",
         "app": APPS[0],
     }
+    deployment_key = f"control/tantivy-slots/{APPS[1]}/{state['request_id']}.json"
+    bound = {
+        "provider_app": APPS[1],
+        "active_build": candidate["build_id"],
+        "request_id": state["request_id"],
+        "image_digest": "registry.fly.io/fixture@sha256:" + "d" * 64,
+    }
+    deployment_raw = raw_json(bound)
+    state.update(
+        app=APPS[1],
+        automatic_refresh=bool(publication_owner),
+        deployment_key=deployment_key,
+        deployment_sha256=hashlib.sha256(deployment_raw).hexdigest(),
+        image_digest=bound["image_digest"],
+    )
+    controller.s3.seed(deployment_key, deployment_raw)
+    controller.s3.seed(
+        f"control/tantivy-admissions/{candidate['admission_sha256']}.json",
+        raw_json(
+            {
+                "schema_version": 1,
+                "admission": admission,
+                "deployment_key": deployment_key,
+                "deployment_sha256": state["deployment_sha256"],
+            }
+        ),
+    )
+    plan = {
+        "schema_version": 1,
+        "owner": OWNER,
+        "request_id": state["request_id"],
+        "test_only": False,
+        "app": state["app"],
+        "image_digest": state["image_digest"],
+        "deployment_key": deployment_key,
+        "deployment_sha256": state["deployment_sha256"],
+        "expected_current_etag": etag,
+        "expected_route": before,
+        "candidate": candidate,
+    }
+    plan_raw = raw_json(plan)
+    plan_sha = hashlib.sha256(plan_raw).hexdigest()
+    controller.s3.seed(f"control/tantivy-plans/{plan_sha}.json", plan_raw)
+    state.update(
+        plan_sha256=plan_sha,
+        promotion_before=before,
+        promotion_target=target,
+        promotion_written_etag=written,
+    )
     if publication_owner:
         state["publication_execution_id"] = publication_owner
     try:
         result = slots.complete_promotion(
-            state, "fixture-plan", before, target, written, {"test_only": True}
+            state, plan_sha, before, target, written, {"test_only": True}
         )
         assert result["public_verified"] is True
         assert result["release_proof"]["test_only"] is True
         assert result["publication_execution_id"] == publication_owner
         assert controller.route()[0] == target
+        if publication_owner:
+            from mps.typeahead_tantivy_automatic import refresh as automatic_refresh
+
+            from tests.test_typeahead_engine_compatibility import seed_checkpoint_publication
+
+            seed_checkpoint_publication(controller, candidate)
+            slots.require_release = lambda *_: {"test_only": True}
+            slots.retirement_freshness = lambda *_: False
+            slots.qualify = lambda *_: ({"route": candidate, **controller.healthy(candidate)}, {})
+            before_retry = controller.route()
+
+            def forbidden_publication():
+                raise AssertionError("Completed automatic promotion must not publish/install again")
+
+            resumed = automatic_refresh(
+                controller,
+                slots,
+                forbidden_publication,
+                release_key="fixture-boundary",
+                release_sha256="e" * 64,
+            )
+            assert (
+                resumed["public_verified"]
+                and resumed["publication_execution_id"] == publication_owner
+            )
+            assert controller.route() == before_retry
+
+            controller.execution_identity = lambda: "execution-two"
+            with pytest.raises(AssertionError, match="must not publish/install again"):
+                automatic_refresh(
+                    controller,
+                    slots,
+                    forbidden_publication,
+                    release_key="fixture-boundary",
+                    release_sha256="e" * 64,
+                )
+            controller.execution_identity = lambda: "execution-one"
+            changed = {**target, "previous": {**serving, "build_id": "b1793000001-operator"}}
+            controller._put_route(changed, before_retry[1])
+            with pytest.raises(RuntimeError, match="Routing changed after confirmed promotion"):
+                automatic_refresh(
+                    controller,
+                    slots,
+                    forbidden_publication,
+                    release_key="fixture-boundary",
+                    release_sha256="e" * 64,
+                )
+            assert controller.route()[0] == changed
     finally:
         server.shutdown()
         server.server_close()
