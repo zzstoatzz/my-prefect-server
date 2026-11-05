@@ -273,9 +273,7 @@ def tantivy_workspace(generation: Path) -> Path:
     persist_result=True,
     cache_policy=STAGE_CACHE,
 )
-def publish_tantivy_generation(
-    repo: Path, generation: Path, config: Path | None = None
-) -> Path:
+def publish_tantivy_generation(repo: Path, generation: Path, config: Path | None = None) -> Path:
     from mps.typeahead_tantivy import durable_receipt
 
     tantivy_workspace(generation)
@@ -398,9 +396,7 @@ def typeahead_index(
             def publish():
                 nonlocal publication
                 publication = prepare_checkpoint_generation(repo, storage)
-                publish_tantivy_generation.with_options(result_storage=storage)(
-                    repo, publication
-                )
+                publish_tantivy_generation.with_options(result_storage=storage)(repo, publication)
                 return json.loads((publication / "manifest.json").read_bytes())["active_build"]
 
             slots = Slots(service, INDEXER_HOME / "tantivy-slot-journals")
