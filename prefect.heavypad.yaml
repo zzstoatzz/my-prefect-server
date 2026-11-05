@@ -862,7 +862,8 @@ deployments:
           PREFECT_UI_URL: https://prefect-server.waow.tech
     concurrency_limit: *id001
     schedules:
-    - cron: 40 */2 * * *
+    - cron: 40 6 * * *
+      timezone: UTC
       active: true
 
   # Remaining cohorts: clocks inactive until qualification and caller handoff.
