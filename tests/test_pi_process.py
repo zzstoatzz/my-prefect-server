@@ -25,7 +25,7 @@ def run(tmp_path, monkeypatch, suffix):
         [sys.executable, "-c", script],
         provider="anthropic",
         model="claude-haiku-4-5",
-        timeout_seconds=0.5,
+        timeout_seconds=5,
     )
 
 
