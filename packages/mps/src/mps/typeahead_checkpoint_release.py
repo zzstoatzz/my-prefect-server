@@ -22,6 +22,8 @@ from mps.typeahead_checkpoint_pilot import BINARY_SHA, measure_sample
 from mps.typeahead_checkpoint_stream import file_witness
 from mps.typeahead_tantivy import TantivyAdapter, durable_receipt, fetch_cloud_binary
 
+IMPORT_BINARY_SHA = "f1e6e3a2af99a5c6fe141eb88ce680bfb870e40b7a6ed6ce4fc49ab9727dd00a"
+
 
 def fetch_pds_fallback(destination, sha256):
     import re
@@ -235,6 +237,9 @@ def import_cloud_checkpoint(repository, exported, *, timeout_seconds=5400):
         expected_file_witness=file_witness(root / "source.db"),
         build_id=build,
         environment=dict(os.environ),
+        import_binary=fetch_cloud_binary(
+            root / "code/typeahead-tantivy-import", IMPORT_BINARY_SHA, root / "code"
+        ),
         timeout=remaining,
         pds_fallback_path=None
         if exported["pds_fallback_path"] is None

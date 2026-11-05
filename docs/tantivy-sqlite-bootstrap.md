@@ -45,6 +45,14 @@ footer recovery. The pinned reader still performs all runtime/source handoff
 checks, and the release freezes with that reader. Both executable hashes are
 recorded in the build result. This permits an offline import optimization without
 changing the serving binary; the default remains one executable for both roles.
+The cloud release selects importer `f1e6e3a2…` (libc-backed normalization arenas)
+and retains serving reader `ef2be085…`. Import worker count, memory, commit batch
+and final segment defaults remain unchanged. The actual production reader passed
+a new-import compatibility check; the full cloud build also checks source handoff
+with that reader before freezing. See Typeahead's
+[performance evaluation](https://tangled.org/zzstoatzz.io/typeahead/tree/main/docs/evals/refresh-performance-20261105)
+for source/binary identities and measured scope. This source selection becomes
+live only when the corresponding publisher revision is registered.
 
 The reader retains the bootstrap receipt in its public source metadata. Only
 moderation policy hash/counts are included; the rule arrays stay private. Fixture
