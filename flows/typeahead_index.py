@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING
 from prefect import flow, get_run_logger, task
 from prefect.cache_policies import RUN_ID, TASK_SOURCE
 from prefect.exceptions import MissingContextError
+from prefect.states import Completed
 from prefect.utilities.asyncutils import run_coro_as_sync
 
 if TYPE_CHECKING:
@@ -372,7 +373,8 @@ def typeahead_index(
         from mps.typeahead_tantivy_slots import run_slot_operation
 
         with pinned_typeahead():
-            return run_slot_operation(tantivy_operation, get_run_logger())
+            report = run_slot_operation(tantivy_operation, get_run_logger())
+            return Completed(name="SlotOperationCompleted", data=report)
     if resume_rollout and not automatic_refresh:
         raise ValueError("Rollout recovery requires automatic refresh")
     if not automatic_refresh:
@@ -381,7 +383,7 @@ def typeahead_index(
             prepared = prepare_checkpoint_generation(repo, storage)
             publish_tantivy_generation.with_options(result_storage=storage)(repo, prepared)
             retire_tantivy_generation(prepared)
-        return None
+        return Completed(name="GenerationPublished")
     from mps.typeahead_refresh import Refresh, prune_snapshot_artifacts
     from mps.typeahead_tantivy_automatic import refresh, settings
     from mps.typeahead_tantivy_slots import Slots
@@ -413,6 +415,8 @@ def typeahead_index(
             if publication is not None:
                 retire_tantivy_generation(publication)
             prune_snapshot_artifacts()
+            if publication is None:
+                return Completed(name="RolloutResumed", data=report)
             return report
     finally:
         service.close()

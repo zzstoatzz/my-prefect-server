@@ -119,3 +119,16 @@ pending generations and is fenced while a mutation lease exists or a routed
 generation lacks its publication. It never deletes anything under
 `releases/search/`, so the anchor manifests the slot image fetches remain. Older
 native objects in that prefix are no longer managed by the controller.
+
+## Full-refresh success signal
+
+Pending publisher rollout (November 5, 2026): the missed-refresh automation
+expects `prefect.flow-run.Completed` for this deployment. Only a normal automatic
+refresh that builds, publishes, promotes and completes cleanup uses that default
+success state. Manual slot operations finish as `SlotOperationCompleted`,
+publication-only runs as `GenerationPublished`, and recovery of an existing
+rollout as `RolloutResumed`. All retain Prefect's `COMPLETED` state type and their
+original result, so callers must check the state type rather than its name.
+Those operations do not reset the full-refresh retry clock. A failed operation
+still fails normally. The registered publisher remains on its earlier immutable
+pin until the compatible slot runtime is qualified and live.

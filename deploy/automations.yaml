@@ -454,9 +454,9 @@ automations:
       run at 06:00 and 18:00 UTC, so one missed run leaves no margin. On
       2026-11-02 the 06:00 run crashed and its generic failure line went
       unnoticed until search was stale twelve hours later. When no
-      typeahead-index run completes for 13 hours this retries the automatic
-      refresh at once and says what is at stake. The deployment's concurrency
-      limit cancels the retry if a run is already active.
+      full automatic typeahead-index refresh completes for 13 hours this retries
+      the automatic refresh at once and says what is at stake. The deployment's
+      concurrency limit cancels the retry if a run is already active.
     enabled: true
     trigger:
       type: event
@@ -475,8 +475,8 @@ automations:
         block: discord-alerts
         subject: "typeahead refresh missed: retry started"
         body: >-
-          No typeahead-index run has completed in 13 hours. The serving Tantivy
-          slot reports stale 24 hours after its checkpoint. A retry of the
+          No full automatic typeahead-index refresh has completed in 13 hours.
+          The serving Tantivy slot reports stale 24 hours after its checkpoint. A retry of the
           automatic refresh has started; if it fails too, act now:
           https://prefect-server.waow.tech/deployments and
           https://typeahead.waow.tech/health/freshness
