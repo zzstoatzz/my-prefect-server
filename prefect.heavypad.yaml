@@ -941,9 +941,9 @@ deployments:
         location: hel1
         timeout_seconds: 14400
         working_dir: /var/lib/typeahead-indexer
-        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git@0a36b8bfe2299a29e87f54c51ed420d341f7a007' --with prefect==3.8.2 prefect flow-run execute
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git@4f1b9b73d23f452c060ad7e056d6b0b14d084ee7' --with prefect==3.8.2 prefect flow-run execute
         env:
-          MPS_PIN: '@0a36b8bfe2299a29e87f54c51ed420d341f7a007'
+          MPS_PIN: '@4f1b9b73d23f452c060ad7e056d6b0b14d084ee7'
           PREFECT_PLUGINS_ENABLED: 'true'
           PREFECT_PLUGINS_ALLOW: mps-secrets
           TURSO_URL: prefect-block://typeahead-turso-url

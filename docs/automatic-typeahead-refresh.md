@@ -93,7 +93,9 @@ already-promoted automatic operation whose immutable publication owner is this
 same execution can reuse the completed promotion. The existing plan, release,
 route/ETag, qualification and public canary checks still run. A different execution
 still starts a fresh full refresh; changed routing still fences transaction
-recovery. This guard is tested locally but not registered yet.
+recovery. The deployment definition stages `4f1b9b7` for this guard. It passed 93 local
+and isolated Linux controller checks without skips. Main CI remains required
+before registration. The live publisher remains `0a36b8b` until then.
 
 ## Publication
 
