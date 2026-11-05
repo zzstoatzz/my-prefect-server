@@ -941,9 +941,9 @@ deployments:
         location: hel1
         timeout_seconds: 14400
         working_dir: /var/lib/typeahead-indexer
-        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git@52fe3e7e48c5c91fc83bddeade664813658bcd8c' --with prefect==3.8.2 prefect flow-run execute
+        command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git@0a36b8bfe2299a29e87f54c51ed420d341f7a007' --with prefect==3.8.2 prefect flow-run execute
         env:
-          MPS_PIN: '@52fe3e7e48c5c91fc83bddeade664813658bcd8c'
+          MPS_PIN: '@0a36b8bfe2299a29e87f54c51ed420d341f7a007'
           PREFECT_PLUGINS_ENABLED: 'true'
           PREFECT_PLUGINS_ALLOW: mps-secrets
           TURSO_URL: prefect-block://typeahead-turso-url
@@ -957,13 +957,13 @@ deployments:
           INDEX_MIN_REMAIN_GIB: '8'
           FLY_TANTIVY_A_TOKEN: 'prefect-block://typeahead-tantivy-a-fly-deploy-token'
           FLY_TANTIVY_B_TOKEN: 'prefect-block://typeahead-tantivy-b-fly-deploy-token'
-          INDEX_TANTIVY_ADAPTER_SHA256: 'edc215b276b9ffa18ce64b81024463da6eb7577643604c413ea2dd6258ec18b4'
-          INDEX_TANTIVY_SOURCE_REVISION: 'c476fc591e191a755d0d4837eb4f230932f8ceff'
+          INDEX_TANTIVY_ADAPTER_SHA256: 'cf893cb984e97453a1807e1de2d52d096664525636829884d734f42ab191f26b'
+          INDEX_TANTIVY_SOURCE_REVISION: '7d732639d4d63b1fe0abaeb4b6f07224640d1189'
           INDEX_PDS_FALLBACK_SHA256: '1b1fa39e7b5d8f5224fafb08b23cb3a8e277da680f39ff6899280283ffd65e47'
           TA_RETRIEVAL_STRATEGY: 'global-merge'
           INDEX_TANTIVY_BINARY_SHA256: 'ef2be085f7ad7b2bf4ea1f0e4976ee07e37b4041a95b5f34c31c562399f17a4d'
-          INDEX_TANTIVY_RELEASE_RECEIPT_KEY: 'control/tantivy-releases/2cb383df761467c5d7afcb374e9baa01e040faf35170d78b518ac655d3e6b4ba.json'
-          INDEX_TANTIVY_RELEASE_RECEIPT_SHA256: '2cb383df761467c5d7afcb374e9baa01e040faf35170d78b518ac655d3e6b4ba'
+          INDEX_TANTIVY_RELEASE_RECEIPT_KEY: 'control/tantivy-releases/7a89f411cbc09bd791fe4241238154acf2df1ddce3c1eca3f7ddd6239871c759.json'
+          INDEX_TANTIVY_RELEASE_RECEIPT_SHA256: '7a89f411cbc09bd791fe4241238154acf2df1ddce3c1eca3f7ddd6239871c759'
           INDEXER_VERSION: hetzner-cloud
           RCLONE_BWLIMIT: 80M
           RCLONE_S3_NO_HEAD: 'true'

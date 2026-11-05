@@ -58,6 +58,16 @@ coverage; the next scheduled full refresh remains necessary.
 
 ### Pending lifecycle transition
 
+The staged deployment definition pins publisher `0a36b8b`, Typeahead `7d73263`,
+installer `cf893cb` and release proof `7a89f411`. The qualified runtime is
+`registry.fly.io/typeahead-tantivy-a@sha256:d13dee4839c3e56ac1f6dd4f0d14cb4514186221b0f5a6d3037cfb92f090473d`.
+This definition is not registered yet: guarded candidate promotion and the
+configuration commit’s main CI must pass first. Both existing slots and the
+06:00/18:00 schedule remain unchanged while that promotion is pending. The
+[qualification evidence](https://tangled.org/zzstoatzz.io/typeahead/tree/main/docs/ops/lifecycle-cleanup-20261105/)
+records matched full-data results and all 93 cloud owner/controller checks with
+zero skips.
+
 Before another slot operation, qualify the server's in-process retry ownership
 fix with the manual `mps.hcloud_retry_probe:cloud_builder_retry_probe` flow on
 `typeahead-ephemeral`. It intentionally fails once, waits 90 seconds, and requires
