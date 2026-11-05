@@ -56,6 +56,22 @@ must match that image after cutover. The publisher's source, binary, mapping,
 Reusing the current artifact for this image release does not renew checkpoint
 coverage; the next scheduled full refresh remains necessary.
 
+### Pending lifecycle transition
+
+The controller source removes legacy native-manifest provenance and can replace
+a reachable slot whose checkpoint coverage has expired. Those changes are not
+registered in production: the deployment retains its immutable staged-publisher
+pin and compatible installer until the new runtime passes release qualification.
+The staged export/import/freeze tasks and persisted retry results are preserved;
+freezing now returns only the publication path, without a native-anchor directory.
+
+The combined runtime and checkpoint helpers passed 36 real-I/O fixture tests on
+disposable cloud compute, including restart past coverage expiry while stale
+admission remains rejected. That does not establish full-data performance or a
+completed refresh. Follow the [qualification record](https://tangled.org/zzstoatzz.io/typeahead/tree/main/docs/ops/lifecycle-cleanup-20261105)
+before changing pins. Update the publication and retention sections below when
+the provenance-free runtime and publisher are both verified live.
+
 ## Publication
 
 Publication runs as separate Prefect tasks. `export_checkpoint` takes one Turso
