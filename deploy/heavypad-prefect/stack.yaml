@@ -149,7 +149,7 @@ spec:
             limits: {cpu: 200m, memory: 64Mi}
       containers:
         - name: api
-          image: atcr.io/zzstoatzz.io/prefect-server@sha256:d5a3f616984023607efc2967b634a1d3465cf7a3afcb9d1e888061d2fb382566
+          image: atcr.io/zzstoatzz.io/prefect-server@sha256:3b6be98ec8e48ea462a0fe9d967d2d9a1a56e30229851ca9851529f34d59196d
           envFrom: [{configMapRef: {name: server-env}}]
           env:
             - {name: PREFECT_SERVER_UI_STATIC_DIRECTORY, value: /ui-bundle}

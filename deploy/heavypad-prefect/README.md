@@ -23,6 +23,13 @@ never commit rendered credentials or dump Kubernetes Secret objects. Persistent
 volumes are under `~/.local/share/prefect-home/storage`. Do not delete the cluster
 or its storage as an ordinary rollout operation.
 
+API and services image pins can change independently. For an API-only fix,
+apply only the API Deployment from `stack.yaml` through
+`just kubectl -n prefect-home apply -f -`;
+verify its diff and rollout without restarting services. The
+[retry-ownership rollout](../../docs/audits/2026-11-05-in-process-retry-rollout.md)
+records the current qualification and readback.
+
 The initial pilot has expanded through the approved 21-deployment scoped migration
 in batches 1, 2, 4, 5 and 8; see the [completion and rollback receipt](../../docs/migrations/2026-10-26-scoped-migration.md).
 Verify real execution, persistent state, backup/restore and authenticated remote
