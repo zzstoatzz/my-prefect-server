@@ -46,58 +46,42 @@ byte limits. Managed inactive-slot installation and cached restart passed;
 guarded promotion and observation of the first hourly boundary are tracked in the
 [Typeahead release record](https://tangled.org/zzstoatzz.io/typeahead/tree/main/docs/ops/poller-readiness-20261104).
 
-The configured release proof is
-`control/tantivy-releases/2cb383df761467c5d7afcb374e9baa01e040faf35170d78b518ac655d3e6b4ba.json`,
-bound to image
-`registry.fly.io/typeahead-tantivy-b@sha256:bc66ce9eec3aca5d568135e6d0637f2e2be6e0c305095fc29e4fd50c15d0d34d`.
-Automatic continuation inherits its image from the serving admission; this proof
-must match that image after cutover. The publisher's source, binary, mapping,
-06:00/18:00 UTC schedule and automatic-refresh parameters are unchanged.
-Reusing the current artifact for this image release does not renew checkpoint
-coverage; the next scheduled full refresh remains necessary.
+## Lifecycle release
 
-### Pending lifecycle transition
-
-The staged deployment definition pins publisher `0a36b8b`, Typeahead `7d73263`,
-installer `cf893cb` and release proof `7a89f411`. The qualified runtime is
+Registered November 5, 2026 at 11:10 UTC: publisher `0a36b8b`, Typeahead
+`7d73263`, installer `cf893cb`, and release proof
+`control/tantivy-releases/7a89f411cbc09bd791fe4241238154acf2df1ddce3c1eca3f7ddd6239871c759.json`.
+The proof binds image
 `registry.fly.io/typeahead-tantivy-a@sha256:d13dee4839c3e56ac1f6dd4f0d14cb4514186221b0f5a6d3037cfb92f090473d`.
-This definition is not registered yet: guarded candidate promotion and the
-configuration commit’s main CI must pass first. Both existing slots and the
-06:00/18:00 schedule remain unchanged while that promotion is pending. The
-[qualification evidence](https://tangled.org/zzstoatzz.io/typeahead/tree/main/docs/ops/lifecycle-cleanup-20261105/)
-records matched full-data results and all 93 cloud owner/controller checks with
-zero skips.
+Automatic continuation inherits that image from the serving admission. The
+[registration readback](audits/2026-11-05-typeahead-lifecycle-registration.json)
+verifies exact pins and unchanged schedule, parameters and concurrency. The
+[qualification and cutover](https://tangled.org/zzstoatzz.io/typeahead/tree/main/docs/ops/lifecycle-cleanup-20261105/)
+records all six release gates, matched full-data comparison, 93 cloud checks
+without skips, public aliases/PDS scope and canonical ranking.
 
-Before another slot operation, qualify the server's in-process retry ownership
-fix with the manual `mps.hcloud_retry_probe:cloud_builder_retry_probe` flow on
-`typeahead-ephemeral`. It intentionally fails once, waits 90 seconds, and requires
-the second attempt to use the original PID and hostname. Use a temporary,
-unscheduled deployment with concurrency one, a 15-minute infrastructure bound,
-and no database, bucket or Fly credentials. Verify one VM submission and resource
-cleanup in the worker's observations, then remove the temporary deployment.
-This probe is qualification tooling; it has no registered schedule.
+B serves the new runtime. It reports checkpoint coverage staleness without
+stopping a healthy reader, still rejects stale admission, and sends source
+stdout/stderr to Fly logs instead of accumulating a volume log. The previous A
+rollback retains its older expiry/provenance behavior. This runtime cutover reused
+the existing checkpoint and did not renew coverage. A normal 18:00 scheduled full
+refresh and obsolete-object consumer audit remain required before completion.
 
-The controller source removes legacy native-manifest provenance and can replace
-a reachable slot whose checkpoint coverage has expired. Those changes are not
-registered in production: the deployment retains its immutable staged-publisher
-pin and compatible installer until the new runtime passes release qualification.
-The staged export/import/freeze tasks and persisted retry results are preserved;
-freezing now returns only the publication path, without a native-anchor directory.
+The live Prefect API also excludes `retry_type=in_process` from worker polling.
+A bounded cloud retry used the same VM and PID across its 90-second delay; both
+polling paths excluded it. See the [API rollout audit](audits/2026-11-05-in-process-retry-rollout.md).
+Deployment concurrency remains one with `CANCEL_NEW`; production timeouts and the
+worker were unchanged.
 
-Pending automatic journals also retain `publication_execution_id` separately
-from the current lease holder. A retry of the flow that published the generation
-still finishes as ordinary `Completed`; a separate recovery run, or an older
-journal without that publication owner, finishes as `RolloutResumed`. Explicit
-slot operations and publication-only runs use `SlotOperationCompleted` and
-`GenerationPublished`. Only full-refresh completion resets the existing
-13-hour missed-refresh clock. These producer changes are not registered yet.
-
-The combined runtime and checkpoint helpers passed 36 real-I/O fixture tests on
-disposable cloud compute, including restart past coverage expiry while stale
-admission remains rejected. That does not establish full-data performance or a
-completed refresh. Follow the [qualification record](https://tangled.org/zzstoatzz.io/typeahead/tree/main/docs/ops/lifecycle-cleanup-20261105)
-before changing pins. Update the publication and retention sections below when
-the provenance-free runtime and publisher are both verified live.
+Automatic journals retain `publication_execution_id` separately from the current
+lease holder. A retry of the flow that published the generation finishes as
+ordinary `Completed`; a separate recovery, or an older journal without that
+publication owner, finishes as `RolloutResumed`. Explicit slot operations and
+publication-only runs use `SlotOperationCompleted` and `GenerationPublished`.
+Only full-refresh completion resets the existing 13-hour missed-refresh clock.
+These distinctions passed real Prefect-engine cloud tests; actual manual
+prepare and promote emitted the named event. The normal scheduled full-refresh
+event still needs verification.
 
 ## Publication
 
@@ -116,11 +100,10 @@ it holds no value the secret store does not. Typeahead's
 last. It changes no pointer. Only after readback are the local index and tar
 retired.
 
-The fixed slot image refuses a checkpoint artifact unless it carries a
-`rollback_native_anchor` whose manifest bytes it can fetch from
-`releases/search/<anchor build>/manifest.json`. Each build copies that anchor from
-the serving Tantivy artifact's manifest in R2, and the pinned installer checks the
-bytes against the recorded SHA256. No native backend is read.
+New publication and installation do not require native-manifest provenance.
+The retained older A rollback still validates its existing anchor in
+`releases/search/`; keep those objects until a verified full refresh replaces
+that consumer and the retirement audit permits deletion.
 
 ## Rollout and recovery
 
@@ -144,12 +127,12 @@ After a confirmed promotion and public verification, cleanup deletes unrouted
 generations under `releases/search-tantivy/`. It keeps the current, previous and
 pending generations and is fenced while a mutation lease exists or a routed
 generation lacks its publication. It never deletes anything under
-`releases/search/`, so the anchor manifests the slot image fetches remain. Older
-native objects in that prefix are no longer managed by the controller.
+`releases/search/`, so legacy objects remain until a separate consumer audit retires them. This
+controller never treats that prefix as Tantivy retention.
 
 ## Full-refresh success signal
 
-Pending publisher rollout (November 5, 2026): the missed-refresh automation
+Registered publisher (November 5, 2026): the missed-refresh automation
 expects `prefect.flow-run.Completed` for this deployment. Only a normal automatic
 refresh that builds, publishes, promotes and completes cleanup uses that default
 success state. Manual slot operations finish as `SlotOperationCompleted`,
@@ -157,5 +140,5 @@ publication-only runs as `GenerationPublished`, and recovery of an existing
 rollout as `RolloutResumed`. All retain Prefect's `COMPLETED` state type and their
 original result, so callers must check the state type rather than its name.
 Those operations do not reset the full-refresh retry clock. A failed operation
-still fails normally. The registered publisher remains on its earlier immutable
-pin until the compatible slot runtime is qualified and live.
+still fails normally. The normal scheduled full-refresh event remains an outstanding production
+verification; manual operation events have been verified live.
