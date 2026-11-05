@@ -163,6 +163,7 @@ def build_checkpoint(
     pds_fallback_path=None,
     pds_fallback_sha256=None,
     resume_import_from=None,
+    import_binary=None,
 ):
     started = time.monotonic()
     started_at = int(time.time())
@@ -173,9 +174,10 @@ def build_checkpoint(
     if type(allow_fixture) is not bool:
         raise ValueError("Explicit fixture policy required")
     repository, workspace, binary, database = map(Path, (repository, workspace, binary, database))
+    import_binary = binary if import_binary is None else Path(import_binary)
     if not workspace.is_absolute() or workspace.resolve() != workspace or workspace.exists():
         raise ValueError("New canonical checkpoint workspace required")
-    if not binary.is_file() or not repository.is_dir():
+    if not binary.is_file() or not import_binary.is_file() or not repository.is_dir():
         raise ValueError("Pinned source and prebuilt D1 binary required")
     sync = module("_mps_checkpoint_build_sync", repository / "services/tantivy-input/sync.py")
     current = module(
@@ -264,7 +266,7 @@ def build_checkpoint(
             with (workspace / "import.log").open("xb") as importer_log:
                 importer = subprocess.Popen(
                     [
-                        str(binary),
+                        str(import_binary),
                         "resume-import",
                         "--data",
                         str(data),
@@ -293,7 +295,7 @@ def build_checkpoint(
             ):
                 importer = subprocess.Popen(
                     [
-                        str(binary),
+                        str(import_binary),
                         "import",
                         "--data",
                         str(data),
@@ -637,6 +639,10 @@ def build_checkpoint(
                     "Checkpoint reader is not independently ready under distinct coverage"
                 )
             accounting = source.accounting()
+        with import_binary.open("rb") as binary_file:
+            import_binary_sha256 = hashlib.file_digest(binary_file, "sha256").hexdigest()
+        with binary.open("rb") as binary_file:
+            reader_binary_sha256 = hashlib.file_digest(binary_file, "sha256").hexdigest()
         return {
             "schema_version": 1,
             "kind": "sqlite-checkpoint-build",
@@ -651,6 +657,8 @@ def build_checkpoint(
             "completed_remote_cycles": cycles,
             "pages": pages,
             "consumer_verified": True,
+            "import_binary_sha256": import_binary_sha256,
+            "reader_binary_sha256": reader_binary_sha256,
             "live_handoff_verified": True,
             "provider_qualified": False,
             "wall_seconds": time.monotonic() - started,

@@ -154,7 +154,14 @@ class Tests(unittest.TestCase):
             wrapper.chmod(0o700)
             previous = self.root / "interrupted"
             with self.assertRaises(ValueError):
-                build_checkpoint(self.repository, previous, wrapper, database, **options)
+                build_checkpoint(
+                    self.repository,
+                    previous,
+                    self.binary,
+                    database,
+                    import_binary=wrapper,
+                    **options,
+                )
             self.assertTrue((previous / "stream-receipt.json").is_file())
             result = build_checkpoint(
                 self.repository,
@@ -162,11 +169,18 @@ class Tests(unittest.TestCase):
                 self.binary,
                 database,
                 resume_import_from=previous,
+                import_binary=wrapper,
                 **options,
             )
             self.assertTrue(result["consumer_verified"] and result["live_handoff_verified"])
             self.assertFalse((previous / "data").exists())
             self.assertEqual(result["stream"]["input_documents"], 33)
+            self.assertEqual(
+                result["import_binary_sha256"], hashlib.sha256(wrapper.read_bytes()).hexdigest()
+            )
+            self.assertEqual(
+                result["reader_binary_sha256"], hashlib.sha256(self.binary.read_bytes()).hexdigest()
+            )
 
     def test_real_pipe_import_cas_policy_handoff_without_second_identity_walk(self):
         with checkpoint_source(self.root, self.repository) as (source, database, options):

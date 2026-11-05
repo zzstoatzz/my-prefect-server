@@ -1,11 +1,12 @@
 # Tantivy checkpoint publication
 
 The Tantivy branch of `typeahead-index` uses one full SQLite checkpoint, followed
-by a canonical stream into the pinned reader and a genuine live-source catch-up.
+by a canonical stream into a pinned importer and a genuine live-source catch-up.
 It does not build a fresh native prefix index or run a second full source walk.
-The existing native publication is an independent rollback anchor. Native
-publication behavior is unchanged. Production serves Tantivy; the archive PDS
-join below is a separate candidate and has not been cut over.
+Production serves Tantivy with the archive PDS join. The managed A/B controller
+owns refresh and rollback; see [automatic refresh](automatic-typeahead-refresh.md).
+Retained older rollback instances can still require their legacy manifests until
+they are replaced; that is not a dependency of new checkpoint publications.
 
 ## Acquisition and import
 
@@ -35,9 +36,15 @@ there is no full JSONL staging file. Actor reads use a sequential table scan and
 a file-backed binary-DID sort to avoid scattered table reads through the DID
 index. The producer reserves twice the database size plus 64 MiB for sorting,
 using temporary files in its owned workspace and SQLite’s 64-MiB soft heap limit
-(which is not a hard process RSS cap). The reader validates
+(which is not a hard process RSS cap). The importer validates
 the footer hash and full input count. Raw rows, imported documents, live/deleted
 documents and the retained native count remain distinct.
+
+`build_checkpoint` can use a separate `import_binary` for import and verified-
+footer recovery. The pinned reader still performs all runtime/source handoff
+checks, and the release freezes with that reader. Both executable hashes are
+recorded in the build result. This permits an offline import optimization without
+changing the serving binary; the default remains one executable for both roles.
 
 The reader retains the bootstrap receipt in its public source metadata. Only
 moderation policy hash/counts are included; the rule arrays stay private. Fixture
