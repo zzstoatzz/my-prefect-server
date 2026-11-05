@@ -43,8 +43,10 @@ uses libc-backed normalization arenas instead of allocating OS pages per call.
 The production reader performs the full-build source handoff and freezing checks;
 the release records both executable hashes. Worker count, memory, commit batches
 and final segment count retain their existing defaults. The matching source
-selection is staged in `prefect.heavypad.yaml`; registration must be read back
-before claiming it is active.
+selection is declared in `prefect.heavypad.yaml`. It was registered November 5,
+2026 at 17:54 UTC; the [readback](audits/2026-11-05-typeahead-fast-importer-registration.json)
+confirms source pins, one-run concurrency and the unchanged 06:00/18:00 schedule.
+Full production timing remains pending the next scheduled build.
 
 The controlled million-actor comparison measured 129.25 seconds for both baseline
 runs and 52.73 seconds for the allocator change, with identical search results and

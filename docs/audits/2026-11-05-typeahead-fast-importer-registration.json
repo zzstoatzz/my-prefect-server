@@ -1,0 +1,27 @@
+{
+  "verified_at": "2026-11-05T17:54:10.213237+00:00",
+  "deployment_id": "a0c0ce9c-5bab-4bdc-8512-39984c322a74",
+  "publisher_revision": "26fae38154907881e5b25133e86c168a1c0c38e1",
+  "offline_importer_sha256": "f1e6e3a2af99a5c6fe141eb88ce680bfb870e40b7a6ed6ce4fc49ab9727dd00a",
+  "reader_sha256": "ef2be085f7ad7b2bf4ea1f0e4976ee07e37b4041a95b5f34c31c562399f17a4d",
+  "producer_revision": "7d732639d4d63b1fe0abaeb4b6f07224640d1189",
+  "release_proof": "7a89f411cbc09bd791fe4241238154acf2df1ddce3c1eca3f7ddd6239871c759",
+  "schedules": [
+    {
+      "active": true,
+      "cron": "0 6,18 * * *",
+      "timezone": "UTC"
+    }
+  ],
+  "concurrency_limit": 1,
+  "collision_strategy": "CANCEL_NEW",
+  "next_run": {
+    "id": "e13a387b-75ed-473b-a48e-01b183919925",
+    "expected_start_time": "2026-11-05T18:00:00+00:00",
+    "state": "Scheduled",
+    "job_overrides": false
+  },
+  "serving_image_changed": false,
+  "routing_changed": false,
+  "full_production_timing_pending": true
+}
