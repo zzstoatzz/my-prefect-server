@@ -48,7 +48,8 @@ guarded promotion and observation of the first hourly boundary are tracked in th
 
 ## Lifecycle release
 
-Registered November 5, 2026 at 11:10 UTC: publisher `0a36b8b`, Typeahead
+Initially registered November 5, 2026 at 11:10 UTC with publisher `0a36b8b`
+and verified again at 15:05 UTC with publisher `4f1b9b7`: Typeahead
 `7d73263`, installer `cf893cb`, and release proof
 `control/tantivy-releases/7a89f411cbc09bd791fe4241238154acf2df1ddce3c1eca3f7ddd6239871c759.json`.
 The proof binds image
@@ -83,7 +84,7 @@ These distinctions passed real Prefect-engine cloud tests; actual manual
 prepare and promote emitted the named event. The normal scheduled full-refresh
 event still needs verification.
 
-### Pending cleanup-retry guard
+### Cleanup retries after promotion
 
 A retry after successful promotion and pending-marker removal previously entered
 publication/preparation again. Stage caching kept export/import work, but the
@@ -93,9 +94,13 @@ already-promoted automatic operation whose immutable publication owner is this
 same execution can reuse the completed promotion. The existing plan, release,
 route/ETag, qualification and public canary checks still run. A different execution
 still starts a fresh full refresh; changed routing still fences transaction
-recovery. The deployment definition stages `4f1b9b7` for this guard. It passed 93 local
-and isolated Linux controller checks without skips. Main CI remains required
-before registration. The live publisher remains `0a36b8b` until then.
+recovery. The guard is registered at `4f1b9b7`, verified 15:05 UTC. All 93 local and
+Linux cloud checks passed without skips, source and configuration main CI passed,
+and commit-by-commit checks passed. The [registration readback](audits/2026-11-05-typeahead-cleanup-retry-registration.json)
+confirms unchanged schedule, parameters, concurrency, Typeahead source, installer
+and runtime release proof. Only the publisher source pin and command changed.
+The normal scheduled 18:00 full refresh remains pending; no extra build or
+production failure was induced for this qualification.
 
 ## Publication
 
