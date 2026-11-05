@@ -1,6 +1,6 @@
 # In-process retry API rollout
 
-Status: prepared, November 5, 2026 at 09:14 UTC. Not yet applied or verified live.
+Status: API deployed and cloud retry verified, November 5, 2026 at 09:23 UTC.
 
 The deployment already limits concurrency to one. Duplicate infrastructure
 executions came from the API offering an existing engine's in-process retry as
@@ -24,12 +24,28 @@ Only `Deployment/api` changes. Services retain
 The existing one-replica rolling strategy permits one surge and zero unavailable
 replicas. The unchanged API manifest produced no live diff before this image edit.
 
-After publishing this configuration on main, apply only the API document through
-the configured cluster target. Verify the image, ready replicas, public version
-and build metrics, then run the manual cloud retry probe from immutable source
-`d7151f104ff1abff01df58eabe6a3d1af92f3694` after its CI passes. It has no schedule
-or corpus credentials. Require one VM/process across its actual 90-second retry,
-completion and verified resource cleanup. Production verification is pending.
+Configuration commit `6814579` was published on both mains before applying only
+the API document. Deployment generation 6 reached one ready replica; services
+kept their prior image and pod. The [public build readback](2026-11-05-in-process-retry/api-live-build.json)
+matches the expected source. All 32 [health samples](2026-11-05-in-process-retry/api-rollout-health.json)
+returned HTTP 200 and `true` across the rollout.
+
+The manual cloud probe used immutable source
+`d7151f104ff1abff01df58eabe6a3d1af92f3694`, whose main CI passed. Run
+`10acbce0-45eb-4d22-96ce-19347f631564` deliberately failed at 09:19:48 and resumed
+at 09:21:19. Its [logs](2026-11-05-in-process-retry/retry-probe-log-evidence.json)
+show PID 12645 and the same `r0` hostname on both attempts. Its
+[state history](2026-11-05-in-process-retry/retry-probe-states.json) ends Completed
+with two attempts. Both time-filtered and unfiltered live
+[worker polls](2026-11-05-in-process-retry/retry-poll-contract.json) excluded the run
+while it was `AwaitingRetry` with the `in_process` marker.
+
+The worker recorded exactly one infrastructure attempt, exit 0 and deletion.
+Independent [provider checks](2026-11-05-in-process-retry/retry-probe-cleanup.json)
+found no VM, primary IP or SSH key. The temporary unscheduled deployment and its
+owned concurrency limit were [removed](2026-11-05-in-process-retry/retry-probe.json).
+No corpus credentials or data were used. This verifies retry ownership, not the
+pending Typeahead runtime release or a new full snapshot refresh.
 
 The root README was reviewed: setup and runtime roles are unchanged; operational
 detail belongs here and beside the stack.

@@ -1,0 +1,50 @@
+{
+  "at": 1793870541.749577,
+  "server_status": 404,
+  "primary_ip_status": 404,
+  "ssh_keys_remaining": 0,
+  "owned_servers_remaining": 0,
+  "attempts": [
+    {
+      "vm": "prefect-build-10acbce045eb4d2296ce19347f631564-r0",
+      "flow_run_id": "10acbce0-45eb-4d22-96ce-19347f631564",
+      "phase": "deleted",
+      "exit_code": 0,
+      "created_at": 1793870235,
+      "updated_at": 1793870512.6808317,
+      "stages": {
+        "create": {
+          "started_at": 1793870234.2873485,
+          "finished_at": 1793870358.846037,
+          "seconds": 124.5586993250763,
+          "outcome": "completed"
+        },
+        "bootstrap": {
+          "started_at": 1793870364.1898894,
+          "finished_at": 1793870369.777957,
+          "seconds": 5.588075938052498,
+          "outcome": "completed"
+        },
+        "service_start": {
+          "started_at": 1793870371.7304227,
+          "finished_at": 1793870374.1641881,
+          "seconds": 2.4337761509232223,
+          "outcome": "completed"
+        },
+        "artifact_delivery": {
+          "started_at": 1793870493.8676405,
+          "finished_at": 1793870493.899003,
+          "seconds": 0.031368056079372764,
+          "outcome": "completed"
+        },
+        "delete": {
+          "started_at": 1793870493.9296346,
+          "finished_at": 1793870512.6802719,
+          "seconds": 18.750647343927994,
+          "outcome": "completed"
+        }
+      }
+    }
+  ],
+  "passed": true
+}
