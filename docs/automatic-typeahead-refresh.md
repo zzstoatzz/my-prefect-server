@@ -35,6 +35,23 @@ app-scoped `FLY_TANTIVY_A_TOKEN` and `FLY_TANTIVY_B_TOKEN` Secret blocks.
 `INDEX_BUILD_ROOT` and `INDEX_MIN_REMAIN_GIB` bound the disk reserve of streamed
 subprocesses.
 
+## Offline import performance
+
+Publisher `26fae38` selects importer `f1e6e3a2…` for bulk import only, while keeping
+reader `ef2be085…`, the qualified Fly image and every admission gate. The importer
+uses libc-backed normalization arenas instead of allocating OS pages per call.
+The production reader performs the full-build source handoff and freezing checks;
+the release records both executable hashes. Worker count, memory, commit batches
+and final segment count retain their existing defaults. The matching source
+selection is staged in `prefect.heavypad.yaml`; registration must be read back
+before claiming it is active.
+
+The controlled million-actor comparison measured 129.25 seconds for both baseline
+runs and 52.73 seconds for the allocator change, with identical search results and
+peak memory. This is an import result, not a measured full production refresh.
+[Evidence and artifact identities](https://tangled.org/zzstoatzz.io/typeahead/tree/main/docs/evals/refresh-performance-20261105)
+also record a compatibility check using the actual production reader.
+
 ## Source poller lifetime
 
 The qualified November 5 continuous-poller image keeps the source process alive
