@@ -125,12 +125,16 @@ existing `8733e319` image by immutable digest. Application API and Kubernetes
 API Docker port mappings bind only to 127.0.0.1. Existing Tailscale mappings on
 443, 8443 and 9443 were verified unchanged. Port 10443 is private Serve, not Funnel.
 
-The original UI tag no longer resolves in the registry. Its cached 14.4 MiB image
-was exported read-only from the old node and imported into the HeavyPad server. The OCI
-archive is retained at `~/.local/share/prefect-home/images/prefect-ui-3c108a1.tar`
-on HeavyPad and copied to the operator Mac's private backup directory. Before
-rebuilding this cluster, import that archive; do not assume the registry tag is
-recoverable. Manifest digest:
+The UI bundle image is `prefect-ui:<commit>`, built by prefect-server's
+`publish-ui-image` workflow from the commit in its `docker/ui.env`. Confirm a new
+tag resolves with HeavyPad's `atcr-creds` before pinning it here.
+
+The original UI tag, `3c108a1`, no longer resolves in the registry (404 again on
+2026-11-06). Its cached 14.4 MiB image was exported read-only from the old node
+and imported into the HeavyPad server. The OCI archive is retained at
+`~/.local/share/prefect-home/images/prefect-ui-3c108a1.tar` on HeavyPad and
+copied to the operator Mac's private backup directory. Rolling the UI back to
+`3c108a1` on a rebuilt cluster requires importing that archive. Manifest digest:
 `sha256:33a07cc4c10caf78af728e484447620c5c80b4d26e5a40b366cc7fc76cad95c3`.
 The server image itself pulled successfully from the registry.
 
