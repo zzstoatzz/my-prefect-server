@@ -1,0 +1,64 @@
+{
+  "server_revision": "8c38aeaa032f3c61f558ab274f17972c0eaf76cd",
+  "configuration_revision": "c5c6b004980c7878abe2eb2948428c06288baaa9",
+  "pipeline": "3mzocgnsrkc22",
+  "ci_status": "success",
+  "publication_status": "success",
+  "image": "atcr.io/zzstoatzz.io/prefect-server@sha256:d4d2d9bfee259344d3c0e37fd0adbf27e81d94343bcbe407606c85477c9c7b9e",
+  "amd64_manifest": "sha256:0e8aa02bd5ea3ebe1bf9ec6dd17e86df44859309f0627846226c2463c71e372d",
+  "before_version": "0.0.31+e0da8de3e355437cc6fcb585fc42c8f76af49a39",
+  "after_version": "0.0.31+8c38aeaa032f3c61f558ab274f17972c0eaf76cd",
+  "application_runtime": "lalinsky/zio",
+  "zio_revision": "7d3a2e398bcca44afdc2e1fabd714b5922a230c0",
+  "deployments": [
+    {
+      "name": "api",
+      "generation": 9,
+      "observedGeneration": 9,
+      "readyReplicas": 1,
+      "updatedReplicas": 1,
+      "images": [
+        "atcr.io/zzstoatzz.io/prefect-server@sha256:d4d2d9bfee259344d3c0e37fd0adbf27e81d94343bcbe407606c85477c9c7b9e"
+      ]
+    },
+    {
+      "name": "services",
+      "generation": 8,
+      "observedGeneration": 8,
+      "readyReplicas": 1,
+      "updatedReplicas": 1,
+      "images": [
+        "atcr.io/zzstoatzz.io/prefect-server@sha256:d4d2d9bfee259344d3c0e37fd0adbf27e81d94343bcbe407606c85477c9c7b9e"
+      ]
+    }
+  ],
+  "before_canary": {
+    "id": "37b78913-32ee-4f33-8850-ffdb5209d9ee",
+    "state_type": "COMPLETED",
+    "state_name": "Completed",
+    "run_count": 1,
+    "start_time": "2026-11-06T21:07:10.149462Z",
+    "end_time": "2026-11-06T21:07:10.216314Z"
+  },
+  "after_canary": {
+    "id": "822b670c-2737-4de7-93bc-22b4ba1776c4",
+    "state_type": "COMPLETED",
+    "state_name": "Completed",
+    "run_count": 1,
+    "start_time": "2026-11-06T21:26:14.036790Z",
+    "end_time": "2026-11-06T21:26:14.136291Z"
+  },
+  "final_manifest_diff_exit_code": 0,
+  "unchanged_datastore_pods": [
+    "postgres-84c4954f55-26f4x",
+    "redis-84789c9ff5-fns2m"
+  ],
+  "pod_restarts": {
+    "api-7459884855-bx4fk": 0,
+    "services-7f4f879778-lmjlq": 0
+  },
+  "previous_images": {
+    "api": "sha256:16f04ddffe1d52af38fe2b2370aebaaf55298cb59f3626b5af6994a122fc006c",
+    "services": "sha256:16f04ddffe1d52af38fe2b2370aebaaf55298cb59f3626b5af6994a122fc006c"
+  }
+}
