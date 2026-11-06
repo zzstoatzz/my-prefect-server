@@ -14,8 +14,8 @@ from mps.costs.connectors.builder import archive_client
 from mps.costs.projects import project_for
 from mps.costs.types import LineItem
 
-PREFIX = "billing/fly-compute/"
-SAMPLE_SECONDS = 60
+PREFIX = "billing/fly-compute/v1/"
+SAMPLE_SECONDS = 15
 MONTH_SECONDS = 30 * 86400
 DIMENSIONS = ("app", "instance", "region", "cpu_kind", "cpu_count", "memory_mb")
 
@@ -118,7 +118,7 @@ def line_items(
             basis="month_to_date",
             usage=f"{len(machines[app])} Machine(s); observed compute since {month_start.date()} UTC",
             note=(
-                "Ad hoc compute this UTC month from retained one-minute Fly metrics, including deleted Machines. "
+                "Ad hoc compute this UTC month from retained 15-second Fly metrics, including deleted Machines. "
                 "Auto-destroy Machines, explicitly marked usage, and apps without continuing Machines; no monthly extrapolation. "
                 "Estimated at list prices; sampling can miss short runs. Excludes storage, network, taxes and credits; not an invoice."
                 + (" Coverage incomplete: " + ", ".join(missing) + "." if missing else "")

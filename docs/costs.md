@@ -113,7 +113,7 @@ such as staging or canary do not determine whether a Machine is temporary.
 The collector queries raw `fly_instance_info` samples for each UTC day of the
 current month within the reliable trailing week. The metric carries the app,
 Machine ID, region, CPU kind/count and memory, even after an app is deleted.
-Each sample represents an estimated minute at the existing regional list price.
+Each sample represents an estimated 15 seconds at the existing regional list price.
 Auto-destroy Machines, explicitly marked Machines, and historical apps without
 continuing Machines publish `:ad-hoc-compute` lines with `basis: month_to_date`.
 Historical Machines of a continuing app stay in its recurring estimate instead.
@@ -121,12 +121,18 @@ The recurring estimate and observed month-to-date usage are different bases;
 they must retain their period labels.
 
 Daily observations are retained immutably in the existing backup bucket under
-`billing/fly-compute/<org>/<UTC-day>/<content-hash>.json`. Repeated observations
+`billing/fly-compute/v1/<org>/<UTC-day>/<content-hash>.json`. Repeated observations
 merge by Machine, region, size and day using the greatest observed runtime,
 not addition. This retains deleted resources and prevents retries or thinning
 metrics history from losing or double-counting spend. Cents are allocated only
 after summing the month, so tiny runs do not all round away. Missing days are
 reported as incomplete coverage; archive or query failures prevent publication.
-The initial backfill can recover only the available metrics window. One-minute
+The initial backfill can recover only the available metrics window. 15-second
 sampling can miss shorter runs. This is estimated compute usage, not an invoice;
 storage, network, discounts, credits and taxes remain outside this usage line.
+
+Fly downsamples queries spanning a week: the same benchmark has 50 raw
+15-second samples in a daily query and 13 minute samples in a week query.
+Usage collection deliberately queries at most one UTC day per request, within
+the last week, before persisting observations. The versioned ledger excludes
+the unversioned qualification records that assumed minute samples.

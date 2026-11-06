@@ -117,12 +117,12 @@ def test_metric_rows_retain_machine_sizes_and_reject_partial_or_invalid_data():
                     "metric": {
                         key: value for key, value in row.items() if key not in {"seconds", "ad_hoc"}
                     },
-                    "value": [NOW.timestamp(), "13"],
+                    "value": [NOW.timestamp(), "50"],
                 }
             ],
         },
     }
-    assert usage_rows(result, 86400)[0]["seconds"] == 780
+    assert usage_rows(result, 86400)[0]["seconds"] == 750
     assert usage_rows(result, 120)[0]["seconds"] == 120
     with pytest.raises(RuntimeError):
         usage_rows({**result, "isPartial": True}, 86400)
