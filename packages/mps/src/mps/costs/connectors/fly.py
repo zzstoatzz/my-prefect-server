@@ -2,10 +2,11 @@
 
 Fly has no stable public per-app billing endpoint, so we inventory machines,
 volumes, and volume snapshots via the Machines API and estimate their monthly
-list-price cost. Compute is each existing machine's list price scaled by its
-measured uptime over the trailing week (Fly Prometheus), so on-demand machines
-cost what they actually run. If Prometheus is unavailable, compute falls back to
-pricing the currently started machines as if they ran all month. Each billing
+list-price cost. Recurring compute uses measured uptime over the trailing week
+(Fly Prometheus). Auto-destroy and explicitly marked temporary Machines instead
+publish retained month-to-date usage, including deleted apps. If uptime metrics
+are unavailable, recurring compute falls back to started-Machine inventory.
+Temporary Machines never enter that fallback. Each billing
 category gets its own line item so storage is attributed to the app that owns
 it. Every line item is flagged estimated=True — treat it as a run-rate, not an
 invoice, and reconcile it against the Fly dashboard. Bandwidth, paid IPs, and
@@ -23,6 +24,7 @@ import os
 
 import httpx
 
+from mps.costs.fly_usage import collect_usage, is_ad_hoc
 from mps.costs.projects import project_for
 from mps.costs.types import LineItem, Period
 
@@ -299,7 +301,7 @@ class FlyConnector:
 
         resources_by_app = await _apps_with_resources(token, org)
         snapshot_cents = _snapshot_monthly_cents_by_app(resources_by_app)
-        now = dt.datetime.now(dt.UTC)
+        now = period.end.astimezone(dt.UTC)
         samples: dict[str, int] | None
         try:
             samples = await _uptime_samples(token, org)
@@ -313,12 +315,12 @@ class FlyConnector:
         items: list[LineItem] = []
         stopped_count = 0
         for app, resources in resources_by_app.items():
-            machines = resources["machines"]
+            machines = [m for m in resources["machines"] if not is_ad_hoc(m)]
             volumes = resources["volumes"]
             snapshots = resources["snapshots"]
             started_machines = [m for m in machines if m.get("state") == "started"]
             stopped = len(machines) - len(started_machines)
-            stopped_count += stopped
+            stopped_count += sum(m.get("state") != "started" for m in resources["machines"])
 
             if samples is None:
                 compute = _snapshot_compute(started_machines, stopped)
@@ -382,4 +384,9 @@ class FlyConnector:
                 f"  fly: {stopped_count} stopped machine rootfs cost(s) UNMEASURED; "
                 "Machines API does not report billable rootfs bytes"
             )
+        usage_items, gaps = await collect_usage(
+            token, org, resources_by_app, now, _machine_monthly_cents
+        )
+        items.extend(usage_items)
+        self.unmeasured.extend(gaps)
         return items

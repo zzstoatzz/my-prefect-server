@@ -78,6 +78,15 @@ def test_connector_splits_compute_volumes_and_snapshots(monkeypatch):
             "typeahead-search": {
                 "machines": [
                     {
+                        "id": "benchmark",
+                        "state": "started",
+                        "region": "ord",
+                        "config": {
+                            "auto_destroy": True,
+                            "guest": {"cpu_kind": "performance", "cpus": 2, "memory_mb": 4096},
+                        },
+                    },
+                    {
                         "state": "started",
                         "region": "ewr",
                         "config": {
@@ -108,6 +117,10 @@ def test_connector_splits_compute_volumes_and_snapshots(monkeypatch):
     async def prometheus_down(_token, _org):
         raise RuntimeError("prometheus unavailable")
 
+    async def no_ad_hoc_usage(*_args):
+        return [], []
+
+    monkeypatch.setattr(fly, "collect_usage", no_ad_hoc_usage)
     monkeypatch.setattr(fly, "_apps_with_resources", fake_resources)
     monkeypatch.setattr(fly, "_uptime_samples", prometheus_down)
     connector = FlyConnector()
@@ -175,6 +188,10 @@ def test_on_demand_machines_are_priced_by_uptime(monkeypatch):
     async def fake_samples(_token, _org):
         return {"worker": WEEK_OF_SAMPLES // 4, "app": WEEK_OF_SAMPLES // 2}
 
+    async def no_ad_hoc_usage(*_args):
+        return [], []
+
+    monkeypatch.setattr(fly, "collect_usage", no_ad_hoc_usage)
     monkeypatch.setattr(fly, "_apps_with_resources", fake_resources)
     monkeypatch.setattr(fly, "_uptime_samples", fake_samples)
     connector = FlyConnector()
