@@ -157,7 +157,9 @@ build, with 11 seconds of lag and no freshness warnings.
 The 02:48 fleet sweep completed but reported Pollz backend/freshness timeouts.
 Both endpoints also timed out directly from the operator Mac; Fly reported the
 separate `pollz-backend` app started with a critical health check. This finding
-is unresolved and is not evidence that HeavyPad itself is unhealthy.
+was unresolved at that check and did not show HeavyPad itself was unhealthy.
+The 13:18 Central fleet sweep later returned HTTP 200 for Pollz backend,
+freshness and frontend, with no unhealthy findings in the complete sweep.
 
 Two failures predate or remain separately fenced from this recovery: the backup
 restore verifier last succeeded October 27 and failed November 2; the isolated
@@ -185,7 +187,7 @@ At 03:18 Central two later CI VMs under `spindle.service` were consuming CPU
 independently of Prefect; CPU temperature rose to about 72 C. The systemd
 `spindle.service` cgroup was frozen, preserving its processes while stopping CPU
 work. Subsequent readings returned to 57–58 C and about 1,700 CPU-fan RPM.
-Spindle/CI remains frozen and cannot serve its normal CI requests until thawed.
+Spindle/CI remained frozen until the explicit midday resume described below.
 
 The final audit found that the API's pool `is_paused=true` flags did **not** stop
 worker dispatch: watcher jobs continued completing after the pauses. Do not rely
@@ -205,17 +207,106 @@ The controller/flow distinction matters: an AwaitingRetry or terminal API state
 alone does not prove a flow process is absent. Preserve active flow lineages and
 allow business work to finish before stopping the worker cgroup.
 
-`prefect-home-registration.timer` was also stopped while CI is frozen, to avoid
+`prefect-home-registration.timer` was also stopped while CI was frozen, to avoid
 repeated requests to the suspended CI service. The ordinary core services and
 cloud builder were left running.
 
-These six pool pauses, six stopped local worker services, registration timer hold
-and CI freeze remain in place pending the operator's decision to resume local jobs. The exact inventory is saved privately on HeavyPad
-at `~/.local/state/mps-recovery/2026-11-06-quiet.json`. Resume CI with
-`systemctl thaw spindle.service` as root when appropriate; do not restart it
-merely to clear the frozen status. They are separate from the durable autofix suspension. Resume only
-these recorded pools when appropriate; do not resume autofix or alter unrelated
-operator pauses. The cloud Typeahead build is not executing on HeavyPad.
+These holds caused the late-run backlog from approximately 04:00 Central onward;
+it was not evidence that WAN connectivity remained unavailable. The consequences
+of keeping workers stopped should have been made explicit at the time. The exact
+inventory is saved privately on HeavyPad at
+`~/.local/state/mps-recovery/2026-11-06-quiet.json`. Its later restoration marker
+records `restored: true` and `current_holds: []`. This temporary hold is separate
+from the durable autofix suspension.
+
+## Explicit midday resume and outcome recovery
+
+At approximately 12:44 Central, the operator requested cancelling the late work,
+restarting workers and backfilling outcomes. Exactly 392 old `Scheduled/Late`
+runs were cancelled in two passes (391 plus one scheduler race). Every mutation
+re-read the full run ID, state type/name and expected start time locally. Future
+scheduled runs, active work and waiting retries were preserved. Cancellation
+retains the history; it does not reconstruct missed observations. The cancellation
+inventory and per-outcome run ledger are retained privately on HeavyPad under
+`~/.local/state/mps-recovery/2026-11-06-resume/` as `cancelled.json` and
+`backfill-runs.json`.
+
+The six recorded worker services and their pools were resumed, Spindle was
+thawed, and the registration timer was restarted. All six pools subsequently
+reported `READY` and unpaused; all six services reported active. Autofix's seven
+automations and two paused deployments were excluded from the resume.
+
+Recovery exposed a second blocker: Redis had reached its 192 MiB `maxmemory`
+with `noeviction`, causing broker errors and HTTP 500 responses while acquiring
+the analytics writer lease. The cap was raised to 384 MiB within the existing
+512 MiB container limit, after publishing the manifest change on both main
+remotes (`ec453c46d468495edbf742e6eb16a9ac810ef4c0`). Synchronous AOF, the existing
+PVC and `noeviction` were preserved; no keys or streams were flushed. A real
+`analytics-duckdb-writer` lease acquired and released successfully. Event replay
+peaked at about 316 MiB, then fell to about 65 MiB after consumers drained it.
+Main registration subsequently registered that exact green revision.
+
+The first ingest and warehouse attempts failed during the Redis exhaustion;
+one idempotently keyed repair of each completed after the fix. Current-output
+publishers and checkpointed collectors were coalesced into fresh runs rather
+than replaying every obsolete schedule:
+
+- [Ingest](https://prefect-server.waow.tech/runs/flow-run/24c34b67-aee3-4d3e-bfcb-01bca8c396b7)
+  and [warehouse](https://prefect-server.waow.tech/runs/flow-run/214dc8f5-b37c-450b-bf34-718be4991a1a)
+  completed. Email classification, Dagster-backed transform, memory synthesis
+  and their brief follow-ups completed through the ordinary dependency chain.
+- Bisk, Bufo traffic, AT Protocol docs, Evergreen, identity, fleet diagnostics
+  and MCP Atlas completed fresh runs. Ordinary watcher schedules resumed.
+  [Leaflet atlas](https://prefect-server.waow.tech/runs/flow-run/6c6ba2af-2ff9-4b60-acb1-733a9f035ca6)
+  rebuilt 102,160 points and deployed successfully at 13:25:42 Central. Public
+  read-back from HeavyPad confirmed that point count and generation timestamp
+  `2026-11-06T18:51:13Z`. Its
+  optional facts refresh exhausted its retry on a Turso read timeout; the flow
+  preserved committed `facts.json` while publishing the rebuilt atlas and its
+  fresh summaries.
+- FastMCP's watcher ran once with a reset watermark to re-examine unread
+  notifications after broker failures; normal thread/update deduplication was
+  retained. One 12-hour brief covered the gap rather than replaying missed briefs.
+- [Email triage](https://prefect-server.waow.tech/runs/flow-run/b8b41e56-b26d-4dd5-a7a6-1dd44bcfb583)
+  delivered its shortlist and entered the expected human-response pause. No
+  operator approval or email action was fabricated to complete that workflow.
+
+Phi's separate Fly machine also became unresponsive: its public health check and
+machine exec timed out, and the first scout/editorial requests failed. The
+existing machine was restarted with the same image and persistent volume,
+following the bot's operational guide. Its health check returned healthy with
+active polling. Each missed pass was retried once. Logfire confirmed the actual
+`chicken scout` span completed at 13:10:37 Central and `editorial` at 13:14:18,
+both without exceptions, including their final summaries. Prefect trigger
+acceptance alone would not prove this, because Phi executes these callbacks in
+the background and catches their exceptions. Tag maintenance completed afterward.
+The [Phi atlas](https://prefect-server.waow.tech/runs/flow-run/b0376781-f11b-4866-a255-9117a46e811e)
+then published 10,853 points to its PDS and archived the JSON at 13:22 Central.
+Its ordinary completion trigger started
+[Docket](https://prefect-server.waow.tech/runs/flow-run/f4449fd0-018b-49c6-abd1-e0a94ea08a08),
+which published six synthesized items and completed its archive at 13:34:56.
+
+Strata's first recovery pass saw 6,252 changed or missing sealed-segment
+summaries and read its default 2,000-segment budget. An ordinary resumed hourly
+run (`b3d27f81-ab5d-4e96-a637-d26115811929`) read another 2,000. The
+[final bounded pass](https://prefect-server.waow.tech/runs/flow-run/af6935fa-d539-4cb9-9e64-3c620fb7fe74)
+used `max_segments=10000` and completed at 13:45:48 Central. Its artifact records
+7,764 sealed segments, 2,252 needed, 2,252 ingested and zero skipped; publication
+updated 268 objects. This closes the backlog seen at that listing without
+replaying old hourly publications or chasing future live changes indefinitely.
+
+Final checks at approximately 13:47 Central found all six pools ready and
+unpaused, all six workers and the registration timer active, no `Late` runs,
+all seven autofix automations disabled and both autofix deployments paused.
+Phi was healthy and polling; Typeahead still served the recovered build with
+healthy freshness while its independent noon cloud refresh proceeded normally.
+Redis AOF writes were healthy and memory was well below the 384 MiB cap.
+
+The cancelled health/backlog samples cannot be recovered as historical
+measurements. Current observations and publications resume on the ordinary
+schedule. The pre-existing backup-verifier failure and chaos-test review latch
+were not reset. Autofix remains disabled until a separately approved design and
+reinstatement.
 
 ## Related context
 

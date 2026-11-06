@@ -119,6 +119,14 @@ in their existing secret stores; wrappers never alter the global profile.
 
 ## Persistence and recovery
 
+Redis has a 384 MiB `maxmemory` cap within a 512 MiB container limit. During
+outage recovery, monitor `INFO memory` and broker/lease errors: `noeviction`
+rejects writes at the cap, which can surface as an analytics lease HTTP 500.
+Preserve synchronous AOF and the PVC; do not flush streams or bypass the writer
+lease to clear the symptom. After correcting capacity or the consumer failure,
+verify a real lease acquire/release and a production deployment run. See the
+[November 6 incident](../../docs/incidents/2026-11-06-home-internet-autofix-cascade.md).
+
 PostgreSQL uses a 20 GiB PVC; Redis uses a 1 GiB PVC with synchronous AOF and
 no eviction. These are isolated from the original node. The server runs the
 existing `8733e319` image by immutable digest. Application API and Kubernetes
