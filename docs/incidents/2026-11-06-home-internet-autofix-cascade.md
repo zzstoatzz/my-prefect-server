@@ -51,6 +51,11 @@ back with `enabled=false`:
 - `autofix revise requested -> autofix-revise`
 
 The `autofix` and `autofix-revise` deployments were paused and read back as paused.
+At the 02:27 Central follow-up, main registration had cleared those live-only
+pauses. Both were paused again, and `paused: true` is now explicit on both
+deployments in `prefect.heavypad.yaml` so registration preserves the suspension.
+All seven autofix automations were still disabled; the check found no active
+autofix runs.
 The source already disabled the failure/review/merge/revision triggers; its three
 remaining autofix notification automations are now also disabled in
 `deploy/automations.yaml`. General flow-failure alerts and fleet alerts remain

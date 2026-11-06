@@ -1034,6 +1034,7 @@ deployments:
       limit: 1
       collision_strategy: ENQUEUE
   - name: autofix
+    paused: true
     pull: *remaining_legacy_pull
     concurrency_limit:
       limit: 1
@@ -1080,6 +1081,7 @@ deployments:
       limit: 1
       collision_strategy: ENQUEUE
   - name: autofix-revise
+    paused: true
     tags:
     - gardener
     - heavypad
