@@ -72,7 +72,11 @@ ignored that deployment filter. The cleanup therefore cancelled 129 unrelated
 scheduled runs, including one Typeahead run waiting to retry. No run selected by
 this cleanup was Running or Pending. This was an operator-tooling error, not an
 ISP effect. Cancellation stamped start/end times on previously unstarted records;
-those history entries must not be interpreted as actual execution.
+those history entries must not be interpreted as actual execution. Although
+Typeahead was Scheduled/AwaitingRetry rather than Running, it still had a live
+in-process retry on its cloud VM. Cancelling that state interrupted its retry;
+restoring the API state alone did not restore the process. This mitigation error
+necessitated the fresh recovery build described below.
 
 Recovery identifies affected records by the exact mitigation message and excludes
 the two autofix deployment IDs. Unstarted runs are restored to Scheduled at their
@@ -117,6 +121,101 @@ The home host remains a shared availability dependency. A local connectivity
 controller cannot make it publicly reachable during an ISP outage. Off-host
 monitoring or moving selected services requires a separate placement decision;
 never activate a second scheduler against the same effects as implicit failover.
+
+## Recovery verification after 02:27 Central
+
+Main revision `8e96f503b70c9138fb9d9ea243d260e42ba72a40` passed CI and registered
+at 02:38:54 Central. Read-back after registration confirmed both autofix
+deployments remained paused, all seven autofix automations remained disabled,
+and no active autofix runs were present in the checked sample.
+
+Prefect API, PostgreSQL, Redis and services pods were Running without new restarts.
+Home services, Dagster, workers and the bandwidth watchdog were active. Fresh
+FastMCP watcher, Stream watcher, Bisk, identity, docs, fleet and diagnostics runs
+completed; the checked 500-run sample had no overdue scheduled runs. The 02:00
+costs run completed with its existing Incomplete coverage status. The 00:40
+pub-search snapshot completed at 01:00, before the network outage.
+
+The old Typeahead run `a097979a-3b8d-4323-b4f1-25f144d0c6bb` was stranded in
+AwaitingRetry after its VM was deleted at 01:29. Its checkpoint freeze had failed
+with `Remote policy is stale, future, or predates the verified checkpoint cut`.
+Restoring its API state during the earlier cleanup did not restore the in-process
+retry. The old attempt was marked Failed, and one idempotent fresh deployment run
+was started with the existing qualified release pins:
+[`66752af0-7ce0-4df2-a3e8-68c43dcb7abd`](https://prefect-server.waow.tech/runs/flow-run/66752af0-7ce0-4df2-a3e8-68c43dcb7abd).
+The new execution is on a disposable cloud VM; it does not transfer the corpus
+through the operator's laptop or hotspot. The fresh checkpoint exported successfully, completed full import/live catch-up,
+and passed checkpoint freeze at 03:11:38 Central. Publication and read-back
+verification completed at 03:22:53. The candidate installed, caught up and passed
+qualification/promotion; the flow finished ordinary `Completed` on its first
+attempt at approximately 03:58:58 Central. Public freshness then served
+`b1793954044-cp-66752af07c`, with 7 seconds of lag, `stale=false`, and
+`refresh_overdue=false`. The worker delivered artifacts and deleted the disposable
+VM successfully at 03:59:19 Central. A later public check still served the new
+build, with 11 seconds of lag and no freshness warnings.
+
+The 02:48 fleet sweep completed but reported Pollz backend/freshness timeouts.
+Both endpoints also timed out directly from the operator Mac; Fly reported the
+separate `pollz-backend` app started with a critical health check. This finding
+is unresolved and is not evidence that HeavyPad itself is unhealthy.
+
+Two failures predate or remain separately fenced from this recovery: the backup
+restore verifier last succeeded October 27 and failed November 2; the isolated
+chaos experiment refuses to restart until its previous failure is reviewed. Neither
+was reset to make the status appear healthy.
+
+## Temporary local workload pause for a noise report
+
+At approximately 03:09 Central, the operator reported a winding-down/fan sound
+and requested safely stopping work. New submissions were paused on these six
+previously unpaused pools: `heavypad-pool`, `heavypad-background-pool`,
+`heavypad-build-pool`, `heavypad-gardener-pool`, `heavypad-interactive-pool`, and
+`heavypad-typeahead-pool`. No active workload was killed. Core services and the
+separate cloud builder were left running. The operator then reported that the
+sound had stopped and there was no unusual smell.
+
+CPU package temperature was about 57 C, SSD temperatures were 36–38 C, and host
+load was low. The CPU fan slowed from about 2,255 to 1,849 RPM. Both NVMe devices
+passed read-only SMART health checks, with zero media/data-integrity errors, zero
+error-log entries and no thermal warnings. Recent kernel logs contained no
+matching storage, hardware or thermal errors. These observations support normal
+fan spin-down but do not remotely identify the sound.
+
+At 03:18 Central two later CI VMs under `spindle.service` were consuming CPU
+independently of Prefect; CPU temperature rose to about 72 C. The systemd
+`spindle.service` cgroup was frozen, preserving its processes while stopping CPU
+work. Subsequent readings returned to 57–58 C and about 1,700 CPU-fan RPM.
+Spindle/CI remains frozen and cannot serve its normal CI requests until thawed.
+
+The final audit found that the API's pool `is_paused=true` flags did **not** stop
+worker dispatch: watcher jobs continued completing after the pauses. Do not rely
+on those flags alone on this deployed server. Worker controller processes were
+stopped from polling, while the already-started transform and memory-synthesis
+runs were allowed to finish. The six local worker services were then stopped
+normally and read back `inactive/dead`:
+
+- `prefect-heavypad-worker.service`
+- `prefect-heavypad-worker@background.service`
+- `prefect-heavypad-worker@build.service`
+- `prefect-heavypad-worker@gardener.service`
+- `prefect-heavypad-worker@interactive.service`
+- `prefect-heavypad-worker@typeahead.service`
+
+The controller/flow distinction matters: an AwaitingRetry or terminal API state
+alone does not prove a flow process is absent. Preserve active flow lineages and
+allow business work to finish before stopping the worker cgroup.
+
+`prefect-home-registration.timer` was also stopped while CI is frozen, to avoid
+repeated requests to the suspended CI service. The ordinary core services and
+cloud builder were left running.
+
+These six pool pauses, six stopped local worker services, registration timer hold
+and CI freeze remain in place pending the operator's decision to resume local jobs. The exact inventory is saved privately on HeavyPad
+at `~/.local/state/mps-recovery/2026-11-06-quiet.json`. Resume CI with
+`systemctl thaw spindle.service` as root when appropriate; do not restart it
+merely to clear the frozen status. They are separate from the durable autofix suspension. Resume only
+these recorded pools when appropriate; do not resume autofix or alter unrelated
+operator pauses. The cloud Typeahead build is not executing on HeavyPad.
 
 ## Related context
 
