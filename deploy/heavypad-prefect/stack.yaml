@@ -86,7 +86,7 @@ spec:
       containers:
         - name: redis
           image: redis@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
-          args: [redis-server, --appendonly, 'yes', --appendfsync, always, --save, '', --maxmemory, 192mb, --maxmemory-policy, noeviction]
+          args: [redis-server, --appendonly, 'yes', --appendfsync, always, --save, '', --maxmemory, 384mb, --maxmemory-policy, noeviction]
           volumeMounts: [{name: data, mountPath: /data}]
           resources:
             requests: {cpu: 50m, memory: 64Mi}
