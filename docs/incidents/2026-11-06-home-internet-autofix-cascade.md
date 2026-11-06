@@ -116,6 +116,5 @@ never activate a second scheduler against the same effects as implicit failover.
 ## Related context
 
 - [Autofix behavior and history](../autofix.md)
-- [Scheduled deployment health audit, November 5](../audits/2026-11-05-scheduled-deployment-health.md)
 - [Home-stack operations](../../deploy/heavypad-prefect/README.md)
 - [Declared automations](../../deploy/automations.yaml)
