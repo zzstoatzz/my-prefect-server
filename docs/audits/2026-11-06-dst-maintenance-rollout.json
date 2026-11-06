@@ -1,0 +1,57 @@
+{
+  "server_revision": "e0da8de3e355437cc6fcb585fc42c8f76af49a39",
+  "configuration_revision": "29e58dfd065956b3037da70c25b3b91eeedeab41",
+  "pipeline": "3mzo34rv4bs22",
+  "ci_status": "success",
+  "publication_status": "success",
+  "image": "atcr.io/zzstoatzz.io/prefect-server@sha256:16f04ddffe1d52af38fe2b2370aebaaf55298cb59f3626b5af6994a122fc006c",
+  "amd64_manifest": "sha256:a36f50714be191838de42478fb2866fdd4999b7998bb34d94d76d811e096fbf0",
+  "before_version": "0.0.31+1f6b5f131708855d1730ef20e725292f35536e0c",
+  "after_version": "0.0.31+e0da8de3e355437cc6fcb585fc42c8f76af49a39",
+  "deployments": [
+    {
+      "name": "api",
+      "generation": 8,
+      "observedGeneration": 8,
+      "readyReplicas": 1,
+      "updatedReplicas": 1,
+      "images": [
+        "atcr.io/zzstoatzz.io/prefect-server@sha256:16f04ddffe1d52af38fe2b2370aebaaf55298cb59f3626b5af6994a122fc006c"
+      ]
+    },
+    {
+      "name": "services",
+      "generation": 7,
+      "observedGeneration": 7,
+      "readyReplicas": 1,
+      "updatedReplicas": 1,
+      "images": [
+        "atcr.io/zzstoatzz.io/prefect-server@sha256:16f04ddffe1d52af38fe2b2370aebaaf55298cb59f3626b5af6994a122fc006c"
+      ]
+    }
+  ],
+  "before_canary": {
+    "id": "ad7e5438-831a-4d62-ae00-9c007f178a1c",
+    "state_type": "COMPLETED",
+    "run_count": 1,
+    "start_time": "2026-11-06T19:04:52.604759Z",
+    "end_time": "2026-11-06T19:04:52.686602Z"
+  },
+  "after_canary": {
+    "id": "0bc3bd0c-4e14-455d-ad4b-7132077d4d00",
+    "state_type": "COMPLETED",
+    "state_name": "Completed",
+    "run_count": 1,
+    "start_time": "2026-11-06T19:13:38.810376Z",
+    "end_time": "2026-11-06T19:13:38.901051Z"
+  },
+  "final_manifest_diff_exit_code": 0,
+  "unchanged_datastore_pods": [
+    "postgres-84c4954f55-26f4x",
+    "redis-84789c9ff5-fns2m"
+  ],
+  "previous_images": {
+    "api": "sha256:3b6be98ec8e48ea462a0fe9d967d2d9a1a56e30229851ca9851529f34d59196d",
+    "services": "sha256:d5a3f616984023607efc2967b634a1d3465cf7a3afcb9d1e888061d2fb382566"
+  }
+}
