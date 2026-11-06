@@ -1,0 +1,20 @@
+{
+  "scope": "Qualified release pins in committed configuration; live promotion and registration are recorded separately in the linked Typeahead release record.",
+  "source": "bcd0e08ac23e023cd175dea055213f4403f4dc6a",
+  "adapter_sha256": "5214936fbff194c2bc38e4cc66fb2dce495fd73cea98611d3f1e467f63e9c021",
+  "publisher": "@26fae38154907881e5b25133e86c168a1c0c38e1",
+  "image": "registry.fly.io/typeahead-tantivy-a@sha256:979785c393e162f1256c709eef0a2f969a85357d427f44a93d0f2f298b551841",
+  "release": {
+    "key": "control/tantivy-releases/8619968fed901ea40a299d7a9a4fc0fda3bb0838b63a2074d66284632a132306.json",
+    "sha256": "8619968fed901ea40a299d7a9a4fc0fda3bb0838b63a2074d66284632a132306",
+    "verified": true
+  },
+  "preparation_run_id": "d91154ed-9605-4c77-b6a4-633f3aa41c45",
+  "changed_fields": [
+    "INDEX_TANTIVY_SOURCE_REVISION",
+    "INDEX_TANTIVY_ADAPTER_SHA256",
+    "INDEX_TANTIVY_RELEASE_RECEIPT_KEY",
+    "INDEX_TANTIVY_RELEASE_RECEIPT_SHA256"
+  ],
+  "schedule_and_concurrency_changed": false
+}

@@ -67,6 +67,22 @@ guarded promotion and observation of the first hourly boundary are tracked in th
 
 ## Lifecycle release
 
+The fast-install configuration qualified November 6 pins Typeahead
+`bcd0e08`, installer `5214936`, and release proof
+`control/tantivy-releases/8619968fed901ea40a299d7a9a4fc0fda3bb0838b63a2074d66284632a132306.json`. Its immutable image is
+`registry.fly.io/typeahead-tantivy-a@sha256:979785c393e162f1256c709eef0a2f969a85357d427f44a93d0f2f298b551841`. The image replaces only the downloader and installer; reader,
+live-source modules, final allocation and admission gates retain their qualified
+identities. Transfers use resumable parallel ranges; archive verification runs
+with extraction while per-file checks remain mandatory. The existing snapshot
+was reused for qualification, avoiding another corpus export/import.
+[Qualification and deployment evidence](https://tangled.org/zzstoatzz.io/typeahead/tree/main/docs/evals/refresh-performance-20261105/)
+distinguishes the configured pins from verified production promotion and registration.
+Automatic continuation inherits the image from the serving admission. The
+publisher implementation remains pinned to `26fae38`; schedule and concurrency
+remain 06:00/18:00 UTC, one run, `CANCEL_NEW`.
+
+### Prior lifecycle qualification
+
 Initially registered November 5, 2026 at 11:10 UTC with publisher `0a36b8b`
 and verified again at 15:05 UTC with publisher `4f1b9b7`: Typeahead
 `7d73263`, installer `cf893cb`, and release proof
