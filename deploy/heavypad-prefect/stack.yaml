@@ -149,7 +149,7 @@ spec:
             limits: {cpu: 200m, memory: 64Mi}
       containers:
         - name: api
-          image: atcr.io/zzstoatzz.io/prefect-server@sha256:d4d2d9bfee259344d3c0e37fd0adbf27e81d94343bcbe407606c85477c9c7b9e
+          image: atcr.io/zzstoatzz.io/prefect-server@sha256:fc0f518ba094889df7451943f90cffae600bd3f7dac8669327dee0118f1407ba
           envFrom: [{configMapRef: {name: server-env}}]
           env:
             - {name: PREFECT_SERVER_UI_STATIC_DIRECTORY, value: /ui-bundle}
@@ -188,7 +188,7 @@ spec:
       imagePullSecrets: [{name: atcr-creds}]
       containers:
         - name: services
-          image: atcr.io/zzstoatzz.io/prefect-server@sha256:d4d2d9bfee259344d3c0e37fd0adbf27e81d94343bcbe407606c85477c9c7b9e
+          image: atcr.io/zzstoatzz.io/prefect-server@sha256:fc0f518ba094889df7451943f90cffae600bd3f7dac8669327dee0118f1407ba
           command: [/app/prefect-server]
           args: [services]
           envFrom: [{configMapRef: {name: server-env}}]
