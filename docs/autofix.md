@@ -1,5 +1,10 @@
 # autofix: failed flow run → pi → PR
 
+Autofix is **disabled as of November 6, 2026**, following a home-internet outage
+that caused diagnoses to fail across unrelated deployments. See the
+[incident and reinstatement requirements](incidents/2026-11-06-home-internet-autofix-cascade.md).
+This status supersedes the historical operational updates below.
+
 ## October 12 operational update
 
 Autofix still proposes only for `strata-hourly` and `mcp-atlas`. Email failures
