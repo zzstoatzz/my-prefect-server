@@ -246,7 +246,7 @@ automations:
       and the autofix run whose logs hold the full diagnosis. Blocked screening
       and execution errors use the same reporting path. autofix.py holds no
       webhook credential.
-    enabled: true
+    enabled: false
     trigger:
       type: event
       posture: Reactive
@@ -267,7 +267,7 @@ automations:
     description: >-
       autofix opened a gardener-authored pull for a failed run. One line plus
       the pulls page; review happens on tangled, not in chat.
-    enabled: true
+    enabled: false
     trigger:
       type: event
       posture: Reactive
@@ -304,7 +304,7 @@ automations:
     description: >-
       gardener answered a review comment — reply text plus whether a new
       round landed. the conversation itself lives on the pull.
-    enabled: true
+    enabled: false
     trigger:
       type: event
       posture: Reactive
