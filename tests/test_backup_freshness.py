@@ -10,6 +10,7 @@ NEWEST = "20261027T054712Z.dump.age"
 LOCAL = ["20261026T054530Z.dump.age", NEWEST, ".lock"]
 OFFSITE = {"checked_at": "2026-10-27T05:47:40Z", "newest_uploaded": NEWEST}
 RESTORE = {"verified_at": "2026-10-26T07:04:00Z", "name": "20261026T054530Z.dump.age"}
+HOST = {"checked_at": "2026-10-27T06:16:10Z", "newest_uploaded": "20261027T061555Z.host.tar.age"}
 
 
 def test_dump_time_parses_backup_stamp():
@@ -17,17 +18,17 @@ def test_dump_time_parses_backup_stamp():
 
 
 def test_fresh_backups_have_no_problems():
-    assert problems(NOW, LOCAL, OFFSITE, RESTORE) == []
+    assert problems(NOW, LOCAL, OFFSITE, RESTORE, HOST) == []
 
 
 def test_stale_local_dump():
-    found = problems(NOW + dt.timedelta(hours=26), LOCAL, OFFSITE, RESTORE)
+    found = problems(NOW + dt.timedelta(hours=26), LOCAL, OFFSITE, RESTORE, HOST)
     assert any("newest local dump" in p for p in found)
 
 
 def test_upload_behind_local():
     behind = {**OFFSITE, "newest_uploaded": "20261026T054530Z.dump.age"}
-    assert any("R2 newest" in p for p in problems(NOW, LOCAL, behind, RESTORE))
+    assert any("R2 newest" in p for p in problems(NOW, LOCAL, behind, RESTORE, HOST))
 
 
 def test_missing_records_are_problems():
@@ -36,12 +37,19 @@ def test_missing_records_are_problems():
         "no local dump",
         "no R2 upload has been recorded",
         "no restore from R2 has been verified",
+        "no host state snapshot has been recorded",
     ]
 
 
 def test_stale_restore_verification():
-    found = problems(NOW + dt.timedelta(days=8), LOCAL, OFFSITE, RESTORE)
+    found = problems(NOW + dt.timedelta(days=8), LOCAL, OFFSITE, RESTORE, HOST)
     assert any("verified R2 restore" in p for p in found)
+
+
+def test_stale_host_snapshot():
+    stale = {**HOST, "checked_at": "2026-10-25T06:16:10Z"}
+    found = problems(NOW, LOCAL, OFFSITE, RESTORE, stale)
+    assert found == ["host state snapshot last uploaded at 2026-10-25T06:16:10Z"]
 
 
 def test_flow_fails_on_problems(tmp_path):
@@ -58,4 +66,7 @@ def test_flow_passes_when_fresh(tmp_path):
     at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
     (tmp_path / "offsite.json").write_text(json.dumps({"checked_at": at, "newest_uploaded": name}))
     (tmp_path / "restore-verified.json").write_text(json.dumps({"verified_at": at, "name": name}))
+    (tmp_path / "host-backup.json").write_text(
+        json.dumps({"checked_at": at, "newest_uploaded": "x.host.tar.age"})
+    )
     assert backup_freshness.fn(state_dir=str(tmp_path)) == []

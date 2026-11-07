@@ -1,4 +1,4 @@
-"""Fail when HeavyPad's local, R2 or restore-verified backups go stale.
+"""Fail when HeavyPad's local, R2, restore-verified or host-state backups go stale.
 
 A failed run is the alert: HeavyPad's existing flow-run failure rule notifies.
 """
@@ -28,6 +28,7 @@ def problems(
     local_names: list[str],
     offsite: dict | None,
     restore: dict | None,
+    host: dict | None = None,
 ) -> list[str]:
     found = []
     dumps = sorted(name for name in local_names if DUMP.match(name))
@@ -48,6 +49,10 @@ def problems(
         found.append("no restore from R2 has been verified")
     elif now - dt.datetime.fromisoformat(restore["verified_at"]) > MAX_RESTORE_AGE:
         found.append(f"last verified R2 restore was at {restore['verified_at']}")
+    if host is None:
+        found.append("no host state snapshot has been recorded")
+    elif now - dt.datetime.fromisoformat(host["checked_at"]) > MAX_BACKUP_AGE:
+        found.append(f"host state snapshot last uploaded at {host['checked_at']}")
     return found
 
 
@@ -63,10 +68,11 @@ def backup_freshness(state_dir: str = STATE_DIR) -> list[str]:
         [path.name for path in (state / "backups").iterdir()],
         read_json(state / "offsite.json"),
         read_json(state / "restore-verified.json"),
+        read_json(state / "host-backup.json"),
     )
     if found:
         raise RuntimeError("; ".join(found))
-    print("Local, R2 and restore-verified backups are fresh")
+    print("Local, R2, restore-verified and host state backups are fresh")
     return found
 
 
