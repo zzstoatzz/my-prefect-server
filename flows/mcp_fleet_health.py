@@ -26,7 +26,7 @@ from prefect.artifacts import acreate_markdown_artifact
 from prefect.cache_policies import NO_CACHE
 from prefect.events import emit_event
 
-from flows.fleet_health import unhealthy_payload
+from flows.fleet_events import unhealthy_payload
 
 DEFAULT_ATLAS_URL = "https://mcp.waow.tech/api/atlas.json"
 

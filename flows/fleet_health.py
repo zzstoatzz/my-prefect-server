@@ -36,11 +36,10 @@ from dataclasses import dataclass
 from prefect import flow, get_run_logger, task
 from prefect.artifacts import create_markdown_artifact
 from prefect.events import emit_event
-from prefect.runtime import flow_run
-from prefect.settings import PREFECT_UI_URL
 from prefect.states import Failed, State
 
 from flows.evergreen_checks import INVENTORY_URL, STATUS_URL, check_evergreen
+from flows.fleet_events import unhealthy_payload
 from flows.fly_observations import observation_rows, observe_fly
 
 TIMEOUT_S = 10
@@ -59,7 +58,6 @@ SEAL_MAX_S = 10.0
 # crash-loop keeps failing the shallow site check regardless.
 STARTUP_GRACE_S = 6 * 60
 
-RUN_URL = "https://prefect-server.waow.tech/runs/flow-run/{id}"
 STREAM_DEEP = "stream (deep)"
 EVERGREEN = "Evergreen inventory"
 
@@ -239,24 +237,6 @@ def summarize(
             rows.append(f"| {r.name} | **CHECK ERRORED** | {r.error} |")
             broken_checks.append(r)
     return rows, unhealthy, broken_checks
-
-
-def run_link() -> str:
-    if not flow_run.id:
-        return ""
-    base = PREFECT_UI_URL.value()
-    return (
-        f"{base.rstrip('/')}/runs/flow-run/{flow_run.id}"
-        if base
-        else RUN_URL.format(id=flow_run.id)
-    )
-
-
-def unhealthy_payload(unhealthy: list[str]) -> dict[str, object]:
-    """`fleet unhealthy -> discord` renders `summary`; discord caps a message at 2000."""
-    link = run_link()
-    tail = f"\nrun: {link}" if link else ""
-    return {"unhealthy": unhealthy, "summary": "\n".join(unhealthy)[: 1800 - len(tail)] + tail}
 
 
 def broken_sweep_message(broken: list[BrokenCheck]) -> str:

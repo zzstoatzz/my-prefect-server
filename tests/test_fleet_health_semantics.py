@@ -12,6 +12,7 @@ What we test:
 """
 
 from flows.evergreen_checks import STATUS_URL
+from flows.fleet_events import unhealthy_payload
 from flows.fleet_health import (
     EVERGREEN,
     BrokenCheck,
@@ -19,7 +20,6 @@ from flows.fleet_health import (
     _named,
     broken_sweep_message,
     summarize,
-    unhealthy_payload,
 )
 
 
