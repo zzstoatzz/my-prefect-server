@@ -170,7 +170,13 @@ def run_json_process(command, *, prompt=None, provider, model, timeout_seconds, 
         finally:
             stop.set()
             if process.poll() is None:
-                os.killpg(process.pid, signal.SIGKILL)
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except (ProcessLookupError, PermissionError) as exc:
+                    try:
+                        process.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        raise exc from None
                 process.wait()
             reader.join(timeout=1)
             if process.stdout is not None:
