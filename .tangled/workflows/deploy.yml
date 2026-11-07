@@ -28,7 +28,7 @@ steps:
       ruff check .
       ruff format --check .
       ty check
-      uv run --extra dagster --extra inbox pytest -q -x
+      uv run --extra dagster --extra inbox pytest -q -x -n 4
       cd web
       bun install --frozen-lockfile
       bun run check
