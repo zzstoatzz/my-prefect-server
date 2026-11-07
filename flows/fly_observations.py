@@ -1,7 +1,7 @@
 import math
 import re
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Literal, TypeGuard
 
 import httpx
 from mps.blocks import secret_sync
@@ -208,6 +208,10 @@ def observe_fly(inventory_url: str = INVENTORY_URL) -> list[Observation]:
         ]
 
 
+def is_observation_list(result: object) -> TypeGuard[list[Observation]]:
+    return isinstance(result, list) and all(isinstance(item, Observation) for item in result)
+
+
 def observation_rows(result: object) -> list[str]:
     if isinstance(result, list) and not result:
         return []
@@ -220,7 +224,7 @@ def observation_rows(result: object) -> list[str]:
         "| project / app / machine | state | available VM memory | retained failures (24h) | coverage |",
         "| --- | --- | --- | --- | --- |",
     ]
-    if not isinstance(result, list) or not all(isinstance(item, Observation) for item in result):
+    if not is_observation_list(result):
         return [
             *rows,
             "| Fly observations | **UNKNOWN** | unknown | unknown | Collection failed; see task logs |",
