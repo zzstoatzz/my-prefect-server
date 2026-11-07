@@ -47,18 +47,19 @@ def configure_skills(home: Path, sources: list[str]) -> None:
             }
         )
     )
+    servers = {}
+    if directories:
+        servers["gardener-skills"] = {
+            "command": "/opt/phi-agent/bin/stoat-skills",
+            "args": directories,
+            "skills": True,
+            "protocolVersion": "auto",
+            "exposeResources": False,
+        }
     (config / "mcp-adapter.json").write_text(
         json.dumps(
             {
-                "mcpServers": {
-                    "gardener-skills": {
-                        "command": "/opt/phi-agent/bin/stoat-skills",
-                        "args": directories or ["--profile", "gardener"],
-                        "skills": True,
-                        "protocolVersion": "auto",
-                        "exposeResources": False,
-                    }
-                },
+                "mcpServers": servers,
                 "settings": {"scriptMode": False},
             }
         )

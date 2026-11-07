@@ -62,7 +62,7 @@ def probe(sources: list[str], expected: set[str]):
 
 
 def main():
-    probe([], {"skill:gardener-history", "skill:pr-body"})
+    probe([], set())
     with tempfile.TemporaryDirectory(prefix="gardener-skill-input-") as temporary:
         root = Path(temporary)
         skill = root / "SKILL.md"

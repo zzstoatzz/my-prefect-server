@@ -12,7 +12,7 @@ CASES = [
     ),
     (
         "history",
-        "Read .gardener/context.md and the gardener-history skill before diagnosing. Start with SUMMARY: and report FIXED-ON-MAIN if already fixed.",
+        "Read .gardener/context.md before diagnosing. Start with SUMMARY: and report FIXED-ON-MAIN if already fixed.",
         False,
     ),
     (
