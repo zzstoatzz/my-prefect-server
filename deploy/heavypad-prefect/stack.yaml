@@ -150,6 +150,8 @@ spec:
       containers:
         - name: api
           image: atcr.io/zzstoatzz.io/prefect-server@sha256:fc0f518ba094889df7451943f90cffae600bd3f7dac8669327dee0118f1407ba
+          command: [/app/prefect-server]
+          args: [--webserver-only]
           envFrom: [{configMapRef: {name: server-env}}]
           env:
             - {name: PREFECT_SERVER_UI_STATIC_DIRECTORY, value: /ui-bundle}
