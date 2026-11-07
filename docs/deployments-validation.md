@@ -33,8 +33,15 @@ adding the entire application's dependencies to the hook environment.
   requirement. Release mode requires a full SHA for the shared template.
 - File entrypoints for the recognized Git route exist in this checkout. Basic
   config shape, entrypoint syntax, and duplicate deployment names are checked.
+- A file entrypoint loaded from the source checkout whose command does not
+  install mps must not import mps while loading, directly or through other
+  `flows/` modules. The check parses imports with `ast` and follows only
+  module-level imports, so imports inside functions and `TYPE_CHECKING` blocks
+  are allowed. Other third-party packages are not checked.
 
-This catches the September 11 reconciliation regression: converting a wheel's
+This catches the 2026-11-07 mcp-fleet-health crash, where a shared helper
+module gained an mps import and the light deployment failed while loading.
+It also catches the September 11 reconciliation regression: converting a wheel's
 `flows.watch_tangled_pulls.watch_tangled_pulls` into
 `flows/watch_tangled_pulls.py:watch_tangled_pulls` while keeping `pull: []`.
 The inventory renderer accepts both forms; documentation formatting must never

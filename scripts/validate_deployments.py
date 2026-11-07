@@ -6,6 +6,7 @@
 """Check this repository's deployment contracts without importing or running flows."""
 
 import argparse
+import ast
 import os
 import re
 import shlex
@@ -22,6 +23,52 @@ GIT_PACKAGE = re.compile(
     r"git\+https://github.com/zzstoatzz/my-prefect-server\.git(.*)"
 )
 MODULE = re.compile(r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+")
+MPS_PACKAGE = re.compile(r"(?:mps|my-prefect-server)(?:\[[\w,.-]+\])? @ .+")
+
+
+def _load_time_imports(tree: ast.Module) -> list[str]:
+    """Modules imported while the file loads: function bodies and TYPE_CHECKING are skipped."""
+    found: list[str] = []
+    pending: list[ast.AST] = list(tree.body)
+    while pending:
+        node = pending.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            continue
+        if isinstance(node, ast.If) and "TYPE_CHECKING" in ast.unparse(node.test):
+            pending.extend(node.orelse)
+            continue
+        if isinstance(node, ast.Import):
+            found.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            found.append(node.module)
+            found.extend(f"{node.module}.{alias.name}" for alias in node.names)
+        pending.extend(ast.iter_child_nodes(node))
+    return found
+
+
+def mps_import_chain(root: Path, source: str) -> list[str] | None:
+    """Return the checkout files leading from `source` to a load-time mps import."""
+    parents: dict[str, str | None] = {source: None}
+    queue = [source]
+    while queue:
+        current = queue.pop(0)
+        path = root / current
+        if not path.is_file():
+            continue
+        for module in _load_time_imports(ast.parse(path.read_text(), filename=current)):
+            if module == "mps" or module.startswith("mps."):
+                chain = [current]
+                while (parent := parents[chain[-1]]) is not None:
+                    chain.append(parent)
+                return [*reversed(chain), module]
+            if module.split(".")[0] != "flows":
+                continue
+            relative = module.replace(".", "/")
+            for candidate in (f"{relative}.py", f"{relative}/__init__.py"):
+                if candidate not in parents and (root / candidate).is_file():
+                    parents[candidate] = current
+                    queue.append(candidate)
+    return None
 
 
 def validate_deployments(config: dict, *, root: Path, release_pin: str | None = None):
@@ -126,6 +173,16 @@ def validate_deployments(config: dict, *, root: Path, release_pin: str | None = 
                 errors.append(f"{name}: invalid file entrypoint")
             elif pull and git_packages and not (root / source).is_file():
                 errors.append(f"{name}: source entrypoint file is missing from this checkout")
+            elif (
+                pull
+                and not any(MPS_PACKAGE.fullmatch(r) for r in requirements)
+                and not mps_wheels
+                and (chain := mps_import_chain(root, source))
+            ):
+                errors.append(
+                    f"{name}: loading the flow imports {chain[-1]} via "
+                    f"{' -> '.join(chain[:-1])}, but the command does not install mps"
+                )
             if not pull:
                 unverified.append(f"{name}: file must be supplied by worker path or image")
         elif not MODULE.fullmatch(entry):

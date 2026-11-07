@@ -140,3 +140,72 @@ def test_explicit_worker_path_with_wheel_is_unverified(config):
     errors, unverified = check(config)
     assert not errors
     assert any("worker path or image" in warning for warning in unverified)
+
+
+def test_heavypad_repository_contracts():
+    errors, _ = check(yaml.safe_load((ROOT / "prefect.heavypad.yaml").read_text()))
+    assert errors == []
+
+
+def checkout_config(command):
+    return {
+        "pull": [{"prefect.deployments.steps.set_working_directory": {"directory": "src"}}],
+        "deployments": [
+            {
+                "name": "light",
+                "entrypoint": "flows/light.py:light",
+                "work_pool": {
+                    "name": "pool",
+                    "job_variables": {"command": command, "env": {"MPS_PIN": "{{ $MPS_PIN }}"}},
+                },
+            }
+        ],
+    }
+
+
+def write_flows(root, **modules):
+    (root / "flows").mkdir()
+    for name, body in modules.items():
+        (root / "flows" / f"{name}.py").write_text(body)
+
+
+LIGHT = "uv run --no-project --with prefect==3.8.2 prefect flow-run execute"
+
+
+def test_light_deployment_rejects_transitive_mps_import(tmp_path):
+    # 2026-11-07: mcp-fleet-health imported flows.fleet_health for one helper; a
+    # later fleet_health import of mps.blocks crashed every run while loading.
+    write_flows(
+        tmp_path,
+        light="from flows.heavy import helper\n",
+        heavy="import json\nfrom flows.observe import rows\n",
+        observe="from mps.blocks import secret_sync\n",
+    )
+    errors, _ = validator.validate_deployments(checkout_config(LIGHT), root=tmp_path)
+    assert errors == [
+        "light: loading the flow imports mps.blocks via flows/light.py -> flows/heavy.py"
+        " -> flows/observe.py, but the command does not install mps"
+    ]
+    for requirement in (
+        "'mps @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}"
+        "#subdirectory=packages/mps'",
+        "'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git"
+        "{{ $MPS_PIN }}'",
+    ):
+        installed = LIGHT.replace(" prefect flow-run", f" --with {requirement} prefect flow-run")
+        assert validator.validate_deployments(checkout_config(installed), root=tmp_path)[0] == []
+
+
+def test_imports_that_do_not_run_at_load_are_allowed(tmp_path):
+    write_flows(
+        tmp_path,
+        light=(
+            "from typing import TYPE_CHECKING\n"
+            "if TYPE_CHECKING:\n"
+            "    from mps.blocks import secret_sync\n"
+            "def light():\n"
+            "    from mps.blocks import secret_sync\n"
+            "    return secret_sync\n"
+        ),
+    )
+    assert validator.validate_deployments(checkout_config(LIGHT), root=tmp_path)[0] == []
