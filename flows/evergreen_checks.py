@@ -1,11 +1,12 @@
 """Read and validate the same inventory and results used by Evergreen's browser."""
 
 from datetime import UTC, datetime
+from typing import Literal
 
 import httpx
 from prefect import task
 from prefect.cache_policies import NONE
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
 
 INVENTORY_URL = "https://nate.tngl.io/services.json"
 STATUS_URL = "https://evergreen-proxy.n8-3e9.workers.dev/status"
@@ -16,9 +17,23 @@ class Service(BaseModel):
     url: str = Field(pattern=r"^https://")
 
 
+class Resource(BaseModel):
+    provider: str
+    kind: str
+    name: str
+    monitoring: Literal["observe"] | None = None
+
+    @model_validator(mode="after")
+    def monitoring_target(self):
+        if self.monitoring and (self.provider != "fly" or self.kind != "app"):
+            raise ValueError("Operational monitoring requires a Fly app resource")
+        return self
+
+
 class Project(BaseModel):
     name: str = Field(min_length=1)
     services: list[Service]
+    resources: list[Resource] = Field(default_factory=list)
 
 
 class ServiceResult(Service):

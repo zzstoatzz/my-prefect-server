@@ -303,7 +303,10 @@ deployments:
     work_pool:
       name: heavypad-pool
       job_variables:
-        command: uv run --no-project --with prefect==3.8.2 prefect flow-run execute
+        command: >-
+          uv run --no-project --with prefect==3.8.2
+          --with 'mps @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}#subdirectory=packages/mps'
+          prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_UI_URL: https://prefect-server.waow.tech

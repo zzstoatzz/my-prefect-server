@@ -1,5 +1,34 @@
 # Monitoring on the single-node cluster
 
+## Evergreen operational observations
+
+The existing `fleet-health` deployment reads opt-in `monitoring: "observe"`
+fields on Fly app resources in Evergreen's published inventory. This first
+stage records current VM memory headroom and retained machine exit evidence
+in the normal `fleet-health` artifact and logs. It does not emit additional
+alerts, change availability verdicts, or treat collection errors as healthy.
+Unavailable observations are explicitly `UNKNOWN`; their task retains its
+failure and retries independently of the existing availability checks.
+
+The collector uses the existing `fly-api-token` Secret block for GET requests
+to the Machines and Prometheus APIs. No token is copied into Evergreen's
+public Worker or inventory. Apps without an explicit opt-in are not queried.
+Requested stops are excluded from process-failure findings. OOMs are identified
+only by Fly's `oom_killed` flag; a plain exit 137 is not asserted to be an OOM.
+
+Failures remain visible for 24 hours while Fly retains the event, even when
+the service is already returning HTTP 200. Saved artifacts preserve observations
+that were collected, but Fly's bounded event history is not a complete restart
+ledger: rapid loops, replacement machines, and deployment transitions can hide
+events between sweeps. Memory is VM available memory, not process RSS or a
+leak diagnosis. Missing, stale, contradictory, and partial memory data must not
+be interpreted as capacity headroom.
+
+Add alerting only after reviewing real observation windows, expected stops,
+provider gaps, notification deduplication, and recovery behavior. An observation
+does not authorize restarts or resource changes. Evergreen owns the candidate
+assessment and cohort in `docs/operational-checks.md` and `site/services.json`.
+
 ## HeavyPad storage alerts
 
 Grafana is a dashboard surface; alert rules for HeavyPad storage live in Logfire,

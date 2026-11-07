@@ -41,6 +41,7 @@ from prefect.settings import PREFECT_UI_URL
 from prefect.states import Failed, State
 
 from flows.evergreen_checks import INVENTORY_URL, STATUS_URL, check_evergreen
+from flows.fly_observations import observation_rows, observe_fly
 
 TIMEOUT_S = 10
 TAIL_WINDOW_S = 20
@@ -279,6 +280,7 @@ def fleet_health() -> State | None:
 
     deep_future = check_stream_deep.submit()
     evergreen_future = check_evergreen.submit()
+    fly_future = observe_fly.submit()
     shallow_futures = [(name, check_url.submit(name, url)) for name, url in SUPPLEMENTAL_CHECKS]
     results = [_named(STREAM_DEEP, deep_future.result(raise_on_failure=False))]
     results += [_named(name, f.result(raise_on_failure=False)) for name, f in shallow_futures]
@@ -293,15 +295,18 @@ def fleet_health() -> State | None:
         results.append(_named(EVERGREEN, evergreen))
 
     rows, unhealthy, broken_checks = summarize(results)
+    operational_rows = observation_rows(fly_future.result(raise_on_failure=False))
 
     create_markdown_artifact(
         key="fleet-health",
-        markdown="\n".join(rows),
+        markdown="\n".join([*rows, *operational_rows]),
         description="latest fleet health sweep",
     )
 
     for line in rows[2:]:
         logger.info(line)
+    for line in operational_rows:
+        logger.info("operational observation: %s", line)
     if unhealthy:
         logger.warning("%d unhealthy: %s", len(unhealthy), " | ".join(unhealthy))
         emit_event(
