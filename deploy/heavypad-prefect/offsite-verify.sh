@@ -80,15 +80,15 @@ if [ -f "$state/backups/$name" ] \
 fi
 
 started=$(date -u +%s)
-docker run -d --rm --name "$container" --network none --memory 2g --cpus 1 \
-  --tmpfs /var/lib/postgresql/data:rw,size=4g \
+docker run -d --rm --name "$container" --network none --memory 4g --cpus 1 \
+  --mount type=volume,target=/var/lib/postgresql/data \
   -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=restore \
   "$postgres_image" >/dev/null
-for _ in $(seq 60); do
-  docker exec "$container" pg_isready -U postgres -d restore -q 2>/dev/null && break
+for _ in $(seq 120); do
+  docker exec "$container" pg_isready -h 127.0.0.1 -U postgres -d restore -q 2>/dev/null && break
   sleep 1
 done
-docker exec "$container" pg_isready -U postgres -d restore -q
+docker exec "$container" pg_isready -h 127.0.0.1 -U postgres -d restore -q
 
 age -d -i "$key" "$work/$name" \
   | docker exec -i "$container" pg_restore -U postgres -d restore --no-owner --no-acl --exit-on-error
