@@ -448,6 +448,26 @@ automations:
         subject: "heavypad is running hot"
         body: "{{ payload.summary }}"
 
+  - name: heavypad fan health -> discord
+    description: >-
+      One of heavypad's two fans turned at a different speed from the other at
+      the same commanded duty for a whole window, or matched again after doing
+      so; emitted by the host watchdog. On 2026-11-06 the CPU fan started
+      wandering 900-1950 rpm against the GPU fan's steady ~2190 at idle, along
+      with audible noise, while CPU temperatures had not yet risen.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect: [fan.degraded, fan.recovered]
+      threshold: 1
+      within: 0
+    actions:
+      - type: send-notification
+        block: discord-alerts
+        subject: "heavypad fan health"
+        body: "{{ payload.summary }}"
+
   - name: typeahead refresh missing -> retry + discord
     description: >-
       A serving Tantivy slot's checkpoint coverage lasts 24 hours and refreshes
