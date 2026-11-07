@@ -30,6 +30,13 @@ verify its diff and rollout without restarting services. The
 [retry-ownership rollout](../../docs/audits/2026-11-05-in-process-retry-rollout.md)
 records the current qualification and readback.
 
+The API runs `/app/prefect-server --webserver-only`; background work runs in the
+separate `services` Deployment. Handler counts are explicit: 32 per API reactor
+(128 total), two for the services metrics listener. Smaller API pools regressed
+under unpaced database contention; retain the qualified count. See the
+[HTTP pool and role rollout](../../docs/audits/2026-11-06-http-thread-pools.md)
+for measurements, canaries and rollback.
+
 The initial pilot has expanded through the approved 21-deployment scoped migration
 in batches 1, 2, 4, 5 and 8; see the [completion and rollback receipt](../../docs/migrations/2026-10-26-scoped-migration.md).
 Verify real execution, persistent state, backup/restore and authenticated remote
