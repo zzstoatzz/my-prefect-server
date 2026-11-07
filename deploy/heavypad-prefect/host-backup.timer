@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily HeavyPad host state snapshot
+
+[Timer]
+OnCalendar=*-*-* 06:15:00 UTC
+Persistent=true
+RandomizedDelaySec=300
+FixedRandomDelay=true
+
+[Install]
+WantedBy=timers.target

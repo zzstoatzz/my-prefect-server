@@ -1,0 +1,11 @@
+[Unit]
+Description=Encrypted snapshot of HeavyPad host state to R2
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/share/prefect-home/host-backup.sh
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=30min

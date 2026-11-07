@@ -195,16 +195,29 @@ has never run has no `Persistent=` stamp to catch up from.
 `offsite-verify.sh` (weekly, `offsite-verify.timer`) downloads the newest R2 object,
 verifies its hash against R2 and against the local dump if HeavyPad still has it,
 decrypts it with HeavyPad's age key, and restores it into a throwaway PostgreSQL
-with the server's pinned image digest. That container has `--network none`, a tmpfs data
-directory and memory/CPU limits. It runs on HeavyPad's host Docker, outside k3d, and no Prefect
+with the server's pinned image digest. That container has `--network none`, a throwaway
+disk volume and memory/CPU limits. It runs on HeavyPad's host Docker, outside k3d, and no Prefect
 server is started, so restored schedules and automations cannot run. It asserts the
 HeavyPad deployment IDs exist and the newest completed run is within two hours of the
 dump time, then records counts (never values) in `restore-verifications.log` and
 `restore-verified.json`. Update its deployment ID list when ownership changes.
 
+### Host state snapshot
+
+`host-backup.sh` (`prefect-home-host-backup.timer`, daily at 06:15 UTC) captures what
+no repository or dump holds: every user unit and the env files they reference,
+`.cloudflared`, `.local/state` (minus the dumps), the UI image archive, the studio app
+source, the age key, live captures (`tailscale serve` JSON, enabled units, package
+selections, the `prefect-home` namespace manifests and secrets) and a tar of the Redis
+`/data` AOF. It is age-encrypted to both recipients, checked to decrypt and list, then
+uploaded immutably to `host/` in the same bucket and recorded in `host-backup.json`.
+The [outage runbook](../../docs/heavypad-outage-runbook.md) says how to use it.
+spindle state is root-owned and not included.
+
 The `backup-freshness` deployment reads those status files daily at 07:05 UTC and
 fails if the newest local dump is over 26 hours old, R2's newest object differs from it,
-the last upload is over 26 hours old, or the last verified restore is over eight days old.
+the last upload is over 26 hours old, the last verified restore is over eight days old,
+or the host state snapshot is over 26 hours old.
 A failed run is the alert, through the existing `flow-run failure -> discord` rule. That
 alert depends on HeavyPad itself, so it does not detect a HeavyPad outage.
 
