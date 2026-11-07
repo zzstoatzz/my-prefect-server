@@ -149,11 +149,12 @@ spec:
             limits: {cpu: 200m, memory: 64Mi}
       containers:
         - name: api
-          image: atcr.io/zzstoatzz.io/prefect-server@sha256:fc0f518ba094889df7451943f90cffae600bd3f7dac8669327dee0118f1407ba
+          image: atcr.io/zzstoatzz.io/prefect-server@sha256:64b3a3c419ec0e8fd86f7f3c237e3707514d43b2ed06795cdad5163f09995386
           command: [/app/prefect-server]
           args: [--webserver-only]
           envFrom: [{configMapRef: {name: server-env}}]
           env:
+            - {name: PREFECT_SERVER_API_THREAD_POOL_SIZE, value: '32'}
             - {name: PREFECT_SERVER_UI_STATIC_DIRECTORY, value: /ui-bundle}
             - name: PREFECT_DATABASE_URL
               valueFrom:
@@ -190,11 +191,12 @@ spec:
       imagePullSecrets: [{name: atcr-creds}]
       containers:
         - name: services
-          image: atcr.io/zzstoatzz.io/prefect-server@sha256:fc0f518ba094889df7451943f90cffae600bd3f7dac8669327dee0118f1407ba
+          image: atcr.io/zzstoatzz.io/prefect-server@sha256:64b3a3c419ec0e8fd86f7f3c237e3707514d43b2ed06795cdad5163f09995386
           command: [/app/prefect-server]
           args: [services]
           envFrom: [{configMapRef: {name: server-env}}]
           env:
+            - {name: PREFECT_SERVER_METRICS_THREAD_POOL_SIZE, value: '2'}
             - name: PREFECT_DATABASE_URL
               valueFrom:
                 secretKeyRef: {name: server-secrets, key: database-url}
