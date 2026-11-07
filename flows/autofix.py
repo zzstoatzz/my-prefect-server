@@ -91,10 +91,9 @@ then, under 200 words:
 do not speculate about credentials or environment variables beyond what the
 logs show.
 
-the gardener-history skill is loaded; `.gardener/context.md` in the working
-directory holds what happened since this run's revision. read it first and
-follow the skill; `FIXED-ON-MAIN: <commit>` as your last line means no pull
-will be opened.
+`.gardener/context.md` contains changes and prior proposals since this run's
+revision. Check it before diagnosing. If a later commit fixes the failure, end
+with `FIXED-ON-MAIN: <commit>` so no pull is opened.
 
 === failed run ===
 {brief}
@@ -109,10 +108,10 @@ change that resolves the cause. add or extend a regression test when the fix
 is testable. run the test suite for what you touched (`uv run pytest <paths>`)
 before finishing.
 
-read AGENTS.md at the repo root first and follow its conventions. the
-gardener-history skill is loaded and `.gardener/context.md` holds what has
-already landed or been proposed; follow it before changing anything. when a
-pr-authoring skill is loaded, compose TITLE and NOTE by its prose rules; the
+read AGENTS.md at the repo root first and follow its conventions.
+`.gardener/context.md` records changes and prior proposals; check it before
+changing anything. when a pr-authoring skill is loaded, compose TITLE and
+NOTE by its prose rules; the
 flow — not you — publishes the pull (patch-based, no gh), so only
 composition guidance applies, not git/gh mechanics.
 
@@ -140,7 +139,6 @@ PR_OWNER = "zzstoatzz.io"
 # ambient worker credentials.
 SKILL_SOURCES: dict[str, tuple[str, str]] = {
     "pr-body": ("https://tangled.sh/zzstoatzz.io/skills.git", "pr-body"),
-    "gardener-history": ("https://tangled.sh/zzstoatzz.io/skills.git", "gardener-history"),
 }
 CONTEXT_FILE = ".gardener/context.md"
 
@@ -379,8 +377,6 @@ def since_section(cwd: str, sha: str, dep_name: str) -> str:
 
 
 def write_context(cwd: str, text: str) -> str:
-    """drop the since-section into the clone where the gardener-history skill
-    tells pi to look; pi has no network, so the flow carries these facts in."""
     path = os.path.join(cwd, CONTEXT_FILE)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:

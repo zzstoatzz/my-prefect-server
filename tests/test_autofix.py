@@ -423,9 +423,7 @@ def test_diagnosis_round_gets_the_context_file_and_the_skill(monkeypatch, tmp_pa
         return "SUMMARY: x\nbody"
 
     monkeypatch.setattr(autofix, "gather", fake)
-    monkeypatch.setattr(
-        autofix, "fetch_skills", lambda workdir: [f"{workdir}/skill-gardener-history"]
-    )
+    monkeypatch.setattr(autofix, "fetch_skills", lambda workdir: [f"{workdir}/skill-pr-body"])
     monkeypatch.setattr(autofix, "checkout_as_of", lambda cwd, when: "abc")
     monkeypatch.setattr(
         autofix, "since_section", lambda cwd, sha, dep: f"commits since {sha}: none\nprior: none"
@@ -437,7 +435,7 @@ def test_diagnosis_round_gets_the_context_file_and_the_skill(monkeypatch, tmp_pa
         state = autofix.autofix(uuid4(), return_state=True)
     assert state.name == "Diagnosed"
     assert "commits since abc: none" in seen["context"]
-    assert seen["skills"] and seen["skills"][0].endswith("skill-gardener-history")
+    assert seen["skills"] and seen["skills"][0].endswith("skill-pr-body")
     assert seen["runner"] == ("openai-codex", "gpt-5.6-sol")
 
 
