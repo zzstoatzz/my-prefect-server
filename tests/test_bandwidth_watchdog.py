@@ -10,6 +10,7 @@ import logfire
 import pytest
 from mps.bandwidth_watchdog import (
     advance,
+    fan,
     flush,
     heat,
     internet_peer,
@@ -27,6 +28,10 @@ CONFIG = {
     "pause_units": ["download.service"],
     "heat_alert_celsius": 95,
     "heat_window_seconds": 300,
+    "fan_window_seconds": 900,
+    "fan_ratio_low": 0.95,
+    "fan_ratio_high": 1.10,
+    "fan_cooldown_seconds": 86400,
 }
 
 
@@ -311,6 +316,68 @@ def test_heat_without_a_package_sensor_is_a_no_op():
     state = {}
     heat(state, None, 1800000000, CONFIG)
     assert state == {}
+
+
+def fans(cpu, gpu, pwm=77, gpu_pwm=None):
+    return [
+        {"label": "CPU fan", "rpm": cpu, "pwm": pwm},
+        {"label": "GPU fan", "rpm": gpu, "pwm": pwm if gpu_pwm is None else gpu_pwm},
+    ]
+
+
+def spin(state, start, seconds, cpu, gpu, step=5, **kwargs):
+    for offset in range(0, seconds + 1, step):
+        rpm = cpu(offset) if callable(cpu) else cpu
+        fan(state, fans(rpm, gpu, **kwargs), start + offset, CONFIG)
+
+
+def test_fan_slower_than_its_twin_warns_once_per_day():
+    # heavypad 2026-11-06: CPU fan wandered 1100-1950 rpm while the GPU fan held ~2190 at pwm 77.
+    state = {}
+    spin(state, 1800000000, 900, lambda o: (1162, 1441, 1950, 1568)[o // 5 % 4], 2191)
+    [warning] = state["outbox"]
+    assert warning["event"] == "fan.degraded"
+    assert warning["payload"]["slow_fan"] == "CPU fan"
+    assert warning["payload"]["median_ratio"] < 0.95
+    assert "CPU fan is turning slower than GPU fan" in warning["payload"]["summary"]
+    spin(state, 1800000905, 3600, 1500, 2191)
+    assert len(state["outbox"]) == 1
+    spin(state, 1800086410, 900, 1500, 2191)
+    assert len(state["outbox"]) == 2
+
+
+def test_fan_within_healthy_band_and_mismatched_duty_stay_quiet():
+    state = {}
+    spin(state, 1800000000, 1800, lambda o: 2220 + o % 60, 2190)
+    spin(state, 1800001805, 1800, 1000, 4800, gpu_pwm=200)
+    assert state.get("outbox", []) == []
+
+
+def test_fan_recovery_reports_once_and_rearms():
+    state = {}
+    spin(state, 1800000000, 900, 1500, 2190)
+    spin(state, 1800000905, 1800, 2260, 2190)
+    assert [e["event"] for e in state["outbox"]] == ["fan.degraded", "fan.recovered"]
+    spin(state, 1800002710, 1800, 1500, 2190)
+    assert [e["event"] for e in state["outbox"]][-1] == "fan.degraded"
+    assert len(state["outbox"]) == 3
+
+
+def test_stalled_gpu_fan_is_named():
+    state = {}
+    spin(state, 1800000000, 900, 2220, 0)
+    [warning] = state["outbox"]
+    assert warning["payload"]["slow_fan"] == "GPU fan"
+
+
+def test_fan_gap_resets_window_and_missing_sensor_is_a_no_op():
+    state = {}
+    spin(state, 1800000000, 600, 1500, 2190)
+    spin(state, 1800000660, 600, 1500, 2190)
+    assert state.get("outbox", []) == []
+    empty = {}
+    fan(empty, None, 1800000000, CONFIG)
+    assert empty == {}
 
 
 def test_metrics_file_preserves_totals_and_is_atomically_replaced(tmp_path):

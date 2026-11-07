@@ -7,6 +7,7 @@ import json
 import os
 import re
 import socket
+import statistics
 import subprocess
 import time
 from datetime import UTC, datetime
@@ -96,6 +97,26 @@ def read_heat() -> tuple[float, int] | None:
     return celsius, int(counter.read_text()) if counter.exists() else 0
 
 
+def read_fans() -> list[dict] | None:
+    for hwmon in Path("/sys/class/hwmon").glob("hwmon*"):
+        try:
+            if (hwmon / "name").read_text().strip() != "system76_acpi":
+                continue
+            return [
+                {
+                    "label": label.read_text().strip()
+                    if (label := hwmon / f"fan{n}_label").exists()
+                    else f"fan{n}",
+                    "rpm": int((hwmon / f"fan{n}_input").read_text()),
+                    "pwm": int((hwmon / f"pwm{n}").read_text()),
+                }
+                for n in (1, 2)
+            ]
+        except OSError:
+            return None
+    return None
+
+
 def read_disks(paths: list[str]) -> list[dict]:
     devices: dict[int, dict] = {}
     for path in paths:
@@ -158,6 +179,65 @@ def heat(state: dict, reading: tuple[float, int] | None, now: float, config: dic
         "summary": summary,
     }
     state.setdefault("outbox", []).append(event("cpu-hot", payload, now, namespace="heat"))
+
+
+def fan(state: dict, reading: list[dict] | None, now: float, config: dict) -> None:
+    """Warn when one fan turns slower than its twin at the same commanded duty."""
+    if reading is None:
+        return
+    first, second = reading
+    samples = state.get("fan", [])
+    if samples and now - samples[-1]["at"] > 30:
+        samples = []
+    window = config["fan_window_seconds"]
+    samples = [s for s in samples if now - s["at"] <= window]
+    if first["pwm"] == second["pwm"] > 0 and first["rpm"] + second["rpm"] > 0:
+        ratio = first["rpm"] / second["rpm"] if second["rpm"] else 10.0
+        samples.append({"at": now, "ratio": round(ratio, 4)})
+    state["fan"] = samples
+    if len(samples) < 30 or now - samples[0]["at"] < window * 0.9:
+        return
+    median = statistics.median(s["ratio"] for s in samples)
+    low, high = config["fan_ratio_low"], config["fan_ratio_high"]
+    healthy = low <= median <= high
+    cooldowns = state.setdefault("cooldowns", {})
+    host = socket.gethostname()
+    now_text = (
+        f"Now {first['label']} {first['rpm']} rpm at pwm {first['pwm']}, "
+        f"{second['label']} {second['rpm']} rpm at pwm {second['pwm']}."
+    )
+    payload = {
+        "median_ratio": round(median, 3),
+        "window_seconds": window,
+        "ratio_low": low,
+        "ratio_high": high,
+        "fans": reading,
+    }
+    if healthy:
+        if state.pop("fan_degraded", False):
+            payload["summary"] = (
+                f"{host}: fans match again; {first['label']} turns at {median:.2f}x "
+                f"{second['label']} at the same duty over the last {window // 60} minutes "
+                f"(healthy {low}-{high}). {now_text}"
+            )
+            state.setdefault("outbox", []).append(event("recovered", payload, now, namespace="fan"))
+        return
+    if (
+        state.get("fan_degraded")
+        and now - cooldowns.get("fan-degraded", 0) < config["fan_cooldown_seconds"]
+    ):
+        return
+    state["fan_degraded"] = True
+    cooldowns["fan-degraded"] = now
+    slow, fast = (first, second) if median < low else (second, first)
+    payload["slow_fan"] = slow["label"]
+    payload["summary"] = (
+        f"{host}: {slow['label']} is turning slower than {fast['label']} at the same duty; "
+        f"{first['label']}/{second['label']} speed ratio {median:.2f} over the last "
+        f"{window // 60} minutes (healthy {low}-{high}). {now_text} "
+        "Suspect a worn bearing, dust or an obstruction."
+    )
+    state.setdefault("outbox", []).append(event("degraded", payload, now, namespace="fan"))
 
 
 def event(name: str, payload: dict, now: float, namespace: str = "bandwidth") -> dict:
@@ -375,6 +455,10 @@ def main() -> None:
     config = {
         "heat_alert_celsius": 95,
         "heat_window_seconds": 300,
+        "fan_window_seconds": 900,
+        "fan_ratio_low": 0.95,
+        "fan_ratio_high": 1.10,
+        "fan_cooldown_seconds": 86400,
         "disk_paths": ["/", str(Path.home() / ".local/share/prefect-home/storage")],
     } | json.loads(args.config.read_text())
     if any(not re.fullmatch(r"[a-zA-Z0-9_.@-]+\.service", unit) for unit in config["pause_units"]):
@@ -396,6 +480,7 @@ def main() -> None:
             sockets, interfaces = collect()
             actions = advance(state, sockets, interfaces, boot, now, config)
             heat(state, read_heat(), now, config)
+            fan(state, read_fans(), now, config)
             save(args.state, state)
             if metrics_path := config.get("metrics_path"):
                 try:

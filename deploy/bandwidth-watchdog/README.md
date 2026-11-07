@@ -51,6 +51,27 @@ throttle rate rides along as evidence only. `heavypad cpu heat -> discord`
 notifies the operator, and the `heavypad cpu heat` Logfire alert
 (`logfire-heat-alert.json`) delivers the evidence to Phi.
 
+## Fan health
+
+The sampler also reads the two `system76_acpi` fans (CPU and GPU) and their
+commanded duty every five seconds. Both fans normally get the same duty, so
+the CPU fan's rpm divided by the GPU fan's is a self-calibrating health signal
+that ignores load. Samples where the duties differ are skipped. From 31 Oct to
+6 Nov 2026 the 15-minute median ratio stayed between 1.012 and 1.043. On
+6 Nov the CPU fan started wandering between 900 and 1950 rpm at idle against
+the GPU fan's ~2190, with audible noise. Its ratio dropped below 0.95 for about
+half of the following day, while CPU temperatures had not yet risen.
+
+When the median ratio over `fan_window_seconds` (15 minutes) leaves
+`fan_ratio_low`-`fan_ratio_high` (0.95-1.10), the watchdog emits
+`fan.degraded`, naming the slower fan, and repeats it once per
+`fan_cooldown_seconds` (a day) while the fault persists. A stalled fan reading
+0 rpm counts too. When the ratio returns to the band it emits `fan.recovered`
+once, which confirms a cleaning or replacement worked.
+`heavypad fan health -> discord` notifies the operator, and the
+`heavypad fan degraded` Logfire alert (`logfire-fan-alert.json`) delivers the
+evidence to Phi.
+
 ## Disk samples and centralized alerts
 
 The sampler sends one Logfire `disk.sample` per physical filesystem each minute,
