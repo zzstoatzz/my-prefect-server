@@ -28,7 +28,8 @@ no auth is needed:
 
 ```bash
 DID=$(curl -s "https://api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=zzstoatzz.io" | jq -r .did)
-curl -s "https://pds.zzstoatzz.io/xrpc/com.atproto.repo.listRecords?repo=$DID&collection=io.zzstoatzz.cost.snapshot&limit=30" \
+PDS=$(curl -s "https://plc.directory/$DID" | jq -r '.service[] | select(.id | endswith("#atproto_pds")) | .serviceEndpoint')
+curl -s "$PDS/xrpc/com.atproto.repo.listRecords?repo=$DID&collection=io.zzstoatzz.cost.snapshot&limit=30" \
   | jq -r '.records | sort_by(.uri) | .[] | [(.uri|split("/")|last), (.value.total/100)] | @tsv'
 ```
 
