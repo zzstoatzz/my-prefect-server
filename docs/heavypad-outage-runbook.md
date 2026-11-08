@@ -72,15 +72,28 @@ laptop key alone recovers everything. Keep an offline copy of the laptop key.
    `systemctl --user enable`.
 4. Prefect: follow the [server runbook](../deploy/heavypad-prefect/README.md).
    Import `prefect-ui-3c108a1.tar`, create the cluster, apply the secrets from
-   `captured/prefect-home-k8s.yaml`, restore the dump into the new PostgreSQL and
+   `captured/prefect-home-k8s.yaml` (`atcr-creds` is the registry login for the
+   server image, which is amd64 only), restore the dump into the new PostgreSQL and
    unpack `captured/redis-data.tar` into the Redis PVC before starting the api.
-   Pause automations until worker env files are in place, then start workers.
+   The server wants a plain `postgres://` URL. Start `--webserver-only` first and
+   check deployments, automations, pools and blocks through the API; start the
+   `services` deployment and the workers only once env files are in place, since
+   services run schedules and automations the moment they start.
 5. Clone each repository in the table and run its deploy recipe; the `*/current`
    release dirs are produced by this repo's `just deploy-*` recipes.
 6. Start `home-mcp-tunnel.service`; the five hostnames return with no DNS change.
 7. spindle: reinstall from `tangled-infra`, then re-add CI secrets per repo.
 8. Verify: `backup-freshness`, `mcp-fleet-health` and `evergreen-timeline` runs
    complete; home.zzstoatzz.io answers; albedo loads.
+
+## Rehearsals
+
+2026-11-08, on the laptop with orbstack and only the laptop age key: fetched the
+newest host snapshot and dump from R2, restored into the pinned postgres and redis
+images on an internal docker network, started the pinned server webserver-only, and
+read back 53 deployments (34 with active schedules), 29 automations, 9 work pools
+and 49 blocks. Redis loaded its AOF. Nothing touched HeavyPad. Found and fixed: env
+files were stored twice in the snapshot and bsdtar dropped them on extraction.
 
 ## Drill
 
