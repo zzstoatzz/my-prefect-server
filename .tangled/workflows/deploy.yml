@@ -33,4 +33,8 @@ steps:
       bun install --frozen-lockfile
       bun run check
       bun run lint
+      cd ../deploy/heavypad-watchdog
+      bun install --frozen-lockfile
+      bun run check
+      bun test
 

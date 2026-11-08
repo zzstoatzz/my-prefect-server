@@ -1,0 +1,9 @@
+{
+  "name": "heavypad-watchdog",
+  "account_id": "3e9ba01cd687b3c4d29033908177072e",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-10-01",
+  "triggers": { "crons": ["*/15 * * * *"] },
+  "r2_buckets": [{ "binding": "BACKUPS", "bucket_name": "heavypad-prefect-backups" }],
+  "observability": { "enabled": true }
+}
