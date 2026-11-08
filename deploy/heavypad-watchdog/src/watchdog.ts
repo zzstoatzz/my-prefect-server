@@ -55,21 +55,27 @@ export function problems(now: number, probes: readonly ProbeResult[], backups: r
 
 export type Decision = { state: State; message: string | null };
 
+export function subject(problem: string): string {
+  return problem.split(":")[0];
+}
+
 export function decide(now: number, previous: State, failing: string[]): Decision {
   const at = new Date(now).toISOString();
   if (failing.length === 0) {
-    if (previous.failing.length === 0) return { state: EMPTY_STATE, message: null };
+    if (previous.lastAlertAt === null) return { state: EMPTY_STATE, message: null };
     return {
       state: EMPTY_STATE,
       message: `heavypad watchdog: recovered (was failing since ${previous.since})`,
     };
   }
-  const changed = failing.join("\n") !== previous.failing.join("\n");
+  const since = previous.failing.length === 0 ? at : previous.since;
+  const firstStrike = previous.failing.length === 0;
+  const changed = failing.map(subject).join("\n") !== previous.failing.map(subject).join("\n");
   const lastAlert = previous.lastAlertAt === null ? null : Date.parse(previous.lastAlertAt);
   const due = lastAlert === null || now - lastAlert >= REMIND_EVERY_MS;
-  const since = previous.failing.length === 0 ? at : previous.since;
-  const state: State = { failing, since, lastAlertAt: changed || due ? at : previous.lastAlertAt };
-  if (!changed && !due) return { state, message: null };
-  const header = previous.failing.length === 0 ? "heavypad watchdog: DOWN" : `heavypad watchdog: still failing since ${since}`;
-  return { state, message: `${header}\n${failing.map((f) => `- ${f}`).join("\n")}` };
+  if (firstStrike || (!changed && !due)) {
+    return { state: { failing, since, lastAlertAt: previous.lastAlertAt }, message: null };
+  }
+  const header = lastAlert === null ? "heavypad watchdog: DOWN" : `heavypad watchdog: still failing since ${since}`;
+  return { state: { failing, since, lastAlertAt: at }, message: `${header}\n${failing.map((f) => `- ${f}`).join("\n")}` };
 }

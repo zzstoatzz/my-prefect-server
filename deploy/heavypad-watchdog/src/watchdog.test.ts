@@ -40,31 +40,31 @@ describe("problems", () => {
 
 describe("decide", () => {
   const failing = ["hub.waow.tech: HTTP 530"];
-  test("first failure alerts and records since", () => {
-    const d = decide(NOW, EMPTY_STATE, failing);
-    expect(d.message).toStartWith("heavypad watchdog: DOWN");
-    expect(d.state.since).toBe(new Date(NOW).toISOString());
+  const strike = (state = EMPTY_STATE, at = NOW, f = failing) => decide(at, state, f);
+  test("one failing run is silent, the second alerts", () => {
+    const first = strike();
+    expect(first.message).toBeNull();
+    const second = strike(first.state, NOW + 15 * 60_000);
+    expect(second.message).toStartWith("heavypad watchdog: DOWN");
+    expect(second.state.since).toBe(new Date(NOW).toISOString());
   });
-  test("unchanged failure within a day is silent", () => {
-    const first = decide(NOW, EMPTY_STATE, failing).state;
-    expect(decide(NOW + 15 * 60_000, first, failing).message).toBeNull();
+  test("a blip that recovers never alerts", () => {
+    expect(strike(strike().state, NOW + 15 * 60_000, []).message).toBeNull();
+  });
+  test("changing detail text is not a change; a new subject is", () => {
+    const down = strike(strike().state, NOW + 15 * 60_000).state;
+    const aged = strike(down, NOW + 30 * 60_000, ["hub.waow.tech: connection timed out"]);
+    expect(aged.message).toBeNull();
+    expect(strike(aged.state, NOW + 45 * 60_000, [...failing, "host snapshot: none in R2"]).message).toContain("host snapshot");
   });
   test("unchanged failure re-alerts daily", () => {
-    const first = decide(NOW, EMPTY_STATE, failing).state;
-    const d = decide(NOW + REMIND_EVERY_MS, first, failing);
-    expect(d.message).toStartWith("heavypad watchdog: still failing since");
-    expect(d.state.lastAlertAt).toBe(new Date(NOW + REMIND_EVERY_MS).toISOString());
+    const down = strike(strike().state, NOW + 15 * 60_000).state;
+    expect(strike(down, NOW + 15 * 60_000 + REMIND_EVERY_MS).message).toStartWith("heavypad watchdog: still failing since");
   });
-  test("a changed set alerts immediately", () => {
-    const first = decide(NOW, EMPTY_STATE, failing).state;
-    const d = decide(NOW + 60_000, first, [...failing, "host snapshot: none in R2"]);
-    expect(d.message).toContain("host snapshot");
-  });
-  test("recovery alerts once then stays quiet", () => {
-    const first = decide(NOW, EMPTY_STATE, failing).state;
-    const back = decide(NOW + 60_000, first, []);
+  test("recovery alerts once after a DOWN, then stays quiet", () => {
+    const down = strike(strike().state, NOW + 15 * 60_000).state;
+    const back = strike(down, NOW + 30 * 60_000, []);
     expect(back.message).toContain("recovered");
-    expect(back.state).toEqual(EMPTY_STATE);
-    expect(decide(NOW + 120_000, back.state, []).message).toBeNull();
+    expect(strike(back.state, NOW + 45 * 60_000, []).message).toBeNull();
   });
 });
