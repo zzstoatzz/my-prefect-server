@@ -109,8 +109,8 @@ OPERATOR_CREDS_BLOCK = "operator-atproto-creds"
 async def _operator_creds() -> tuple[str, str, str]:
     """Load the operator (zzstoatzz.io) handle, app password, and PDS host from
     the operator-atproto-creds Secret block — a JSON dict {handle, password, pds}.
-    This is the main identity on the self-hosted pds.zzstoatzz.io, distinct from
-    the phi agent creds used elsewhere."""
+    This is the main identity, on its own PDS rather than the bsky entryway,
+    distinct from the phi agent creds used elsewhere."""
     creds = await secret_mapping(OPERATOR_CREDS_BLOCK)
     return creds["handle"], creds["password"], creds["pds"]
 
