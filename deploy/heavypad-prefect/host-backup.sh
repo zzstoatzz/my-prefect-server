@@ -59,7 +59,12 @@ paths=(
   .local/share/heavypad-studio/app
   phi-inference/state backup secrets home-mcp/home/deploy
 )
-while IFS= read -r f; do paths+=("${f#"$HOME"/}"); done < <(
+while IFS= read -r f; do
+  f="${f#"$HOME"/}"
+  covered=0
+  for p in "${paths[@]}"; do [[ "$f" == "$p"/* ]] && covered=1; done
+  [ "$covered" = 1 ] || paths+=("$f")
+done < <(
   grep -hoE '^EnvironmentFile=-?\S+' "$HOME/.config/systemd/user/"*.service \
     | sed "s/^EnvironmentFile=-\?//; s|%h|$HOME|" | sort -u)
 existing=()
