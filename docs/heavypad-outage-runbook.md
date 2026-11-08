@@ -74,7 +74,11 @@ laptop key alone recovers everything. Keep an offline copy of the laptop key.
    Import `prefect-ui-3c108a1.tar`, create the cluster, apply the secrets from
    `captured/prefect-home-k8s.yaml` (`atcr-creds` is the registry login for the
    server image, which is amd64 only), restore the dump into the new PostgreSQL and
-   unpack `captured/redis-data.tar` into the Redis PVC before starting the api.
+   start Redis empty. Redis only holds in-flight state (event, log and action streams
+   with their consumer groups, docket's service bookkeeping, action dedup keys, any
+   concurrency leases); replaying an AOF from a different instant than the dump would
+   re-fire actions and hold leases for runs that no longer exist. The snapshot's
+   `captured/redis-data.tar` is for forensics on what was in flight, not for restoring.
    The server wants a plain `postgres://` URL. Start `--webserver-only` first and
    check deployments, automations, pools and blocks through the API; start the
    `services` deployment and the workers only once env files are in place, since
