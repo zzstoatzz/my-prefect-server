@@ -1,0 +1,19 @@
+# consumed by prefect-dr (github.com/prefectlabs/prefect-dr); installed at ~/.config/prefect-dr/heavypad.toml
+backup_dir = "~/.local/state/prefect-home/backups"
+state_dir = "~/.local/state/prefect-home"
+age_recipients = [
+  "age195mg0pvtljlk2k66w4ng48y0ywxq6550mr6u574ad83k63ernc5qmgy8qw",
+  "age15dxn35sc73nw9cz75sf8wkm48zznexd6p0va80vn27jzu0m93ylsncse65",
+]
+age_identity = "~/.config/sops/age/keys.txt"
+dump_command = ["docker", "exec", "k3d-prefect-home-server-0", "kubectl", "-n", "prefect-home", "exec", "deployment/postgres", "--", "pg_dump", "-U", "prefect", "-d", "prefect", "--format=custom"]
+
+[bucket]
+name = "heavypad-prefect-backups"
+prefix = "postgres"
+
+[restore]
+postgres_image = "postgres@sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229"
+memory = "4g"
+max_gap_minutes = 120
+expected_deployments = ["analytics-maintenance", "atproto-docs", "autofix", "autofix-revise", "backup-freshness", "bisk-snapshot", "brief", "bufo-traffic", "canary", "classify-emails", "cloud-builder-probe", "costs", "diagnostics", "docket", "email-backlog", "email-triage", "evergreen-timeline", "fastmcp-backlog", "fastmcp-brief", "fastmcp-warehouse", "fleet-health", "ingest", "investigate", "leaflet-atlas", "mcp-atlas", "mcp-fleet-health", "merge-approved", "phi-atlas", "phi-character-retro", "phi-chicken-precheck", "phi-chicken-scout", "phi-curation", "phi-editorial", "phi-fastmcp-watch", "phi-likes-review", "phi-memory-synthesis", "phi-pull-review", "phi-tag-maintenance", "phone-presence", "pi-agent", "pub-search-snapshot", "strata-hourly", "stream-admission", "test-pull-boundary", "test-pull-patch", "transform", "typeahead-enrich-backfill", "typeahead-identity-hourly", "typeahead-index", "typeahead-plc-identity", "watch-fastmcp", "watch-stream", "watch-tangled-pulls", ]

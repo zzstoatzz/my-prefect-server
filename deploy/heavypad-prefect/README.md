@@ -153,6 +153,14 @@ copied to the operator Mac's private backup directory. Rolling the UI back to
 `sha256:33a07cc4c10caf78af728e484447620c5c80b4d26e5a40b366cc7fc76cad95c3`.
 The server image itself pulled successfully from the registry.
 
+Since 2026-11-08 the backup, off-site and restore-verify units run
+[prefect-dr](https://github.com/prefectlabs/prefect-dr) (installed with `uv tool` from its
+wheel) with the checked-in `prefect-dr.toml`, which lives at `~/.config/prefect-dr/heavypad.toml`
+on HeavyPad; bucket credentials and endpoint are in `~/.config/prefect-dr/env`, rendered from
+`r2.env`. The timers, state files and bucket layout are unchanged, so `backup-freshness` and the
+watchdog read the same records. The previous unit files are kept beside them as
+`*.pre-prefect-dr`. The paragraphs below describe the contract prefect-dr now implements.
+
 `prefect-home-backup.timer` creates an age-encrypted PostgreSQL custom-format dump
 at 05:45 UTC daily with up to five minutes of jitter, retaining seven days.
 Files live under `~/.local/state/prefect-home/backups`, separate from cluster
@@ -200,7 +208,7 @@ disk volume and memory/CPU limits. It runs on HeavyPad's host Docker, outside k3
 server is started, so restored schedules and automations cannot run. It asserts the
 HeavyPad deployment IDs exist and the newest completed run is within two hours of the
 dump time, then records counts (never values) in `restore-verifications.log` and
-`restore-verified.json`. Update its deployment ID list when ownership changes.
+`restore-verified.json`. Expected deployments are matched by name in `prefect-dr.toml`; add new ones there.
 
 ### Host state snapshot
 

@@ -4,7 +4,8 @@ OnSuccess=prefect-home-offsite.service
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/share/prefect-home/backup.sh
+EnvironmentFile=%h/.config/prefect-dr/env
+ExecStart=%h/.local/bin/prefect-dr --config %h/.config/prefect-dr/heavypad.toml backup
 Nice=10
 IOSchedulingClass=idle
 MemoryMax=512M

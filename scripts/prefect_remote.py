@@ -6,7 +6,7 @@ import subprocess
 from prefect_target import target_config
 
 COMMANDS = {
-    "backup": "~/.local/share/prefect-home/backup.sh",
+    "backup": "systemctl --user start --wait prefect-home-backup.service",
     "offsite": "systemctl --user start --wait prefect-home-offsite.service",
     "offsite-verify": "systemctl --user start --wait prefect-home-offsite-verify.service"
     " && tail -n 1 ~/.local/state/prefect-home/restore-verifications.log",

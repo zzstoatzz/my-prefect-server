@@ -5,7 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/share/prefect-home/offsite-verify.sh
+EnvironmentFile=%h/.config/prefect-dr/env
+ExecStart=%h/.local/bin/prefect-dr --config %h/.config/prefect-dr/heavypad.toml verify
 Nice=10
 IOSchedulingClass=idle
 TimeoutStartSec=30min

@@ -11,7 +11,7 @@ zeldi, plyr.fm and the static sites do not depend on it.
 
 | Service | Reached at | Source | State and where it is backed up |
 | --- | --- | --- | --- |
-| Prefect server (k3d: api, postgres, redis, services) and six workers | Tailscale Serve, `deploy/targets.toml` | [`deploy/heavypad-prefect`](../deploy/heavypad-prefect/README.md) | PostgreSQL dump to R2 `postgres/` daily, restore-verified weekly. Redis AOF, cluster manifests and secrets, worker env in the host snapshot. |
+| Prefect server (k3d: api, postgres, redis, services) and six workers | Tailscale Serve, `deploy/targets.toml` | [`deploy/heavypad-prefect`](../deploy/heavypad-prefect/README.md) | PostgreSQL dump to R2 `postgres/` daily, restore-verified weekly, via [prefect-dr](https://github.com/prefectlabs/prefect-dr). Redis AOF, cluster manifests and secrets, worker env in the host snapshot. |
 | spindle CI | spindle.zzstoatzz.io (cloudflared), Serve :443 | `zzstoatzz.io/tangled-infra` (laptop only, no remote) | **Not backed up.** `/etc/spindle` and `/var/lib/spindle/spindle.db` are root/spindle-owned. Repo CI secrets must be re-added on a new spindle. |
 | cloudflared tunnel | home.zzstoatzz.io, login.zzstoatzz.io, docs-search.zzstoatzz.io, hub.waow.tech, spindle.zzstoatzz.io | `zzstoatzz.io/home` `deploy/cloudflared.yml` | Tunnel credentials in the host snapshot. DNS stays pointed at the tunnel. |
 | home-mcp, atlogin | home.zzstoatzz.io, login.zzstoatzz.io | `zzstoatzz.io/home`, `zzstoatzz.io/atlogin` | Env files and atlogin state dir in the host snapshot. |

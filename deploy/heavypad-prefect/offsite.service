@@ -5,7 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=%h/.local/share/prefect-home/offsite.sh
+EnvironmentFile=%h/.config/prefect-dr/env
+ExecStart=%h/.local/bin/prefect-dr --config %h/.config/prefect-dr/heavypad.toml offsite
 Nice=10
 IOSchedulingClass=idle
 TimeoutStartSec=15min
