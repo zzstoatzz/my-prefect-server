@@ -23,6 +23,11 @@ def resolve_pds(did: str) -> str:
     return endpoint
 
 
+def resolve_handle_pds(handle: str) -> str:
+    """The PDS of the account a handle names."""
+    return resolve_pds(IdResolver().handle.ensure_resolve(handle))
+
+
 def session_did(client: AsyncClient) -> str:
     """The did of the logged-in account; a client that never logged in has none."""
     if client.me is None:

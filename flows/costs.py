@@ -21,7 +21,7 @@ import json
 import os
 
 from atproto import AsyncClient
-from mps.atproto import session_did
+from mps.atproto import resolve_handle_pds, session_did
 from mps.blocks import secret, secret_mapping
 from mps.costs import Period, Snapshot
 from mps.costs.connectors import (
@@ -106,19 +106,20 @@ async def collect_connector(connector: Connector, period: Period) -> list[LineIt
 OPERATOR_CREDS_BLOCK = "operator-atproto-creds"
 
 
-async def _operator_creds() -> tuple[str, str, str]:
-    """Load the operator (zzstoatzz.io) handle, app password, and PDS host from
-    the operator-atproto-creds Secret block — a JSON dict {handle, password, pds}.
-    This is the main identity, on its own PDS rather than the bsky entryway,
-    distinct from the phi agent creds used elsewhere."""
+async def _operator_creds() -> tuple[str, str]:
+    """Load the operator (zzstoatzz.io) handle and app password from the
+    operator-atproto-creds Secret block. This is the main identity, distinct
+    from the phi agent creds used elsewhere; its PDS comes from its DID
+    document, not from the block."""
     creds = await secret_mapping(OPERATOR_CREDS_BLOCK)
-    return creds["handle"], creds["password"], creds["pds"]
+    return creds["handle"], creds["password"]
 
 
 @task(cache_policy=NONE)
 async def write_snapshot(snapshot: Snapshot) -> str:
     """Upsert today's snapshot at rkey=YYYY-MM-DD."""
-    handle, password, pds = await _operator_creds()
+    handle, password = await _operator_creds()
+    pds = resolve_handle_pds(handle)
 
     # point the client at the operator's own PDS so the session token is issued
     # by it (else self-hosted accounts hit BadJwtSignature via the entryway).
