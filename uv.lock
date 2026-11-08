@@ -2325,6 +2325,7 @@ version = "0.1.0"
 source = { editable = "packages/mps" }
 dependencies = [
     { name = "anthropic" },
+    { name = "atproto" },
     { name = "boto3" },
     { name = "duckdb" },
     { name = "genai-prices" },
@@ -2344,6 +2345,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = "<1" },
+    { name = "atproto", specifier = ">=0.0.67" },
     { name = "boto3", specifier = ">=1.43.88" },
     { name = "duckdb", specifier = ">=1.0" },
     { name = "genai-prices", specifier = ">=0.0.62" },
