@@ -1,11 +1,13 @@
-// loads the latest io.zzstoatzz.cost.snapshot record from the public PDS.
+// loads the latest io.zzstoatzz.cost.snapshot record from the repo's PDS,
+// resolved from its DID document unless PDS_HOST pins one.
 // no auth — the same com.atproto.repo.listRecords path hub already uses for
 // tangled.org data. the costs flow (my-prefect-server) writes these daily.
 
 import type { InfraCostSnapshot } from '$lib/types';
+import { resolvePds } from './pds';
 
-const PDS_HOST = process.env.PDS_HOST ?? 'https://pds.zzstoatzz.io';
-const COST_REPO = process.env.COST_REPO ?? 'zzstoatzz.io';
+const PDS_HOST = process.env.PDS_HOST;
+const COST_REPO = process.env.COST_REPO ?? 'did:plc:xbtmt2zjwlrfegqvch7fboei';
 const COLLECTION = 'io.zzstoatzz.cost.snapshot';
 
 interface ListRecordsResponse {
@@ -18,11 +20,11 @@ const TTL_MS = 5 * 60 * 1000;
 export async function loadInfraCosts(): Promise<InfraCostSnapshot | null> {
 	if (cached && Date.now() - cached.at < TTL_MS) return cached.data;
 
-	const url =
-		`${PDS_HOST}/xrpc/com.atproto.repo.listRecords` +
-		`?repo=${encodeURIComponent(COST_REPO)}&collection=${COLLECTION}&limit=1`;
-
 	try {
+		const pds = PDS_HOST ?? (await resolvePds(COST_REPO));
+		const url =
+			`${pds}/xrpc/com.atproto.repo.listRecords` +
+			`?repo=${encodeURIComponent(COST_REPO)}&collection=${COLLECTION}&limit=1`;
 		// rkey is YYYY-MM-DD; listRecords returns newest rkey first, so limit=1
 		// is the most recent snapshot.
 		const resp = await fetch(url);
