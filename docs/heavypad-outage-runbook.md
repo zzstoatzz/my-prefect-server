@@ -28,12 +28,16 @@ Prefect deployments (evergreen-timeline, atproto-docs, typeahead enrichment, the
 phi passes, autofix, backup-freshness and the rest) live in the PostgreSQL dump
 with their source pinned by `prefect.heavypad.yaml`.
 
-Monitoring lives on HeavyPad too. Silence from Discord during an outage is the
-outage, not health. There is no external check yet.
+Monitoring on HeavyPad itself goes dark with it. The external check is the
+`heavypad-watchdog` Cloudflare Worker (`deploy/heavypad-watchdog`): every 15 minutes
+it probes login.zzstoatzz.io, spindle.zzstoatzz.io and hub.waow.tech and reads the
+age of the newest dump and host snapshot in R2. It posts to the Discord alerts
+webhook when something fails, again daily while it stays failed, and once on
+recovery. https://heavypad-watchdog.n8-3e9.workers.dev shows its current state.
 
 ## First hours
 
-1. Confirm it is HeavyPad and not the home network: `tailscale status` shows it
+1. Confirm it is HeavyPad and not the home network: the watchdog has posted, `tailscale status` shows it
    offline; the public hostnames return 502 or time out.
 2. Nothing user-facing is at risk except those hostnames and the inference gateway.
    Decide whether to wait or fail over using the deadlines below.
