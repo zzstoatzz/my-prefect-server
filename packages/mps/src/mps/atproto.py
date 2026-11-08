@@ -1,15 +1,26 @@
-"""Small atproto helpers shared by phi-identity flows."""
+"""Small atproto helpers shared by flows."""
 
 from __future__ import annotations
 
+from functools import cache
 from typing import TYPE_CHECKING, Any
 
 import httpx
+from atproto_identity.resolver import IdResolver
 
 if TYPE_CHECKING:
     from atproto import AsyncClient
 
 PDS_BASE = "https://bsky.social"
+
+
+@cache
+def resolve_pds(did: str) -> str:
+    """The PDS endpoint a DID document names, resolved once per process."""
+    endpoint = IdResolver().did.ensure_resolve(did).get_pds_endpoint()
+    if not endpoint:
+        raise RuntimeError(f"{did}: DID document has no #atproto_pds service")
+    return endpoint
 
 
 def session_did(client: AsyncClient) -> str:

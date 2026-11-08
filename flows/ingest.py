@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import httpx
+from mps.atproto import resolve_pds
 from mps.blocks import secret_mapping_sync, secret_sync
 from mps.db import (
     write_emails,
@@ -32,10 +33,10 @@ from mps.email import (
     fetch_inbox,
 )
 from mps.github import IssueOrPR, IssueRef, gh_headers
-from mps.likes import LikedPost, LikeRecord, fetch_likes, summarize_embed
+from mps.likes import DID as LIKES_DID, LikedPost, LikeRecord, fetch_likes, summarize_embed
 from mps.lock import analytics_write_slot
 from mps.phi import PhiInteraction, PhiObservation, restore_handle, row_strings, row_text
-from mps.tangled import PDS_BASE, TangledItem, fetch_items, fetch_repo_at_uris
+from mps.tangled import DID as TANGLED_DID, TangledItem, fetch_items, fetch_repo_at_uris
 from prefect import flow, get_run_logger, task, unmapped
 from prefect.artifacts import create_table_artifact
 from prefect.cache_policies import CachePolicy
@@ -259,7 +260,7 @@ def stored_open_refs() -> list[IssueRef]:
 def fetch_all_tangled_items() -> list[TangledItem]:
     """Fetch issues, PRs, and comments from the tangled.org PDS."""
     logger = get_run_logger()
-    with httpx.Client(base_url=PDS_BASE, timeout=30) as client:
+    with httpx.Client(base_url=resolve_pds(TANGLED_DID), timeout=30) as client:
         repo_uris = fetch_repo_at_uris(client)
         logger.info(f"found {len(repo_uris)} target repos on PDS")
 
@@ -387,7 +388,7 @@ def fetch_phi_memory(
 def fetch_nate_likes(max_pages: int | None = LIKES_PAGES) -> list[LikeRecord]:
     """Fetch recent likes from nate's PDS."""
     logger = get_run_logger()
-    with httpx.Client(base_url=PDS_BASE, timeout=30) as client:
+    with httpx.Client(base_url=resolve_pds(LIKES_DID), timeout=30) as client:
         likes = fetch_likes(client, max_pages=max_pages)
     logger.info(f"fetched {len(likes)} likes from PDS")
     return likes

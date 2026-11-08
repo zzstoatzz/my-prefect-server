@@ -4,9 +4,8 @@ from dataclasses import dataclass
 
 import httpx
 
-PDS_BASE = "https://pds.zzstoatzz.io"
 DID = "did:plc:xbtmt2zjwlrfegqvch7fboei"
-XRPC = f"{PDS_BASE}/xrpc/com.atproto.repo.listRecords"
+LIST_RECORDS = "/xrpc/com.atproto.repo.listRecords"
 
 
 @dataclass
@@ -77,7 +76,7 @@ def fetch_likes(client: httpx.Client, max_pages: int | None = None) -> list[Like
         if cursor:
             params["cursor"] = cursor
 
-        resp = client.get(XRPC, params=params)
+        resp = client.get(LIST_RECORDS, params=params)
         resp.raise_for_status()
         data = resp.json()
 

@@ -94,6 +94,9 @@ def test_tolerate_records_each_dead_source():
 # --- likes pagination is bounded ---
 
 
+PDS = "https://pds.test"
+
+
 def _paged_transport(pages: int) -> httpx.MockTransport:
     def handler(request: httpx.Request) -> httpx.Response:
         cursor = request.url.params.get("cursor")
@@ -114,19 +117,19 @@ def _paged_transport(pages: int) -> httpx.MockTransport:
 
 
 def test_fetch_likes_stops_at_max_pages():
-    with httpx.Client(transport=_paged_transport(50)) as client:
+    with httpx.Client(base_url=PDS, transport=_paged_transport(50)) as client:
         items = fetch_likes(client, max_pages=3)
     assert [i.at_uri for i in items] == ["at://x/0", "at://x/1", "at://x/2"]
 
 
 def test_fetch_likes_walks_everything_when_unbounded():
-    with httpx.Client(transport=_paged_transport(5)) as client:
+    with httpx.Client(base_url=PDS, transport=_paged_transport(5)) as client:
         items = fetch_likes(client, max_pages=None)
     assert len(items) == 5
 
 
 def test_fetch_likes_stops_on_a_missing_cursor_before_max_pages():
-    with httpx.Client(transport=_paged_transport(2)) as client:
+    with httpx.Client(base_url=PDS, transport=_paged_transport(2)) as client:
         items = fetch_likes(client, max_pages=10)
     assert len(items) == 2
 

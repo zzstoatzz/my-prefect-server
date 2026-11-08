@@ -11,7 +11,6 @@ from typing import Any
 import httpx
 from pydantic import BaseModel
 
-PDS_BASE = "https://pds.zzstoatzz.io"
 DID = "did:plc:xbtmt2zjwlrfegqvch7fboei"
 HANDLE = "zzstoatzz.io"
 # gardener.pds.zat.dev — the maintenance identity that authors autofix pulls
@@ -19,7 +18,7 @@ GARDENER_DID = "did:plc:7vx7exykq2zfxjxxejovrymi"
 PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
 TARGET_REPOS = ["zat", "zlay", "plyr.fm", "at-me", "pollz", "typeahead"]
 
-XRPC = f"{PDS_BASE}/xrpc/com.atproto.repo.listRecords"
+LIST_RECORDS = "/xrpc/com.atproto.repo.listRecords"
 
 
 class TangledItem(BaseModel):
@@ -50,7 +49,7 @@ def build_tangled_url(repo_name: str, kind: str) -> str:
 def fetch_repo_at_uris(client: httpx.Client) -> dict[str, str]:
     """Read sh.tangled.repo records and return {at_uri: repo_name} for target repos."""
     resp = client.get(
-        XRPC,
+        LIST_RECORDS,
         params={"repo": DID, "collection": "sh.tangled.repo", "limit": 100},
     )
     resp.raise_for_status()
@@ -85,7 +84,7 @@ def fetch_items(
         if cursor:
             params["cursor"] = cursor
 
-        resp = client.get(XRPC, params=params)
+        resp = client.get(LIST_RECORDS, params=params)
         resp.raise_for_status()
         data = resp.json()
 
