@@ -26,6 +26,7 @@ def test_project_mapping_longest_match_wins():
     assert project_for("pear-definitelyarealcompany") == "pear"
     assert project_for("follower-weight") == "follower-weight"
     assert project_for("zzstoatzz-porxie") == "porxie"
+    assert project_for("zzstoatzz-cellar") == "cellar"
     assert project_for("leaflet-search-tap") == "standard.site"
     assert project_for("coral") == "trending"
     assert project_for("bufo-bot") == "bufo"

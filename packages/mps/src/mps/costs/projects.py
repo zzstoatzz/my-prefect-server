@@ -58,6 +58,8 @@ _RESOURCE_PATTERNS: dict[str, str] = {
     "pear": "pear",
     "follower-weight": "follower-weight",
     "porxie": "porxie",
+    # one fly machine serving pollz's and status's backends
+    "cellar": "cellar",
     # misc
     "pollz": "misc",
     "bsky-feed": "misc",  # zig-bsky-feed and bsky-feed
