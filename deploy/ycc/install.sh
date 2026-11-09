@@ -18,6 +18,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$DEST" "$UNIT_DIR" "$SANDBOX/home/.config/ycc" "$SANDBOX/work"
 chmod 700 "$SANDBOX/home" "$SANDBOX/home/.config/ycc"
 install -m 0755 "$HERE/sandbox.sh" "$DEST/sandbox.sh"
+install -m 0755 "$HERE/cli.sh" "$DEST/cli.sh"
 # The daemon writes settings changes back to this file, so only seed it.
 [ -e "$CONFIG" ] || install -m 0600 "$HERE/ycc.toml" "$CONFIG"
 chmod 600 "$CONFIG"

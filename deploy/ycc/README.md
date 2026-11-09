@@ -14,8 +14,10 @@ shell commands as the daemon's user. So the whole daemon runs inside
 `sandbox.sh`, a bwrap wrapper with the same shape as albedo's: `/nix`, `/usr`
 and `/etc` read-only, `~/ycc/home` as the home directory and `~/ycc/work` for
 projects. None of the real home is visible: no sops keys, no
-`~/.config/prod-worker/env`, no other checkouts. `ycc doctor` inside the
-wrapper reports reviewer confinement via bwrap, so the nested sandbox works.
+`~/.config/prod-worker/env`, no other checkouts. `uv` is bound in so an agent
+can run a Python project's tests. `ycc doctor` inside the
+wrapper reports reviewer confinement via bwrap; a real review inside the
+wrapper has not been exercised yet.
 
 Two limits to know:
 
@@ -77,10 +79,15 @@ the token can run commands in every project the daemon serves.
 ```sh
 ssh heavypad systemctl --user status ycc
 ssh heavypad journalctl --user -u ycc -n 50
-ssh heavypad 'YCC_SANDBOX=$HOME/ycc ~/.local/share/ycc/sandbox.sh ycc doctor'
-ssh heavypad 'YCC_SANDBOX=$HOME/ycc ~/.local/share/ycc/sandbox.sh ycc project list'
+ssh heavypad '~/.local/share/ycc/sandbox.sh ycc doctor'
+ssh heavypad '~/.local/share/ycc/cli.sh project list'
+ssh heavypad '~/.local/share/ycc/cli.sh list'
 tailscale serve --https=12443 off   # on heavypad: unpublish
 ```
+
+`cli.sh` runs a ycc client command inside the sandbox against this daemon.
+A bare `ycc` there does not find it: it probes ycc's default port, then runs
+a throwaway daemon of its own.
 
 Session logs and the project registry live under `~/ycc/home`. The daemon
 runs inside the unit's cgroup, so restarting the unit restarts the daemon.

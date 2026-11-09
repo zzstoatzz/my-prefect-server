@@ -6,10 +6,13 @@
 # projects the daemon serves. Nothing else of the real home is visible.
 # ycc confines only its reviewers' shells, so this wrapper is what confines
 # the coordinator and implementer. Network is shared: the model is remote.
+# uv is bound in so an agent can run a Python project's tests; it fetches
+# interpreters and packages into the sandbox home, not the host's cache.
 set -euo pipefail
 
 sandbox=${YCC_SANDBOX:-$HOME/ycc}
 ycc_bin=$(dirname "$(readlink -f "$HOME/.local/bin/ycc")")
+uv_bin=$(readlink -f "$HOME/.local/bin/uv")
 
 exec bwrap --unshare-all --share-net --die-with-parent --new-session \
   --ro-bind /nix /nix --ro-bind /usr /usr --ro-bind /etc /etc \
@@ -17,8 +20,8 @@ exec bwrap --unshare-all --share-net --die-with-parent --new-session \
   --tmpfs /tmp --proc /proc --dev /dev \
   --ro-bind /run/systemd/resolve /run/systemd/resolve \
   --bind "$sandbox/home" /home/stoat --bind "$sandbox/work" /home/stoat/work \
-  --ro-bind "$ycc_bin" /opt/ycc \
-  --clearenv --setenv HOME /home/stoat --setenv PATH "/opt/ycc:/usr/bin:/bin" \
+  --ro-bind "$ycc_bin" /opt/ycc --ro-bind "$uv_bin" /opt/tools/uv \
+  --clearenv --setenv HOME /home/stoat --setenv PATH "/opt/ycc:/opt/tools:/usr/bin:/bin" \
   --setenv TERM xterm-256color --setenv LANG C.UTF-8 \
   --chdir /home/stoat/work \
   "$@"
