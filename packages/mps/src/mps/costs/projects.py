@@ -52,6 +52,8 @@ _RESOURCE_PATTERNS: dict[str, str] = {
     "prefect": "prefect",
     # pds infra
     "pds": "pds-infra",
+    # zds.zzstoatzz.io, the zds PDS the main account is moving to (pds-infra/zds)
+    "zds-zzstoatzz": "pds-infra",
     # labelz
     "labelz": "labelz",
     # habitat org server for definitelyarealcompany (prefect.io/infra/pear)
