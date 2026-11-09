@@ -448,6 +448,24 @@ automations:
         subject: "heavypad is running hot"
         body: "{{ payload.summary }}"
 
+  - name: Mac disk pressure -> discord
+    description: >-
+      Warn when Nate's Mac runs low on disk space or Spotlight stops indexing,
+      and report changes as disk space and indexing recover.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect: [mac.storage.changed]
+      match: {prefect.resource.id: host.nate-mac}
+      threshold: 1
+      within: 0
+    actions:
+      - type: send-notification
+        block: discord-alerts
+        subject: "Mac storage: {{ payload.level }}"
+        body: "{{ payload.summary }}"
+
   - name: heavypad fan health -> discord
     description: >-
       One of heavypad's two fans turned at a different speed from the other at
