@@ -5,6 +5,8 @@ that caused diagnoses to fail across unrelated deployments. See the
 [incident and reinstatement requirements](incidents/2026-11-06-home-internet-autofix-cascade.md).
 This status supersedes the historical operational updates below.
 
+The proposed replacement is described in [Alert dispatch with Albedo](alert-dispatch.md).
+
 ## October 12 operational update
 
 Autofix still proposes only for `strata-hourly` and `mcp-atlas`. Email failures
