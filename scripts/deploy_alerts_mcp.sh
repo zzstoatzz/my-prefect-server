@@ -15,8 +15,12 @@ set -euo pipefail
 release=$1
 cd "$release"
 touch mps/__init__.py
-# Reuse what the host already has; the home connection is metered.
-/home/stoat/.local/bin/uv sync --offline --frozen --no-dev
+# The home connection is metered: use the package cache, and say so when it
+# falls short. The whole locked set is about 17 MB of wheels.
+if ! /home/stoat/.local/bin/uv sync --offline --frozen --no-dev 2>/dev/null; then
+    echo 'package cache incomplete; downloading the missing wheels' >&2
+    /home/stoat/.local/bin/uv sync --frozen --no-dev
+fi
 mkdir -p "$HOME/.config/alerts-mcp" "$HOME/.config/systemd/user"
 install -m 0600 env "$HOME/.config/alerts-mcp/env"
 install -m 0644 alerts-mcp.service "$HOME/.config/systemd/user/alerts-mcp.service"

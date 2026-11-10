@@ -636,7 +636,7 @@ gardener-install revision="HEAD":
 deploy-bandwidth-watchdog:
     ./scripts/deploy_bandwidth_watchdog.sh
 
-# Deploy the committed alerts MCP to heavypad from its package cache.
+# Deploy the committed alerts MCP to heavypad, from its package cache when possible.
 deploy-alerts-mcp:
     ./scripts/deploy_alerts_mcp.sh
 

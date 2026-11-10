@@ -67,9 +67,10 @@ just deploy-alerts-mcp
 ```
 
 deploys the committed revision into `~/alerts-mcp/releases/<sha>` and restarts
-the unit. Dependencies install from heavypad's package cache
-(`uv sync --offline`); `pyproject.toml` pins the versions inbox-zero already
-uses there so a release downloads nothing. The Prefect credential comes from
-`~/.config/prod-worker/env`.
+the unit. Dependencies install from heavypad's package cache when it has them
+(`uv sync --offline`), and the deploy says so when it has to download instead.
+`pyproject.toml` pins the versions inbox-zero already uses there to make a
+cache hit likely; the whole locked set is about 17 MB of wheels. The Prefect
+credential comes from `~/.config/prod-worker/env`.
 
 Tests: `uv run --extra inbox pytest tests/test_alerts_mcp.py`.
