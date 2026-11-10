@@ -304,10 +304,8 @@ def create_server(prefect: Prefect, ui_url: str = "") -> FastMCP:
                 },
             }
         )
-        status = {"claim": "claimed", "resolve": "resolved", "handoff": "open"}.get(
-            action, incident["status"]
-        )
-        return {"recorded": True, "alert": {**summary(incident), "status": status}}
+        found, _ = load(prefect, MAX_HOURS)
+        return {"recorded": True, "alert": summary(found[key])}
 
     return mcp
 

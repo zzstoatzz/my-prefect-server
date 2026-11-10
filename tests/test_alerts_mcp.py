@@ -250,7 +250,7 @@ async def test_update_emits_one_event_and_a_second_claim_is_refused(mcp, server)
         note="deferred the import",
         link="https://tangled.org/zzstoatzz.io/my-prefect-server/pulls/1",
     )
-    assert done["alert"]["status"] == "resolved"
+    assert done["alert"]["status"] == "resolved" and done["alert"]["owner"] == "ycc"
     assert [event["event"] for event in server.emitted] == ["alert.claimed", "alert.resolved"]
     resolved = server.emitted[-1]
     assert resolved["resource"] == {
@@ -355,8 +355,10 @@ async def test_updates_count_before_the_event_log_shows_them(mcp, server):
 
 
 async def test_a_resolved_alert_cannot_be_claimed_or_handed_off(mcp, server):
-    await call(mcp, "update_alert", key=KEY, agent="ycc", action="resolve", note="fixed")
+    await call(mcp, "update_alert", key=KEY, agent="phi", action="claim")
+    done = await call(mcp, "update_alert", key=KEY, agent="ycc", action="resolve", note="fixed")
+    assert done["alert"]["owner"] == "ycc"
     for action in ("claim", "handoff"):
         refused = await call(mcp, "update_alert", key=KEY, agent="phi", action=action, note="x")
         assert not refused["recorded"] and "resolved" in refused["reason"]
-    assert len(server.emitted) == 1
+    assert len(server.emitted) == 2
