@@ -486,6 +486,26 @@ automations:
         subject: "heavypad fan health"
         body: "{{ payload.summary }}"
 
+  - name: relay health -> discord
+    description: >-
+      One of the operator's relays fell behind the network, or recovered, by
+      relay-eval's network-absolute verdict; or relay-eval stopped scoring.
+      Emitted by the relay-health flow on transitions only. On 2026-08-18
+      zlay.waow.tech carried about 18% of the network for 16.5 hours and nobody
+      was told, because reporting was left to Phi's judgment.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect: [relay-eval.behind, relay-eval.stale, relay-eval.recovered]
+      threshold: 1
+      within: 0
+    actions:
+      - type: send-notification
+        block: discord-alerts
+        subject: "relay health"
+        body: "{{ payload.summary }}"
+
   - name: typeahead refresh missing -> retry + discord
     description: >-
       A serving Tantivy slot's checkpoint coverage lasts 24 hours and refreshes

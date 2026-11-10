@@ -115,6 +115,19 @@ deployments:
         timezone: UTC
         active: true
 
+  - name: relay-health
+    entrypoint: flows/relay_health.py:relay_health
+    tags: [watch, heavypad]
+    description: Emit alert events when a watched relay falls behind the network or relay-eval stops scoring
+    work_pool: *heavypad_phi
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+      - cron: "*/5 * * * *"
+        timezone: UTC
+        active: true
+
   - name: phi-likes-review
     entrypoint: flows/phi_trigger.py:phi_trigger
     tags: [phi, heavypad]
