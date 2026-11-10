@@ -718,26 +718,3 @@ albedo-phone-install:
 # print the phone's sign-in link (QR code in a terminal); --new-link replaces it
 albedo-phone-link *args:
     ssh -t -o ConnectTimeout=10 -o BatchMode=yes stoat@heavypad 'ALBEDO_SANDBOX=$HOME/albedo-phone $HOME/.local/share/albedo-phone/sandbox.sh albedo web --no-open --local --port 4317 --public-url https://heavypad.tailb660b6.ts.net:11443 {{args}}'
-
-# build ycc on heavypad at the commit pinned in deploy/ycc/build.sh
-ycc-build:
-    ssh -o ConnectTimeout=10 -o BatchMode=yes stoat@heavypad 'bash -s' < deploy/ycc/build.sh
-
-# send the OpenRouter key from the secrets store to ycc's secrets store on heavypad over ssh stdin; nothing is printed
-ycc-key:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    sops -d --extract '["openrouter"]["api_key"]' ~/tangled.org/zzstoatzz.io/secrets/prod.yaml \
-      | ssh -o ConnectTimeout=10 -o BatchMode=yes stoat@heavypad 'YCC_SANDBOX=$HOME/ycc $HOME/.local/share/ycc/sandbox.sh ycc token set OPENROUTER_API_KEY >/dev/null && echo "OPENROUTER_API_KEY stored"'
-
-# install or update the ycc unit on heavypad from this checkout
-ycc-install:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    stage="$(ssh -o ConnectTimeout=10 -o BatchMode=yes stoat@heavypad 'mktemp -d')"
-    scp -q -r deploy/ycc "stoat@heavypad:$stage/"
-    ssh -o ConnectTimeout=10 -o BatchMode=yes stoat@heavypad "bash '$stage/ycc/install.sh'; rm -rf '$stage'"
-
-# print the ycc daemon's access token, for pasting into the web client; run it in your own terminal
-ycc-token:
-    @ssh -o ConnectTimeout=10 -o BatchMode=yes stoat@heavypad 'cat ~/ycc/home/.local/state/ycc/daemon-token'
