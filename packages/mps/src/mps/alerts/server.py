@@ -54,6 +54,7 @@ class Prefect:
         self.base = base.rstrip("/")
         self.client = client
         self._automations: tuple[float, dict[str, str]] | None = None
+        self._emitted: list[tuple[float, dict[str, Any]]] = []
 
     def alerting(self) -> dict[str, str]:
         """Resource ID to name for automations that send an alert."""
@@ -115,6 +116,17 @@ class Prefect:
 
     def emit(self, event: dict[str, Any]) -> None:
         self.client.post(f"{self.base}/events", json=[event]).raise_for_status()
+        self._emitted.append((time.monotonic(), event))
+
+    def with_emitted(self, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Add updates this process emitted that the event log does not show yet.
+
+        The server accepts an event up to half a minute before a filter returns
+        it; without this a second agent could claim what the first just did.
+        """
+        self._emitted = [item for item in self._emitted if time.monotonic() - item[0] < 300]
+        seen = {event["id"] for event in events}
+        return events + [event for _, event in self._emitted if event["id"] not in seen]
 
     def logs(self, flow_run_id: str, limit: int) -> list[dict[str, Any]]:
         response = self.client.post(
@@ -151,7 +163,7 @@ def load(prefect: Prefect, hours: int) -> tuple[dict[str, dict[str, Any]], bool]
     lifecycle, more_updates = prefect.events(
         {"event": {"name": sorted(ACTIONS.values())}, "occurred": {"since": since}}
     )
-    found = incidents(automations, triggered, lifecycle)
+    found = incidents(automations, triggered, prefect.with_emitted(lifecycle))
     for incident in found.values():
         deployment = incident["firings"][-1].get("deployment")
         if deployment and incident["status"] != "resolved":
@@ -266,12 +278,13 @@ def create_server(prefect: Prefect, ui_url: str = "") -> FastMCP:
         if key not in found:
             raise ValueError(f"no alert {key!r} fired in the last {MAX_HOURS} hours")
         incident = found[key]
+        refusal = ""
         if action == "claim" and incident["status"] == "claimed":
-            return {
-                "recorded": False,
-                "reason": f"already claimed by {incident['owner']}",
-                "alert": summary(incident),
-            }
+            refusal = f"already claimed by {incident['owner']}"
+        elif action in ("claim", "handoff") and incident["status"] == "resolved":
+            refusal = "already resolved; it reopens if it fires again"
+        if refusal:
+            return {"recorded": False, "reason": refusal, "alert": summary(incident)}
         event = ACTIONS[action]
         prefect.emit(
             {

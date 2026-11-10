@@ -42,7 +42,11 @@ again after being resolved. Two things resolve one without an agent: an event
 whose name ends in `.recovered`, and for a flow-run failure a later completed
 run of the same deployment (shown as `recovered_at`). Alerts for an event that
 went missing have no such signal and stay open until an agent resolves them or
-they leave the window. A second claim on a claimed incident is refused. A handoff returns
+they leave the window. A second claim on a claimed incident is refused, and so is a
+claim or handoff on a resolved one. The event log can take half a minute to
+return an event it has accepted, so the service also counts the updates it
+emitted in the last five minutes; that memory is per process and is lost on
+restart. A handoff returns
 it to open with the note as `needs`, which is how an agent without the right
 credential passes it on.
 

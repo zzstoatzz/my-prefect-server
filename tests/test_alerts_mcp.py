@@ -144,6 +144,7 @@ class Server:
         self.emitted = []
         self.filters = []
         self.completed = []
+        self.lagging = False
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
@@ -189,7 +190,8 @@ class Server:
             return httpx.Response(200, json={"events": events[1:], "next_page": None})
         if path == "/api/events":
             self.emitted.extend(body)
-            self.lifecycle.extend(body)
+            if not self.lagging:
+                self.lifecycle.extend(body)
             return httpx.Response(204)
         if path == "/api/logs/filter":
             return httpx.Response(
@@ -340,3 +342,21 @@ async def test_a_later_completed_run_resolves_a_flow_run_failure(mcp, server):
 async def test_an_unrelated_or_earlier_run_does_not_resolve_it(mcp, server, event):
     server.completed = [event]
     assert [item["key"] for item in (await call(mcp, "list_alerts"))["alerts"]] == [KEY]
+
+
+async def test_updates_count_before_the_event_log_shows_them(mcp, server):
+    server.lagging = True
+    assert (await call(mcp, "update_alert", key=KEY, agent="ycc", action="claim"))["recorded"]
+    second = await call(mcp, "update_alert", key=KEY, agent="phi", action="claim")
+    assert not second["recorded"] and "ycc" in second["reason"]
+    assert (await call(mcp, "list_alerts"))["alerts"][0]["owner"] == "ycc"
+    server.lifecycle.extend(server.emitted)
+    assert len((await call(mcp, "get_alert", key=KEY))["updates"]) == 1
+
+
+async def test_a_resolved_alert_cannot_be_claimed_or_handed_off(mcp, server):
+    await call(mcp, "update_alert", key=KEY, agent="ycc", action="resolve", note="fixed")
+    for action in ("claim", "handoff"):
+        refused = await call(mcp, "update_alert", key=KEY, agent="phi", action=action, note="x")
+        assert not refused["recorded"] and "resolved" in refused["reason"]
+    assert len(server.emitted) == 1
