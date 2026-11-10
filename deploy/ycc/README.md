@@ -15,7 +15,11 @@ shell commands as the daemon's user. So the whole daemon runs inside
 and `/etc` read-only, `~/ycc/home` as the home directory and `~/ycc/work` for
 projects. None of the real home is visible: no sops keys, no
 `~/.config/prod-worker/env`, no other checkouts. `uv` is bound in so an agent
-can run a Python project's tests. `ycc doctor` inside the
+can run a Python project's tests, with `UV_OFFLINE=1`: the home connection is
+metered and the first replay pulled 1.3G of packages into the sandbox's own
+cache. A project whose dependencies are not in `~/ycc/home/.cache/uv` yet
+fails to sync instead of downloading; an agent can unset the variable, so it
+stops accidents and is not a network control. `ycc doctor` inside the
 wrapper reports reviewer confinement via bwrap; a real review inside the
 wrapper has not been exercised yet.
 

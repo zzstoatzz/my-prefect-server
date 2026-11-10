@@ -22,6 +22,7 @@ exec bwrap --unshare-all --share-net --die-with-parent --new-session \
   --bind "$sandbox/home" /home/stoat --bind "$sandbox/work" /home/stoat/work \
   --ro-bind "$ycc_bin" /opt/ycc --ro-bind "$uv_bin" /opt/tools/uv \
   --clearenv --setenv HOME /home/stoat --setenv PATH "/opt/ycc:/opt/tools:/usr/bin:/bin" \
+  --setenv UV_OFFLINE 1 \
   --setenv TERM xterm-256color --setenv LANG C.UTF-8 \
   --chdir /home/stoat/work \
   "$@"
