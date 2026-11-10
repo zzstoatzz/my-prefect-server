@@ -1,0 +1,4 @@
+ALERTS_BIND_ADDRESS=100.96.216.23
+ALERTS_PORT=9012
+ALERTS_TAILSCALE_LOGIN=zzstoatzz@github
+ALERTS_UI_URL=https://prefect-server.waow.tech

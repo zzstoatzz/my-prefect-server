@@ -636,6 +636,10 @@ gardener-install revision="HEAD":
 deploy-bandwidth-watchdog:
     ./scripts/deploy_bandwidth_watchdog.sh
 
+# Deploy the committed alerts MCP to heavypad from its package cache.
+deploy-alerts-mcp:
+    ./scripts/deploy_alerts_mcp.sh
+
 [positional-arguments]
 agentic-fastmcp *args:
     bash scripts/agentic_fastmcp.sh "$@"

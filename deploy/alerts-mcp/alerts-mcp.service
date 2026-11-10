@@ -1,0 +1,18 @@
+[Unit]
+Description=Alerts MCP: Prefect alerts as incidents for agents (tailnet :9012)
+After=network-online.target tailscaled.service
+
+[Service]
+WorkingDirectory=%h/alerts-mcp/current
+EnvironmentFile=%h/.config/prod-worker/env
+EnvironmentFile=%h/.config/alerts-mcp/env
+Environment=PYTHONPATH=%h/alerts-mcp/current
+ExecStart=%h/alerts-mcp/current/.venv/bin/python -m mps.alerts.server
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+MemoryMax=256M
+
+[Install]
+WantedBy=default.target
