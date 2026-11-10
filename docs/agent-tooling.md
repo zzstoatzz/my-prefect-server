@@ -7,7 +7,7 @@ deployment definitions, just as it owns `flows/bisk.py`. The Atlas repository
 continues owning its Worker, website, library and MCP server. It must not register
 another recurring Prefect crawl.
 
-the `mps` plugin in `plugins/mps/` bundles two MCP servers. know what each one
+the `mps` plugin in `plugins/mps/` bundles three MCP servers. know what each one
 can do before hand-rolling `curl`, and before claiming something isn't possible.
 
 - **pdsx** (`https://pdsx-by-zzstoatzz.fastmcp.app/mcp`) — full PDS record
@@ -34,6 +34,13 @@ can do before hand-rolling `curl`, and before claiming something isn't possible.
     `GET /api/version`, tags/labels/parameters persistence, a real PATCH, the
     work-pool default-queue bug) was found by pointing it at prod and reading
     what came back.
+
+- **alerts** (`http://100.96.216.23:9012/mcp`, tailnet only) — what fired and
+  who is on it. every alert the server sends to Discord is readable here as an
+  incident (`list_alerts`, `get_alert` with the failing run's logs), and
+  `update_alert` records a claim, handoff or resolution that is posted back to
+  Discord. read alerts here instead of asking nate to paste them. source and
+  operations: `deploy/alerts-mcp/README.md`.
 
 if you are about to say "the MCP can't do X" or offer to build a missing tool,
 grep its tool list first. that has been wrong more than once.
