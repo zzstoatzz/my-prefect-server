@@ -9,8 +9,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 SOURCES = {
     "freshness": "https://typeahead.waow.tech/health/freshness",
-    "search": "https://typeahead-search.fly.dev/health",
-    "index": "https://typeahead-search.fly.dev/index/status",
+    "search": "https://typeahead-search-transport.n8-3e9.workers.dev/ready",
+    "index": "https://typeahead-search-transport.n8-3e9.workers.dev/index/status",
     "ingester": "https://typeahead-ingester.fly.dev/health",
 }
 FIELDS = {
@@ -20,12 +20,10 @@ FIELDS = {
         "replica_lag_s": "overlay_lag_seconds",
         "snapshot_age_s": "snapshot_age_seconds",
     },
-    "search": {"ready": "search_ready", "rss_kb": "search_rss_kilobytes"},
+    "search": {"ready": "search_ready"},
     "index": {
-        "attached": "snapshot_attached",
         "actor_count": "snapshot_actors",
-        "prefix_count": "snapshot_prefixes",
-        "overlay_actor_rows": "overlay_actors",
+        "sync_lag_s": "index_sync_lag_seconds",
     },
     "ingester": {"rss_kb": "ingester_rss_kilobytes"},
 }
