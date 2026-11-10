@@ -17,6 +17,8 @@ The cloud assistant reads a concise pending-decision summary over MCP and brings
 
 ## Pilot and follow-up
 
-Start with a marked test event, an unlabeled false alarm, and a real historical failure. Check that the marked test uses zero model calls, the triage model distinguishes the other cases, and duplicate delivery starts at most one Albedo run. Exercise a scope-change request with a controlled pause and resume before enabling live dispatch.
+Run `albedo-incident-pilot/albedo-incident-pilot` manually on HeavyPad. It accepts three fixed cases: `test` skips inference, `recovered` represents an unlabeled false alarm, and `fleet-health-crash` replays a recorded incident. DeepSeek triages the latter two. When it recommends investigation, a fresh, tool-free Albedo session writes a diagnosis artifact and the flow emits `work.waiting`. The typed `accept` or `dismiss` input records a review of that artifact.
+
+Before adding a live event trigger, verify duplicate delivery starts at most one Albedo run. Exercise a scope-change request before giving Albedo a checkout or any deploy authority.
 
 The self-hosted Prefect MCP currently offers read-only diagnostics. The existing alerts MCP is tailnet-only. The first cloud integration should expose just the pending decision and its status over an authenticated MCP path. A later MCP action could submit a typed decision for a specific paused incident, using explicit authority and the existing Prefect input mechanism. The operator can use Prefect directly in the meantime. [Alerts MCP](../deploy/alerts-mcp/README.md) · [Existing typed flow input](../flows/email_triage.py)
