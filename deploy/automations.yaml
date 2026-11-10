@@ -535,3 +535,22 @@ automations:
         block: discord-alerts
         subject: "bandwidth watchdog missing on heavypad"
         body: "No bandwidth heartbeat for five minutes. Inspect systemctl --user status bandwidth-watchdog on heavypad; monitoring coverage is unknown."
+
+  - name: alert update -> discord
+    description: >-
+      An agent claimed, handed off or resolved an alert through the alerts MCP
+      (deploy/alerts-mcp). The MCP is where agents read alerts; this keeps the
+      human view of who is on what in the same place the alert landed. Notes
+      are not posted.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect: [alert.claimed, alert.handed-off, alert.resolved]
+      threshold: 1
+      within: 0
+    actions:
+      - type: send-notification
+        block: discord-alerts
+        subject: "{{ resource.name }}"
+        body: "{{ payload.summary }}"
