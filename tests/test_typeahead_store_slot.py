@@ -42,7 +42,7 @@ def route_object(controller):
     return result["Body"].read(), result["ETag"]
 
 
-def cut_over(controller, prior=MANAGED):
+def cut_over(controller, prior=MANAGED, admitted_at=1793200000):
     """Write what store_slot_route.py cutover writes: its admission, then the record."""
     identity = {
         "engine": "tantivy",
@@ -55,7 +55,7 @@ def cut_over(controller, prior=MANAGED):
     admission = {
         "schema_version": 1,
         "kind": "store-slot-route-admission",
-        "admitted_at": 1793200000,
+        "admitted_at": admitted_at,
         "target": identity,
         "gates": {"sync_lag_s": 4},
         "prior_route": prior,

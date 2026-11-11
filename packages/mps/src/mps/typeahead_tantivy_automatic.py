@@ -108,6 +108,7 @@ def _continue_refresh(
     complete=None,
 ):
     current = route["current"]
+    without_lease = {key: value for key, value in route.items() if key != "mutation"}
     pending = []
     for app in APPS:
         raw = slots.read(f"control/tantivy-slots/{app}/pending.json", 4096)
@@ -131,6 +132,12 @@ def _continue_refresh(
             or state.get("artifact_manifest_sha256") != record.get("artifact_manifest_sha256")
         ):
             raise ValueError("Pending automatic refresh identity changed")
+        if state.get("standby_rollback_route") == without_lease:
+            # A standby refresh recorded this candidate as the rollback target
+            # and stopped before clearing its marker; the route now names it.
+            slots.save(state, "standby-recorded")
+            slots.unprotect(state)
+            continue
         pending.append(state)
     if len(pending) > 1:
         raise RuntimeError("Multiple pending operations fence automatic refresh")

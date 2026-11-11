@@ -11,8 +11,8 @@ The slot lifecycle runs unchanged against the rollback route: the record that a
 rollback would restore, `{current: rollback target, previous: the other slot}`.
 Before the first standby refresh that is the prior route stored in the store
 slot's admission. Afterwards it is the ledger this module writes under
-`control/tantivy-standby/` before each record update, keyed by the new rollback
-target's admission digest.
+`control/tantivy-standby/` before each record update, keyed by the store slot's
+and the new rollback target's admission digests.
 """
 
 from __future__ import annotations
@@ -67,6 +67,13 @@ def canonical_digest(value) -> str:
 
 def encode_record(record: dict) -> bytes:
     return json.dumps(record, separators=(",", ":")).encode()
+
+
+def ledger_key(store_target: dict, rollback_target: dict) -> str:
+    return (
+        f"{STANDBY_PREFIX}{store_target['admission_sha256']}/"
+        f"{rollback_target['admission_sha256']}.json"
+    )
 
 
 def managed_origins() -> tuple[str, ...]:
@@ -131,9 +138,7 @@ class StandbyRefresh(Refresh):
                 raise ValueError("Store slot admission is missing or differs from the routed slot")
             route = normalize_route(admission["prior_route"])
             if route.get("current") != previous:
-                ledger = self.optional_metadata(
-                    STANDBY_PREFIX + previous["admission_sha256"] + ".json", 65536
-                )
+                ledger = self.optional_metadata(ledger_key(current, previous), 65536)
                 if (
                     not isinstance(ledger, dict)
                     or ledger.get("schema_version") != 1
@@ -221,7 +226,7 @@ def _settle_landed_promotion(slots, route):
         state is not None
         and state.get("app") == app
         and state.get("promotion_target") == route
-        and state.get("phase") in ("promotion-cas-intent", "promotion-cas-confirmed")
+        and state.get("phase") in ("promotion-cas-intent", "promotion-cas-confirmed", "promoted")
     ):
         slots.save(state, "promoted")
         slots.unprotect(state)
@@ -284,7 +289,7 @@ def record_standby(service, slots, prepared, release_key, release_sha256):
     rollback_route = {"version": 1, "current": candidate, "previous": before["current"]}
     target = {"version": 1, "current": record["current"], "previous": candidate}
     slots.immutable(
-        STANDBY_PREFIX + candidate["admission_sha256"] + ".json",
+        ledger_key(record["current"], candidate),
         raw_json(
             {
                 "schema_version": 1,

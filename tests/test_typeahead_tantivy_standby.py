@@ -233,7 +233,8 @@ def test_standby_refresh_rebuilds_the_spare_slot_and_only_repoints_previous(rout
     assert report["rollback_route"] == rollback_route == controller.route()[0]
     ledger = json.loads(
         controller.s3.path(
-            f"control/tantivy-standby/{candidate['admission_sha256']}.json"
+            f"control/tantivy-standby/{record['current']['admission_sha256']}"
+            f"/{candidate['admission_sha256']}.json"
         ).read_bytes()
     )
     assert ledger["route"] == rollback_route
@@ -394,6 +395,59 @@ def test_a_rollback_between_preparation_and_recording_needs_the_candidate_cancel
     assert promoted[0]["expected_current_etag"] == controller.route()[1]
 
 
+def test_a_rollback_onto_a_recorded_candidate_clears_its_stale_marker(routed):
+    controller, slots, _ = routed
+    provider = Provider(controller, slots)
+    unprotect = slots.unprotect
+
+    def interrupted(state):
+        raise Injected("stopped before the marker was cleared")
+
+    slots.unprotect = interrupted
+    with pytest.raises(Injected):
+        run(controller, slots, provider)
+    slots.unprotect = unprotect
+    candidate = json.loads(route_object(controller)[0])["previous"]
+    rolled_back = {"version": 1, "current": candidate, "previous": SERVING_B}
+    assert controller.route()[0] == rolled_back
+    controller.__class__ = FixtureRefresh
+    controller.s3.seed(ROUTE_KEY, encode_record(rolled_back))
+    route, etag = controller.route()
+    prepared = []
+
+    class Boundary(RuntimeError):
+        pass
+
+    def prepare(build_id, image, **options):
+        prepared.append((build_id, options["app"], options["request_id"]))
+        raise Boundary
+
+    slots.prepare = prepare
+    with pytest.raises(Boundary):
+        typeahead_tantivy_automatic._continue_refresh(
+            controller, slots, provider.publish, route, etag, IMAGE, **PROOF
+        )
+    assert prepared == [(provider.builds[1], APPS[1], None)]
+    assert not list(controller.s3.root.glob("control/tantivy-slots/*/pending.json"))
+
+
+def test_a_candidate_prepared_under_one_cutover_is_recorded_under_the_next(routed):
+    controller, slots, _ = routed
+    provider = Provider(controller, slots, fail="record-write")
+    with pytest.raises(Injected):
+        run(controller, slots, provider)
+    provider.fail = None
+    controller._lease = None
+    first = json.loads(route_object(controller)[0])
+    again = cut_over(controller, admitted_at=1793300000)
+    assert again["current"]["admission_sha256"] != first["current"]["admission_sha256"]
+
+    report = run(controller, slots, provider)
+
+    assert report["route"]["current"] == again["current"]
+    assert report["route"]["previous"]["build_id"] == provider.builds[0]
+
+
 def test_a_changed_record_fails_the_conditional_write(routed):
     controller, slots, record = routed
     provider = Provider(controller, slots)
@@ -438,7 +492,8 @@ def test_standby_refresh_refuses_a_record_it_cannot_copy_or_explain(routed):
     assert provider.calls == []
 
 
-def test_a_promotion_that_landed_before_the_cutover_is_settled_first(routed):
+@pytest.mark.parametrize("phase", ["promotion-cas-intent", "promoted"])
+def test_a_promotion_that_landed_before_the_cutover_is_settled_first(routed, phase):
     controller, slots, record = routed
     state = {
         "schema_version": 1,
@@ -451,7 +506,7 @@ def test_a_promotion_that_landed_before_the_cutover_is_settled_first(routed):
         "artifact_manifest_sha256": "a" * 64,
         "promotion_target": MANAGED,
     }
-    slots.save(state, "promotion-cas-intent")
+    slots.save(state, phase)
     slots.protect(state)
     provider = Provider(controller, slots)
 

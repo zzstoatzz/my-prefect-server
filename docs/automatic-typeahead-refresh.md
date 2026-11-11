@@ -200,7 +200,8 @@ record's `current` is one of them:
   restores: `{current: rollback target, previous: the other slot}`. Before the
   first standby refresh that is the `prior_route` in the store slot's admission
   under `control/store-slot-admissions/`. Each standby refresh stores the next
-  one under `control/tantivy-standby/<new rollback target's admission digest>.json`
+  one under
+  `control/tantivy-standby/<store slot admission digest>/<new rollback target's admission digest>.json`
   before it updates the record. `store_slot_route.py rollback` must read that
   object once `previous` no longer equals the admission's prior current.
 - The inactive-mutation lease is held in the run, not in the record: a lease in
@@ -221,7 +222,9 @@ a standby candidate is still being prepared, that run stops, and the next
 promoting refresh resumes and promotes the same candidate. If it lands after
 the candidate was prepared but before `previous` was written, promotion refuses
 the stale plan: cancel that `request_id` with a `tantivy_operation`, then run
-the refresh.
+the refresh. If it lands after `previous` was written but before the pending
+marker was cleared, the next refresh clears the marker itself. Slot operations,
+`cancel` included, are refused while a store slot is routed.
 
 ## Retention
 
