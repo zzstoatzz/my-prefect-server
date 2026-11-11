@@ -49,6 +49,18 @@ class FlyAPIError(RuntimeError):
         super().__init__(f"Fly {method} {app}/{path} failed: HTTP {status_code}")
 
 
+def tantivy_identity(target: dict) -> bool:
+    return (
+        target.get("engine") == "tantivy"
+        and target.get("format") == TANTIVY_FORMAT
+        and target.get("retrieval_strategy") in ("per-segment", "global-merge")
+        and all(
+            isinstance(target.get(key), str) and re.fullmatch(r"[a-f0-9]{64}", target[key])
+            for key in ("admission_sha256", "binary_sha256")
+        )
+    )
+
+
 def route_target(route: dict) -> dict:
     target = route["current"]
     if type(route["version"]) is not int or route["version"] != 1 or not isinstance(target, dict):
@@ -59,16 +71,9 @@ def route_target(route: dict) -> dict:
         BUILD_PATTERN, target["build_id"]
     ):
         raise ValueError("Invalid route identity")
-    if (
-        target.get("engine") != "tantivy"
-        or target.get("origin")
-        not in (TANTIVY_ORIGIN, *(f"https://{app}.fly.dev" for app in TANTIVY_SLOTS))
-        or target.get("format") != TANTIVY_FORMAT
-        or target.get("retrieval_strategy") not in ("per-segment", "global-merge")
-        or any(
-            not isinstance(target.get(key), str) or not re.fullmatch(r"[a-f0-9]{64}", target[key])
-            for key in ("admission_sha256", "binary_sha256")
-        )
+    if not tantivy_identity(target) or target.get("origin") not in (
+        TANTIVY_ORIGIN,
+        *(f"https://{app}.fly.dev" for app in TANTIVY_SLOTS),
     ):
         raise ValueError("Invalid Tantivy route identity")
     return target
