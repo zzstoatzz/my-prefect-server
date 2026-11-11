@@ -109,10 +109,14 @@ def execute(directory: Path) -> None:
         if config.get("runtime_bin"):
             environment["PATH"] = config["runtime_bin"] + ":" + environment.get("PATH", "")
         code, reason = 255, "launch failed"
-        process = None
+        terminating = waiting = False
 
         def terminate(signum, frame):
-            if process is not None:
+            # The child can be running before Popen returns. Keep a request
+            # that arrives during launch until the wait below can stop it.
+            nonlocal terminating
+            terminating = True
+            if waiting:
                 raise _TerminationRequested
 
         signal.signal(signal.SIGTERM, terminate)
@@ -142,6 +146,9 @@ def execute(directory: Path) -> None:
                 )
                 deadline = time.monotonic() + config["timeout_seconds"]
                 try:
+                    waiting = True
+                    if terminating:
+                        raise _TerminationRequested
                     while True:
                         remaining = deadline - time.monotonic()
                         if remaining <= 0:
