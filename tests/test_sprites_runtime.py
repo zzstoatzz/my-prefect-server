@@ -36,7 +36,11 @@ def configure(tmp_path, monkeypatch):
         )
         return tmp_path
 
-    return prepare, lease_calls
+    # execute() is a process entry point: it leaves SIGTERM handled or ignored,
+    # and every later subprocess of this worker would inherit an ignored one.
+    previous = signal.getsignal(signal.SIGTERM)
+    yield prepare, lease_calls
+    signal.signal(signal.SIGTERM, previous)
 
 
 def test_outcome_survives_restart_without_replaying_code(configure):
