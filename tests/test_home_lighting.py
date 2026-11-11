@@ -314,3 +314,17 @@ def test_unknown_names_fail_before_any_plan_can_be_applied(fields):
 def test_a_change_needs_exactly_one_known_action(fields):
     with pytest.raises(ValueError):
         change(**fields)
+
+
+def test_lighting_flow_hands_validated_changes_to_the_executor(monkeypatch):
+    from flows.lighting import apply_changes
+
+    seen = []
+
+    async def run(changes):
+        seen.extend(changes)
+        return 13
+
+    monkeypatch.setattr("mps.lighting.apply_changes", run)
+    assert apply_changes.fn([change(state={"on": False})]) == 13
+    assert seen == [change(state={"on": False})]

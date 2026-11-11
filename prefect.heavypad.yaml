@@ -42,6 +42,35 @@ deployments:
           PRESENCE_HUE_ENV_FILE: /home/stoat/.config/presence/hue-env.json
           PRESENCE_LIGHTING_STATE_FILE: /home/stoat/.config/presence/lighting-state
 
+  # every scheduled light change is a schedule here carrying its own `changes`;
+  # ad hoc changes run this same deployment with parameters.
+  - name: home
+    tags: [home, heavypad]
+    entrypoint: flows/lighting.py:lighting
+    schedules:
+      - cron: "0 1 * * *"
+        timezone: America/Chicago
+        slug: nightly-off
+        parameters:
+          changes:
+            - target: all
+              state:
+                "on": false
+    concurrency_limit:
+      limit: 1
+      collision_strategy: ENQUEUE
+    work_pool:
+      name: heavypad-pool
+      work_queue_name: presence
+      job_variables:
+        command: >-
+          uv run --no-project --with prefect==3.8.2
+          --with 'my-prefect-server[lighting] @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
+          prefect flow-run execute
+        env:
+          MPS_PIN: "{{ $MPS_PIN }}"
+          PRESENCE_HUE_ENV_FILE: /home/stoat/.config/presence/hue-env.json
+
   - name: watch-fastmcp
     entrypoint: flows/watch_fastmcp.py:watch_fastmcp
     tags: [watch, heavypad]
