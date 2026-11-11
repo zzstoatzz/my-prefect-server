@@ -1,8 +1,10 @@
 import json
 import logging
 import sys
+from types import SimpleNamespace
 
 import pytest
+from mps import pi_process
 from mps.pi_process import run_json_process
 
 
@@ -18,14 +20,14 @@ def event():
     }
 
 
-def run(tmp_path, monkeypatch, suffix):
+def run(tmp_path, monkeypatch, suffix, timeout_seconds=60):
     monkeypatch.setenv("LLM_SPEND_LOG_PATH", str(tmp_path / "usage.jsonl"))
     script = f"import time, sys; print({json.dumps(event())!r}, flush=True); {suffix}"
     return run_json_process(
         [sys.executable, "-c", script],
         provider="anthropic",
         model="claude-haiku-4-5",
-        timeout_seconds=0.5,
+        timeout_seconds=timeout_seconds,
     )
 
 
@@ -43,8 +45,21 @@ def test_usage_survives_nonzero_exit(tmp_path, monkeypatch, caplog):
 
 
 def test_usage_survives_timeout(tmp_path, monkeypatch, caplog):
+    recorded = []
+    usage_row = pi_process.usage_row
+
+    def record(*args, **kwargs):
+        row = usage_row(*args, **kwargs)
+        recorded.append(row)
+        return row
+
+    monkeypatch.setattr(pi_process, "usage_row", record)
+    # The deadline passes once the response's usage is recorded, however long
+    # the child took to start; the child is still running when it does.
+    clock = SimpleNamespace(monotonic=lambda: 60.0 if recorded else 0.0)
+    monkeypatch.setattr(pi_process, "time", clock)
     with caplog.at_level(logging.INFO), pytest.raises(TimeoutError):
-        run(tmp_path, monkeypatch, "time.sleep(10)")
+        run(tmp_path, monkeypatch, "time.sleep(600)", timeout_seconds=30)
     assert json.loads((tmp_path / "usage.jsonl").read_text())["total_tokens"] == 135
     assert '"outcome": "timeout"' in caplog.text
 
