@@ -12,8 +12,15 @@ def run(command: list[str], parent: int) -> int:
     if os.getppid() != parent:
         return 125
 
+    interrupting = watching = False
+
     def interrupted(signum, frame):
-        raise SystemExit(128 + signum)
+        # The child can be running before Popen returns. Exiting from inside
+        # the launch would leave it alive with nothing to stop it.
+        nonlocal interrupting
+        interrupting = True
+        if watching:
+            raise SystemExit(128 + signum)
 
     signal.signal(signal.SIGTERM, interrupted)
     temporary = tempfile.TemporaryDirectory(prefix="typeahead-command-")
@@ -21,6 +28,9 @@ def run(command: list[str], parent: int) -> int:
         command, start_new_session=True, env={**os.environ, "TMPDIR": temporary.name}
     )
     try:
+        watching = True
+        if interrupting:
+            raise SystemExit(128 + signal.SIGTERM)
         while child.poll() is None:
             if os.getppid() != parent:
                 return 125

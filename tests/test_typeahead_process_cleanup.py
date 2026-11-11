@@ -117,3 +117,30 @@ def test_stream_stops_real_child_if_watched_disk_disappears(tmp_path):
         _stream([sys.executable, "-c", code], tmp_path, env, timeout=10)
     with pytest.raises(ProcessLookupError):
         os.kill(int(pid_file.read_text()), 0)
+
+
+def test_guard_stops_child_when_sigterm_arrives_during_launch(monkeypatch):
+    from mps import process_guard
+
+    launch = process_guard.subprocess.Popen
+    children = []
+
+    def launch_then_signal(*args, **kwargs):
+        child = launch(*args, **kwargs)
+        children.append(child)
+        os.kill(os.getpid(), signal.SIGTERM)
+        return child
+
+    monkeypatch.setattr(process_guard.subprocess, "Popen", launch_then_signal)
+    previous = signal.getsignal(signal.SIGTERM)
+    try:
+        with pytest.raises(SystemExit) as stopped:
+            process_guard.run([sys.executable, "-c", "import time; time.sleep(60)"], os.getppid())
+        assert stopped.value.code == 128 + signal.SIGTERM
+        assert children[0].poll() is not None
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+                child.wait()
