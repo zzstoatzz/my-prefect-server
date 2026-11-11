@@ -45,6 +45,7 @@ from flows.fly_observations import observation_rows, observe_fly
 
 TIMEOUT_S = 10
 TAIL_WINDOW_S = 20
+SHALLOW_RETRY_DELAY_S = 15
 
 # the watermark lag (tip minus watermark, in seconds of history) oscillates
 # between one and ~two 12h intervals plus a pass duration in healthy steady
@@ -211,13 +212,21 @@ def check_stream_deep() -> CheckResult:
     return CheckResult(STREAM_DEEP, True, detail)
 
 
-@task(retries=1, retry_delay_seconds=15)
-def check_url(name: str, url: str) -> CheckResult:
+def _shallow(name: str, url: str) -> CheckResult:
     try:
         st, _ = _get(url)
     except Exception as exc:
         return CheckResult(name, False, f"{type(exc).__name__}: {exc}")
     return CheckResult(name, st == 200, f"HTTP {st}")
+
+
+@task
+def check_url(name: str, url: str, retry_delay_s: float = SHALLOW_RETRY_DELAY_S) -> CheckResult:
+    result = _shallow(name, url)
+    if not result.healthy:
+        time.sleep(retry_delay_s)
+        result = _shallow(name, url)
+    return result
 
 
 def summarize(

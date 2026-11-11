@@ -11,6 +11,7 @@ What we test:
   - a check task that itself errored (non-CheckResult) does fail the flow
 """
 
+from flows import fleet_health
 from flows.evergreen_checks import STATUS_URL
 from flows.fleet_events import unhealthy_payload
 from flows.fleet_health import (
@@ -19,6 +20,7 @@ from flows.fleet_health import (
     CheckResult,
     _named,
     broken_sweep_message,
+    check_url,
     summarize,
 )
 
@@ -98,3 +100,32 @@ def test_unhealthy_summary_uses_the_runtime_ui(monkeypatch):
     assert summary.endswith(
         "\nrun: https://heavypad.tailb660b6.ts.net:10443/runs/flow-run/948b0104-40f8-479e-9803-08199c870857"
     )
+
+
+def test_a_shallow_check_is_read_twice_before_it_counts_as_down(monkeypatch):
+    answers = iter([OSError("connection reset"), (200, b"")])
+
+    def get(url):
+        answer = next(answers)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(fleet_health, "_get", get)
+    assert check_url.fn("hub", "https://example.org", retry_delay_s=0) == CheckResult(
+        "hub", True, "HTTP 200"
+    )
+
+
+def test_a_shallow_check_that_fails_twice_is_down(monkeypatch):
+    calls = []
+
+    def get(url):
+        calls.append(url)
+        return 503, b""
+
+    monkeypatch.setattr(fleet_health, "_get", get)
+    assert check_url.fn("hub", "https://example.org", retry_delay_s=0) == CheckResult(
+        "hub", False, "HTTP 503"
+    )
+    assert len(calls) == 2
