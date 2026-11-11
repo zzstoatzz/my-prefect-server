@@ -514,7 +514,10 @@ automations:
       unnoticed until search was stale twelve hours later. When no
       full automatic typeahead-index refresh completes for 13 hours this retries
       the automatic refresh at once and says what is at stake. The deployment's
-      concurrency limit cancels the retry if a run is already active.
+      concurrency limit cancels the retry if a run is already active. While a
+      store slot serves search the same deployment runs a standby refresh, which
+      completes with the same event and never changes the serving target, so
+      this then watches the rollback slot and its retry cannot move traffic.
     enabled: true
     trigger:
       type: event
@@ -534,7 +537,9 @@ automations:
         subject: "typeahead refresh missed: retry started"
         body: >-
           No full automatic typeahead-index refresh has completed in 13 hours.
-          The serving Tantivy slot reports stale 24 hours after its checkpoint. A retry of the
+          A managed Tantivy slot reports stale 24 hours after its checkpoint: that
+          is live search when a managed slot serves, and the rollback slot when
+          the store slot serves. A retry of the
           automatic refresh has started; if it fails too, act now:
           https://prefect-server.waow.tech/deployments and
           https://typeahead.waow.tech/health/freshness
