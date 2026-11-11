@@ -12,7 +12,12 @@ SOURCES = {
     "search": "https://typeahead-search-transport.n8-3e9.workers.dev/ready",
     "index": "https://typeahead-search-transport.n8-3e9.workers.dev/index/status",
     "ingester": "https://typeahead-ingester.fly.dev/health",
+    # The transport follows the routing record, so once a store slot serves it
+    # says nothing about the managed slots a rollback returns to.
+    "slot_a": "https://typeahead-tantivy-a.fly.dev/index/status",
+    "slot_b": "https://typeahead-tantivy-b.fly.dev/index/status",
 }
+SLOT_FIELDS = {"ready": "ready", "sync_lag_s": "sync_lag_seconds", "actor_count": "actors"}
 FIELDS = {
     "freshness": {
         "ok": "freshness_ok",
@@ -47,10 +52,21 @@ def probe(source, url):
             raise ValueError("object required")
         lines.append(f'typeahead_endpoint_up{{source="{source}"}} {int(status == 200)}')
         lines.append(f'typeahead_endpoint_status{{source="{source}"}} {status}')
-        for key, metric in FIELDS[source].items():
+        for key, metric in FIELDS.get(source, {}).items():
             value = data.get(key)
             if isinstance(value, (int, float)):
                 lines.append(f"typeahead_{metric} {float(value)}")
+        if source.startswith("slot_"):
+            slot = source.removeprefix("slot_")
+            for key, metric in SLOT_FIELDS.items():
+                value = data.get(key)
+                if isinstance(value, (int, float)):
+                    lines.append(f'typeahead_slot_{metric}{{slot="{slot}"}} {float(value)}')
+            build = data.get("build_id")
+            if isinstance(build, str) and build[1:11].isdigit():
+                lines.append(
+                    f'typeahead_slot_build_timestamp_seconds{{slot="{slot}"}} {build[1:11]}'
+                )
         if source == "ingester":
             for key in ("accepted", "processed", "dropped", "queued"):
                 value = data.get("identity", {}).get(key)
@@ -78,7 +94,7 @@ def probe(source, url):
 
 
 def collect():
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(SOURCES)) as pool:
         return "\n".join(pool.map(lambda item: probe(*item), SOURCES.items())) + "\n"
 
 
