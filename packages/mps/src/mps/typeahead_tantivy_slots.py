@@ -14,7 +14,7 @@ from pathlib import Path
 import httpx
 from botocore.exceptions import ClientError
 
-from mps.typeahead_refresh import BackendNotReady, normalize_route
+from mps.typeahead_refresh import BackendNotReady, normalize_route, store_slot_app
 from mps.typeahead_tantivy import durable_receipt
 
 OWNER = "typeahead-snapshot-refresh"
@@ -68,6 +68,7 @@ def validate_mutation(value):
         or set(value) != {"owner", "request_id", "app", "acquired_at"}
         or value.get("owner") != OWNER
         or value.get("app") not in APPS
+        or store_slot_app(value["app"])
         or not isinstance(value.get("request_id"), str)
         or not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", value["request_id"])
         or type(value.get("acquired_at")) is not int
@@ -289,7 +290,7 @@ class Slots:
     def guard(self, state, *, fresh=False, serving_health=None):
         if serving_health is None:
             serving_health = not state.get("serving_unavailable", False)
-        if state.get("app") not in APPS:
+        if state.get("app") not in APPS or store_slot_app(state["app"]):
             raise ValueError("Only approved inactive Tantivy apps may be mutated")
         route, etag = self.service.route()
         lease = route.get("mutation")
@@ -1092,7 +1093,11 @@ class Slots:
                 selected = app or (
                     APPS[1] if current["origin"] == f"https://{APPS[0]}.fly.dev" else APPS[0]
                 )
-                if selected not in APPS or current["origin"] == f"https://{selected}.fly.dev":
+                if (
+                    selected not in APPS
+                    or store_slot_app(selected)
+                    or current["origin"] == f"https://{selected}.fly.dev"
+                ):
                     raise ValueError("Only an approved inactive Tantivy app may be prepared")
                 previous = route.get("previous") or {}
                 if (

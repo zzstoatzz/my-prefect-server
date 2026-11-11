@@ -16,6 +16,9 @@ PUBLIC = "https://typeahead.waow.tech"
 OWNER = "typeahead-snapshot-refresh"
 TANTIVY_ORIGIN = "https://typeahead-tantivy-dev.fly.dev"
 TANTIVY_SLOTS = ("typeahead-tantivy-a", "typeahead-tantivy-b")
+# Slots fed by their own store's change log. Typeahead's store_slot_route.py
+# routes to them; this controller never builds, mutates or promotes one.
+STORE_SLOT_ORIGINS = ("https://typeahead-shadow-a.fly.dev",)
 TANTIVY_FORMAT = "tantivy-0.27-f32-did-expiry-v4"
 BUILD_PATTERN = r"b[0-9]{10}-[A-Za-z0-9_-]+"
 
@@ -28,6 +31,18 @@ class BackendNotReady(RuntimeError):
     """
 
 
+class StoreSlotRouted(RuntimeError):
+    """The routing record names a store slot, which no promoting path may read past or write."""
+
+
+def names_store_slot(target) -> bool:
+    return isinstance(target, dict) and target.get("origin") in STORE_SLOT_ORIGINS
+
+
+def store_slot_app(app) -> bool:
+    return f"https://{app}.fly.dev" in STORE_SLOT_ORIGINS
+
+
 class FlyAPIError(RuntimeError):
     def __init__(self, method, app, path, status_code):
         self.status_code = status_code
@@ -38,6 +53,8 @@ def route_target(route: dict) -> dict:
     target = route["current"]
     if type(route["version"]) is not int or route["version"] != 1 or not isinstance(target, dict):
         raise ValueError("Invalid routing record")
+    if names_store_slot(target):
+        raise StoreSlotRouted("A store slot is not a managed Tantivy route target")
     if not isinstance(target.get("build_id"), str) or not re.fullmatch(
         BUILD_PATTERN, target["build_id"]
     ):
@@ -147,7 +164,7 @@ class Refresh:
             TANTIVY_SLOTS[0]: "FLY_TANTIVY_A_TOKEN",
             TANTIVY_SLOTS[1]: "FLY_TANTIVY_B_TOKEN",
         }
-        if app not in tokens:
+        if app not in tokens or store_slot_app(app):
             raise ValueError("Unmanaged provider app")
         result = self.http.request(
             method,
@@ -161,16 +178,31 @@ class Refresh:
             raise RuntimeError("Provider metadata response exceeds its byte budget")
         return result.json() if result.content else None
 
-    def route(self):
+    def _route_object(self):
         result = self.s3.get_object(Bucket=self.bucket, Key=ROUTE_KEY)
         raw = result["Body"].read(16385)
         if len(raw) > 16384:
             raise ValueError("Routing record too large")
+        return raw, result["ETag"]
+
+    def routed_to_store_slot(self) -> bool:
+        raw, _ = self._route_object()
+        route = json.loads(raw)
+        return isinstance(route, dict) and names_store_slot(route.get("current"))
+
+    def route(self):
+        raw, etag = self._route_object()
         route = normalize_route(json.loads(raw))
+        if names_store_slot(route.get("current")):
+            raise StoreSlotRouted(
+                "Search is routed to a store slot; only the standby refresh may run"
+            )
         validate_route_record(route)
-        return route, result["ETag"]
+        return route, etag
 
     def _put_route(self, route: dict, etag: str, *, release_mutation=None):
+        if names_store_slot(route.get("current")):
+            raise StoreSlotRouted("Refusing to write a route whose current target is a store slot")
         before, actual_etag = self.route()
         if actual_etag != etag:
             raise RuntimeError("Routing changed before conditional update")
