@@ -1,5 +1,4 @@
 import json
-import select
 import socket
 import tempfile
 import threading
@@ -110,8 +109,10 @@ def test_rejection_waits_for_the_request_body(bridge_dir, upstream):
     ):
         client.connect(str(path))
         client.sendall(b"POST /admin HTTP/1.1\r\nContent-Length: %d\r\n\r\n" % len(body))
-        answered_early, _, _ = select.select([client], [], [], 0.5)
-        assert not answered_early
+        client.settimeout(0.5)
+        with pytest.raises(TimeoutError):
+            client.recv(1)
+        client.settimeout(None)
         client.sendall(body)
         response = b""
         while chunk := client.recv(65536):
