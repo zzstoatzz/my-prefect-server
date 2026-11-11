@@ -5,8 +5,12 @@ The flow clones the immutable Typeahead revision named by
 `INDEX_TANTIVY_SOURCE_REVISION`, takes one cloud checkpoint of the Turso source,
 imports it into a frozen Tantivy bundle and publishes that bundle to R2. With
 `automatic_refresh`, it then prepares the inactive Tantivy slot, promotes it
-behind the release proof and prunes unrouted Tantivy artifacts. Explicit
-`tantivy_operation` requests run one slot prepare, cancel or promote step.
+behind the release proof and prunes unrouted Tantivy artifacts. While the
+routing record names a store slot, the same run is a standby refresh: it
+installs the generation on the managed slot that is not the recorded rollback
+target, records that slot as the rollback target and never changes the serving
+target. Explicit `tantivy_operation` requests run one slot prepare, cancel or
+promote step.
 
 Runtime secrets are resolved from deployment Secret-block references. The flow
 passes them to child processes without reading Secret blocks itself.
@@ -370,7 +374,8 @@ def typeahead_index(
 
     With no arguments the flow publishes an immutable generation without
     touching routing. `automatic_refresh` continues the serving Tantivy route
-    into the inactive slot; `resume_rollout` only finishes a pending automatic
+    into the inactive slot, or keeps the rollback slot rebuilt while a store
+    slot serves; `resume_rollout` only finishes a pending automatic
     preparation. `tantivy_operation` runs one explicit slot operation.
     """
     if tantivy_operation is not None:
@@ -393,10 +398,15 @@ def typeahead_index(
     from mps.typeahead_refresh import Refresh, prune_snapshot_artifacts
     from mps.typeahead_tantivy_automatic import refresh, settings
     from mps.typeahead_tantivy_slots import Slots
+    from mps.typeahead_tantivy_standby import StandbyRefresh, standby_refresh
 
     config = settings(os.environ)
     service = Refresh(get_run_logger())
     try:
+        standby = service.routed_to_store_slot()
+        if standby:
+            service.close()
+            service = StandbyRefresh(get_run_logger())
         with pinned_typeahead() as repo:
             storage = run_coro_as_sync(save_result_storage())
             publication = None
@@ -408,7 +418,7 @@ def typeahead_index(
                 return json.loads((publication / "manifest.json").read_bytes())["active_build"]
 
             slots = Slots(service, INDEXER_HOME / "tantivy-slot-journals")
-            report = refresh(
+            report = (standby_refresh if standby else refresh)(
                 service,
                 slots,
                 publish,
@@ -416,11 +426,17 @@ def typeahead_index(
                 release_sha256=config["release_sha256"],
                 resume_only=resume_rollout,
             )
-            if report.get("phase") != "promoted" or report.get("public_verified") is not True:
+            if standby:
+                if (
+                    report.get("phase") != "standby-recorded"
+                    or report.get("current_unchanged") is not True
+                ):
+                    raise RuntimeError("Standby refresh is not confirmed; retention fenced")
+            elif report.get("phase") != "promoted" or report.get("public_verified") is not True:
                 raise RuntimeError("Automatic promotion is not confirmed; retention fenced")
             if publication is not None:
                 retire_tantivy_generation(publication)
-            prune_snapshot_artifacts()
+            prune_snapshot_artifacts(StandbyRefresh if standby else None)
             return automatic_completion(report, service.execution_identity())
     finally:
         service.close()

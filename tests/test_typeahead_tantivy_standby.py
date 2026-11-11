@@ -7,10 +7,13 @@ is production evidence for those.
 
 import hashlib
 import json
+from contextlib import contextmanager
 
 import pytest
 from mps import (
+    typeahead_refresh,
     typeahead_tantivy_automatic,
+    typeahead_tantivy_slots,
     typeahead_tantivy_standby as standby,
 )
 from mps.typeahead_refresh import ROUTE_KEY, STORE_SLOT_ORIGINS
@@ -537,3 +540,100 @@ def test_standby_refresh_needs_the_standby_routing_view(controller, tmp_path):
     with pytest.raises(TypeError, match="standby routing view"):
         standby_refresh(controller, slots, lambda: calls.append("publish"), **PROOF)
     assert calls == []
+
+
+@pytest.mark.parametrize("store_routed", [False, True])
+def test_flow_chooses_the_refresh_by_what_the_record_routes(
+    controller, tmp_path, monkeypatch, store_routed
+):
+    import flows.typeahead_index as publisher
+
+    controller.s3.seed(ROUTE_KEY, encode_record(MANAGED))
+    if store_routed:
+        cut_over(controller)
+    before = route_object(controller)
+    ran = []
+
+    def promoting(service, slots, publish, **options):
+        ran.append(("refresh", type(service)))
+        return {"phase": "promoted", "public_verified": True, "publication_execution_id": "run"}
+
+    def standing_by(service, slots, publish, **options):
+        ran.append(("standby", type(service)))
+        return {
+            "phase": "standby-recorded",
+            "current_unchanged": True,
+            "publication_execution_id": "run",
+        }
+
+    def standby_service(logger):
+        controller.__class__ = FixtureStandby
+        return controller
+
+    @contextmanager
+    def pinned():
+        yield tmp_path
+
+    controller.execution_identity = lambda: "run"
+    controller.close = lambda: None
+    monkeypatch.setattr(typeahead_refresh, "Refresh", lambda logger: controller)
+    monkeypatch.setattr(standby, "StandbyRefresh", standby_service)
+    monkeypatch.setattr(typeahead_tantivy_automatic, "refresh", promoting)
+    monkeypatch.setattr(standby, "standby_refresh", standing_by)
+    monkeypatch.setattr(typeahead_tantivy_slots, "Slots", lambda service, root: object())
+    monkeypatch.setattr(
+        typeahead_refresh, "prune_snapshot_artifacts", lambda cls=None: ran.append(("prune", cls))
+    )
+    monkeypatch.setattr(publisher, "pinned_typeahead", pinned)
+    monkeypatch.setattr(publisher, "save_result_storage", lambda: None)
+    monkeypatch.setattr(publisher, "run_coro_as_sync", lambda _: None)
+    monkeypatch.setattr(publisher, "get_run_logger", lambda: controller.logger)
+    monkeypatch.setenv("INDEX_TANTIVY_SOURCE_REVISION", "1" * 40)
+    monkeypatch.setenv("INDEX_TANTIVY_ADAPTER_SHA256", "2" * 64)
+    monkeypatch.setenv("INDEX_TANTIVY_RELEASE_RECEIPT_KEY", "control/tantivy-releases/fixture.json")
+    monkeypatch.setenv("INDEX_TANTIVY_RELEASE_RECEIPT_SHA256", "3" * 64)
+
+    report = publisher.typeahead_index.fn(automatic_refresh=True)
+
+    if store_routed:
+        assert ran == [("standby", FixtureStandby), ("prune", standby_service)]
+        assert report["phase"] == "standby-recorded"
+    else:
+        assert ran == [("refresh", FixtureRefresh), ("prune", None)]
+        assert report["phase"] == "promoted"
+    assert route_object(controller) == before
+
+
+def test_flow_fails_a_standby_refresh_that_did_not_confirm_the_serving_target(
+    controller, tmp_path, monkeypatch
+):
+    import flows.typeahead_index as publisher
+
+    report = {"phase": "standby-recorded", "current_unchanged": False}
+
+    cut_over(controller)
+
+    @contextmanager
+    def pinned():
+        yield tmp_path
+
+    controller.close = lambda: None
+    monkeypatch.setattr(typeahead_refresh, "Refresh", lambda logger: controller)
+    monkeypatch.setattr(standby, "StandbyRefresh", lambda logger: controller)
+    monkeypatch.setattr(standby, "standby_refresh", lambda *_, **__: report)
+    monkeypatch.setattr(typeahead_tantivy_slots, "Slots", lambda service, root: object())
+    monkeypatch.setattr(
+        typeahead_refresh,
+        "prune_snapshot_artifacts",
+        lambda cls=None: pytest.fail("An unconfirmed standby refresh must not prune"),
+    )
+    monkeypatch.setattr(publisher, "pinned_typeahead", pinned)
+    monkeypatch.setattr(publisher, "save_result_storage", lambda: None)
+    monkeypatch.setattr(publisher, "run_coro_as_sync", lambda _: None)
+    monkeypatch.setattr(publisher, "get_run_logger", lambda: controller.logger)
+    monkeypatch.setenv("INDEX_TANTIVY_SOURCE_REVISION", "1" * 40)
+    monkeypatch.setenv("INDEX_TANTIVY_ADAPTER_SHA256", "2" * 64)
+    monkeypatch.setenv("INDEX_TANTIVY_RELEASE_RECEIPT_KEY", "control/tantivy-releases/fixture.json")
+    monkeypatch.setenv("INDEX_TANTIVY_RELEASE_RECEIPT_SHA256", "3" * 64)
+    with pytest.raises(RuntimeError, match="Standby refresh is not confirmed"):
+        publisher.typeahead_index.fn(automatic_refresh=True)
