@@ -17,7 +17,7 @@ three optional parameters:
 | Parameters | Effect |
 | --- | --- |
 | none | Publish one isolated Tantivy generation to R2 without touching routing. |
-| `automatic_refresh: true` | Publish, prepare the inactive slot, promote, then prune. |
+| `automatic_refresh: true` | Publish, prepare the inactive slot, promote, then prune. While a store slot serves: a [standby refresh](#standby-refresh-while-a-store-slot-serves). |
 | `automatic_refresh: true, resume_rollout: true` | Finish a pending automatic preparation; never start a build. |
 | `tantivy_operation: {...}` | Run one explicit `prepare`, `cancel` or `promote` slot operation. |
 
@@ -175,6 +175,54 @@ to finish it without another export, or cancel it with a `tantivy_operation`
 another engine. If public verification fails after promotion, the controller
 restores the prior route only while its own write is still current.
 
+## Standby refresh while a store slot serves
+
+Typeahead's `scripts/snapshot_refresh/store_slot_route.py` can route search to
+the store slot `typeahead-shadow-a`. It writes `{current: store slot, previous:
+the managed slot that was serving}`, and its rollback returns to `previous`.
+`STORE_SLOT_ORIGINS` in `typeahead_refresh.py` names that origin. While the
+record's `current` is one of them:
+
+- `Refresh.route()` raises `StoreSlotRouted`, so the promoting refresh, artifact
+  cleanup and every `tantivy_operation` stop at their first read of the record,
+  before any export, publication or Fly call. `_put_route` refuses a store slot
+  as `current`, and a store slot app is refused as a mutation or Fly target even
+  if it is added to the slot lists.
+- The scheduled `automatic_refresh` run becomes a standby refresh
+  (`typeahead_tantivy_standby.py`). It exports, builds and publishes as usual,
+  retires the managed slot that is not the rollback target, installs and
+  qualifies the new generation there twice, checks the release proof, and then
+  replaces only `previous` with one ETag-conditional write. `current` is copied
+  byte for byte and the run refuses a record it cannot copy that way. The next
+  run rebuilds the other slot, so each slot is rebuilt once a day and the
+  rollback target is never the one being replaced.
+- The slot lifecycle runs against the rollback route, the record a rollback
+  restores: `{current: rollback target, previous: the other slot}`. Before the
+  first standby refresh that is the `prior_route` in the store slot's admission
+  under `control/store-slot-admissions/`. Each standby refresh stores the next
+  one under `control/tantivy-standby/<new rollback target's admission digest>.json`
+  before it updates the record. `store_slot_route.py rollback` must read that
+  object once `previous` no longer equals the admission's prior current.
+- The inactive-mutation lease is held in the run, not in the record: a lease in
+  the record would block the rollback tool for the length of a preparation. The
+  pending-candidate object and its journal fence a second run. Any failure
+  leaves the record as it was; the next run resumes the pending candidate.
+- Guards check the rollback target's health, not the public aliases, which
+  answer from the store slot. A rollback target that is down does not block the
+  run, as with a dead serving slot.
+- Cleanup keeps both managed generations, pending ones and the store slot's
+  bootstrap build.
+
+A standby refresh that built and recorded finishes as ordinary `Completed`, so
+the missed-refresh automation keeps its 13-hour clock on the rollback slot and
+its retry is another standby refresh. After a rollback the record again names a
+managed slot and the next run is a promoting refresh. If a rollback lands while
+a standby candidate is still being prepared, that run stops, and the next
+promoting refresh resumes and promotes the same candidate. If it lands after
+the candidate was prepared but before `previous` was written, promotion refuses
+the stale plan: cancel that `request_id` with a `tantivy_operation`, then run
+the refresh.
+
 ## Retention
 
 After a confirmed promotion and public verification, cleanup deletes unrouted
@@ -191,7 +239,8 @@ expects `prefect.flow-run.Completed` for this deployment. Only a normal automati
 refresh that builds, publishes, promotes and completes cleanup uses that default
 success state. Manual slot operations finish as `SlotOperationCompleted`,
 publication-only runs as `GenerationPublished`, and recovery of an existing
-rollout as `RolloutResumed`. All retain Prefect's `COMPLETED` state type and their
+rollout as `RolloutResumed`. A standby refresh that builds, installs and records
+the rollback target also uses the default state. All retain Prefect's `COMPLETED` state type and their
 original result, so callers must check the state type rather than its name.
 Those operations do not reset the full-refresh retry clock. A failed operation
 still fails normally. The normal scheduled full-refresh event remains an outstanding production
