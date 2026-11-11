@@ -37,13 +37,11 @@ change means adding a schedule, not a deployment or a flow.
 
 | Slug | When | Changes |
 | --- | --- | --- |
-| `nightly-off` | 07:00 UTC daily (01:00 Central standard time) | every light off |
+| `nightly-off` | 01:00 America/Chicago, daily | every light off |
 
-Schedules are written in UTC: the server evaluates cron in UTC and ignores a
-schedule's `timezone` (checked 2026-11-11, when `0 1 * * *` with
-`America/Chicago` produced runs at 01:00 UTC). A local-time schedule therefore
-moves by an hour across daylight-saving changes until the server honors
-timezones.
+Schedules are written in local time with their `timezone`. The server honors
+it since prefect-server `78beba2` (2026-11-11); before that it evaluated cron
+in UTC and ignored the field.
 
 ## Ad hoc changes
 
