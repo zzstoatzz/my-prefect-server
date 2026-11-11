@@ -105,6 +105,7 @@ def _continue_refresh(
     release_sha256,
     resume_only=False,
     serving_unavailable=False,
+    complete=None,
 ):
     current = route["current"]
     pending = []
@@ -179,6 +180,8 @@ def _continue_refresh(
     )
     if service.route()[0] != baseline:
         raise RuntimeError("Routing changed after automatic preparation")
+    if complete is not None:
+        return complete(prepared)
     return slots.promote(
         prepared["plan_sha256"],
         prepared["plan"]["expected_current_etag"],

@@ -129,6 +129,8 @@ def response_identity(target: dict, body: dict, headers):
 
 
 class Refresh:
+    guards_public_identity = True
+
     def execution_identity(self):
         from prefect.runtime import flow_run
 
@@ -434,12 +436,12 @@ class Refresh:
         }
 
 
-def prune_snapshot_artifacts():
+def prune_snapshot_artifacts(service_class=None):
     from prefect import get_run_logger
 
     @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
     def prune():
-        service = Refresh(get_run_logger())
+        service = (service_class or Refresh)(get_run_logger())
         try:
             report = service.prune_artifacts()
             get_run_logger().info("Snapshot artifact cleanup: %s", report)

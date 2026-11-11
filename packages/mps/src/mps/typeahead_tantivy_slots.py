@@ -303,6 +303,7 @@ class Slots:
             raise RuntimeError("Refusing mutation of the serving app")
         if serving_health:
             self.service.healthy(route["current"], require_fresh=fresh)
+        if serving_health and self.service.guards_public_identity:
             code, public, _ = self.service.get("https://typeahead.waow.tech", "/health/freshness")
             if (
                 code not in (200, 503)
