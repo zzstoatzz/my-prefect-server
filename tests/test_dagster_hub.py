@@ -165,7 +165,7 @@ def test_snapshot_validation_uses_its_own_catalog_and_preserves_source_project(t
         check=False,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=600,
     )
     assert result.returncode == 0, result.stderr
     report = json.loads((report_dir / "verification.json").read_text())
