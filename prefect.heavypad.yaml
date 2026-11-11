@@ -48,8 +48,10 @@ deployments:
     tags: [home, heavypad]
     entrypoint: flows/lighting.py:lighting
     schedules:
-      - cron: "0 1 * * *"
-        timezone: America/Chicago
+      # 01:00 Central in standard time. this server evaluates cron in UTC and
+      # ignores `timezone`, so the hour shifts to 02:00 local under daylight time.
+      - cron: "0 7 * * *"
+        timezone: UTC
         slug: nightly-off
         parameters:
           changes:
