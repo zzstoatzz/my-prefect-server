@@ -160,3 +160,20 @@ def test_sigterm_bounds_shutdown_when_child_ignores_it(configure):
         if supervisor.poll() is None:
             supervisor.kill()
             supervisor.wait(timeout=5)
+
+
+def test_sigterm_during_launch_cancels_the_attempt(configure, monkeypatch):
+    prepare = configure
+    directory = prepare("import time; time.sleep(60)", timeout=30)
+    launch = runtime.subprocess.Popen
+
+    def launch_then_signal(*args, **kwargs):
+        process = launch(*args, **kwargs)
+        os.kill(os.getpid(), signal.SIGTERM)
+        return process
+
+    monkeypatch.setattr(runtime.subprocess, "Popen", launch_then_signal)
+    runtime.execute(directory)
+    state = json.loads((directory / "state.json").read_text())
+    assert state["reason"] == "execution cancelled"
+    assert state["exit_code"] == 143
