@@ -1,9 +1,9 @@
 import os
 
 from mps.pull_comments import PULL_PREFIX
-from prefect.testing.utilities import prefect_test_harness
 
 from flows import autofix_revise
+from tests.harness import prefect_test_harness
 
 PULL = f"{PULL_PREFIX}3abc"
 

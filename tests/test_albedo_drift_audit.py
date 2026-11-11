@@ -2,9 +2,9 @@ import asyncio
 
 import httpx
 import pytest
-from prefect.testing.utilities import prefect_test_harness
 
 from flows import albedo_drift_audit as audit
+from tests.harness import prefect_test_harness
 
 LISTING = (
     "atlogin.service loaded active running ATLogin for login.zzstoatzz.io\n"

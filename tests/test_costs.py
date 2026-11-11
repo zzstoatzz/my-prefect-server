@@ -481,9 +481,8 @@ def test_hetzner_prices_images_and_primary_ipv4_under_the_source_server(monkeypa
 def test_costs_names_the_run_incomplete_when_a_connector_reports_a_gap(monkeypatch, gap):
     """A snapshot missing R2 or stopped-machine rootfs still publishes, but its
     total is a floor, so the run must not read as a plain Completed."""
-    from prefect.testing.utilities import prefect_test_harness
-
     import flows.costs as costs_flow
+    from tests.harness import prefect_test_harness
 
     class Connector:
         name = "cloudflare"

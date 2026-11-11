@@ -21,9 +21,9 @@ from mps.tangled import (
     comment_subject,
     comment_text,
 )
-from prefect.testing.utilities import prefect_test_harness
 
 from flows import watch_tangled_pulls
+from tests.harness import prefect_test_harness
 
 PULL = f"{PULL_PREFIX}3abc"
 

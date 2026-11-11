@@ -151,7 +151,8 @@ def test_a_named_completed_state_is_completed_but_not_Completed():
     """
     from prefect import flow
     from prefect.states import Completed
-    from prefect.testing.utilities import prefect_test_harness
+
+    from tests.harness import prefect_test_harness
 
     @flow
     def degraded_flow():

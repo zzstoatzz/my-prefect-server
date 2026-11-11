@@ -1,7 +1,7 @@
 import pytest
-from prefect.testing.utilities import prefect_test_harness
 
 from flows import pi_pr
+from tests.harness import prefect_test_harness
 
 
 @pytest.mark.parametrize("dry_run", [False, True])

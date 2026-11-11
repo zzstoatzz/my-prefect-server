@@ -58,9 +58,9 @@ def test_flow_retry_resumes_after_finished_checkpoint_stages(tmp_path, monkeypat
     import mps.typeahead_checkpoint_release as release
     from prefect import flow
     from prefect.filesystems import LocalFileSystem
-    from prefect.testing.utilities import prefect_test_harness
 
     import flows.typeahead_index as publisher
+    from tests.harness import prefect_test_harness
 
     calls = []
     monkeypatch.setattr(
@@ -118,9 +118,9 @@ def test_full_refresh_success_survives_retry_without_counting_another_runs_recov
     from prefect import flow
     from prefect.client.orchestration import get_client
     from prefect.runtime import flow_run
-    from prefect.testing.utilities import prefect_test_harness
 
     from flows.typeahead_index import automatic_completion
+    from tests.harness import prefect_test_harness
 
     executions = []
 

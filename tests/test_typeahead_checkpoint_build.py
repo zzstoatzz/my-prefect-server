@@ -555,7 +555,8 @@ def test_cloud_release_resolves_real_task_context_before_cloud_guard(tmp_path, m
     from prefect import flow, task
     from prefect.cache_policies import NO_CACHE
     from prefect.context import TaskRunContext, get_run_context
-    from prefect.testing.utilities import prefect_test_harness
+
+    from tests.harness import prefect_test_harness
 
     monkeypatch.setenv("INDEXER_HOME", str(tmp_path))
 

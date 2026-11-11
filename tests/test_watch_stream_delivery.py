@@ -4,10 +4,10 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from prefect.blocks.system import Secret
-from prefect.testing.utilities import prefect_test_harness
 from prefect.variables import Variable
 
 from flows import watch_stream as watcher
+from tests.harness import prefect_test_harness
 from tests.test_watch_stream import PROFILE, sample, verdict
 
 

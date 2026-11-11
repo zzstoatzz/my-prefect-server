@@ -1,6 +1,5 @@
-from prefect.testing.utilities import prefect_test_harness
-
 from flows import phi_trigger
+from tests.harness import prefect_test_harness
 
 
 class FakeResponse:

@@ -8,9 +8,9 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from prefect.exceptions import ObjectNotFound
-from prefect.testing.utilities import prefect_test_harness
 
 from flows import autofix
+from tests.harness import prefect_test_harness
 
 
 def test_ui_links_ignore_internal_api_address(monkeypatch):

@@ -122,9 +122,8 @@ def test_typesafe_usage_is_priced_per_input_token(tmp_path: Path):
 
 @pytest.mark.parametrize(("status", "expected_requests"), [(402, 1), (400, 4)])
 def test_classification_retry_policy_against_http_server(monkeypatch, status, expected_requests):
-    from prefect.testing.utilities import prefect_test_harness
-
     from flows.classify_emails import classify_email_batch
+    from tests.harness import prefect_test_harness
 
     requests = []
 
