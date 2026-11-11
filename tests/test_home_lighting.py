@@ -1,5 +1,5 @@
 import pytest
-from mps.home_lighting import lighting_calls
+from mps.home_lighting import LightChange, expected_states, lighting_calls, plan_changes
 
 
 def inventory():
@@ -205,3 +205,112 @@ def test_readback_checks_color_brightness_effect_and_connectivity():
         assert readback_mismatches(expected, changed) == ["lamp"]
     observed["lamp"]["connectivity"] = "connectivity_issue"
     assert readback_mismatches(expected, observed) == ["lamp"]
+
+
+def named_inventory():
+    rooms, lights, scenes = inventory()
+    for key, light in lights.items():
+        light["name"] = key
+        light["state"] = {"on": True}
+    scenes["right-sahara"]["actions"] = [
+        {"target": {"rid": key}, "action": {"on": {"on": True}, "dimming": {"brightness": 40}}}
+        for key in rooms["living"]["lights"]
+    ]
+    return rooms, lights, scenes
+
+
+def change(**fields):
+    return LightChange.model_validate(fields)
+
+
+def test_all_off_reaches_every_light_and_expects_each_off():
+    rooms, lights, scenes = named_inventory()
+    calls = plan_changes([change(state={"on": False})], rooms, lights, scenes)
+    assert {call.arguments["target"] for call in calls} == set(lights)
+    expected = expected_states(calls, lights, scenes, every_light=False)
+    assert all(not state.on for state in expected.values())
+
+
+def test_room_and_light_targets_resolve_by_name_ignoring_case():
+    rooms, lights, scenes = named_inventory()
+    calls = plan_changes(
+        [
+            change(target="LIVING ROOM", state={"brightness": 30}),
+            change(target="Bedroom", state={"on": False}),
+        ],
+        rooms,
+        lights,
+        scenes,
+    )
+    assert [call.arguments["target"] for call in calls] == ["north", "south", "bedroom"]
+    expected = expected_states(calls, lights, scenes, every_light=False)
+    assert expected.keys() == {"north", "south", "bedroom"}
+    assert expected["north"].on and expected["north"].brightness == 30
+    assert not expected["bedroom"].on
+
+
+def test_scene_change_recalls_the_scene_in_its_own_room():
+    rooms, lights, scenes = named_inventory()
+    calls = plan_changes([change(target="living room", scene="sahara")], rooms, lights, scenes)
+    assert [call.arguments for call in calls] == [
+        {"room": "living", "scene": "right-sahara", "action": "active"}
+    ]
+    expected = expected_states(calls, lights, scenes, every_light=False)
+    assert {key: state.brightness for key, state in expected.items()} == {"north": 40, "south": 40}
+
+
+def test_a_later_change_without_on_keeps_the_earlier_planned_power_state():
+    rooms, lights, scenes = named_inventory()
+    calls = plan_changes(
+        [change(state={"on": False}), change(target="bedroom", state={"brightness": 5})],
+        rooms,
+        lights,
+        scenes,
+    )
+    assert not expected_states(calls, lights, scenes, every_light=False)["bedroom"].on
+
+
+def test_group_change_drops_color_for_bulbs_that_cannot_show_it():
+    rooms, lights, scenes = named_inventory()
+    lights["south"]["capabilities"] = {
+        "color": False,
+        "temperature_mirek_range": {"mirek_minimum": 153, "mirek_maximum": 400},
+    }
+    calls = plan_changes(
+        [change(target="living room", state={"xy": [0.5, 0.4], "temperature_kelvin": 2200})],
+        rooms,
+        lights,
+        scenes,
+    )
+    states = {call.arguments["target"]: call.arguments["state"] for call in calls}
+    assert states["south"] == {"temperature_kelvin": 2500}
+    assert states["north"]["xy"] == (0.5, 0.4)
+
+
+def test_single_light_change_fails_when_the_bulb_cannot_honor_it():
+    rooms, lights, scenes = named_inventory()
+    lights["bedroom"]["capabilities"] = {"color": False}
+    with pytest.raises(ValueError, match="does not support"):
+        plan_changes([change(target="bedroom", state={"xy": [0.5, 0.4]})], rooms, lights, scenes)
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"target": "garage", "state": {"on": False}},
+        {"target": "bedroom", "scene": "sahara"},
+        {"target": "living room", "scene": "missing"},
+    ],
+)
+def test_unknown_names_fail_before_any_plan_can_be_applied(fields):
+    with pytest.raises(ValueError, match="Expected one"):
+        plan_changes([change(**fields)], *named_inventory())
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [{}, {"state": {}}, {"scene": "x", "state": {"on": True}}, {"state": {"colour": "red"}}],
+)
+def test_a_change_needs_exactly_one_known_action(fields):
+    with pytest.raises(ValueError):
+        change(**fields)

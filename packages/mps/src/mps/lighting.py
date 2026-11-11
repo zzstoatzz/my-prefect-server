@@ -10,7 +10,14 @@ from functools import partial
 from pathlib import Path
 from typing import Any, Literal
 
-from mps.home_lighting import LightingCall, expected_states, lighting_calls, readback_mismatches
+from mps.home_lighting import (
+    LightChange,
+    LightingCall,
+    expected_states,
+    lighting_calls,
+    plan_changes,
+    readback_mismatches,
+)
 
 Inventory = dict[str, Any]
 Planner = Callable[[Inventory, Inventory, Inventory], list[LightingCall]]
@@ -20,7 +27,15 @@ async def apply_lighting(state: Literal["home", "away"]) -> int:
     return await apply_plan(partial(lighting_calls, state), needs_scenes=state == "home")
 
 
-async def apply_plan(plan: Planner, *, needs_scenes: bool) -> int:
+async def apply_changes(changes: list[LightChange]) -> int:
+    return await apply_plan(
+        partial(plan_changes, changes),
+        needs_scenes=any(change.scene is not None for change in changes),
+        every_light=False,
+    )
+
+
+async def apply_plan(plan: Planner, *, needs_scenes: bool, every_light: bool = True) -> int:
     os.environ.update(json.loads(Path(os.environ["PRESENCE_HUE_ENV_FILE"]).read_text()))
     from fastmcp import Client
 
@@ -49,7 +64,7 @@ async def apply_plan(plan: Planner, *, needs_scenes: bool) -> int:
         lights = await read("read_lights")
         scenes = await read("read_scenes") if needs_scenes else {}
         calls = plan(rooms, lights, scenes)
-        expected = expected_states(calls, lights, scenes)
+        expected = expected_states(calls, lights, scenes, every_light=every_light)
         for call in calls:
             if call.tool == "activate_scene":
                 # Clear ad-hoc effects before recalling the saved scene.
