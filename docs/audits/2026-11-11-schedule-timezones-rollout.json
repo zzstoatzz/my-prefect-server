@@ -1,0 +1,96 @@
+{
+  "server_revision": "78beba2e1647b58e33534f43795f00cd2106e3d1",
+  "configuration_revision": "585e7d670e60c33e5f38519759d502c6ca6a9fbf",
+  "pipeline": "3n22rv7xfee22",
+  "ci_status": "success",
+  "publication_status": "success",
+  "image": "atcr.io/zzstoatzz.io/prefect-server@sha256:4f82da383af2d6b38eb1a5bfd0863cef09ae71b080df0e598d77b5dcff6e40fa",
+  "before_version": "0.0.31+50aec7fb58b6ae0083868c9a7a8f3c02087dca9d",
+  "after_version": "0.0.31+78beba2e1647b58e33534f43795f00cd2106e3d1",
+  "deployments": [
+    {
+      "name": "api",
+      "generation": 21,
+      "observedGeneration": 21,
+      "readyReplicas": 1,
+      "updatedReplicas": 1,
+      "images": [
+        "atcr.io/zzstoatzz.io/prefect-server@sha256:4f82da383af2d6b38eb1a5bfd0863cef09ae71b080df0e598d77b5dcff6e40fa"
+      ]
+    },
+    {
+      "name": "services",
+      "generation": 12,
+      "observedGeneration": 12,
+      "readyReplicas": 1,
+      "updatedReplicas": 1,
+      "images": [
+        "atcr.io/zzstoatzz.io/prefect-server@sha256:4f82da383af2d6b38eb1a5bfd0863cef09ae71b080df0e598d77b5dcff6e40fa"
+      ]
+    }
+  ],
+  "before_canary": {
+    "id": "a5e5eb89-8835-4231-a62d-ec292b2f8941",
+    "name": "canary-a5e5eb89",
+    "state_type": "COMPLETED",
+    "state_name": "Completed",
+    "run_count": 1,
+    "start_time": "2026-11-11T20:25:29.316105+00:00",
+    "end_time": "2026-11-11T20:25:29.371356+00:00"
+  },
+  "after_canary": {
+    "id": "1c8eb35e-fcc9-4c2b-aad3-600a0a8df69f",
+    "name": "canary-1c8eb35e",
+    "state_type": "COMPLETED",
+    "state_name": "Completed",
+    "run_count": 1,
+    "start_time": "2026-11-11T20:31:56.098493+00:00",
+    "end_time": "2026-11-11T20:31:56.180001+00:00"
+  },
+  "final_manifest_diff_exit_code": 0,
+  "unchanged_datastore_pods": [
+    "postgres-84c4954f55-s27c4",
+    "redis-84789c9ff5-qgglt"
+  ],
+  "pod_restarts": {
+    "api-98cb59d97-smbsr": 0,
+    "services-7cb644d45c-78b89": 0
+  },
+  "previous_images": {
+    "api": "atcr.io/zzstoatzz.io/prefect-server@sha256:cf429b16de9ccb0c7986ba26d4f1054c688e1cc8ab2e1be5a564a3ff3476a5f9",
+    "services": "atcr.io/zzstoatzz.io/prefect-server@sha256:cf429b16de9ccb0c7986ba26d4f1054c688e1cc8ab2e1be5a564a3ff3476a5f9"
+  },
+  "schedule_inventory_before": {
+    "deployments": 56,
+    "cron_utc_active": 32,
+    "cron_no_timezone_active": 4,
+    "cron_no_timezone_inactive": 1,
+    "interval": 0,
+    "rrule": 0,
+    "non_utc": 0
+  },
+  "timezone_proof": {
+    "deployment": "lighting/home",
+    "schedule": {
+      "cron": "0 1 * * *",
+      "timezone": "America/Chicago"
+    },
+    "registered_at": "2026-11-11T20:32:27Z",
+    "scheduled_runs": [
+      "2026-11-12T07:00:00Z",
+      "2026-11-13T07:00:00Z",
+      "2026-11-14T07:00:00Z"
+    ]
+  },
+  "validation_proof": {
+    "request": "POST /deployments/ with timezone Mars/Olympus",
+    "status": 422,
+    "detail": "Invalid timezone: \"Mars/Olympus\"",
+    "stored": 0
+  },
+  "runs_in_12_minutes_around_rollout": {
+    "completed": 10,
+    "failed": 0,
+    "crashed": 0
+  }
+}
