@@ -1,4 +1,5 @@
 import json
+import select
 import socket
 import tempfile
 import threading
@@ -97,6 +98,25 @@ def test_rejects_requests_outside_inference_contract(bridge_dir, upstream, route
     with inference_bridge(path, upstream=url, agent_uid=None):
         assert request(path, route, model)[0] == expected
     assert not calls
+
+
+def test_rejection_waits_for_the_request_body(bridge_dir, upstream):
+    url, _calls = upstream
+    path = bridge_dir / "bridge.sock"
+    body = json.dumps({"model": "openai/gpt-5.6-luna", "messages": []}).encode()
+    with (
+        inference_bridge(path, upstream=url, agent_uid=None),
+        socket.socket(socket.AF_UNIX) as client,
+    ):
+        client.connect(str(path))
+        client.sendall(b"POST /admin HTTP/1.1\r\nContent-Length: %d\r\n\r\n" % len(body))
+        answered_early, _, _ = select.select([client], [], [], 0.5)
+        assert not answered_early
+        client.sendall(body)
+        response = b""
+        while chunk := client.recv(65536):
+            response += chunk
+    assert response.startswith(b"HTTP/1.0 404 ")
 
 
 def test_attempt_limit_is_enforced(bridge_dir, upstream):

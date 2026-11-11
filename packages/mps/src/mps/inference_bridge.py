@@ -74,6 +74,7 @@ def inference_bridge(
             pass  # Never log prompts, upstream errors, or credentials.
 
         def do_POST(self):
+            self.body_unread = True
             if self.path not in ("/v1/chat/completions", "/v1/messages", "/v1/responses"):
                 return self.handle_post()
             started = time.monotonic()
@@ -100,6 +101,19 @@ def inference_bridge(
                     ),
                 )
 
+        def send_error(self, code, message=None, explain=None):
+            # A caller writes its body after its headers. Closing with the body
+            # unread breaks that write, and the caller never sees the status.
+            if getattr(self, "body_unread", False):
+                self.body_unread = False
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    if 0 < length <= 2 * 1024 * 1024:
+                        self.rfile.read(length)
+                except (ValueError, OSError):
+                    pass
+            super().send_error(code, message, explain)
+
         def send_response(self, code, message=None):
             self.audit_status = code
             if 400 <= code < 500:
@@ -115,6 +129,7 @@ def inference_bridge(
                     length = int(self.headers.get("Content-Length", "0"))
                     if self.headers.get("Transfer-Encoding") or not 0 < length <= 65536:
                         raise ValueError("Invalid request size")
+                    self.body_unread = False
                     result = workflow_requests.request(json.loads(self.rfile.read(length)))
                 except (ValueError, TypeError):
                     self.send_error(400, "Invalid workflow request")
@@ -146,6 +161,7 @@ def inference_bridge(
                 length = int(self.headers.get("Content-Length", "0"))
                 if not 0 < length <= 2 * 1024 * 1024:
                     raise ValueError("Invalid request size")
+                self.body_unread = False
                 body = json.loads(self.rfile.read(length))
                 if not isinstance(body, dict) or not isinstance(body.get("model"), str):
                     raise ValueError("Model is required")
