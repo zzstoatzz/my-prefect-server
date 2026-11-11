@@ -3,10 +3,20 @@ import threading
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import httpx
 import pytest
 from pydantic import ValidationError
 
-from flows.evergreen_checks import EvergreenStatus, Project, check_evergreen, validate_status
+from flows import evergreen_checks
+from flows.evergreen_checks import (
+    EvergreenStatus,
+    Project,
+    Service,
+    check_evergreen,
+    confirm,
+    probe,
+    validate_status,
+)
 from flows.fleet_health import CheckResult, summarize
 
 NOW = datetime(2026, 9, 9, tzinfo=UTC)
@@ -127,11 +137,19 @@ def monitor_server():
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
             body = json.dumps(payload[self.path]).encode()
-            self.send_response(200)
+            self.send_response(payload.get("status", 200))
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def do_POST(self):
+            payload["posted"] = (
+                self.headers["Accept"],
+                self.rfile.read(int(self.headers["Content-Length"])).decode(),
+            )
+            self.send_response(204)
+            self.end_headers()
 
         def log_message(self, *args):
             pass
@@ -147,13 +165,18 @@ def monitor_server():
         thread.join()
 
 
-def test_real_http_preserves_target_failure_and_detects_inventory_drift(monitor_server):
+def test_real_http_preserves_target_failure_and_detects_inventory_drift(
+    monitor_server, monkeypatch
+):
     url, payload = monitor_server
     payload["/status"]["results"][0].update(ok=False, status=503)
+    monkeypatch.setattr(evergreen_checks, "probe", lambda client, service: "HTTP 503")
     results = check_evergreen.fn(f"{url}/inventory", f"{url}/status")
     assert len(results) == 1
-    assert results[0].status == 503
-    assert not results[0].ok
+    assert not results[0].healthy
+    assert results[0].detail == (
+        "HTTP 503 from Evergreen's Worker; HTTP 503 from heavypad (https://example.org/health)"
+    )
     payload["/inventory"][0]["services"].append(
         {"name": "new check", "url": "https://example.org/new"}
     )
@@ -168,3 +191,86 @@ def test_real_http_rejects_stale_report(monitor_server):
     payload["/status"]["checkedAt"] = NOW.isoformat()
     with pytest.raises(ValueError, match="timestamp"):
         check_evergreen.fn(f"{url}/inventory", f"{url}/status")
+
+
+def unreachable(service):
+    raise AssertionError(f"probed {service.url}")
+
+
+def test_a_healthy_result_is_not_probed_again():
+    [finding] = confirm(PROJECTS, report().results, unreachable)
+    assert finding.healthy
+    assert finding.detail == "HTTP 200 (https://example.org/health)"
+
+
+def test_a_failure_only_the_worker_saw_is_not_an_outage():
+    dropped = report(
+        ok=False,
+        status=0,
+        attempts=2,
+        error="TimeoutError: The operation was aborted due to timeout",
+    )
+    [finding] = confirm(PROJECTS, dropped.results, lambda service: "HTTP 200")
+    assert finding.healthy
+    assert finding.detail == (
+        "HTTP 200 from heavypad; Evergreen's Worker saw HTTP 0"
+        " (TimeoutError: The operation was aborted due to timeout)"
+        " (https://example.org/health)"
+    )
+
+
+@pytest.mark.parametrize("here", ["HTTP 503", "HTTP 302", "ConnectTimeout"])
+def test_a_failure_seen_from_both_places_is_down_and_keeps_both_samples(here):
+    [finding] = confirm(PROJECTS, report(ok=False, status=0).results, lambda service: here)
+    assert not finding.healthy
+    assert finding.detail == (
+        f"HTTP 0 from Evergreen's Worker; {here} from heavypad (https://example.org/health)"
+    )
+    _, unhealthy, broken = summarize(
+        [CheckResult(f"{finding.project}/{finding.name}", finding.healthy, finding.detail)]
+    )
+    assert unhealthy == [f"example/api: {finding.detail}"]
+    assert not broken
+
+
+def test_the_confirming_probe_uses_the_inventory_check():
+    post = {"method": "POST", "headers": {"Accept": "text/event-stream"}, "body": "{}"}
+    projects = [
+        Project(
+            name="example",
+            services=[{"name": "api", "url": "https://example.org/health", "check": post}],
+        )
+    ]
+    probed = []
+    confirm(
+        projects, report(ok=False, status=503).results, lambda s: probed.append(s) or "HTTP 200"
+    )
+    assert [s.check.model_dump() for s in probed] == [post]
+
+
+def test_probe_reports_the_status_and_sends_the_check(monitor_server):
+    url, payload = monitor_server
+    with httpx.Client(timeout=5) as client:
+        get = Service.model_construct(
+            name="api", url=f"{url}/status", check=evergreen_checks.Check()
+        )
+        assert probe(client, get) == "HTTP 200"
+        payload["status"] = 503
+        assert probe(client, get) == "HTTP 503"
+        post = Service.model_construct(
+            name="mcp",
+            url=f"{url}/mcp",
+            check=evergreen_checks.Check(
+                method="POST", headers={"Accept": "text/event-stream"}, body="{}"
+            ),
+        )
+        assert probe(client, post) == "HTTP 204"
+        assert payload["posted"] == ("text/event-stream", "{}")
+
+
+def test_probe_reports_a_refused_connection_as_its_error():
+    refused = Service.model_construct(
+        name="api", url="http://127.0.0.1:1/", check=evergreen_checks.Check()
+    )
+    with httpx.Client(timeout=5) as client:
+        assert probe(client, refused).startswith("ConnectError")

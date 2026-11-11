@@ -16,8 +16,9 @@ Design constraints, both learned the hard way:
     sampling from a residential connection.
   - One healthy sample is not proof, and one bad sample is not an incident.
     The stream deep check reads /status twice across a 20s window before
-    calling the tail stuck, and any shallow check gets one retry before it
-    counts as down.
+    calling the tail stuck, any shallow check gets one retry before it
+    counts as down, and a failure Evergreen's Worker reports is probed again
+    from here before it counts as down.
 
 Failure semantics: a failed flow run means the sweep itself could not run
 (a check task errored out even after retry). Unhealthy targets are a
@@ -266,10 +267,7 @@ def fleet_health() -> State | None:
     results += [_named(name, f.result(raise_on_failure=False)) for name, f in shallow_futures]
     evergreen = evergreen_future.result(raise_on_failure=False)
     if isinstance(evergreen, list):
-        results += [
-            CheckResult(f"{r.project}/{r.name}", r.ok, f"HTTP {r.status} ({r.url})")
-            for r in evergreen
-        ]
+        results += [CheckResult(f"{f.project}/{f.name}", f.healthy, f.detail) for f in evergreen]
         logger.info("Evergreen inventory: %d endpoints checked", len(evergreen))
     else:
         results.append(_named(EVERGREEN, evergreen))
