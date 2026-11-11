@@ -1,17 +1,26 @@
-"""Run the fixed presence preset through the smart-home MCP, then verify readback."""
+"""Run a lighting plan through the smart-home MCP, then verify readback."""
 
 import asyncio
 import importlib
 import json
 import os
 import sys
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any, Literal
 
-from mps.home_lighting import expected_states, lighting_calls, readback_mismatches
+from mps.home_lighting import LightingCall, expected_states, lighting_calls, readback_mismatches
+
+Inventory = dict[str, Any]
+Planner = Callable[[Inventory, Inventory, Inventory], list[LightingCall]]
 
 
 async def apply_lighting(state: Literal["home", "away"]) -> int:
+    return await apply_plan(partial(lighting_calls, state), needs_scenes=state == "home")
+
+
+async def apply_plan(plan: Planner, *, needs_scenes: bool) -> int:
     os.environ.update(json.loads(Path(os.environ["PRESENCE_HUE_ENV_FILE"]).read_text()))
     from fastmcp import Client
 
@@ -38,8 +47,8 @@ async def apply_lighting(state: Literal["home", "away"]) -> int:
 
         rooms = await read("read_rooms")
         lights = await read("read_lights")
-        scenes = await read("read_scenes") if state == "home" else {}
-        calls = lighting_calls(state, rooms, lights, scenes)
+        scenes = await read("read_scenes") if needs_scenes else {}
+        calls = plan(rooms, lights, scenes)
         expected = expected_states(calls, lights, scenes)
         for call in calls:
             if call.tool == "activate_scene":
