@@ -35,6 +35,12 @@ def configure(tmp_path):
     signal.signal(signal.SIGTERM, previous)
 
 
+def wait_for_child(supervisor, marker):
+    while not marker.exists():
+        assert supervisor.poll() is None
+        time.sleep(0.01)
+
+
 def test_outcome_survives_restart_without_replaying_code(configure):
     prepare = configure
     directory = prepare("from pathlib import Path; Path('count').write_text('once')")
@@ -82,7 +88,9 @@ def test_supervisor_death_does_not_report_live_engine_as_exited(configure):
     prepare = configure
     directory = prepare(
         "import os, time; from pathlib import Path; "
-        "Path('child-pid').write_text(str(os.getpid())); time.sleep(30)"
+        "Path('child-pid.tmp').write_text(str(os.getpid())); "
+        "os.replace('child-pid.tmp', 'child-pid'); time.sleep(30)",
+        timeout=30,
     )
     launcher = (
         "from pathlib import Path; from prefect_exe import runtime; "
@@ -91,11 +99,7 @@ def test_supervisor_death_does_not_report_live_engine_as_exited(configure):
     supervisor = subprocess.Popen([sys.executable, "-c", launcher])
     child_pid = None
     try:
-        deadline = time.monotonic() + 5
-        while not (directory / "child-pid").exists():
-            assert supervisor.poll() is None
-            assert time.monotonic() < deadline
-            time.sleep(0.01)
+        wait_for_child(supervisor, directory / "child-pid")
         child_pid = int((directory / "child-pid").read_text())
         supervisor.kill()
         supervisor.wait(timeout=5)
@@ -143,13 +147,12 @@ def test_sigterm_bounds_shutdown_when_child_ignores_it(configure):
     )
     supervisor = subprocess.Popen([sys.executable, "-c", launcher])
     try:
-        deadline = time.monotonic() + 5
-        while not (directory / "ready").exists():
-            assert time.monotonic() < deadline
-            time.sleep(0.01)
+        wait_for_child(supervisor, directory / "ready")
+        requested_at = time.time()
         supervisor.terminate()
-        supervisor.wait(timeout=15)
+        supervisor.wait(timeout=120)
         state = json.loads((directory / "state.json").read_text())
+        assert state["finished_at"] - requested_at < 15
         assert state["phase"] == "exited"
         assert state["reason"] == "execution cancelled"
         assert state["exit_code"] == 143
