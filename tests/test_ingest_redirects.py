@@ -55,3 +55,11 @@ def test_fetch_keeps_ref_repo_when_html_url_missing():
 
     assert result is not None
     assert result.repo == "Owner/name"
+
+
+def test_fetch_skips_a_deleted_issue():
+    gone = {"message": "This issue was deleted", "status": "410"}
+    transport = httpx.MockTransport(lambda r: httpx.Response(410, json=gone))
+    ref = IssueRef(repo="Owner/name", number=6118, subject_type="Issue")
+    with patch("flows.ingest.gh_client", partial(gh_client, transport=transport)):
+        assert fetch_issue_or_pr.fn(ref, token="t") is None

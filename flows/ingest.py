@@ -152,7 +152,7 @@ def fetch_issue_or_pr(ref: IssueRef, token: str) -> IssueOrPR | None:
     """Fetch a single issue or PR. Cached by repo+number for 4h."""
     with gh_client(token) as client:
         resp = client.get(f"{GITHUB_API}/repos/{ref.repo}/issues/{ref.number}")
-        if resp.status_code == 404:
+        if resp.status_code in (404, 410):
             return None
         resp.raise_for_status()
         data = resp.json()
