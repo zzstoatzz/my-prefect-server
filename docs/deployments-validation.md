@@ -198,3 +198,11 @@ its HEAD response omitted Content-Length. A direct pull reproduced the failure;
 GET returned a valid manifest. The microVM engine provisions dependencies through
 Nix and avoids this failing OCI registry path. Verification requires a completed
 CI run through registration, not merely successful VM creation.
+
+## legacy Kubernetes workers
+
+Retained Kubernetes deployments require the `-kubernetes` Prefect image variant,
+namespace `prefect` in the pool template, and
+`PREFECT_INTEGRATIONS_KUBERNETES_OBSERVER_NAMESPACES=prefect` for scoped RBAC.
+Interpreter and dependency overrides belong in `work_pool.job_variables.command`.
+These requirements do not select or reactivate a deployment.
