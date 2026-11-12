@@ -11,7 +11,7 @@ LIMITS = {
     "fly": "Inventory and measured uptime at list prices; excludes network, paid IPs, discounts and taxes.",
     "hetzner": "Inventory/lifecycle receipts at list prices; excludes traffic, discounts and taxes.",
     "cloudflare": "R2 storage estimates and configured fixed charges; fixed charges need invoice reconciliation; operations and other usage are excluded.",
-    "neon": "Legacy plan-price estimate, not billed consumption; plan rates and usage need reconciliation.",
+    "neon": "Usage-based billing not reconciled; no plan minimum is assumed.",
     "turso": "Configured plan list price, not live billing; annual discounts and overage are excluded.",
     "anthropic": "Coral process-lifetime meter extrapolated to 30 days; other applications are excluded.",
     "typesafe": "Coral process-lifetime meter extrapolated to 30 days; account-wide billing is not measured.",
