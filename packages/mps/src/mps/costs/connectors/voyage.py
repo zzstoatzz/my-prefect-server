@@ -20,7 +20,8 @@ SELECT date_trunc('day', start_timestamp) AS day,
          (attributes->>'model' IS DISTINCT FROM 'voyage-multimodal-3' OR
           attributes->>'usage.text_tokens' IS NULL OR
           attributes->>'usage.image_pixels' IS NULL OR
-          attributes->>'cost.billable_image_pixels' IS NULL)) AS unmetered,
+          ((attributes->>'usage.image_pixels')::bigint > 0 AND
+           attributes->>'cost.billable_image_pixels' IS NULL))) AS unmetered,
        coalesce(sum(CASE WHEN span_name = 'embedding.generate' AND
          attributes->>'model' = 'voyage-multimodal-3'
          THEN (attributes->>'usage.text_tokens')::bigint ELSE 0 END), 0) AS text_tokens,
