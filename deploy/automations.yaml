@@ -518,7 +518,11 @@ automations:
       store slot serves search the same deployment runs a standby refresh, which
       completes with the same event and never changes the serving target, so
       this then watches the rollback slot and its retry cannot move traffic.
-    enabled: true
+      Disabled 2026-11-12 with the deployment's schedule: the store slot has
+      served since 2026-11-11 and the twice-daily Turso export is paused while
+      the old path is retired. Enable both again before relying on a managed
+      slot's 24 hour coverage.
+    enabled: false
     trigger:
       type: event
       posture: Proactive

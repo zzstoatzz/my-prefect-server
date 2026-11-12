@@ -1019,7 +1019,7 @@ deployments:
     schedules:
     - cron: 0 6,18 * * *
       timezone: UTC
-      active: true
+      active: false
   - name: phi-pull-review
     tags:
     - phi
