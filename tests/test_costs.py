@@ -177,7 +177,7 @@ def test_cloudflare_degrades_when_r2_unmeasurable(monkeypatch, capsys):
     items = asyncio.run(CloudflareConnector().collect(Period.trailing_month()))
 
     assert [i.service for i in items] == ["domains-and-plans"]
-    assert items[0].amount == 100 and items[0].estimated is False
+    assert items[0].amount == 100 and items[0].estimated is True
     assert "UNMEASURED" in capsys.readouterr().out
 
 

@@ -216,7 +216,7 @@ def _fixed_line_items() -> list[LineItem]:
             project="shared",
             service="domains-and-plans",
             amount=round(fixed * 100),
-            estimated=False,
+            estimated=True,
             note="fixed domain registrations / paid plans (CLOUDFLARE_FIXED_USD)",
         )
     ]
@@ -252,7 +252,7 @@ def _fixed_line_items_from_json(raw: str) -> list[LineItem]:
                 project=project,
                 service=str(service),
                 amount=round(amount * 100),
-                estimated=False,
+                estimated=True,
                 note=note,
             )
         )

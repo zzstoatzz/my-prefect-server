@@ -2,7 +2,7 @@
 
 Hetzner has no public "current invoice" endpoint, but server inventory carries
 the exact contracted monthly list price per server type/location. For fixed
-servers that's the real recurring charge, so these are billed (not estimated);
+servers this is a recurring list-price estimate, not an invoice;
 the note records that traffic overage isn't included. Volumes, snapshot/backup
 images and primary IPv4 addresses bill separately from the server type, so each
 gets its own line at the /pricing list price.
@@ -184,7 +184,7 @@ class HetznerConnector:
                         project=project_for(name),
                         service=name,
                         amount=_monthly_cents(server),
-                        estimated=False,
+                        estimated=True,
                         usage=stype,
                         note="monthly list price; excludes traffic overage",
                     )
@@ -211,7 +211,7 @@ class HetznerConnector:
                         project=project,
                         service=f"{vname}:volume",
                         amount=round(size_gb * prices.volume_gb),
-                        estimated=False,
+                        estimated=True,
                         usage=f"{size_gb}GB block storage",
                         note="provisioned volume at per-GB list price",
                     )
@@ -234,7 +234,7 @@ class HetznerConnector:
                         project=project_for(source),
                         service=f"{source}:{kind}-{iid}",
                         amount=round(size_gb * prices.image_gb),
-                        estimated=False,
+                        estimated=True,
                         usage=f"{size_gb:.2f}GB {kind} image"
                         + (f": {description}" if description else ""),
                         note="stored image size at per-GB list price",
@@ -260,7 +260,7 @@ class HetznerConnector:
                         project=project_for(owner),
                         service=f"{owner}:{ip['type']}",
                         amount=round(cents),
-                        estimated=False,
+                        estimated=True,
                         usage=f"primary {ip['type']}"
                         + ("" if ip.get("assignee_id") else ", unassigned"),
                         note="primary IP monthly list price; billed separately from the server",

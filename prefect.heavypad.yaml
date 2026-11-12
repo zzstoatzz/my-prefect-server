@@ -328,7 +328,7 @@ deployments:
           COSTS_PROVIDER_BLOCK_PREFIX: ''
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
           CLOUDFLARE_ACCOUNT_ID: "3e9ba01cd687b3c4d29033908177072e"
-          CLOUDFLARE_FIXED_COSTS_JSON: '{"plyr.fm":{"amount":1.00,"project":"plyr.fm","note":"plyr.fm domain registration"},"workers-paid-plan":{"amount":4.00,"project":"shared","note":"Cloudflare Workers Paid plan"}}'
+          CLOUDFLARE_FIXED_COSTS_JSON: '{"plyr.fm":{"amount":1.00,"project":"plyr.fm","note":"plyr.fm domain registration"},"workers-paid-plan":{"amount":5.00,"project":"shared","note":"Workers Paid public minimum, verified 2026-11-11; excludes usage overage"}}'
     parameters:
       config:
         dry_run: false
