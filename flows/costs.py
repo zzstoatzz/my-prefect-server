@@ -33,6 +33,7 @@ from mps.costs.connectors import (
     NeonConnector,
     OpenRouterConnector,
     TursoConnector,
+    VoyageConnector,
 )
 from mps.costs.coverage import inventory, reconcile
 from mps.costs.types import Connector, LineItem
@@ -79,6 +80,7 @@ async def build_connectors() -> list[Connector]:
         CoralApiConnector(),
         OpenRouterConnector(block_name=prefix + "openrouter-api-key"),
         BuilderCostsConnector(),
+        VoyageConnector(block_name=prefix + "logfire-read-token"),
     ]
 
 

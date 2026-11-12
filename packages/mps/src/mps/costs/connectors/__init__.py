@@ -10,6 +10,7 @@ from mps.costs.connectors.hetzner import HetznerConnector
 from mps.costs.connectors.neon import NeonConnector
 from mps.costs.connectors.openrouter import OpenRouterConnector
 from mps.costs.connectors.turso import TursoConnector
+from mps.costs.connectors.voyage import VoyageConnector
 from mps.costs.types import Connector
 
 ALL_CONNECTORS: list[Connector] = [
@@ -21,6 +22,7 @@ ALL_CONNECTORS: list[Connector] = [
     CoralApiConnector(),
     OpenRouterConnector(),
     BuilderCostsConnector(),
+    VoyageConnector(),
 ]
 
 __all__ = [
@@ -33,4 +35,5 @@ __all__ = [
     "NeonConnector",
     "OpenRouterConnector",
     "TursoConnector",
+    "VoyageConnector",
 ]
