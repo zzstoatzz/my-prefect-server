@@ -924,7 +924,7 @@ deployments:
       dry_run: false
     schedules:
     - cron: 20 * * * *
-      active: true
+      active: false
     work_pool:
       name: heavypad-typeahead-pool
       job_variables:
@@ -949,7 +949,7 @@ deployments:
       dry_run: false
     schedules:
     - cron: 0 20 * * *
-      active: true
+      active: false
     work_pool:
       name: heavypad-typeahead-pool
       job_variables:
