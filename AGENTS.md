@@ -31,9 +31,8 @@
 - Push GitHub first, then Tangled with `just push`; runtime installs use the
   mirror. Run `just hooks` once per clone and the appropriate checks from
   `just check` before shipping.
-- Prefect documentation is at `~/github.com/prefecthq/prefect/docs`. Read it
-  before guessing API or CLI behavior. Python support starts at 3.13 so dbt
-  flows can select a compatible interpreter.
+- Consult the [Prefect source](https://github.com/PrefectHQ/prefect) for API or CLI
+  behavior. Python support starts at 3.13 so dbt flows can select a compatible interpreter.
 
 ## deployment contracts
 
@@ -51,41 +50,20 @@
 - HeavyPad registration runs on the trusted host after green CI for the exact
   main revision. Follow the registration runbook rather than injecting home
   credentials into Spindle microVMs.
-- Legacy Kubernetes workers require the `-kubernetes` Prefect image variant,
-  namespace `prefect` in the pool template, and
-  `PREFECT_INTEGRATIONS_KUBERNETES_OBSERVER_NAMESPACES=prefect` for scoped RBAC.
-  Interpreter/dependency overrides belong in `work_pool.job_variables.command`.
+- For legacy Kubernetes workers, read the compatibility requirements in
+  [deployment validation](docs/deployments-validation.md).
 
-## before removing or "retiring" anything
+## retiring shared resources
 
-A failing job, empty logs or a deleted host do not show that a service is
-unused. On 2026-11-01 the hub was retired because its Hetzner sync failed; it
-had moved to HeavyPad and phi, other repos and the presence webhook were
-still reading it. Before removing a service, table, deployment or file:
-
-- Find where it is served now: `~/tangled.org/zzstoatzz.io/home/deploy/cloudflared.yml`
-  (public hostnames on HeavyPad), `deploy/prefect-edge/` (`nginx.conf`,
-  `services.toml`, units), `systemctl --user list-units` and
-  `DOCKER_HOST=unix:///var/run/docker.sock docker ps` on HeavyPad.
-- Find who reads it: `rg` its hostname, path, table or file name across
-  `~/tangled.org` and `~/github.com`, plus proxy access logs for real traffic.
-- Check `docs/analytics.md` for the table and consumer map; update it with
-  any change.
-- Move files aside instead of deleting them, and say what you moved.
-- If any consumer remains, stop and ask nate before removing it.
-
-Known live readers of `hub.waow.tech` (HeavyPad `prefect-hub`, port 13000):
-phi `/api/agents/discovery-pool`, cost exports `/api/costs.json`, presence
-`/api/presence`, and the page.
-
-Flows run DuckDB unpinned (2.x) while Dagster's dbt is locked to 1.5. A
-DuckDB file one of them creates must use `STORAGE_VERSION 'v1.0.0'`
-(storage version 64) or the other cannot open it.
+Before removing a deployed service or externally consumed data, follow
+[service retirement](docs/service-retirement.md). Obtain Nate's approval if a
+consumer remains. Ordinary source-file refactoring does not require this procedure.
 
 ## workflow behavior
 
 - Dagster owns hub dbt asset execution and metadata on HeavyPad. Prefect's
   transform flow submits and awaits Dagster; do not duplicate dbt execution.
+- Shared DuckDB files use `STORAGE_VERSION 'v1.0.0'` for dbt compatibility.
 - Every read-write open of `analytics.duckdb` holds the single-writer
   `analytics-duckdb-writer` lease through `mps.db._write_conn` or
   `mps.lock.analytics_write_slot`. Readers snapshot to `/tmp`.
