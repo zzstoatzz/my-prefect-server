@@ -34,6 +34,7 @@ from mps.costs.connectors import (
     OpenRouterConnector,
     TursoConnector,
 )
+from mps.costs.coverage import inventory, reconcile
 from mps.costs.types import Connector, LineItem
 from mps.observability import configure_logfire
 from pdsx._internal.auth import login
@@ -166,10 +167,12 @@ async def costs(config: CostsConfig | None = None):
             f"refusing to publish an incomplete cost snapshot; failed providers: {failed}"
         )
 
+    line_items, coverage_issues = reconcile(line_items, await inventory())
     snapshot = Snapshot(
         generated_at=dt.datetime.now(dt.UTC),
         period=period,
         line_items=line_items,
+        coverage_issues=sorted(set(unmeasured + coverage_issues)),
     )
     print(f"snapshot total: ${snapshot.total / 100:.2f} across {len(line_items)} items")
 
@@ -194,11 +197,11 @@ async def costs(config: CostsConfig | None = None):
         result = snapshot.to_record()
     else:
         result = await write_snapshot(snapshot)
-    if unmeasured:
+    if snapshot.coverage_issues:
         # the snapshot is still worth publishing, but its total is a floor
         return Completed(
             name="Incomplete",
-            message="costs not measured: " + "; ".join(unmeasured),
+            message="Partial cost coverage: " + "; ".join(snapshot.coverage_issues),
             data=result,
         )
     return result

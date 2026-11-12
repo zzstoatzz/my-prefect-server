@@ -54,6 +54,7 @@ class Snapshot(BaseModel):
     period: Period
     currency: str = "USD"
     line_items: list[LineItem]
+    coverage_issues: list[str] = Field(default_factory=list)
 
     def _rollup(self, key: str) -> list[Rollup]:
         groups: dict[str, list[LineItem]] = {}
@@ -81,6 +82,7 @@ class Snapshot(BaseModel):
             "periodEnd": _iso(self.period.end),
             "currency": self.currency,
             "total": self.total,
+            "coverageIssues": self.coverage_issues,
             "byProvider": [r.model_dump() for r in self._rollup("provider")],
             "byProject": [r.model_dump() for r in self._rollup("project")],
             "lineItems": [

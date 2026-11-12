@@ -498,6 +498,12 @@ def test_costs_names_the_run_incomplete_when_a_connector_reports_a_gap(monkeypat
             )
         ]
 
+    async def inventory():
+        from mps.costs.coverage import Project
+
+        return [Project(name="app", costKeys=["cloudflare:s"], resources=[])]
+
+    monkeypatch.setattr(costs_flow, "inventory", inventory)
     wrote = []
 
     async def fake_write_snapshot(snapshot):
@@ -523,7 +529,10 @@ def test_costs_names_the_run_incomplete_when_a_connector_reports_a_gap(monkeypat
     if gap:
         assert state.name == "Incomplete" and "cloudflare: R2 storage" in state.message
     else:
-        assert state.name == "Completed"
+        assert state.name == "Incomplete"
+        assert "R2 storage estimates" in state.message
+    assert wrote[0].coverage_issues
+    assert wrote[0].line_items[0].project == "app"
 
 
 def test_turso_bills_the_scaler_plan_to_shared_by_default(monkeypatch):
