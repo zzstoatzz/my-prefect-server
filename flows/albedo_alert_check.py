@@ -95,7 +95,9 @@ class Finding(BaseModel):
 
 async def call(client: Client, tool: str, **arguments) -> dict:
     result = await client.call_tool(tool, arguments)
-    return result.structured_content or json.loads(result.content[0].text)
+    if result.structured_content is None:
+        raise RuntimeError(f"alerts MCP {tool} returned no structured result")
+    return result.structured_content
 
 
 def checked_since_last_firing(incident: dict) -> bool:
