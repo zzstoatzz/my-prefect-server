@@ -15,10 +15,10 @@ Albedo returns a structured request with its findings, the proposed target and a
 
 The cloud assistant reads a concise pending-decision summary over MCP and brings it to the operator. It can help inspect the evidence and discuss the next action. Discord can show the same run link when Albedo starts, needs attention, or returns a result.
 
-## Pilot and follow-up
+## First step: Albedo checks an alert
 
-Run `albedo-incident-pilot/albedo-incident-pilot` manually on HeavyPad. It accepts three fixed cases: `test` skips inference, `recovered` represents an unlabeled false alarm, and `fleet-health-crash` replays a recorded incident. DeepSeek triages the latter two. When it recommends investigation, a fresh, tool-free Albedo session writes a diagnosis artifact and the flow emits `work.waiting`. The typed `accept` or `dismiss` input records a review of that artifact.
+`albedo-alert-check/albedo-alert-check` takes one alert key from the [alerts MCP](../deploy/alerts-mcp/README.md). It skips a resolved alert and one Albedo already noted since its last firing. Otherwise Albedo, in the bwrap sandbox with its kernel and shell, reads the incident as untrusted evidence, corroborates what it can from HeavyPad (the failing public URL, a DNS name), and returns whether the alert needs Nate plus a message of at most three sentences. The flow records that as an `albedo` note on the alert. Notes are not posted to Discord.
 
-Before adding a live event trigger, verify duplicate delivery starts at most one Albedo run. Exercise a scope-change request before giving Albedo a checkout or any deploy authority.
+It runs by hand for now. Before a live trigger: decide where a finding that matters reaches Nate, and verify that duplicate delivery starts at most one check. Exercise a scope-change request before giving Albedo a checkout or any deploy authority.
 
 The self-hosted Prefect MCP currently offers read-only diagnostics. The existing alerts MCP is tailnet-only. The first cloud integration should expose just the pending decision and its status over an authenticated MCP path. A later MCP action could submit a typed decision for a specific paused incident, using explicit authority and the existing Prefect input mechanism. The operator can use Prefect directly in the meantime. [Alerts MCP](../deploy/alerts-mcp/README.md) · [Existing typed flow input](../flows/email_triage.py)

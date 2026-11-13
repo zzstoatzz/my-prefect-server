@@ -1221,19 +1221,19 @@ deployments:
         requirements: []
         local_packages: []
 
-  - name: albedo-incident-pilot
-    description: Manually replay a recorded fleet-health crash with tool-free DeepSeek and review the diagnosis
-    entrypoint: flows/albedo_incident.py:albedo_incident_pilot
-    tags: [heavypad, qualification]
+  - name: albedo-alert-check
+    description: Albedo looks into one alert from the alerts MCP and notes whether it needs Nate
+    entrypoint: flows/albedo_alert_check.py:albedo_alert_check
+    tags: [heavypad, albedo]
     schedules: []
     concurrency_limit:
       limit: 1
-      collision_strategy: CANCEL_NEW
+      collision_strategy: ENQUEUE
     work_pool:
       name: heavypad-interactive-pool
       job_variables:
         command: >-
-          uv run --no-project --with prefect==3.8.2
+          uv run --no-project --with prefect==3.8.2 --with fastmcp
           --with 'mps @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}#subdirectory=packages/mps'
           prefect flow-run execute
         env:
