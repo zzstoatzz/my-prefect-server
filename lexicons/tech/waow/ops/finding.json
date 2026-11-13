@@ -1,0 +1,43 @@
+{
+  "lexicon": 1,
+  "id": "tech.waow.ops.finding",
+  "defs": {
+    "main": {
+      "type": "record",
+      "key": "tid",
+      "description": "An agent's finding about one alert that needs Nate's attention, written once per check.",
+      "record": {
+        "type": "object",
+        "required": ["alertKey", "title", "message", "createdAt"],
+        "properties": {
+          "alertKey": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "The incident key in the alerts MCP, such as fleet-unhealthy/fleet-health."
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 600,
+            "maxGraphemes": 200,
+            "description": "The alert's title."
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 3000,
+            "maxGraphemes": 1000,
+            "description": "At most three sentences for Nate, read on a phone: what is failing and since when, whether the agent confirmed it, and what he needs to do."
+          },
+          "link": {
+            "type": "string",
+            "format": "uri",
+            "description": "The run that produced the finding."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "datetime"
+          }
+        }
+      }
+    }
+  }
+}

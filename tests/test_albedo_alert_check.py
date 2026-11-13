@@ -38,3 +38,41 @@ def test_finding_is_the_last_json_object_in_the_output():
 def test_output_without_a_finding_is_an_error():
     with pytest.raises(ValueError):
         check.parse_finding('curl said {"status": 503}')
+
+
+def test_a_finding_is_written_into_the_ops_space_as_albedo(monkeypatch):
+    import asyncio
+    import json
+
+    import httpx
+
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        if request.url.path.endswith("createSession"):
+            return httpx.Response(200, json={"accessJwt": "jwt", "did": check.ALBEDO_DID})
+        return httpx.Response(200, json={"uri": "at://space-record", "cid": "c"})
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        check.httpx,
+        "AsyncClient",
+        lambda **kw: real(**kw, transport=httpx.MockTransport(handler)),
+    )
+    monkeypatch.setattr(check, "secret_sync", lambda name: "pw")
+
+    uri = asyncio.run(
+        check.write_finding("fleet-unhealthy/x", "fleet unhealthy: x", "it is down", "https://run")
+    )
+
+    assert uri == "at://space-record"
+    write = seen[1]
+    assert write.url.path == "/xrpc/com.atproto.space.createRecord"
+    assert write.headers["authorization"] == "Bearer jwt"
+    body = json.loads(write.content)
+    assert body["space"] == check.OPS_SPACE
+    assert body["repo"] == check.ALBEDO_DID
+    assert body["record"]["$type"] == "tech.waow.ops.finding"
+    assert body["record"]["alertKey"] == "fleet-unhealthy/x"
+    assert body["record"]["message"] == "it is down"

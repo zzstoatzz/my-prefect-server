@@ -4,17 +4,21 @@ Albedo runs in the bwrap sandbox (deploy/albedo-sandbox/) with its kernel and
 shell, so it can corroborate a finding from heavypad: fetch the endpoint that
 failed, resolve a name. The sandbox holds nothing but this run's model key.
 The finding goes back on the alert as an albedo note; notes are not posted to
-Discord. A later firing of the same incident gets a fresh check.
+Discord. A finding that needs Nate is also written, as albedo's own account,
+into the ops space waow.tech owns on pds.zat.dev, where noti picks it up and
+pushes it to his phone (lexicons/tech/waow/ops/). A later firing of the same
+incident gets a fresh check.
 """
 
 import json
 import os
 import re
 import subprocess
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import httpx
 from fastmcp import Client
 from mps.blocks import secret_sync
 from prefect import flow, get_run_logger
@@ -30,6 +34,10 @@ MODEL = "deepseek/deepseek-v4.1-flash"
 OPENROUTER = "https://openrouter.ai/api/v1"
 WRAPPER = Path(__file__).resolve().parents[1] / "deploy/albedo-sandbox/sandbox.sh"
 EVIDENCE_LIMIT = 12_000
+ALBEDO_PDS = "https://pds.zat.dev"
+ALBEDO_DID = "did:plc:estjd2oox7koen44l3sj2cek"
+OPS_SPACE = "at://did:plc:siv7zbedip4vcet4v67piibr/space/tech.waow.ops.space/alerts"
+FINDING = "tech.waow.ops.finding"
 # Everything except the kernel and the shell, which the check runs on.
 DISABLED_EXTENSIONS = [
     "work",
@@ -168,6 +176,35 @@ def run_albedo(api_key: str, prompt: str) -> str:
     return result.stdout
 
 
+async def write_finding(alert_key: str, title: str, message: str, link: str) -> str:
+    password = secret_sync("albedo-atproto-password")
+    async with httpx.AsyncClient(base_url=ALBEDO_PDS, timeout=20) as http:
+        session = await http.post(
+            "/xrpc/com.atproto.server.createSession",
+            json={"identifier": ALBEDO_DID, "password": password},
+        )
+        session.raise_for_status()
+        created = await http.post(
+            "/xrpc/com.atproto.space.createRecord",
+            headers={"authorization": f"Bearer {session.json()['accessJwt']}"},
+            json={
+                "space": OPS_SPACE,
+                "repo": ALBEDO_DID,
+                "collection": FINDING,
+                "record": {
+                    "$type": FINDING,
+                    "alertKey": alert_key,
+                    "title": title,
+                    "message": message,
+                    "link": link,
+                    "createdAt": datetime.now(UTC).isoformat(),
+                },
+            },
+        )
+        created.raise_for_status()
+        return created.json()["uri"]
+
+
 @flow(name="albedo-alert-check", timeout_seconds=600)
 async def albedo_alert_check(alert_key: str):
     """Have Albedo look into one alert and note whether it needs Nate."""
@@ -195,6 +232,9 @@ async def albedo_alert_check(alert_key: str):
             note=f"{verdict}: {finding.message}",
             link=link,
         )
+    if finding.matters:
+        uri = await write_finding(alert_key, incident["title"], finding.message, link)
+        logger.info("Wrote the finding to the ops space: %s", uri)
     create_markdown_artifact(
         key="albedo-alert-check",
         markdown=f"**{alert_key}**: {verdict}\n\n{finding.message}",
