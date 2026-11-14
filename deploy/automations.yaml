@@ -546,48 +546,6 @@ automations:
         subject: "status page"
         body: "{{ payload.summary }}"
 
-  - name: typeahead refresh missing -> retry + discord
-    description: >-
-      A serving Tantivy slot's checkpoint coverage lasts 24 hours and refreshes
-      run at 06:00 and 18:00 UTC, so one missed run leaves no margin. On
-      2026-11-02 the 06:00 run crashed and its generic failure line went
-      unnoticed until search was stale twelve hours later. When no
-      full automatic typeahead-index refresh completes for 13 hours this retries
-      the automatic refresh at once and says what is at stake. The deployment's
-      concurrency limit cancels the retry if a run is already active. While a
-      store slot serves search the same deployment runs a standby refresh, which
-      completes with the same event and never changes the serving target, so
-      this then watches the rollback slot and its retry cannot move traffic.
-      Disabled 2026-11-12 with the deployment's schedule: the store slot has
-      served since 2026-11-11 and the twice-daily Turso export is paused while
-      the old path is retired. Enable both again before relying on a managed
-      slot's 24 hour coverage.
-    enabled: false
-    trigger:
-      type: event
-      posture: Proactive
-      expect: [prefect.flow-run.Completed]
-      deployment: typeahead-index
-      threshold: 1
-      within: 46800
-    actions:
-      - type: run-deployment
-        source: selected
-        deployment: typeahead-index
-        parameters:
-          automatic_refresh: true
-      - type: send-notification
-        block: discord-alerts
-        subject: "typeahead refresh missed: retry started"
-        body: >-
-          No full automatic typeahead-index refresh has completed in 13 hours.
-          A managed Tantivy slot reports stale 24 hours after its checkpoint: that
-          is live search when a managed slot serves, and the rollback slot when
-          the store slot serves. A retry of the
-          automatic refresh has started; if it fails too, act now:
-          https://prefect-server.waow.tech/deployments and
-          https://typeahead.waow.tech/health/freshness
-
   - name: bandwidth watchdog missing -> discord
     description: The independent host monitor has stopped reporting for five minutes.
     enabled: true
