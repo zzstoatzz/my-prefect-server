@@ -15,7 +15,7 @@ Expected env (set by the deployment):
                                    what pub-search's client wants, no stripping)
   - INDEX_R2_ENDPOINT/_BUCKET/_ACCESS_KEY_ID/_SECRET_ACCESS_KEY
                                   (blocks: leaflet-index-r2-* — bucket
-                                   leaflet-search-index, NOT typeahead's)
+                                   leaflet-search-index)
   - BUILDER_CHANNEL               (staging | prod; prod also needs BUILDER_ALLOW_PROD=1)
   - BUILDER_HOME                  (persistent path for repo + build scratch)
   - RCLONE_BWLIMIT                (cap the ~600MB upload; rclone inherits it)

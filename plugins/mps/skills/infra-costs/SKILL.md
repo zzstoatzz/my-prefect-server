@@ -124,9 +124,8 @@ fly volumes update <vol_id> --snapshot-retention <days> -a <app>
 Retention changes apply to **future** aging-out, so cost falls over the
 following days rather than immediately.
 
-Judge retention by whether the data is authoritative or derived. `typeahead-search`
-holds a **derived** index — `typeahead-index` rebuilds it every 3 days and
-publishes to R2, explicitly "no ingress, no SLA" — so it is set to 2 days.
+Judge retention by whether the data is authoritative or derived. A volume that
+holds a **derived** index, one a job rebuilds and republishes, can be set to 2 days.
 `pds-zzstoatzz-io` is authoritative PDS data and stays at 5. Do not lower
 retention account-wide.
 

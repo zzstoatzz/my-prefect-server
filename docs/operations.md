@@ -80,7 +80,7 @@ who a cleanup touches:
 
 | path | size | owner | retention | affected by cleanup |
 | --- | --- | --- | --- | --- |
-| `~/typeahead-index/build/build-*` | 446 GB (37 builds) | `typeahead-index` | **the flow prunes after each publish** (since 2026-09-19): keeps the 2 newest plus whatever `typeahead.waow.tech/health/freshness` reports as serving; prunes nothing when that endpoint is unreachable | only that flow; the search service serves from R2. A person running an offline differential against an older build must copy it first |
+| `~/typeahead-index/build/build-*` | 446 GB (37 builds) | retired `typeahead-index` flow; no active owner | the flow pruned after each publish until it was removed on 2026-11-14; nothing prunes now | nobody; removal is a storage cleanup decision |
 | `~/typeahead-plc/weekly/*.jsonl.gz` | 51 GB (200 weeks) | retired PLC job; no active owner | historical retained data; no automatic pruning | no active flow; removal requires a separate storage cleanup decision |
 | `~/stream-gate`, `~/github.com`, `~/data` | 43 / 28 / 11 GB | stream, checkouts, misc | none | stream's gate state; clones other flows reuse |
 | `~/.cache/uv` | **115 GB** (100 GB in `archive-v0`, 8,458 envs; `diagnostics` reports the count hourly) | every flow, since each run installs from git | none; `uv cache prune` is safe (drops unreferenced entries only) | every home-pool flow's next start is slower |
@@ -99,7 +99,7 @@ between flow runs. Revisit when `diagnostics` shows disk free trending down.
 job variables. `.tangled/workflows/deploy.yml` only checks each push to `main`;
 it does not register deployments. Register changed deployments by hand with the
 pushed commit as MPS_PIN, after `just push` so the GitHub mirror has it too
-(checked 2026-11-01: a passing CI run left `typeahead-index` on its old pin).
+(checked 2026-11-01: a passing CI run left a deployment on its old pin).
 Git-backed jobs run the commit their registration pinned; explicit legacy pins
 and wheel routes retain their declared versions. Run the static
 [validator](deployments-validation.md) before registering.

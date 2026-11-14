@@ -42,7 +42,7 @@ in batches 1, 2, 4, 5 and 8; see the [completion and rollback receipt](../../doc
 Verify real execution, persistent state, backup/restore and authenticated remote
 access before transferring additional ownership. Pause the old schedule and cancel its queued scheduled runs before
 activating the new one. Only individually qualified notification rules and
-publication flows may move. Gardener, Typeahead and the long publishers remain deferred; email is included
+publication flows may move. Gardener and the long publishers remain deferred; email is included
 in the completed scoped migration.
 Migration records must identify the
 old/new deployment IDs, source pin, schedule and rollback.
@@ -76,7 +76,7 @@ and public PDS readback; the old cost schedule is cleared. Cloud is manual-only
 and defaults to dry-run. Known unmeasured Fly root disks and R2 storage remain
 explicitly labelled `Incomplete`; this migration does not make estimates invoices.
 The canary is manual-only. Other original workloads remain on the original
-server; in particular, the Typeahead publisher remains on its cloud pool.
+server.
 MCP Atlas and Bisk snapshot publication also moved on October 26. Their original
 schedules are cleared, and HeavyPad owns `45 */6 * * *` and `*/10 * * * *` UTC
 respectively. The Atlas flow now lives here at `flows/mcp_atlas/crawl.py`, with a
@@ -334,8 +334,7 @@ Secret block and history dependency; plan PostgreSQL/Redis state ownership;
 provide automatic off-host backups and a verified public/private ingress path;
 keep shared DuckDB writers under one cross-instance lock or transfer them as a
 cohort (each server has independent concurrency limits); move Hub, monitoring
-and push notifications; decide cloud placement for the
-Typeahead builder; and rehearse routing rollback. Never attach both schedulers
+and push notifications; and rehearse routing rollback. Never attach both schedulers
 to a restored production database or activate copied automations by default.
 The current Hetzner node remains required and billed until that work is complete.
 

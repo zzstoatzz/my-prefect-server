@@ -434,7 +434,7 @@ deployments:
     tags: [publish]
     entrypoint: flows/pub_search_snapshot.py:pub_search_snapshot
     # the pub-search replica snapshot builder (BUILDER_MODE=1), lifted off Fly
-    # onto the home box — the same move typeahead-index made. Pure batch: reads
+    # onto the home box. Pure batch: reads
     # the leaf Turso db → gated FTS replica build (~600MB) → rclone to R2
     # (leaflet-search-index) → channel pointer LAST → exits. The serving
     # backend's promote watcher adopts on its own poll; a late/failed run just
@@ -455,7 +455,7 @@ deployments:
           # pub-search's client wants the full libsql:// URL — no stripping.
           TURSO_URL: prefect-block://turso-url
           TURSO_TOKEN: prefect-block://turso-token
-          # pub-search's own R2 bucket (leaflet-search-index) — NOT typeahead's.
+          # pub-search's own R2 bucket (leaflet-search-index).
           INDEX_R2_ENDPOINT: prefect-block://leaflet-index-r2-endpoint
           INDEX_R2_BUCKET: prefect-block://leaflet-index-r2-bucket
           INDEX_R2_ACCESS_KEY_ID: prefect-block://leaflet-index-r2-access-key-id
@@ -467,7 +467,7 @@ deployments:
           # 55018 docs, manifest parity with the fly-built prod snapshot).
           BUILDER_CHANNEL: prod
           BUILDER_ALLOW_PROD: "1"
-          # cap the ~600MB upload; tiny next to typeahead's 8.6GB but be polite
+          # cap the ~600MB upload
           RCLONE_BWLIMIT: "10M"
     concurrency_limit: *cancel_new
     schedules: []  # Ownership transfers to the HeavyPad build worker.
@@ -479,7 +479,7 @@ deployments:
     # the bisk.social standings builder (https://tangled.org/zzstoatzz.io/bisk).
     # pure batch: reconstructs the pool + the trailing-24h like standings off the
     # open network → publishes a small bisk.json to R2 → exits; the static site
-    # adopts it (same builder→snapshot shape as typeahead-index, but tiny). uses a
+    # adopts it (same builder→snapshot shape as pub-search-snapshot, but tiny). uses a
     # dedicated R2 token scoped to the `bisk` bucket only (bisk-r2-* blocks). boto3
     # pulled in for the R2 put. no SLA — a late run just serves the prior snapshot.
     work_pool:
@@ -495,8 +495,7 @@ deployments:
           # canary for the mps-secrets startup plugin: job_variables carry block
           # NAMES; the plugin resolves them in-process at `import prefect`, so
           # no plaintext lands in the orchestration db / deployment reads.
-          # project-scoped: a token minted for the `bisk` bucket only (object rw),
-          # not shared with typeahead's index-r2-* creds.
+          # project-scoped: a token minted for the `bisk` bucket only (object rw).
           PREFECT_PLUGINS_ENABLED: "true"
           PREFECT_PLUGINS_ALLOW: mps-secrets
           BISK_R2_ENDPOINT: prefect-block://bisk-r2-endpoint

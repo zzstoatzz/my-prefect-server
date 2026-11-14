@@ -16,7 +16,7 @@ zeldi, plyr.fm and the static sites do not depend on it.
 | cloudflared tunnel | home.zzstoatzz.io, login.zzstoatzz.io, docs-search.zzstoatzz.io, hub.waow.tech, spindle.zzstoatzz.io | `zzstoatzz.io/home` `deploy/cloudflared.yml` | Tunnel credentials in the host snapshot. DNS stays pointed at the tunnel. |
 | home-mcp, atlogin | home.zzstoatzz.io, login.zzstoatzz.io | `zzstoatzz.io/home`, `zzstoatzz.io/atlogin` | Env files and atlogin state dir in the host snapshot. |
 | lance-search, lance-docs, mcp-atlas search | docs-search.zzstoatzz.io, tailnet | `zzstoatzz.io/lance-search`, `zzstoatzz.io/mcp-atlas` | Indexes (about 2 GB) are rebuilt, not backed up. Env in the host snapshot. |
-| prefect-edge (hub, grafana, prometheus, proxy, push, health), dagster hub | hub.waow.tech, tailnet | this repo, `deploy/prefect-edge`, `deploy/dagster` | Config in the host snapshot. Grafana snapshots go to R2 via `prefect-grafana-snapshot.timer`. |
+| prefect-edge (hub, grafana, prometheus, proxy, push), dagster hub | hub.waow.tech, tailnet | this repo, `deploy/prefect-edge`, `deploy/dagster` | Config in the host snapshot. Grafana snapshots go to R2 via `prefect-grafana-snapshot.timer`. |
 | gardener exe worker, hcloud builder, pull-comment bridge, phi inference, bandwidth watchdog | Funnel :8443 (inference gateway) | this repo, `deploy/*` release recipes | Cursors, `grants.sqlite`, watchdog state in the host snapshot. |
 | inbox-zero, protonmail bridge, hydroxide | none | this repo, `deploy/inbox-zero` | Mailbox state and bridge credentials in the host snapshot. |
 | talky-jev and its Slack bridge, remind | none | `zzstoatzz.io/talky-jev`, `waow.tech/remind` | State and env in the host snapshot. |
@@ -24,9 +24,8 @@ zeldi, plyr.fm and the static sites do not depend on it.
 | heavypad studio | Serve :9443 | **no repository**; app source is only in the host snapshot | queue state in the host snapshot |
 | heavypad-llama (Gemma) | tailnet | this repo, `deploy/heavypad-llama` | model file is re-downloaded |
 
-Prefect deployments (evergreen-timeline, atproto-docs, typeahead enrichment, the
-phi passes, autofix, backup-freshness and the rest) live in the PostgreSQL dump
-with their source pinned by `prefect.heavypad.yaml`.
+Prefect deployments (evergreen-timeline, atproto-docs, the phi passes, autofix,
+backup-freshness and the rest) live in the PostgreSQL dump with their source pinned by `prefect.heavypad.yaml`.
 
 Monitoring on HeavyPad itself goes dark with it. The external check is the
 `heavypad-watchdog` Cloudflare Worker (`deploy/heavypad-watchdog`): every 15 minutes
@@ -42,7 +41,6 @@ recovery. https://heavypad-watchdog.n8-3e9.workers.dev shows its current state.
 2. Nothing user-facing is at risk except those hostnames and the inference gateway.
    Decide whether to wait or fail over using the deadlines below.
 3. Deadlines, from the downtime inventory:
-   - typeahead-index publication freshness fails after four days.
    - bufo-traffic backfills two days; older gaps are permanent.
    - paused email-triage approvals expire; do not replay them.
    - phi passes with a lock time (chicken) cannot be run late.

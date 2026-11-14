@@ -59,7 +59,6 @@ and its observed schema/column lineage.
   ─────────────────────────────────────────────
   leaflet-atlas (every 6h)       ──► Cloudflare Pages
   pub-search-snapshot (every 2h) ──► R2
-  typeahead-index (every 3d)     ──► R2
   bisk-snapshot (every 10m)      ──► R2
   pds-records (ad hoc)           ──► PDS record maintenance
 ```
@@ -81,8 +80,6 @@ and its observed schema/column lineage.
 | `leaflet-atlas` | cron `0 */6 * * *` | rebuilds the pub-search 2D semantic map (UMAP + HDBSCAN on TurboPuffer embeddings), deploys to Cloudflare Pages |
 | `pds-records` | ad hoc, no schedule | operator flow for listing/creating/updating/deleting PDS records; default deployment is dry-run list mode |
 | `costs` | cron `0 8 * * *` (daily 08:00 UTC) | collects provider billing (neon/cloudflare/hetzner/fly connectors), writes an `io.zzstoatzz.cost.snapshot` PDS record, surfaced at hub.waow.tech |
-| `typeahead-index` | cron `0 9 */3 * *` (every 3rd day) | builds the typeahead prefix-index snapshot on the home box (zig batch job), publishes it to R2, rewrites `latest.json`. no ingress, no SLA |
-| `typeahead-enrich-backfill` | ad hoc, no schedule | paced profile backfill for typeahead's enrichment queue |
 | `pub-search-snapshot` | cron `40 */2 * * *` | builds the pub-search FTS snapshot from the Turso document corpus and publishes it to R2 |
 | `bisk-snapshot` | cron `*/10 * * * *` | computes the authoritative bisk.social standings and publishes a static snapshot to R2 for the edge site to adopt |
 | `phi-curation` / `phi-editorial` / `phi-character-retro` / `phi-chicken-precheck` / `phi-chicken-scout` | crons (weekly Mon 03 / daily 15 / monthly 1st 17 / daily 04 / daily 18, UTC) | thin `phi-trigger` deployments that kick named passes on the phi bot via its control API — the bot defines what runs, prefect owns the clock |
