@@ -60,7 +60,7 @@ updated. Supply these variables to `just presence-deploy`:
 | --- | --- |
 | `PRESENCE_SOURCE_URL` | HTTPS clone URL of this repository |
 | `PRESENCE_SOURCE_REVISION` | Full published commit SHA |
-| `PRESENCE_CREDENTIAL_FILE` | Worker path to the mode-0600 PDS password file |
+| `PRESENCE_CREDENTIAL_FILE` | Worker path to the mode-0600 app password file |
 | `PRESENCE_HUE_ENV_FILE` | Worker path to protected Hue configuration JSON |
 | `PRESENCE_LIGHTING_STATE_FILE` | Persistent worker path for the state marker |
 
@@ -98,10 +98,23 @@ and departure actuation still await a real trip test.
 
 ## Private space and future notifications
 
-The record owner is `nate.spaces-alpha.bsky.network`
-(`did:plc:x5vcg5tj466g64de3jvvkzjg`). The private member-list space is
-`at://did:plc:x5vcg5tj466g64de3jvvkzjg/space/io.zzstoatzz.home.space/home`, with
-record `io.zzstoatzz.home.presence/self`. Anonymous reads were rejected.
+The record owner is `zzstoatzz.io` (`did:plc:xbtmt2zjwlrfegqvch7fboei`), whose
+PDS, `zds.zzstoatzz.io`, is also the space host. The space is
+`at://did:plc:xbtmt2zjwlrfegqvch7fboei/space/io.zzstoatzz.home.space/home` with
+a `com.atproto.personalspace.policy`, so only the owner reads or writes. The
+record is `io.zzstoatzz.home.presence/self`. Anonymous reads are rejected with
+401. The code resolves the host from the owner's DID document.
+
+The worker signs in with a dedicated app password (`presence 2026-11-14`),
+canonical at `atproto.zzstoatzz-io.presence-app-password` in the secret store
+and derived to `~/.config/presence/zzstoatzz-io-app-password` on heavypad. An
+app password can write anything in the account, not only this space.
+
+Until 2026-11-14 the record lived in a space of the same type and key owned by
+`nate.spaces-alpha.bsky.network` (`did:plc:x5vcg5tj466g64de3jvvkzjg`) on
+Bluesky's alpha host. The new record was seeded with that record's last value.
+The old space and `~/.config/presence/pds-password` remain for rollback:
+re-register revision `0706dd46` with the old credential path.
 
 The phone currently triggers Prefect directly. Editing the private record
 independently does **not** trigger lighting. We have not implemented a space
@@ -119,6 +132,7 @@ ZDS's `docs/permissioned-data.md` and `src/atproto/space.zig` were inspected on
 space credential; registrations expire after 24 hours in that implementation.
 `notifyWrite` carries revision metadata, not record contents. A future receiver
 must authenticate the authority, audience, expiry, and method, fetch current
-state, renew subscriptions, and reconcile missed notifications. ZDS is a PDS
-implementation, not the account hosting this record; compatibility must be
-verified against the actual space host before adopting its notification path.
+state, renew subscriptions, and reconcile missed notifications. Those
+notes predate the move to ZDS and the November 2026 alpha, which replaced
+`registerNotify` and `notifyWrite`; read ZDS's current
+`docs/permissioned-data.md` before adopting its notification path.
