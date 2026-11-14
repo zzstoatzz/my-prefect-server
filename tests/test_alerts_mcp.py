@@ -385,7 +385,7 @@ async def test_alert_event_starts_from_now_then_delivers_later_firings(mcp, serv
         first = await client.poll_events_mcp("alert.fired", cursor=quiet.cursor, max_events=1)
         rest = await client.poll_events_mcp("alert.fired", cursor=first.cursor)
 
-    assert (listed.name, listed.delivery) == ("alert.fired", ["poll"])
+    assert (listed.name, listed.delivery) == ("alert.fired", ["poll", "push"])
     assert start.events == [] and start.cursor is not None
     assert quiet.events == [] and quiet.cursor == "2026-11-07T07:12:00+00:00"
     assert [event.event_id for event in first.events] == ["e2"]

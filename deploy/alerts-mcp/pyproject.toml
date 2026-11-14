@@ -5,7 +5,7 @@ requires-python = ">=3.14"
 # fastmcp is pinned to the head of PrefectHQ/fastmcp#6489, which adds the
 # events extension (SEP-3415, poll delivery). Return to a release once one has it.
 dependencies = [
-    "fastmcp @ git+https://github.com/PrefectHQ/fastmcp.git@a7da20f0702b5f2a80fc6a4d4e487ce73fdd9a2d",
-    "fastmcp-slim @ git+https://github.com/PrefectHQ/fastmcp.git@a7da20f0702b5f2a80fc6a4d4e487ce73fdd9a2d#subdirectory=fastmcp_slim",
+    "fastmcp @ git+https://github.com/PrefectHQ/fastmcp.git@235280c46d97c6f014ff2cdfb07f6fbe74d4f4cf",
+    "fastmcp-slim @ git+https://github.com/PrefectHQ/fastmcp.git@235280c46d97c6f014ff2cdfb07f6fbe74d4f4cf#subdirectory=fastmcp_slim",
     "httpx==0.28.1",
 ]
