@@ -42,6 +42,7 @@ from prefect.states import Failed, State
 from flows.evergreen_checks import INVENTORY_URL, STATUS_URL, check_evergreen
 from flows.fleet_events import unhealthy_payload
 from flows.fly_observations import observation_rows, observe_fly
+from flows.zds_follow import Follow, zds_follow
 
 TIMEOUT_S = 10
 TAIL_WINDOW_S = 20
@@ -271,6 +272,7 @@ def fleet_health() -> State | None:
     deep_future = check_stream_deep.submit()
     evergreen_future = check_evergreen.submit()
     fly_future = observe_fly.submit()
+    follow_future = zds_follow.submit()
     shallow_futures = [(name, check_url.submit(name, url)) for name, url in SUPPLEMENTAL_CHECKS]
     results = [_named(STREAM_DEEP, deep_future.result(raise_on_failure=False))]
     results += [_named(name, f.result(raise_on_failure=False)) for name, f in shallow_futures]
@@ -282,6 +284,12 @@ def fleet_health() -> State | None:
         results.append(_named(EVERGREEN, evergreen))
 
     rows, unhealthy, broken_checks = summarize(results)
+    follow = follow_future.result(raise_on_failure=False)
+    if isinstance(follow, Follow):
+        rows.append(follow.row())
+    else:
+        logger.warning("zds follow check errored: %s", follow)
+        rows.append(f"| zds follow | **CHECK ERRORED** | {follow} |")
     operational_rows = observation_rows(fly_future.result(raise_on_failure=False))
 
     create_markdown_artifact(
