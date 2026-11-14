@@ -10,7 +10,7 @@ DuckDB allows one read-write process per file, and flows on independent schedule
 
 **github** — fetches notifications (issues + PRs) and open items authored by `zzstoatzz` via the search API. each issue is cached by repo+number for 24h. persists to `raw_github_issues`.
 
-**tangled.org** — fetches issues, PRs, and comments from the PDS (`pds.zzstoatzz.io`) via AT Protocol's `com.atproto.repo.listRecords`. no auth needed — records are public. targets repos: zat, zlay, plyr.fm, at-me, pollz, typeahead. persists to `raw_tangled_items`.
+**tangled.org** — fetches issues, PRs, and comments from the account's PDS (resolved from its DID document) via AT Protocol's `com.atproto.repo.listRecords`. no auth needed — records are public. targets repos: zat, zlay, plyr.fm, at-me, pollz, typeahead. persists to `raw_tangled_items`.
 
 **bluesky likes** — fetches nate's recent likes from the PDS via `app.bsky.feed.like` records, then batch-resolves post content via `app.bsky.feed.getPosts` (25 per call). persists to `raw_likes` and `raw_liked_posts`.
 
