@@ -407,6 +407,11 @@ concurrent registration; the same successful SHA is a no-op. Failed or pending
 CI leaves the previous deployed revision in place. Keep GitHub and Tangled main
 in sync with `just push`.
 
+Registration does not use the host's Python settings. The unit runs the
+script on a uv-managed interpreter, and the `uv run` steps inside the clone use
+the repository's `.python-version`, the same minor version CI checks. The
+host's global uv pin and the apt `python3` can change without affecting it.
+
 Reconcile or inspect from an operator checkout:
 
 ```sh
