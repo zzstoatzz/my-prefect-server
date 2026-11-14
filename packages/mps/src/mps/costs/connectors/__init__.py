@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from mps.costs.connectors.builder import BuilderCostsConnector
 from mps.costs.connectors.cloudflare import CloudflareConnector
 from mps.costs.connectors.coral_api import CoralApiConnector
 from mps.costs.connectors.fly import FlyConnector
@@ -21,13 +20,11 @@ ALL_CONNECTORS: list[Connector] = [
     TursoConnector(),
     CoralApiConnector(),
     OpenRouterConnector(),
-    BuilderCostsConnector(),
     VoyageConnector(),
 ]
 
 __all__ = [
     "ALL_CONNECTORS",
-    "BuilderCostsConnector",
     "CloudflareConnector",
     "CoralApiConnector",
     "FlyConnector",

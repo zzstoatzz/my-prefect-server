@@ -9,7 +9,7 @@ INVENTORY_URL = "https://nate.tngl.io/services.json"
 
 LIMITS = {
     "fly": "Inventory and measured uptime at list prices; excludes network, paid IPs, discounts and taxes.",
-    "hetzner": "Inventory/lifecycle receipts at list prices; excludes traffic, discounts and taxes.",
+    "hetzner": "Inventory at list prices; excludes traffic, discounts and taxes.",
     "cloudflare": "R2 storage estimates and configured fixed charges; fixed charges need invoice reconciliation; operations and other usage are excluded.",
     "neon": "Usage-based billing not reconciled; no plan minimum is assumed.",
     "turso": "Configured plan list price, not live billing; annual discounts and overage are excluded.",

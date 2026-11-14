@@ -362,6 +362,58 @@ def test_hetzner_merges_project_tokens_and_dedupes(monkeypatch):
     assert services == ["pds-zzstoatzz-io", "relay-node"]  # id=1 counted once
 
 
+def test_hetzner_counts_servers_and_ips_labelled_as_builders(monkeypatch):
+    """The ephemeral builder and its receipt ledger are gone, so nothing else
+    accounts for a leftover builder VM: inventory must price it like any other
+    server instead of skipping it by label."""
+    import asyncio
+
+    from mps.costs.connectors import hetzner
+
+    monkeypatch.setenv("HCLOUD_TOKEN", "tok-a")
+    labels = {"owner": "my-prefect-server", "purpose": "ephemeral-builder"}
+
+    async def fake_servers(token):
+        return [
+            {
+                "id": 5,
+                "name": "prefect-build-abc-r0",
+                "labels": labels,
+                "server_type": {"name": "cpx32", "prices": []},
+            }
+        ]
+
+    async def fake_ips(token):
+        return [
+            {
+                "id": 50,
+                "name": "prefect-build-abc-r0-ipv4",
+                "type": "ipv4",
+                "assignee_id": 5,
+                "labels": labels,
+                "datacenter": {"location": {"name": "fsn1"}},
+            }
+        ]
+
+    async def fake_price(token):
+        return hetzner._Prices(volume_gb=0, image_gb=0, primary_ip={("ipv4", "fsn1"): 50.0})
+
+    async def nothing(token):
+        return []
+
+    monkeypatch.setattr(hetzner, "_servers", fake_servers)
+    monkeypatch.setattr(hetzner, "_volumes", nothing)
+    monkeypatch.setattr(hetzner, "_images", nothing)
+    monkeypatch.setattr(hetzner, "_primary_ips", fake_ips)
+    monkeypatch.setattr(hetzner, "_pricing", fake_price)
+
+    items = asyncio.run(hetzner.HetznerConnector().collect(Period.trailing_month()))
+    assert sorted((i.service, i.amount) for i in items) == [
+        ("prefect-build-abc-r0", 0),
+        ("prefect-build-abc-r0:ipv4", 50),
+    ]
+
+
 def test_hetzner_prices_volumes_at_per_gb_list(monkeypatch):
     """Volumes bill per provisioned GB (the dominant cost for archive boxes like
     stream); the connector must emit a line per volume, attributed by volume
@@ -564,6 +616,13 @@ def test_flow_collects_turso():
 
     connectors = asyncio.run(costs_flow.build_connectors())
     assert "turso" in [c.name for c in connectors]
+
+
+def test_flow_has_no_builder_receipt_connector():
+    import flows.costs as costs_flow
+
+    connectors = asyncio.run(costs_flow.build_connectors())
+    assert "hetzner-builders" not in [c.name for c in connectors]
 
 
 def test_month_to_date_basis_survives_publication_without_monthly_projection():

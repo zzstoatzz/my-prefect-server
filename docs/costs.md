@@ -13,23 +13,16 @@ accrued on the October invoice. The retirement receipt records their removed
 monthly list-price run-rate; provider invoices remain authoritative for final
 charges, taxes, credits, and proration.
 
-Ephemeral builders use a durable ledger, not inventory snapshots. The worker
-retains creation/deletion observations and the project's currency, server and
-IPv4 rates under `~/hcloud-builder/state/billing/`. A minute timer copies these
-non-secret receipts immutably to the existing backup bucket under
-`billing/hetzner-builders/`. The live bucket lifecycle expires offsite copies after
-90 days; the local ledger has no eviction rule. This is not permanent offsite retention. The independent Cloudflare expiry reaper writes its
-own receipts directly to the same bucket and reconciles asynchronous deletions.
-Worker and reaper receipts deduplicate by provider server ID. Billing telemetry
-failure must not prevent expiry cleanup. Active builders and their IPv4s are
-excluded from the fixed-inventory collector to prevent double charging.
-
-The [commissioning backfill](audits/2026-10-27-builder-billing-backfill.json)
-covers all twelve provider create/delete pairs visible in this project's action
-history, beginning 06:46:58 UTC on October 27. Their conservative list-price
-estimate is $0.8879, including hourly rounding and IPv4. Historical size/location
-are inferred from the commissioning source (cpx32/fsn1), not recovered from a
-provider invoice. New receipts capture those properties before deletion.
+The ephemeral Hetzner builder that built typeahead's index was removed on
+2026-11-14 together with its billing-receipt connector, so snapshots from that
+date carry no `hetzner:typeahead:ephemeral-builds` line; earlier snapshots keep
+theirs. The fixed-inventory collector no longer skips resources labelled
+`purpose=ephemeral-builder`: a leftover builder VM or IPv4 is priced as ordinary
+Hetzner inventory and reported as an unassigned resource. The
+[builder](archive/hcloud-builder.md) and [reaper](archive/hcloud-reaper.md)
+records describe the retired receipt ledger; its
+[commissioning backfill](audits/2026-10-27-builder-billing-backfill.json) stays
+as evidence.
 
 OpenRouter's `/api/v1/key` supplies actual usage for the configured key's current
 UTC month, including DeepSeek and any other models using that key. It excludes
@@ -38,12 +31,11 @@ derived consumer of canonical `openrouter.api_key`; no new issuer key was made.
 TypeSafe account-wide reconciliation is explicitly deferred at Nate's request;
 Coral's existing Jev meter remains a partial application estimate.
 
-OpenRouter and builder entries are explicitly tagged **month-to-date** and retain
-their observed spend and window start. Existing infrastructure rows remain
+OpenRouter, Voyage and Fly ad hoc compute entries are explicitly tagged
+**month-to-date** and retain their observed spend and window start. Existing infrastructure rows remain
 monthly list-price/run-rate estimates. The UI labels mixed totals as recorded
-costs, not a monthly forecast. Commissioning spend is included once and never
-extrapolated into a recurring charge. The ledger retains individual evidence for
-reconciliation; these estimates are not invoices.
+costs, not a monthly forecast. Month-to-date spend is never extrapolated into a
+recurring charge; these estimates are not invoices.
 
 Remaining explicit limits: Fly stopped rootfs sizes, paid IP/network charges,
 provider discounts/taxes/credits, R2 operations beyond available meters, home
@@ -98,6 +90,7 @@ through its `site/services.json` costKeys. Fix ownership rather than editing amo
   by no repo today. the protocol sketch is [docs/cost-declaration.md](cost-declaration.md).
 
 ## changelog
+- **2026-11-14** — removed the ephemeral Hetzner builder and its receipt connector; the `hetzner:typeahead:ephemeral-builds` month-to-date line stops, and builder-labelled Hetzner resources are no longer excluded from inventory.
 - **2026-10-22** — cost tracker: fly compute is priced by each machine's measured uptime over the trailing 7 days instead of extrapolating whatever was started at collection time (cc1c989); `pear` (pear-definitelyarealcompany), `follower-weight` and `porxie` are attributed instead of unattributed (cc1c989, 3732d51); a turso connector adds the org's scaler plan ($29/mo list) under `shared` (cfda92c). Method and caveats are in evergreen's COSTS.md accuracy table.
 - **2026-06-17** — split Cloudflare cost collection into R2 bucket line items plus explicit fixed resource lines, so `plyr.fm` receives its R2/domain share instead of Cloudflare landing under `shared`.
 - **2026-06-16** — moved `prefect-server` cpx31 Ashburn (US) → cpx32 Falkenstein (EU): **$73.49 → $41.99 (−$31/mo)**.

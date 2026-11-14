@@ -25,7 +25,6 @@ from mps.atproto import resolve_handle_pds, session_did
 from mps.blocks import secret, secret_mapping
 from mps.costs import Period, Snapshot
 from mps.costs.connectors import (
-    BuilderCostsConnector,
     CloudflareConnector,
     CoralApiConnector,
     FlyConnector,
@@ -79,7 +78,6 @@ async def build_connectors() -> list[Connector]:
         TursoConnector(),
         CoralApiConnector(),
         OpenRouterConnector(block_name=prefix + "openrouter-api-key"),
-        BuilderCostsConnector(),
         VoyageConnector(block_name=prefix + "logfire-read-token"),
     ]
 
