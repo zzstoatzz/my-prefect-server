@@ -506,6 +506,26 @@ automations:
         subject: "relay health"
         body: "{{ payload.summary }}"
 
+  - name: zds behind -> discord
+    description: >-
+      pds.zat.dev, the zds canary, has run a newer zds release than the
+      operator's PDS for a day. Emitted once per release by fleet-health's zds
+      follow check; rolling is a person's call (`just zds-upgrade` in
+      pds-infra), so this is a notice, not an outage. zds.recovered closes the
+      incident once the operator's PDS runs that release.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect: [zds.behind, zds.recovered]
+      threshold: 1
+      within: 0
+    actions:
+      - type: send-notification
+        block: discord-alerts
+        subject: "zds release"
+        body: "{{ payload.summary }}"
+
   - name: status page -> discord
     description: >-
       An incident on a watched public status page got a new update, or was
