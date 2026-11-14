@@ -31,7 +31,7 @@ deployments:
       work_queue_name: presence
       job_variables:
         command: >-
-          uv run --no-project --with prefect==3.8.2
+          uv run --no-project --with prefect==3.9.3
           --with 'my-prefect-server[lighting] @ git+https://github.com/zzstoatzz/my-prefect-server.git@e5b4a40ed6d9ce06a629d5d9bab0fd726fe5bb0d'
           prefect flow-run execute
         env:
@@ -64,7 +64,7 @@ deployments:
       work_queue_name: presence
       job_variables:
         command: >-
-          uv run --no-project --with prefect==3.8.2
+          uv run --no-project --with prefect==3.9.3
           --with 'my-prefect-server[lighting] @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
@@ -78,7 +78,7 @@ deployments:
       name: heavypad-pool
       job_variables:
         command: >-
-          env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage uv run --no-project --with prefect==3.8.2
+          env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage uv run --no-project --with prefect==3.9.3
           --with 'mps @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}#subdirectory=packages/mps'
           prefect flow-run execute
         env:
@@ -115,7 +115,7 @@ deployments:
       name: heavypad-pool
       job_variables:
         command: >-
-          uv run --no-project --with prefect==3.8.2
+          uv run --no-project --with prefect==3.9.3
           --with 'mps @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}#subdirectory=packages/mps'
           prefect flow-run execute
         env:
@@ -264,7 +264,7 @@ deployments:
       name: heavypad-pool
       job_variables:
         command: >-
-          uv run --no-project --with prefect==3.8.2
+          uv run --no-project --with prefect==3.9.3
           --with 'mcp-atlas @ git+https://tangled.org/zzstoatzz.io/mcp-atlas.git@238d50fc7b97fd57129f787f1be2460f3c1a1614'
           prefect flow-run execute
         env:
@@ -287,7 +287,7 @@ deployments:
       name: heavypad-background-pool
       job_variables:
         command: >-
-          uv run --no-project --with prefect==3.8.2 --with 'nodejs-wheel>=22'
+          uv run --no-project --with prefect==3.9.3 --with 'nodejs-wheel>=22'
           --with 'atproto-docs-ingest @ git+https://tangled.org/zzstoatzz.io/atproto-docs-mcp.git@d58bb827b8945d7639019e762d55615daec105ca#subdirectory=packages/ingestion_pipeline'
           prefect flow-run execute
         env:
@@ -309,7 +309,7 @@ deployments:
       job_variables:
         command: >-
           env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets
-          uv run --no-project --with prefect==3.8.2
+          uv run --no-project --with prefect==3.9.3
           --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
           prefect flow-run execute
         env:
@@ -338,7 +338,7 @@ deployments:
         command: >-
           uv run --no-project
           --with 'mps @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}#subdirectory=packages/mps'
-          --with prefect==3.8.2 prefect flow-run execute
+          --with prefect==3.9.3 prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
           COSTS_PROVIDER_BLOCK_PREFIX: ''
@@ -362,7 +362,7 @@ deployments:
       name: heavypad-pool
       job_variables:
         command: >-
-          uv run --no-project --with prefect==3.8.2
+          uv run --no-project --with prefect==3.9.3
           --with 'mps @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}#subdirectory=packages/mps'
           prefect flow-run execute
         env:
@@ -386,7 +386,7 @@ deployments:
       name: heavypad-pool
       job_variables:
         command: >-
-          uv run --no-project --with prefect==3.8.2
+          uv run --no-project --with prefect==3.9.3
           --with fastmcp==4.1.3 --with fastmcp-slim==4.1.3
           prefect flow-run execute
         env:
@@ -410,7 +410,7 @@ deployments:
         command: >-
           uv run --no-project
           --with 'mps @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}#subdirectory=packages/mps'
-          --with prefect==3.8.2 prefect flow-run execute
+          --with prefect==3.9.3 prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
@@ -432,7 +432,7 @@ deployments:
     work_pool:
       name: heavypad-pool
       job_variables:
-        command: uv run --no-project --with prefect==3.8.2 prefect flow-run execute
+        command: uv run --no-project --with prefect==3.9.3 prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
@@ -451,7 +451,7 @@ deployments:
       job_variables:
         command: >-
           uv run --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
-          --with prefect==3.8.2 prefect flow-run execute
+          --with prefect==3.9.3 prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
@@ -465,7 +465,7 @@ deployments:
       job_variables:
         command: >-
           uv run --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}'
-          --with prefect==3.8.2 prefect flow-run execute
+          --with prefect==3.9.3 prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
           FASTMCP_BACKLOG_PATH: /home/stoat/prefect-analytics/fastmcp-backlog.jsonl
@@ -486,7 +486,7 @@ deployments:
     work_pool:
       name: heavypad-pool
       job_variables:
-        command: uv run --no-project --with prefect==3.8.2 prefect flow-run execute
+        command: uv run --no-project --with prefect==3.9.3 prefect flow-run execute
         env:
           MPS_PIN: "{{ $MPS_PIN }}"
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/.local/share/prefect-home/results
@@ -514,7 +514,7 @@ deployments:
       name: heavypad-background-pool
       job_variables:
         command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
-          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          --with prefect==3.9.3 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
           $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -540,7 +540,7 @@ deployments:
       name: heavypad-background-pool
       job_variables:
         command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
-          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          --with prefect==3.9.3 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
           $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -564,7 +564,7 @@ deployments:
       name: heavypad-background-pool
       job_variables:
         command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
-          --with prefect==3.8.2 --python 3.13.11 --with 'my-prefect-server[atlas] @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          --with prefect==3.9.3 --python 3.13.11 --with 'my-prefect-server[atlas] @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
           $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -589,7 +589,7 @@ deployments:
       name: heavypad-background-pool
       job_variables:
         command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
-          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          --with prefect==3.9.3 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
           $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -618,7 +618,7 @@ deployments:
       name: heavypad-background-pool
       job_variables:
         command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
-          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          --with prefect==3.9.3 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
           $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -642,7 +642,7 @@ deployments:
       name: heavypad-background-pool
       job_variables:
         command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
-          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          --with prefect==3.9.3 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
           $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -665,7 +665,7 @@ deployments:
       name: heavypad-background-pool
       job_variables:
         command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
-          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          --with prefect==3.9.3 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
           $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -693,7 +693,7 @@ deployments:
       name: heavypad-background-pool
       job_variables:
         command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
-          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          --with prefect==3.9.3 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
           $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -748,7 +748,7 @@ deployments:
       name: heavypad-background-pool
       job_variables:
         command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
-          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          --with prefect==3.9.3 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
           $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -776,7 +776,7 @@ deployments:
       name: heavypad-background-pool
       job_variables:
         command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
-          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          --with prefect==3.9.3 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
           $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -799,7 +799,7 @@ deployments:
       name: heavypad-interactive-pool
       job_variables:
         command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
-          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          --with prefect==3.9.3 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
           $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -823,7 +823,7 @@ deployments:
       name: heavypad-interactive-pool
       job_variables:
         command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
-          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          --with prefect==3.9.3 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
           $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -847,7 +847,7 @@ deployments:
       name: heavypad-build-pool
       job_variables:
         command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project
-          --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          --with prefect==3.9.3 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
           $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -866,7 +866,7 @@ deployments:
       name: heavypad-build-pool
       job_variables:
         command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true
-          PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project --python 3.13.11 --with prefect==3.8.2 --with 'my-prefect-server
+          PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project --python 3.13.11 --with prefect==3.9.3 --with 'my-prefect-server
           @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -903,7 +903,7 @@ deployments:
       name: heavypad-build-pool
       job_variables:
         command: env PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage PREFECT_PLUGINS_ENABLED=true
-          PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project --with prefect==3.8.2 --with 'my-prefect-server @
+          PREFECT_PLUGINS_ALLOW=mps-secrets uv run --no-project --with prefect==3.9.3 --with 'my-prefect-server @
           git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -938,7 +938,7 @@ deployments:
       name: heavypad-pool
       job_variables:
         command: env PREFECT_PLUGINS_ENABLED=true PREFECT_PLUGINS_ALLOW=mps-secrets PREFECT_LOCAL_STORAGE_PATH=/home/stoat/prefect-analytics/storage
-          uv run --no-project --with prefect==3.8.2 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
+          uv run --no-project --with prefect==3.9.3 --with 'my-prefect-server @ git+https://github.com/zzstoatzz/my-prefect-server.git{{
           $MPS_PIN }}' prefect flow-run execute
         env:
           MPS_PIN: '{{ $MPS_PIN }}'
@@ -1141,7 +1141,7 @@ deployments:
       name: heavypad-interactive-pool
       job_variables:
         command: >-
-          uv run --no-project --with prefect==3.8.2 --with fastmcp
+          uv run --no-project --with prefect==3.9.3 --with fastmcp
           --with 'mps @ git+https://github.com/zzstoatzz/my-prefect-server.git{{ $MPS_PIN }}#subdirectory=packages/mps'
           prefect flow-run execute
         env:

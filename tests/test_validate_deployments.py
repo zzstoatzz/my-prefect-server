@@ -169,7 +169,7 @@ def write_flows(root, **modules):
         (root / "flows" / f"{name}.py").write_text(body)
 
 
-LIGHT = "uv run --no-project --with prefect==3.8.2 prefect flow-run execute"
+LIGHT = "uv run --no-project --with prefect==3.9.3 prefect flow-run execute"
 
 
 def test_light_deployment_rejects_transitive_mps_import(tmp_path):

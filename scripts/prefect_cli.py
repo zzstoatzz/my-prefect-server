@@ -37,7 +37,7 @@ def main() -> int:
     args = sys.argv[1:]
     command = ["python", *args[1:]] if args[:1] == ["--script"] else ["prefect", *args]
     return subprocess.run(
-        ["uv", "run", "--with", "prefect==3.8.2", *command],
+        ["uv", "run", "--with", "prefect==3.9.3", *command],
         env=env,
         check=False,
     ).returncode
