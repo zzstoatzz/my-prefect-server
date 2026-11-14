@@ -25,7 +25,7 @@ import os
 
 import httpx
 from atproto import AsyncClient
-from mps.atproto import session_did
+from mps.atproto import resolve_handle_pds, session_did
 from mps.blocks import secret, secret_mapping
 from mps.bufo_traffic import COLLECTION, QUERY, DayTraffic, parse_rows, rollup
 from mps.observability import configure_logfire
@@ -77,15 +77,15 @@ async def query_logfire(since: dt.datetime, until: dt.datetime) -> dict[dt.date,
     return rollup(rows)
 
 
-async def _operator_creds() -> tuple[str, str, str]:
+async def _operator_creds() -> tuple[str, str]:
     creds = await secret_mapping(OPERATOR_CREDS_BLOCK)
-    return creds["handle"], creds["password"], creds["pds"]
+    return creds["handle"], creds["password"]
 
 
 @task(cache_policy=NONE, retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1)
 async def write_days(days: list[DayTraffic], generated_at: dt.datetime) -> list[str]:
-    handle, password, pds = await _operator_creds()
-    client = AsyncClient(base_url=pds)
+    handle, password = await _operator_creds()
+    client = AsyncClient(base_url=resolve_handle_pds(handle))
     await login(client, handle, password, silent=True, required=True)
     uris: list[str] = []
     for day in days:

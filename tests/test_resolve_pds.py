@@ -5,7 +5,7 @@ import httpx
 import pytest
 from mps.atproto import resolve_handle_pds, resolve_pds
 
-from flows import costs, ingest
+from flows import bufo_traffic, costs, ingest
 
 DID = "did:plc:xbtmt2zjwlrfegqvch7fboei"
 PLC_FETCH = "atproto_identity.did.resolvers.plc_resolver.DidPlcResolver.resolve_without_validation"
@@ -125,5 +125,31 @@ async def test_cost_snapshot_is_written_at_the_resolved_pds_not_the_stored_one()
         patch.object(costs, "session_did", return_value=DID),
     ):
         assert await costs.write_snapshot.fn(snapshot) == "at://snapshot"
+    resolve.assert_called_once_with("zzstoatzz.io")
+    assert seen == ["https://pds.test"]
+
+
+async def test_bufo_traffic_is_written_at_the_resolved_pds_not_the_stored_one():
+    seen: list[str] = []
+
+    def client_at(base_url):
+        seen.append(base_url)
+        client = MagicMock()
+        client.com.atproto.repo.put_record = AsyncMock(return_value=MagicMock(uri="at://day"))
+        return client
+
+    day = bufo_traffic.DayTraffic(day=dt.date(2026, 11, 13))
+    stored = {"handle": "zzstoatzz.io", "password": "app-password", "pds": "https://old.test"}
+    with (
+        patch.object(bufo_traffic, "secret_mapping", AsyncMock(return_value=stored)),
+        patch.object(
+            bufo_traffic, "resolve_handle_pds", return_value="https://pds.test"
+        ) as resolve,
+        patch.object(bufo_traffic, "AsyncClient", side_effect=client_at),
+        patch.object(bufo_traffic, "login", AsyncMock()),
+        patch.object(bufo_traffic, "session_did", return_value=DID),
+    ):
+        uris = await bufo_traffic.write_days.fn([day], dt.datetime(2026, 11, 14, tzinfo=dt.UTC))
+    assert uris == ["at://day"]
     resolve.assert_called_once_with("zzstoatzz.io")
     assert seen == ["https://pds.test"]
