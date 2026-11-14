@@ -57,7 +57,7 @@ and its observed schema/column lineage.
 
                         publication flows
   ─────────────────────────────────────────────
-  leaflet-atlas (every 6h)       ──► Cloudflare Pages
+  pub-search-atlas (every 6h)    ──► Cloudflare Pages
   pub-search-snapshot (every 2h) ──► R2
   bisk-snapshot (every 10m)      ──► R2
   pds-records (ad hoc)           ──► PDS record maintenance
@@ -77,7 +77,7 @@ and its observed schema/column lineage.
 | `phi-atlas` | cron `0 13 * * *` (8am CT) | builds phi's daily private/public semantic atlas from TurboPuffer + PDS records, writes `io.zzstoatzz.phi.atlas/self` |
 | `docket` | on `phi-atlas` completion | synthesizes promotion-pressure candidates from the atlas and writes `io.zzstoatzz.phi.docket/self` |
 | `bufo-traffic` | cron `7 * * * *` | rolls find-bufo.com requests from logfire (zig HTTP spans + the retired rust backend's access logs, routes normalized in SQL) into one `com.find-bufo.traffic` record per UTC day on the operator PDS; the bufo-bot stats page draws its traffic charts from those public records |
-| `leaflet-atlas` | cron `0 */6 * * *` | rebuilds the pub-search 2D semantic map (UMAP + HDBSCAN on TurboPuffer embeddings), deploys to Cloudflare Pages |
+| `pub-search-atlas` | cron `0 */6 * * *` | rebuilds the pub-search 2D semantic map (UMAP + HDBSCAN on TurboPuffer embeddings), deploys to Cloudflare Pages |
 | `pds-records` | ad hoc, no schedule | operator flow for listing/creating/updating/deleting PDS records; default deployment is dry-run list mode |
 | `costs` | cron `0 8 * * *` (daily 08:00 UTC) | collects provider billing (neon/cloudflare/hetzner/fly connectors), writes an `io.zzstoatzz.cost.snapshot` PDS record, surfaced at hub.waow.tech |
 | `pub-search-snapshot` | cron `40 */2 * * *` | builds the pub-search FTS snapshot from the Turso document corpus and publishes it to R2 |
@@ -149,7 +149,7 @@ there is no background curator. a `curate` flow ran after `phi-tag-maintenance` 
 
 ## atlas
 
-the `leaflet-atlas` flow runs every 6h. it clones pub-search, runs the build-atlas script (PCA → UMAP → HDBSCAN on TurboPuffer document embeddings), produces `atlas.json`, and deploys the static site to Cloudflare Pages via wrangler.
+the `pub-search-atlas` flow runs every 6h. it clones pub-search, runs the build-atlas script (PCA → UMAP → HDBSCAN on TurboPuffer document embeddings), produces `atlas.json`, and deploys the static site to Cloudflare Pages via wrangler.
 
 ## phi atlas and docket
 

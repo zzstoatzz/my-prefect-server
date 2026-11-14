@@ -857,7 +857,7 @@ deployments:
           PREFECT_UI_URL: https://prefect-server.waow.tech
 
   # Prepared long-publisher batch. Keep clocks inactive until explicit ownership transfer.
-  - name: leaflet-atlas
+  - name: pub-search-atlas
     tags:
     - publish
     - heavypad

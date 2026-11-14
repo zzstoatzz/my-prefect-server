@@ -304,9 +304,8 @@ deployments:
           prefect.resource.name: "phi-atlas"
           prefect.resource.role: "deployment"
 
-  # the pub-search leaflet map (formerly "rebuild-atlas" — renamed so it can't
-  # be confused with phi-atlas, which is a different atlas entirely)
-  - name: leaflet-atlas
+  # the pub-search semantic map; phi-atlas is a different atlas entirely
+  - name: pub-search-atlas
     pull: *cached_home
     tags: [publish]
     entrypoint: flows/atlas.py:rebuild_atlas

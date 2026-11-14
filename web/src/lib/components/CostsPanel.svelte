@@ -39,7 +39,7 @@
 	// its source. Most map name→name.py; a few have differently-named files.
 	const FLOW_FILE = new Map<string, string>([
 		['rebuild-atlas', 'atlas.py'],
-		['leaflet-atlas', 'atlas.py'],
+		['pub-search-atlas', 'atlas.py'],
 		['phi-atlas', 'phi_atlas.py'],
 		['pds-records', 'pds_records.py'],
 		['phi-tag-maintenance', 'morning.py'],

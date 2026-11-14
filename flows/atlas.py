@@ -77,6 +77,15 @@ def _install_node(node_install: Path) -> Path:
     return node_bin
 
 
+def _script_env() -> dict[str, str]:
+    """Environment for build-atlas, without the worker's interpreter choice.
+
+    UV_PYTHON overrides a script's requires-python, and build-atlas caps its
+    Python because numba lags new releases.
+    """
+    return {k: v for k, v in os.environ.items() if k != "UV_PYTHON"}
+
+
 @task(
     retries=2,
     retry_delay_seconds=exponential_backoff(backoff_factor=10),
@@ -121,6 +130,7 @@ def build_atlas(repo_dir: Path) -> Path:
         capture_output=True,
         text=True,
         check=False,
+        env=_script_env(),
         # headroom: this one budget absorbs the heavy uv dep install
         # (numpy/scipy/llvmlite/numba), the turbopuffer export, and the
         # UMAP/HDBSCAN compute. 300s was too tight when turbopuffer is slow.
@@ -327,7 +337,7 @@ def deploy_to_pages(site_dir: Path) -> str:
     return ""
 
 
-@flow(name="leaflet-atlas", log_prints=True, timeout_seconds=7200)
+@flow(name="pub-search-atlas", log_prints=True, timeout_seconds=7200)
 def rebuild_atlas():
     """Rebuild the 2D semantic map and deploy to Cloudflare Pages."""
     with tempfile.TemporaryDirectory() as tmpdir:
