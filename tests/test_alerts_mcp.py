@@ -298,7 +298,10 @@ def test_only_the_owners_tailnet_peers_are_admitted(server, monkeypatch):
             response = client.post("/mcp", json=request, headers=headers)
             assert response.status_code == status, peer
     with TestClient(app, client=("100.96.0.1", 50000)) as client:
-        tools = client.post("/mcp", json=request, headers=headers).json()["result"]["tools"]
+        # A request without the 2026-07-28 envelope is answered as an event stream.
+        body = client.post("/mcp", json=request, headers=headers).text
+        message = next(line for line in body.splitlines() if line.startswith("data:"))
+        tools = json.loads(message.removeprefix("data:"))["result"]["tools"]
         assert {tool["name"] for tool in tools} == {"list_alerts", "get_alert", "update_alert"}
 
 
