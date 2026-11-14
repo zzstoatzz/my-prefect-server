@@ -100,6 +100,7 @@ def main() -> None:
     values = {
         "api-auth": credentials["api_auth_string"],
         "api-auth-readonly": readonly_auth,
+        "atproto-login-key": credentials["atproto_login_key"],
         "postgres-password": credentials["postgres_password"],
         "database-url": f"postgresql://prefect:{credentials['postgres_password']}@postgres:5432/prefect",
     }

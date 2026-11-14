@@ -149,7 +149,12 @@ spec:
             limits: {cpu: 200m, memory: 64Mi}
       containers:
         - name: api
-          image: atcr.io/zzstoatzz.io/prefect-server@sha256:4f82da383af2d6b38eb1a5bfd0863cef09ae71b080df0e598d77b5dcff6e40fa
+          # Side-loaded 2026-11-14: atcr.io refused pushes after the account's
+          # PDS move, so this commit's image was built from main and imported
+          # into the node (ctr images import). Re-pin by registry digest once
+          # CI publishes it; a rebuilt cluster needs the import repeated.
+          image: atcr.io/zzstoatzz.io/prefect-server:2a9ba6287a0b83ddd9d71f32ff66c95d2f1dfbf6
+          imagePullPolicy: IfNotPresent
           command: [/app/prefect-server]
           args: [--webserver-only]
           envFrom: [{configMapRef: {name: server-env}}]
@@ -165,6 +170,11 @@ spec:
             - name: PREFECT_SERVER_API_READONLY_AUTH_STRING
               valueFrom:
                 secretKeyRef: {name: server-secrets, key: api-auth-readonly}
+            - {name: PREFECT_SERVER_ATPROTO_LOGIN_URL, value: 'https://prefect-server.waow.tech'}
+            - {name: PREFECT_SERVER_ATPROTO_LOGIN_DID, value: 'did:plc:xbtmt2zjwlrfegqvch7fboei'}
+            - name: PREFECT_SERVER_ATPROTO_LOGIN_KEY
+              valueFrom:
+                secretKeyRef: {name: server-secrets, key: atproto-login-key}
           volumeMounts: [{name: ui, mountPath: /ui-bundle, readOnly: true}]
           resources:
             requests: {cpu: 100m, memory: 64Mi}
