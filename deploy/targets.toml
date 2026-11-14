@@ -3,6 +3,10 @@ default_target = "production"
 [targets.production]
 api_url = "https://prefect-server.waow.tech/api"
 internal_api_url = "https://heavypad.tailb660b6.ts.net:10443/api"
+# Bridge-network containers on the host cannot reach the Serve listener above:
+# it accepts only the tailscale interface, and the hostname can resolve to a
+# public Funnel address. The tailnet proxy on the host's tailnet IP accepts them.
+container_api_url = "http://100.96.216.23:14200/api"
 auth_sops_section = "heavypad_prefect"
 auth_sops_field = "api_auth_string"
 ssh_host = "stoat@heavypad"

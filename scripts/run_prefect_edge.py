@@ -2,13 +2,9 @@
 
 import argparse
 import os
-import socket
 import subprocess
 import tomllib
 from pathlib import Path
-from urllib.parse import urlsplit
-
-from prefect_target import target_config
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("service", choices=["hub", "push", "proxy", "grafana", "prometheus", "health"])
@@ -83,9 +79,6 @@ if args.service == "proxy":
     command += ["--volume", str(config / "nginx.conf") + ":/etc/nginx/nginx.conf:ro"]
     command += [service["image"]]
     raise SystemExit(subprocess.run(command, check=False).returncode)
-target = target_config()
-host = urlsplit(target.get("internal_api_url", target["api_url"])).hostname
-address = socket.gethostbyname(host)
 command = [
     "docker",
     "run",
@@ -94,8 +87,6 @@ command = [
     "prefect-" + args.service,
     "--publish",
     f"127.0.0.1:{service['port']}:{service['container_port']}",
-    "--add-host",
-    host + ":" + address,
     "--env-file",
     str(config / (args.service + ".env")),
     "--memory",

@@ -119,6 +119,7 @@ def main():
     edge = data["prefect_edge"]
     target = target_config()
     api = target.get("internal_api_url", target["api_url"])
+    container_api = target.get("container_api_url", api)
     with httpx.Client(
         base_url=api + "/", auth=tuple(edge["readonly_auth_string"].split(":", 1)), timeout=30
     ) as client:
@@ -139,17 +140,17 @@ def main():
                 "DUCKDB_PATH": "/analytics/hub.duckdb",
                 "CF_ACCESS_ISSUER": "https://zzstoatzz-io.cloudflareaccess.com",
                 "CF_ACCESS_AUDIENCE": "87f2a109ecc1f5c82749a973ef356cfe89c52a616521a95e5809c4eb5f3922d5",
-                "GARDENER_API_URL": api,
+                "GARDENER_API_URL": container_api,
                 "GARDENER_API_AUTH_STRING": edge["readonly_auth_string"],
                 "PRESENCE_WEBHOOK_TOKEN": edge["presence_webhook_token"],
-                "PRESENCE_PREFECT_API_URL": api,
+                "PRESENCE_PREFECT_API_URL": container_api,
                 "PRESENCE_PREFECT_API_AUTH_STRING": data["heavypad_prefect"]["api_auth_string"],
                 "PRESENCE_PREFECT_DEPLOYMENT_ID": deployment,
             }
         ),
         "push.env": env(
             {
-                "PREFECT_API_URL": api,
+                "PREFECT_API_URL": container_api,
                 "PREFECT_API_AUTH_STRING": edge["readonly_auth_string"],
                 "BASE_PATH": "/push",
                 "DB_PATH": "/data/prefect-push.db",
