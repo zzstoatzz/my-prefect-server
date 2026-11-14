@@ -418,7 +418,9 @@ def create_app(prefect: Prefect, login: str, bind: str, ui_url: str = ""):
     return create_server(prefect, ui_url).http_app(
         path="/mcp",
         stateless_http=True,
-        json_response=True,
+        # Push delivery of alert.fired writes to the response stream, which a
+        # JSON-only response cannot carry. Ordinary calls still answer as JSON.
+        json_response=False,
         allowed_hosts=[bind],
         middleware=[Middleware(TailscaleIdentity, login=login)],
     )

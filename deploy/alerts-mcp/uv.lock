@@ -30,8 +30,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastmcp", git = "https://github.com/PrefectHQ/fastmcp.git?rev=235280c46d97c6f014ff2cdfb07f6fbe74d4f4cf" },
-    { name = "fastmcp-slim", git = "https://github.com/PrefectHQ/fastmcp.git?subdirectory=fastmcp_slim&rev=235280c46d97c6f014ff2cdfb07f6fbe74d4f4cf" },
+    { name = "fastmcp", git = "https://github.com/PrefectHQ/fastmcp.git?rev=3059d089362b97366834b603ef337a41fc906d96" },
+    { name = "fastmcp-slim", git = "https://github.com/PrefectHQ/fastmcp.git?subdirectory=fastmcp_slim&rev=3059d089362b97366834b603ef337a41fc906d96" },
     { name = "httpx", specifier = "==0.28.1" },
 ]
 
@@ -303,16 +303,16 @@ wheels = [
 
 [[package]]
 name = "fastmcp"
-version = "4.2.1.dev3+235280c4"
-source = { git = "https://github.com/PrefectHQ/fastmcp.git?rev=235280c46d97c6f014ff2cdfb07f6fbe74d4f4cf#235280c46d97c6f014ff2cdfb07f6fbe74d4f4cf" }
+version = "4.2.1.dev4+3059d089"
+source = { git = "https://github.com/PrefectHQ/fastmcp.git?rev=3059d089362b97366834b603ef337a41fc906d96#3059d089362b97366834b603ef337a41fc906d96" }
 dependencies = [
     { name = "fastmcp-slim", extra = ["client", "server"] },
 ]
 
 [[package]]
 name = "fastmcp-slim"
-version = "4.2.1.dev3+235280c4"
-source = { git = "https://github.com/PrefectHQ/fastmcp.git?subdirectory=fastmcp_slim&rev=235280c46d97c6f014ff2cdfb07f6fbe74d4f4cf#235280c46d97c6f014ff2cdfb07f6fbe74d4f4cf" }
+version = "4.2.1.dev4+3059d089"
+source = { git = "https://github.com/PrefectHQ/fastmcp.git?subdirectory=fastmcp_slim&rev=3059d089362b97366834b603ef337a41fc906d96#3059d089362b97366834b603ef337a41fc906d96" }
 dependencies = [
     { name = "mcp-types" },
     { name = "platformdirs" },
