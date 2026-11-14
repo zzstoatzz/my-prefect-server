@@ -506,6 +506,26 @@ automations:
         subject: "relay health"
         body: "{{ payload.summary }}"
 
+  - name: status page -> discord
+    description: >-
+      An incident on a watched public status page got a new update, or was
+      resolved. Emitted by the status-page flow, which polls the page's Atom
+      feed because nothing here accepts the page's webhook. Each incident is
+      its own resource, so one alert incident collects its updates and
+      status-page.recovered resolves it.
+    enabled: true
+    trigger:
+      type: event
+      posture: Reactive
+      expect: [status-page.incident, status-page.recovered]
+      threshold: 1
+      within: 0
+    actions:
+      - type: send-notification
+        block: discord-alerts
+        subject: "status page"
+        body: "{{ payload.summary }}"
+
   - name: typeahead refresh missing -> retry + discord
     description: >-
       A serving Tantivy slot's checkpoint coverage lasts 24 hours and refreshes

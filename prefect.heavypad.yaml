@@ -157,6 +157,22 @@ deployments:
         timezone: UTC
         active: true
 
+  - name: status-page-bluesky
+    entrypoint: flows/status_page.py:status_page
+    tags: [watch, heavypad]
+    description: Emit alert events for new updates to incidents on status.bsky.app
+    work_pool: *heavypad_phi
+    parameters:
+      page: bluesky
+      feed: https://status.bsky.app/history.atom
+    concurrency_limit:
+      limit: 1
+      collision_strategy: CANCEL_NEW
+    schedules:
+      - cron: "*/5 * * * *"
+        timezone: UTC
+        active: true
+
   - name: phi-likes-review
     entrypoint: flows/phi_trigger.py:phi_trigger
     tags: [phi, heavypad]
