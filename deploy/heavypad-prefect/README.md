@@ -307,6 +307,13 @@ minutes for `/readyz` after each boot, restarts the server container at most twi
 and otherwise fails visibly in `systemctl --user --failed`. It does nothing when k3s
 is healthy.
 
+The host must load the `br_netfilter` kernel module, persisted in
+`/etc/modules-load.d/br_netfilter.conf`. The k3d node has no `/lib/modules` and
+cannot load it. Without it pods cannot reach service IPs, so the API and
+services pods crash-loop on `NameServerFailure` while k3s itself reports ready
+and the guard passes. After the November 14 reboot the module was absent and
+the API stayed down until it was loaded by hand.
+
 Credential consumers have an idempotent render/check command. A harmless comment
 was injected into the HeavyPad worker environment; the check detected drift and
 `--apply` restored the canonical bytes. Auth rotation requires render plus HeavyPad server
@@ -367,6 +374,21 @@ migration receipt. The normal
 spindle routing is checked/repaired by `scripts/stream_spindle_prefect.py`;
 its canonical references are in the existing secret store.
 
+
+## Flow-run interpreters
+
+The worker units set `UV_PYTHON`, and flow-run processes inherit the worker's
+environment, so that one line chooses the interpreter for every `uv run` job
+command. A command that needs a different one passes `--python`, which wins.
+`UV_PYTHON` also beats the host's global uv pin
+(`~/.config/uv/.python-version`), so installing or removing a Python on the
+host cannot change what a deployment runs on.
+
+HeavyPad is Ubuntu 22.04 with glibc 2.35. On Python 3.15, `orjson`, `pyyaml`,
+`ruamel-yaml-clib` and `zstandard` have no wheel for that glibc, so uv builds
+them from source once and caches the result. `orjson` needs a current Rust
+toolchain: the worker units put `~/.cargo/bin` (rustup) ahead of `/usr/bin`,
+whose apt `cargo` 1.75 is too old.
 
 ## Registering main revisions
 
