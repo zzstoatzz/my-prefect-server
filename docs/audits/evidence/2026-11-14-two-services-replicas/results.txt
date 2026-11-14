@@ -1,0 +1,17 @@
+one {"emitted": {"lab.ping": 200, "lab.burst": 100, "lab.start": 20}, "persisted": {"lab.ping": 200, "lab.burst": 100, "lab.start": 20}, "each": {"want": 200, "triggered": 200, "executed": 200, "failed": 0}, "burst": {"want": 20, "triggered": 20, "executed": 20, "failed": 0}, "absent": {"want": 20, "triggered": 20, "executed": 20, "failed": 0}, "scheduled_runs": {"runs": 100, "distinct_times": 100, "duplicates": 0}}
+one docket: name docket-workers consumers 1 pending 0 last-delivered-id 1794692560221-1 entries-read 132 lag 2 
+one services containers: services=running 
+one services error lines: 0
+two {"emitted": {"lab.ping": 200, "lab.burst": 100, "lab.start": 20}, "persisted": {"lab.ping": 200, "lab.burst": 100, "lab.start": 20}, "each": {"want": 200, "triggered": 200, "executed": 200, "failed": 0}, "burst": {"want": 20, "triggered": 20, "executed": 20, "failed": 0}, "absent": {"want": 20, "triggered": 20, "executed": 20, "failed": 0}, "scheduled_runs": {"runs": 100, "distinct_times": 100, "duplicates": 0}}
+two docket: name docket-workers consumers 1 pending 0 last-delivered-id 1794692705159-0 entries-read 134 lag 0 
+two services containers: services=running services-b=running 
+two services error lines: 0
+two-kill {"kill": "prefect-lab2-services-b-1", "emitted": {"lab.ping": 200, "lab.burst": 100, "lab.start": 20}, "persisted": {"lab.ping": 200, "lab.burst": 100, "lab.start": 20}, "each": {"want": 200, "triggered": 201, "executed": 200, "failed": 0}, "burst": {"want": 20, "triggered": 20, "executed": 20, "failed": 0}, "absent": {"want": 20, "triggered": 20, "executed": 20, "failed": 0}, "scheduled_runs": {"runs": 100, "distinct_times": 100, "duplicates": 0}}
+two-kill docket: name docket-workers consumers 1 pending 0 last-delivered-id 1794692852059-0 entries-read 131 lag 0 
+two-kill services containers: services=running services-b=exited 
+two-kill services error lines: 0
+two-kill-a {"kill": "prefect-lab2-services-1", "emitted": {"lab.ping": 200, "lab.burst": 100, "lab.start": 20}, "persisted": {"lab.ping": 200, "lab.burst": 100, "lab.start": 20}, "each": {"want": 200, "triggered": 200, "executed": 200, "failed": 0}, "burst": {"want": 20, "triggered": 20, "executed": 20, "failed": 0}, "absent": {"want": 20, "triggered": 20, "executed": 20, "failed": 0}, "scheduled_runs": {"runs": 100, "distinct_times": 100, "duplicates": 0}}
+two-kill-a docket: name docket-workers consumers 1 pending 0 last-delivered-id 1794692998403-0 entries-read 134 lag 0 
+two-kill-a services containers: services=exited services-b=running 
+two-kill-a services error lines: 0
+teardown: containers=0 volumes=0 networks=0

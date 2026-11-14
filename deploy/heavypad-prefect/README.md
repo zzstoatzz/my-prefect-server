@@ -31,10 +31,16 @@ verify its diff and rollout without restarting services. The
 records the current qualification and readback.
 
 The API runs `/app/prefect-server --webserver-only` as two replicas; background
-work runs in the separate `services` Deployment. The API keeps nothing per pod:
-concurrency leases are in Redis because `PREFECT_BROKER_BACKEND=redis`, and
-atproto login state is in sealed cookies. Both replicas are on the one k3d
-node, so this covers an API pod restarting or being deleted, not the node. Handler counts are explicit: 32 per API reactor
+work runs in the separate `services` Deployment, also two replicas. The API
+keeps nothing per pod: concurrency leases are in Redis because
+`PREFECT_BROKER_BACKEND=redis`, and atproto login state is in sealed cookies.
+The services replicas share Redis consumer groups and one Docket task stream,
+so each event and each scheduled tick goes to one of them. Delivery is at
+least once: a replica killed between announcing an automation trigger and
+running its action leaves the event for the survivor. All replicas are on the
+one k3d node, so this covers a pod restarting or being deleted, not the node.
+The [two services replicas](../../docs/audits/2026-11-14-two-services-replicas.md)
+audit has the qualification and readback. Handler counts are explicit: 32 per API reactor
 (128 total), two for the services metrics listener. Smaller API pools regressed
 under unpaced database contention; retain the qualified count. See the
 [HTTP pool and role rollout](../../docs/audits/2026-11-06-http-thread-pools.md)

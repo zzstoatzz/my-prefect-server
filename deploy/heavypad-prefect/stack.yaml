@@ -190,7 +190,7 @@ metadata:
   name: services
   namespace: prefect-home
 spec:
-  replicas: 1
+  replicas: 2
   strategy: {type: Recreate}
   selector:
     matchLabels: {app: prefect-home-services}

@@ -1,0 +1,30 @@
+services:
+  api-a: {command: [/app/prefect-server, --webserver-only]}
+  api-b: {command: [/app/prefect-server, --webserver-only]}
+  services:
+    image: atcr.io/zzstoatzz.io/prefect-server:lab-services-4f82da38
+  services-b:
+    profiles: [two]
+    restart: "no"
+    pids_limit: 256
+    security_opt: [no-new-privileges:true]
+    logging: {driver: json-file, options: {max-size: 5m, max-file: "2"}}
+    image: atcr.io/zzstoatzz.io/prefect-server:lab-services-4f82da38
+    cpus: 0.35
+    mem_limit: 256m
+    environment:
+      PREFECT_DATABASE_BACKEND: postgres
+      PREFECT_DATABASE_URL: postgres://chaos:chaos@postgres:5432/chaos
+      PREFECT_BROKER_BACKEND: redis
+      PREFECT_REDIS_MESSAGING_HOST: redis
+      PREFECT_REDIS_MESSAGING_PORT: "6379"
+      PREFECT_SERVER_LOGGING_LEVEL: WARNING
+    command: [/app/prefect-server, services]
+    healthcheck:
+      test: [CMD, curl, -fsS, --max-time, "2", http://localhost:9000/health]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      api-a: {condition: service_healthy}
+    networks: [lab]
