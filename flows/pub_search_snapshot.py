@@ -2,13 +2,12 @@
 Build the pub-search replica snapshot (the `BUILDER_MODE=1` job) on the home
 box and publish it to R2.
 
-This is pub-search's Zig snapshot builder lifted off Fly, the same move
-typeahead made in June (see flows/typeahead_index.py — this file is modeled on
-it 1:1). Pure batch: reads the document corpus from Turso, builds the FTS
-replica on local disk, runs its gates (doc-count vs Turso, FTS sentinel,
-quick_check), uploads via rclone to R2, rewrites the channel pointer LAST, and
-exits. The serving backend's promote watcher adopts it on its own. A late or
-failed run just leaves the prior snapshot serving — no SLA here.
+This is pub-search's Zig snapshot builder lifted off Fly. Pure batch: reads
+the document corpus from Turso, builds the FTS replica on local disk, runs its
+gates (doc-count vs Turso, FTS sentinel, quick_check), uploads via rclone to
+R2, rewrites the channel pointer LAST, and exits. The serving backend's promote
+watcher adopts it on its own. A late or failed run just leaves the prior
+snapshot serving — no SLA here.
 
 Expected env (set by the deployment):
   - TURSO_URL / TURSO_TOKEN       (shared blocks: turso-url / turso-token —
@@ -117,9 +116,7 @@ def run_builder(binary: Path, version: str) -> None:
     logger.info(f"BUILDER_MODE=1 channel={channel} version={version}")
     rclone = shutil.which("rclone")
     if not rclone:
-        raise RuntimeError(
-            "rclone not found on PATH — run typeahead deploy/home-indexer/install.sh"
-        )
+        raise RuntimeError("rclone not found on PATH")
     env = {
         **os.environ,
         "BUILDER_MODE": "1",
