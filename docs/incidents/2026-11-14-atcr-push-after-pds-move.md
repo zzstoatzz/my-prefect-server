@@ -51,3 +51,20 @@ Filed as
 atcr has rebranded as seamark (the `atcr.io` handle resolves to `seamark.cr`,
 which redirects to `seamark.dev`), but its source and issue tracker are still
 this repository.
+
+## Seamark is the maintained registry
+
+atcr.io is now the legacy deployment. The maintained registry is `seamark.cr`,
+which gets tokens from `https://seamark.dev/auth/token` (service `seamark.cr`).
+On 2026-11-14 around 08:45Z that token service returned 504 after 10 seconds for
+every scope, including anonymous pulls of other users' public repositories. So
+neither login nor a test push went through. Moving to seamark is its own
+change:
+
+- prefect-server's `publish-ui-image.yml`: the `docker login` host and the
+  image name.
+- `stack.yaml`: the `prefect-ui` image host.
+- the `atcr-creds` pull secret: the registry key.
+
+The hold is the same one (`us-chi1.cove.seamark.dev`). Whether a push through
+seamark.cr avoids the stale-key check has not been tested.
