@@ -46,16 +46,8 @@ cluster needs to change.
 
 ## Upstream report
 
-Not filed. A draft for `tangled.org/evan.jarrett.net/at-container-registry`:
-
-> **Hold rejects user service tokens for up to 24h after the user's signing key rotates**
->
-> After a PDS migration rotated my `#atproto` key (PLC updated 2026-11-14T03:08Z),
-> every push to `us-chi1.cove.seamark.dev` failed at the hold with
-> `service token authentication failed: signature verification failed:
-> cryptographic signature invalid`. A service token from my new PDS verifies
-> against the key in my current PLC document. `ValidateServiceToken` in
-> `pkg/hold/pds/auth.go` resolves the issuer key through the 24h identity cache,
-> and does not purge and retry on a signature failure the way
-> `ValidateAppviewToken` does. Mirroring that retry for user tokens would fix
-> it. Until then, restarting the hold clears the stale entry.
+Filed as
+[evan.jarrett.net/at-container-registry#52](https://tangled.org/evan.jarrett.net/at-container-registry/issues/52).
+atcr has rebranded as seamark (the `atcr.io` handle resolves to `seamark.cr`,
+which redirects to `seamark.dev`), but its source and issue tracker are still
+this repository.
