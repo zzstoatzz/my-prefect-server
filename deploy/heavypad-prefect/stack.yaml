@@ -131,7 +131,7 @@ metadata:
   name: api
   namespace: prefect-home
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels: {app: prefect-home-api}
   template:
