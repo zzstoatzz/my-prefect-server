@@ -17,7 +17,7 @@ zeldi, plyr.fm and the static sites do not depend on it.
 | home-mcp, atlogin | home.zzstoatzz.io, login.zzstoatzz.io | `zzstoatzz.io/home`, `zzstoatzz.io/atlogin` | Env files and atlogin state dir in the host snapshot. |
 | lance-search, lance-docs, mcp-atlas search | docs-search.zzstoatzz.io, tailnet | `zzstoatzz.io/lance-search`, `zzstoatzz.io/mcp-atlas` | Indexes (about 2 GB) are rebuilt, not backed up. Env in the host snapshot. |
 | prefect-edge (hub, grafana, prometheus, proxy, push), dagster hub | hub.waow.tech, tailnet | this repo, `deploy/prefect-edge`, `deploy/dagster` | Config in the host snapshot. Grafana snapshots go to R2 via `prefect-grafana-snapshot.timer`. |
-| gardener exe worker, hcloud builder, pull-comment bridge, phi inference, bandwidth watchdog | Funnel :8443 (inference gateway) | this repo, `deploy/*` release recipes | Cursors, `grants.sqlite`, watchdog state in the host snapshot. |
+| gardener exe worker, pull-comment bridge, phi inference, bandwidth watchdog | Funnel :8443 (inference gateway) | this repo, `deploy/*` release recipes | Cursors, `grants.sqlite`, watchdog state in the host snapshot. |
 | inbox-zero, protonmail bridge, hydroxide | none | this repo, `deploy/inbox-zero` | Mailbox state and bridge credentials in the host snapshot. |
 | talky-jev and its Slack bridge, remind | none | `zzstoatzz.io/talky-jev`, `waow.tech/remind` | State and env in the host snapshot. |
 | albedo phone | Serve :11443 | albedo; `sandbox.sh` in the host snapshot | none |
