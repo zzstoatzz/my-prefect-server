@@ -10,7 +10,7 @@ from decimal import Decimal
 
 import httpx
 
-from mps.costs.connectors.builder import archive_client
+from mps.costs.archive import archive_client
 from mps.costs.projects import project_for
 from mps.costs.types import LineItem
 

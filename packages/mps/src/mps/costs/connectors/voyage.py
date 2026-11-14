@@ -8,7 +8,7 @@ from decimal import Decimal
 import httpx
 from pydantic import BaseModel, Field, TypeAdapter
 
-from mps.costs.connectors.builder import archive_client
+from mps.costs.archive import archive_client
 from mps.costs.types import LineItem, Period
 
 PREFIX = "billing/voyage/bufo/v1/"

@@ -7,24 +7,11 @@ import json
 import os
 from pathlib import Path
 
-import boto3
-from dotenv import dotenv_values
-
 from mps.builder_billing import amount_usd, merge_records
+from mps.costs.archive import archive_client
 from mps.costs.types import LineItem, Period
 
 PREFIX = "billing/hetzner-builders/"
-
-
-def archive_client():
-    config = dotenv_values(Path.home() / ".config/prefect-home/r2.env")
-    return boto3.client(
-        "s3",
-        endpoint_url=config["RCLONE_CONFIG_R2_ENDPOINT"],
-        aws_access_key_id=config["RCLONE_CONFIG_R2_ACCESS_KEY_ID"],
-        aws_secret_access_key=config["RCLONE_CONFIG_R2_SECRET_ACCESS_KEY"],
-        region_name="auto",
-    ), config["PREFECT_HOME_R2_BUCKET"]
 
 
 def receipts() -> list[dict]:
