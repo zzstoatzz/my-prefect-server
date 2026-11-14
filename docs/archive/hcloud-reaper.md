@@ -1,5 +1,9 @@
 # Builder expiry cleanup
 
+> Retired 2026-11-14 with the ephemeral builder. The `prefect-builder-reaper`
+> Worker source was removed from the repository; this is the record of how it
+> worked.
+
 This Worker runs every five minutes independently of HeavyPad. It deletes only
 expired `owner=my-prefect-server,purpose=ephemeral-builder` resources whose
 name, flow ID and attempt labels agree. The per-run expiry includes a 15-minute

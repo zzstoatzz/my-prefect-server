@@ -1,5 +1,9 @@
 # Ephemeral cloud builder
 
+> Retired 2026-11-14 with the typeahead index pipeline. The worker, its
+> billing ledger, the scripts and paths named below were removed from the
+> repository; this is the record of how it worked.
+
 The HeavyPad worker provisions one cpx32 (160 GB scratch disk) per run, polls
 the private home Prefect API through a single-use Tailscale enrollment, and
 destroys the VM after the durable supervisor outcome is reconciled. Source
@@ -45,7 +49,7 @@ second live publisher clock.
 Infrastructure qualification, private API access, real publication and cleanup
 passed before the original node was retired. Typeahead's separate serving
 latency admission remains independent of infrastructure qualification. See the
-[retirement audit](../../docs/audits/2026-10-27-prefect-retirement.md).
+[retirement audit](../audits/2026-10-27-prefect-retirement.md).
 
 ## Billing evidence
 
