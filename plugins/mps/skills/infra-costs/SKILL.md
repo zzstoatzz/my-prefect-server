@@ -126,7 +126,7 @@ following days rather than immediately.
 
 Judge retention by whether the data is authoritative or derived. A volume that
 holds a **derived** index, one a job rebuilds and republishes, can be set to 2 days.
-`pds-zzstoatzz-io` is authoritative PDS data and stays at 5. Do not lower
+`zds-zzstoatzz-io` is authoritative PDS data and stays at 5. Do not lower
 retention account-wide.
 
 ## related
