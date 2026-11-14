@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 import httpx
+from mps.atproto import resolve_handle_pds
 from prefect.context import use_profile
 from prefect.settings import (
     PREFECT_API_AUTH_STRING,
@@ -78,7 +79,8 @@ def main():
         matches = []
         for day in sorted(days):
             response = httpx.get(
-                canonical["pds"].rstrip("/") + "/xrpc/com.atproto.repo.getRecord",
+                resolve_handle_pds(canonical["handle"]).rstrip("/")
+                + "/xrpc/com.atproto.repo.getRecord",
                 params={
                     "repo": canonical["handle"],
                     "collection": "io.zzstoatzz.cost.snapshot",

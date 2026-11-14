@@ -6,6 +6,7 @@ from contextlib import ExitStack
 from datetime import datetime, timedelta
 
 import httpx
+from mps.atproto import resolve_handle_pds
 from prefect.context import use_profile
 from prefect.settings import (
     PREFECT_API_AUTH_STRING,
@@ -73,7 +74,8 @@ def main():
         end = datetime.fromisoformat(run["end_time"].replace("Z", "+00:00")) + timedelta(seconds=5)
         for row in rows:
             response = httpx.get(
-                canonical["pds"].rstrip("/") + "/xrpc/com.atproto.repo.getRecord",
+                resolve_handle_pds(canonical["handle"]).rstrip("/")
+                + "/xrpc/com.atproto.repo.getRecord",
                 params={
                     "repo": canonical["handle"],
                     "collection": "com.find-bufo.traffic",
