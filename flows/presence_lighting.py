@@ -5,13 +5,12 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-import httpx
 from mps.presence import (
-    PDS,
     PresenceRecord,
     PresenceUpdate,
     apply_presence_update,
     authenticate_presence,
+    presence_client,
     proposed_action,
     read_presence,
 )
@@ -22,7 +21,7 @@ from prefect.concurrency.sync import concurrency
 @task(retries=3, retry_delay_seconds=[2, 5, 10], retry_jitter_factor=1, persist_result=False)
 def store_presence(report: PresenceUpdate) -> PresenceRecord:
     password = Path(os.environ["PRESENCE_CREDENTIAL_FILE"]).read_text().strip()
-    with httpx.Client(base_url=PDS, timeout=10) as client:
+    with presence_client() as client:
         authenticate_presence(client, password)
         return apply_presence_update(client, report, datetime.now(UTC))
 

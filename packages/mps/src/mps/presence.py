@@ -6,8 +6,9 @@ from typing import Literal
 import httpx
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
-PDS = "https://spaces-alpha.host.bsky.network"
-OWNER = "did:plc:x5vcg5tj466g64de3jvvkzjg"
+from mps.atproto import resolve_pds
+
+OWNER = "did:plc:xbtmt2zjwlrfegqvch7fboei"
 SPACE_TYPE = "io.zzstoatzz.home.space"
 COLLECTION = "io.zzstoatzz.home.presence"
 SPACE = f"at://{OWNER}/space/{SPACE_TYPE}/home"
@@ -36,8 +37,13 @@ class Session(BaseModel):
     accessJwt: str = Field(repr=False)
 
 
+def presence_client() -> httpx.Client:
+    """A client for the owner's PDS, which is also the space host."""
+    return httpx.Client(base_url=resolve_pds(OWNER), timeout=10)
+
+
 def read_presence(password: str) -> PresenceRecord:
-    with httpx.Client(base_url=PDS, timeout=10) as client:
+    with presence_client() as client:
         authenticate_presence(client, password)
         response = client.get(
             "/xrpc/com.atproto.space.getRecord",

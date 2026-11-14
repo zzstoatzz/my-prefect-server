@@ -68,3 +68,19 @@ def test_update_orders_reports_and_verifies_readback(seconds_newer, expected_wri
         result = apply_presence_update(c, report, at + timedelta(minutes=2))
     assert len(writes) == expected_writes
     assert result.value.state == ("home" if expected_writes else "away")
+
+
+def test_presence_client_targets_the_owners_resolved_pds(monkeypatch):
+    from mps import presence
+
+    resolved = []
+
+    def resolve(did):
+        resolved.append(did)
+        return "https://pds.test"
+
+    monkeypatch.setattr(presence, "resolve_pds", resolve)
+    with presence.presence_client() as client:
+        assert client.base_url == "https://pds.test"
+    assert resolved == [presence.OWNER]
+    assert presence.SPACE.startswith(f"at://{presence.OWNER}/space/")
