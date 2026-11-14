@@ -1,5 +1,11 @@
 # Tantivy slot operations
 
+Archived 2026-11-14. Typeahead now runs on two store slots that follow the
+network and build their own index; the `typeahead-index` deployment, the
+Tantivy slots and the Turso database this describes are deleted, and the
+flow code was removed from this repository. Commands and parameters below
+no longer exist.
+
 The controller supports explicit `tantivy_operation` requests to the existing
 `typeahead-index` cloud flow. Typeahead serves only from Tantivy slots; the native
 engine and its refresh, rollback and pruning paths were removed on 2026-11-02.

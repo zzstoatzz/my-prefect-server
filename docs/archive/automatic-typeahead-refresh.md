@@ -1,12 +1,18 @@
 # Automatic Typeahead refresh
 
+Archived 2026-11-14. Typeahead now runs on two store slots that follow the
+network and build their own index; the `typeahead-index` deployment, the
+Tantivy slots and the Turso database this describes are deleted, and the
+flow code was removed from this repository. Commands and parameters below
+no longer exist.
+
 Typeahead search is served only by the Tantivy slots `typeahead-tantivy-a` and
 `typeahead-tantivy-b`. The `typeahead-index` deployment in `prefect.heavypad.yaml`
 refreshes the inactive slot from a fresh cloud checkpoint and promotes it behind
 the empirical release proof. The [slot lifecycle](tantivy-slot-lifecycle.md)
 describes preparation, promotion, retirement and the journal in detail. The native
 engine was removed on 2026-11-02; its history is in the
-[archived native refresh record](archive/typeahead-native-refresh.md).
+[archived native refresh record](typeahead-native-refresh.md).
 
 ## Deployment
 
@@ -44,7 +50,7 @@ The production reader performs the full-build source handoff and freezing checks
 the release records both executable hashes. Worker count, memory, commit batches
 and final segment count retain their existing defaults. The matching source
 selection is declared in `prefect.heavypad.yaml`. It was registered November 5,
-2026 at 17:54 UTC; the [readback](audits/2026-11-05-typeahead-fast-importer-registration.json)
+2026 at 17:54 UTC; the [readback](../audits/2026-11-05-typeahead-fast-importer-registration.json)
 confirms source pins, one-run concurrency and the unchanged 06:00/18:00 schedule.
 Full production timing remains pending the next scheduled build.
 
@@ -90,7 +96,7 @@ and verified again at 15:05 UTC with publisher `4f1b9b7`: Typeahead
 The proof binds image
 `registry.fly.io/typeahead-tantivy-a@sha256:d13dee4839c3e56ac1f6dd4f0d14cb4514186221b0f5a6d3037cfb92f090473d`.
 Automatic continuation inherits that image from the serving admission. The
-[registration readback](audits/2026-11-05-typeahead-lifecycle-registration.json)
+[registration readback](../audits/2026-11-05-typeahead-lifecycle-registration.json)
 verifies exact pins and unchanged schedule, parameters and concurrency. The
 [qualification and cutover](https://tangled.org/zzstoatzz.io/typeahead/tree/main/docs/ops/lifecycle-cleanup-20261105/)
 records all six release gates, matched full-data comparison, 93 cloud checks
@@ -105,7 +111,7 @@ refresh and obsolete-object consumer audit remain required before completion.
 
 The live Prefect API also excludes `retry_type=in_process` from worker polling.
 A bounded cloud retry used the same VM and PID across its 90-second delay; both
-polling paths excluded it. See the [API rollout audit](audits/2026-11-05-in-process-retry-rollout.md).
+polling paths excluded it. See the [API rollout audit](../audits/2026-11-05-in-process-retry-rollout.md).
 Deployment concurrency remains one with `CANCEL_NEW`; production timeouts and the
 worker were unchanged.
 
@@ -131,7 +137,7 @@ route/ETag, qualification and public canary checks still run. A different execut
 still starts a fresh full refresh; changed routing still fences transaction
 recovery. The guard is registered at `4f1b9b7`, verified 15:05 UTC. All 93 local and
 Linux cloud checks passed without skips, source and configuration main CI passed,
-and commit-by-commit checks passed. The [registration readback](audits/2026-11-05-typeahead-cleanup-retry-registration.json)
+and commit-by-commit checks passed. The [registration readback](../audits/2026-11-05-typeahead-cleanup-retry-registration.json)
 confirms unchanged schedule, parameters, concurrency, Typeahead source, installer
 and runtime release proof. Only the publisher source pin and command changed.
 The normal scheduled 18:00 full refresh remains pending; no extra build or

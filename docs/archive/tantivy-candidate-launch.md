@@ -1,5 +1,11 @@
 # Retired long-walk candidate launch
 
+Archived 2026-11-14. Typeahead now runs on two store slots that follow the
+network and build their own index; the `typeahead-index` deployment, the
+Tantivy slots and the Turso database this describes are deleted, and the
+flow code was removed from this repository. Commands and parameters below
+no longer exist.
+
 Do not run this recipe. Nate rejected the hours-long full-row reconciliation
 bootstrap on October 29, 2026. It is retained only as failure/history context; the
 replacement must reuse a complete SQLite checkpoint and prove its freshness

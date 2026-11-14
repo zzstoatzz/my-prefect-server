@@ -1,5 +1,11 @@
 # Tantivy checkpoint publication
 
+Archived 2026-11-14. Typeahead now runs on two store slots that follow the
+network and build their own index; the `typeahead-index` deployment, the
+Tantivy slots and the Turso database this describes are deleted, and the
+flow code was removed from this repository. Commands and parameters below
+no longer exist.
+
 The Tantivy branch of `typeahead-index` uses one full SQLite checkpoint, followed
 by a canonical stream into a pinned importer and a genuine live-source catch-up.
 It does not build a fresh native prefix index or run a second full source walk.

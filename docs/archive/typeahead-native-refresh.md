@@ -3,8 +3,8 @@
 Archived 2026-11-02, when the native engine, its refresh slots
 (`typeahead-startup-20261024`, `typeahead-search-refresh`) and every native
 rollback, resume and pruning path were removed from the controller. Current
-operation is in [automatic refresh](../automatic-typeahead-refresh.md) and the
-[Tantivy slot lifecycle](../tantivy-slot-lifecycle.md). Commands and parameters
+operation is in [automatic refresh](automatic-typeahead-refresh.md) and the
+[Tantivy slot lifecycle](tantivy-slot-lifecycle.md). Commands and parameters
 below no longer exist.
 
 Full publication, isolated installation, cached restart, guarded promotion,
@@ -33,7 +33,7 @@ Native-to-native rollback continues to select the immediate previous target.
 If public verification fails, an ETag-conditional compensation restores
 the exact prior Tantivy route only while the failed native route is still current;
 operator changes win. Automatic invocation does not permit Tantivy promotion. The separate explicit
-[slot lifecycle](../tantivy-slot-lifecycle.md) requires a prepared plan and complete
+[slot lifecycle](tantivy-slot-lifecycle.md) requires a prepared plan and complete
 non-test release evidence; native-to-native rollback is unchanged.
 
 R2 artifact cleanup and local build retention protect current, previous and native
