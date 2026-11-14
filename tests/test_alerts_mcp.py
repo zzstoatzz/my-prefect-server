@@ -362,3 +362,50 @@ async def test_a_resolved_alert_cannot_be_claimed_or_handed_off(mcp, server):
         refused = await call(mcp, "update_alert", key=KEY, agent="phi", action=action, note="x")
         assert not refused["recorded"] and "resolved" in refused["reason"]
     assert len(server.emitted) == 2
+
+
+def fired(at, event_id, run="r1"):
+    return {**run_failed(at, run), "id": event_id}
+
+
+def events_client(mcp):
+    from fastmcp.events import EventsClientExtension
+
+    return Client(mcp, mode="auto", extensions=[EventsClientExtension()])
+
+
+async def test_alert_event_starts_from_now_then_delivers_later_firings(mcp, server):
+    server.triggered = [fired("2026-11-07T07:12:00Z", "e1")]
+    async with events_client(mcp) as client:
+        (listed,) = await client.list_events()
+        start = await client.poll_events_mcp("alert.fired")
+        quiet = await client.poll_events_mcp("alert.fired", cursor="2026-11-07T07:12:00+00:00")
+        server.triggered.append(fired("2026-11-07T08:12:00Z", "e2", "r2"))
+        server.triggered.append(fired("2026-11-07T09:12:00Z", "e3", "r3"))
+        first = await client.poll_events_mcp("alert.fired", cursor=quiet.cursor, max_events=1)
+        rest = await client.poll_events_mcp("alert.fired", cursor=first.cursor)
+
+    assert (listed.name, listed.delivery) == ("alert.fired", ["poll"])
+    assert start.events == [] and start.cursor is not None
+    assert quiet.events == [] and quiet.cursor == "2026-11-07T07:12:00+00:00"
+    assert [event.event_id for event in first.events] == ["e2"]
+    assert first.events[0].data == {
+        "key": KEY,
+        "title": "flow-run failure: mcp-fleet-health",
+        "event": "prefect.flow-run.Crashed",
+        "summary": "Crashed: Process exited with status code: 1",
+        "at": "2026-11-07T08:12:00Z",
+    }
+    assert first.has_more is True and first.cursor == "2026-11-07T08:12:00Z"
+    assert [event.event_id for event in rest.events] == ["e3"]
+    assert rest.has_more is False
+    assert server.filters[-1]["occurred"] == {"since": "2026-11-07T08:12:00Z"}
+
+
+async def test_alert_event_rejects_a_cursor_that_is_not_a_time(mcp):
+    from mcp.shared.exceptions import MCPError
+
+    async with events_client(mcp) as client:
+        with pytest.raises(MCPError) as refused:
+            await client.poll_events_mcp("alert.fired", cursor="yesterday")
+    assert refused.value.error.code == -32602

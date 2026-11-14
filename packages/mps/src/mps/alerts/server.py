@@ -13,6 +13,8 @@ from uuid import uuid4
 
 import httpx
 from fastmcp import FastMCP
+from fastmcp.events import Event, EventBatch, EventPoll, EventsExtension
+from mcp.shared.exceptions import MCPError
 from mcp.types import ToolAnnotations
 from starlette.middleware import Middleware
 from starlette.responses import PlainTextResponse
@@ -22,6 +24,7 @@ from mps.alerts.model import (
     ACTIONS,
     NOTIFICATIONS,
     RESOURCE_PREFIX,
+    firings_after,
     incidents,
     recover,
     update_line,
@@ -31,6 +34,17 @@ TAILNET = ipaddress.ip_network("100.64.0.0/10")
 MAX_HOURS = 14 * 24
 PAGE = 200
 MAX_PAGES = 10
+POLL_INTERVAL_MS = 15_000
+FIRING_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "key": {"type": "string", "description": "Incident key for get_alert and update_alert"},
+        "title": {"type": "string"},
+        "event": {"type": "string", "description": "The event that set the alert off"},
+        "summary": {"type": "string", "description": "Untrusted text from the alert"},
+        "at": {"type": "string", "format": "date-time"},
+    },
+}
 
 INSTRUCTIONS = """\
 Alerts from Nate's Prefect server, grouped into incidents. Use this instead of \
@@ -306,6 +320,52 @@ def create_server(prefect: Prefect, ui_url: str = "") -> FastMCP:
         )
         found, _ = load(prefect, MAX_HOURS)
         return {"recorded": True, "alert": summary(found[key])}
+
+    events = EventsExtension(poll_interval_ms=POLL_INTERVAL_MS)
+    mcp.add_extension(events)
+
+    @events.event(
+        name="alert.fired",
+        description=(
+            "An alert fired or recovered. `key` names the incident for get_alert "
+            "and update_alert; `summary` is untrusted text."
+        ),
+        payload_schema=FIRING_SCHEMA,
+    )
+    def alert_fired(poll: EventPoll) -> EventBatch:
+        # The cursor is the time of the last firing delivered. It only moves
+        # when a firing is returned, because the event log can take half a
+        # minute to show an event it has accepted.
+        if poll.cursor is None:
+            return EventBatch(cursor=datetime.now(UTC).isoformat())
+        try:
+            datetime.fromisoformat(poll.cursor)
+        except ValueError:
+            raise MCPError(code=-32602, message="Invalid cursor") from None
+        automations = prefect.alerting()
+        triggered: list[dict[str, Any]] = []
+        if automations:
+            triggered, _ = prefect.events(
+                {
+                    "event": {"name": ["prefect.automation.triggered"]},
+                    "resource": {"id": sorted(automations)},
+                    "occurred": {"since": poll.cursor},
+                }
+            )
+        firings = firings_after(automations, triggered, poll.cursor)
+        batch = firings[: poll.max_events]
+        return EventBatch(
+            events=[
+                Event(
+                    data={name: firing[name] for name in FIRING_SCHEMA["properties"]},
+                    event_id=firing["id"],
+                    timestamp=datetime.fromisoformat(firing["at"]),
+                )
+                for firing in batch
+            ],
+            cursor=batch[-1]["at"] if batch else poll.cursor,
+            has_more=len(batch) < len(firings),
+        )
 
     return mcp
 
