@@ -141,7 +141,7 @@ spec:
       imagePullSecrets: [{name: atcr-creds}]
       initContainers:
         - name: ui
-          image: atcr.io/zzstoatzz.io/prefect-ui:873a9c81cd9177063f531654c5c37033aa16d20c
+          image: atcr.io/zzstoatzz.io/prefect-ui:b498352ae5a91daa4011a0a3e67b2d66d47a74e8
           command: [cp, -R, /ui/., /ui-bundle/]
           volumeMounts: [{name: ui, mountPath: /ui-bundle}]
           resources:
