@@ -42,12 +42,6 @@ REMAINING_BLOCKS = {
     "gardener-password",
     "tangled-merge-ssh-key",
     "phi-workflow-request-token",
-    "typeahead-turso-url",
-    "typeahead-turso-token",
-    "index-r2-endpoint",
-    "index-r2-bucket",
-    "index-r2-access-key-id",
-    "index-r2-secret-access-key",
 }
 PHI_BLOCKS = {"phi-control-token", "anthropic-api-key"}
 WORKFLOW_BLOCKS = {
