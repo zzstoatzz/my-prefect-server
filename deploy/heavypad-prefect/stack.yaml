@@ -153,7 +153,7 @@ spec:
           # PDS move, so this commit's image was built from main and imported
           # into the node (ctr images import). Re-pin by registry digest once
           # CI publishes it; a rebuilt cluster needs the import repeated.
-          image: atcr.io/zzstoatzz.io/prefect-server:2a9ba6287a0b83ddd9d71f32ff66c95d2f1dfbf6
+          image: atcr.io/zzstoatzz.io/prefect-server:6fb9fb8e9b5b0b7e973221b4bf8bfe633bd5b2d7
           imagePullPolicy: IfNotPresent
           command: [/app/prefect-server]
           args: [--webserver-only]
