@@ -7,7 +7,7 @@ import tomllib
 from pathlib import Path
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("service", choices=["hub", "push", "proxy", "grafana", "prometheus", "health"])
+parser.add_argument("service", choices=["hub", "push", "proxy", "grafana", "prometheus"])
 args = parser.parse_args()
 root = Path(__file__).resolve().parent.parent
 service = tomllib.loads((root / "deploy/prefect-edge/services.toml").read_text())[args.service]
@@ -16,53 +16,39 @@ config = home / ".config/prefect-edge"
 state = home / ".local/share/prefect-edge"
 os.environ["DOCKER_HOST"] = "unix:///var/run/docker.sock"
 monitoring = state / "monitoring"
-if args.service in {"grafana", "prometheus", "health"}:
+if args.service in {"grafana", "prometheus"}:
     command = ["docker", "run", "--rm", "--name", "prefect-" + args.service]
-    if args.service == "health":
+    command += ["--network", "host", "--user", str(os.getuid()) + ":" + str(os.getgid())]
+    if args.service == "grafana":
         command += [
-            "--publish",
-            "127.0.0.1:19814:9814",
+            "--env-file",
+            str(config / "grafana.env"),
             "--memory",
-            "96m",
+            "384m",
             "--volume",
-            str(root / "deploy/prefect-edge/typeahead_health.py") + ":/app/exporter.py:ro",
+            str(monitoring / "grafana/data") + ":/var/lib/grafana",
+            "--volume",
+            str(monitoring / "grafana/provisioning") + ":/etc/grafana/provisioning:ro",
+            "--volume",
+            str(monitoring / "grafana/grafana.ini") + ":/etc/grafana/grafana.ini:ro",
+            "--volume",
+            str(monitoring / "analytics") + ":/analytics:ro",
             service["image"],
-            "python",
-            "-B",
-            "/app/exporter.py",
         ]
     else:
-        command += ["--network", "host", "--user", str(os.getuid()) + ":" + str(os.getgid())]
-        if args.service == "grafana":
-            command += [
-                "--env-file",
-                str(config / "grafana.env"),
-                "--memory",
-                "384m",
-                "--volume",
-                str(monitoring / "grafana/data") + ":/var/lib/grafana",
-                "--volume",
-                str(monitoring / "grafana/provisioning") + ":/etc/grafana/provisioning:ro",
-                "--volume",
-                str(monitoring / "grafana/grafana.ini") + ":/etc/grafana/grafana.ini:ro",
-                "--volume",
-                str(monitoring / "analytics") + ":/analytics:ro",
-                service["image"],
-            ]
-        else:
-            command += [
-                "--memory",
-                "1g",
-                "--volume",
-                str(monitoring / "prometheus") + ":/prometheus",
-                "--volume",
-                str(config / "prometheus.yml") + ":/config/prometheus.yml:ro",
-                service["image"],
-                "--config.file=/config/prometheus.yml",
-                "--storage.tsdb.path=/prometheus",
-                "--web.listen-address=127.0.0.1:19090",
-                "--storage.tsdb.retention.time=90d",
-            ]
+        command += [
+            "--memory",
+            "1g",
+            "--volume",
+            str(monitoring / "prometheus") + ":/prometheus",
+            "--volume",
+            str(config / "prometheus.yml") + ":/config/prometheus.yml:ro",
+            service["image"],
+            "--config.file=/config/prometheus.yml",
+            "--storage.tsdb.path=/prometheus",
+            "--web.listen-address=127.0.0.1:19090",
+            "--storage.tsdb.retention.time=90d",
+        ]
     raise SystemExit(subprocess.run(command, check=False).returncode)
 if args.service == "proxy":
     command = [
