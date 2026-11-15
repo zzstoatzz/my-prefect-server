@@ -37,13 +37,14 @@ No lab containers, volumes or networks existed at removal.
 `retired-2026-11-14/` directory inside it holds copies of the two units, the
 environment file, the results directory and the checkout revisions.
 
-## Remaining consumer
+## Consumer
 
-`prefect-mcp-selfhosted.service` is started with
-`--chaos-state ~/.local/state/prefect-chaos-validation` and serves a
-`get_chaos_status` tool from that directory. The directory is still there, so
-the tool keeps working; it will report the 2026-11-10 stop indefinitely.
-Dropping the flag removes the tool and needs a restart of that service.
+`prefect-mcp-selfhosted.service` was started with
+`--chaos-state ~/.local/state/prefect-chaos-validation` and served a
+`get_chaos_status` tool from that directory. The flag was removed from the
+unit the same day (prefect-mcp-selfhosted `3943417`, branch
+`codex/selfhosted`) and the service restarted. It now lists 13 tools, none of
+them chaos, and nothing else reads the directory.
 
 ## Restoring
 
