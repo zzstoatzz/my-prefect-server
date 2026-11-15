@@ -149,9 +149,7 @@ spec:
             limits: {cpu: 200m, memory: 64Mi}
       containers:
         - name: api
-          # Built from prefect-server main cfa8903 and imported into the node.
-          # Re-import this image if the cluster is rebuilt.
-          image: atcr.io/zzstoatzz.io/prefect-server@sha256:da06d4de98e34cbe6ce29c4a4fdaf82661c3ebc8b79513845977c24209321aa6
+          image: atcr.io/zzstoatzz.io/prefect-server@sha256:9eb968c24e4295431d7b942fc474c4eb55e151d6d34935fa89d8e669e92d050b
           imagePullPolicy: IfNotPresent
           command: [/app/prefect-server]
           args: [--webserver-only]
@@ -199,7 +197,7 @@ spec:
       imagePullSecrets: [{name: atcr-creds}]
       containers:
         - name: services
-          image: atcr.io/zzstoatzz.io/prefect-server@sha256:da06d4de98e34cbe6ce29c4a4fdaf82661c3ebc8b79513845977c24209321aa6
+          image: atcr.io/zzstoatzz.io/prefect-server@sha256:9eb968c24e4295431d7b942fc474c4eb55e151d6d34935fa89d8e669e92d050b
           command: [/app/prefect-server]
           args: [services]
           envFrom: [{configMapRef: {name: server-env}}]
