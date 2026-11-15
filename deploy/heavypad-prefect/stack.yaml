@@ -149,11 +149,9 @@ spec:
             limits: {cpu: 200m, memory: 64Mi}
       containers:
         - name: api
-          # Side-loaded 2026-11-14: atcr.io refused pushes after the account's
-          # PDS move, so this commit's image was built from main and imported
-          # into the node (ctr images import). Re-pin by registry digest once
-          # CI publishes it; a rebuilt cluster needs the import repeated.
-          image: atcr.io/zzstoatzz.io/prefect-server:8c775d4f23edc25d3ea220eac5e98a1fdc8e1855
+          # Built from prefect-server main cfa8903 and imported into the node.
+          # Re-import this image if the cluster is rebuilt.
+          image: atcr.io/zzstoatzz.io/prefect-server@sha256:da06d4de98e34cbe6ce29c4a4fdaf82661c3ebc8b79513845977c24209321aa6
           imagePullPolicy: IfNotPresent
           command: [/app/prefect-server]
           args: [--webserver-only]
@@ -201,7 +199,7 @@ spec:
       imagePullSecrets: [{name: atcr-creds}]
       containers:
         - name: services
-          image: atcr.io/zzstoatzz.io/prefect-server@sha256:4f82da383af2d6b38eb1a5bfd0863cef09ae71b080df0e598d77b5dcff6e40fa
+          image: atcr.io/zzstoatzz.io/prefect-server@sha256:da06d4de98e34cbe6ce29c4a4fdaf82661c3ebc8b79513845977c24209321aa6
           command: [/app/prefect-server]
           args: [services]
           envFrom: [{configMapRef: {name: server-env}}]
