@@ -34,3 +34,14 @@ and present concrete next actions with sender, date, and exact subject.
 Use `mailbox: "All Mail"`, `unread_only: true`, and no `since` cutoff to review the whole unread backlog. Also inspect Spam and Trash separately if the provider excludes them from All Mail. Pagination and UIDs remain mailbox-specific.
 
 After reviewing content, pass `mark_read` as a mapping of exact UID strings to their Message-ID headers, with the same `mailbox` and `uidvalidity`. This mode validates every identity before issuing `+FLAGS.SILENT (\Seen)` and verifies the chosen messages are read. It preserves all other flags and messages. Maximum 100 messages per mutation. Keep an audit manifest of decisions outside the repository; email content is private. Retain important or uncertain messages unread, then re-read unread counts to verify completion and account for new arrivals.
+
+## Daily sweep
+
+`email-sweep/email-sweep` runs daily at 12:47 UTC and moves aged noise from
+Proton INBOX to Archive. A message moves only when it arrived more than
+`min_age_days` (default 7) ago, is not starred, is not from anyone you have
+written to (any To or Cc in Sent), and is one of: list mail (`List-Unsubscribe` or `List-ID`),
+classified notification or promotional with confidence at least 0.7, or from
+an automated local part such as `noreply` or `notifications`. It never deletes
+and never changes read state. The run result lists every moved Message-ID;
+run with `dry_run: true` to preview. Star a message to keep it in the inbox.
