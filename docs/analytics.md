@@ -15,11 +15,11 @@ that is actually read.
 | `raw_tangled_items` | `ingest` | dbt `int_tangled_items_scored` |
 | `raw_emails`, `raw_email_classifications` | `ingest`, `classify-emails` | `classify-emails`, `email-triage`, dbt `int_emails_scored` |
 | `raw_email_triage` | `email-triage` | decision history (append per run) |
-| `raw_liked_posts` | `ingest` (likes from the last 7 days, resolved once) | `phi-memory-synthesis`, hub discovery pool (phi reads it) |
-| `raw_phi_observations`, `raw_phi_interactions` | `ingest` (copy of phi's TurboPuffer `phi-users-*`) | dbt `int_phi_user_profiles`, `phi-memory-synthesis` |
+| `raw_liked_posts` | `ingest` (likes from the last 7 days, resolved once) | hub discovery pool (phi reads it) |
+| `raw_phi_observations`, `raw_phi_interactions` | `ingest` (copy of phi's TurboPuffer `phi-users-*`) | dbt `int_phi_user_profiles` (legacy summary inputs) |
 | `raw_phi_dockets` | `docket` | docket history (append per run) |
 | `raw_llm_spend` | Dagster `llm_spend` (from `llm-spend.jsonl`) | ad hoc queries |
-| `int_phi_user_profiles` | dbt | `phi-memory-synthesis`, which writes relationship summaries phi reads |
+| `int_phi_user_profiles` | dbt | Legacy summary input; retained pending table-retirement inventory |
 | `hub_action_items` (from the `int_*_scored` models) | dbt | `brief`, hub export |
 | `raw_fastmcp_items` | `fastmcp-warehouse` (hourly at :45, GraphQL) | dbt `models/fastmcp` |
 | `fastmcp_daily`, `fastmcp_weekly`, `fastmcp_stuck` (from `fastmcp_pr_flow`) | dbt | hub export, `/api/agents/fastmcp-triage`, phi's `inspect_fastmcp_triage` and weekly `fastmcp-watch` |
@@ -67,3 +67,18 @@ than the author, or the merge itself; bot accounts carry contributor-level
 days, not closures, because automation (the issue-link gate, auto-close) closes
 many contributor PRs. Days are America/Chicago, matching the public status site
 at prefecthq.github.io/fastmcp, whose totals the models reproduce.
+
+## memory synthesis retirement
+
+The source and deployment manifest no longer define `phi-memory-synthesis`.
+Phi's bot replaces extracted observations and relationship summaries with
+authored private notebook pages and a bounded source-checking review. Atlas
+already reads original interactions and episodic records directly; docket reads
+that projection. Their builders remain, and existing observation/summary rows
+remain readable. No Turbopuffer namespace or analytics table is deleted by this
+source change.
+
+The live deployment and its event automation must be retired separately after
+the bot replacement is validated and published. Removing a YAML entry alone
+does not remove a registered deployment. Follow the service-retirement procedure;
+record approval and runtime verification before calling that transition complete.

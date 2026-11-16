@@ -53,9 +53,7 @@ query boundary or browser interactions. See the
 [test suite audit](audits/2026-11-15-test-suite.md) for the reviewed coverage and
 pruning decisions.
 
-The three tests in `test_compact_turbopuffer_live.py` skip without
-`TURBOPUFFER_TEST_API_KEY`. With that key they create and delete disposable remote
-namespaces; they are not required for the normal local run. Standalone provider
+Standalone provider
 probes such as `exe_provider_probe.py` and
 `gardener_skills_probe.py` are not pytest-collected tests. They exercise live
 infrastructure and are separate, explicit operations.
