@@ -71,23 +71,19 @@ and `heavypad-prefect-backups`. Collector project labels live in
 `packages/mps/src/mps/costs/projects.py`; Evergreen reconciles declared ownership
 through its `site/services.json` costKeys. Fix ownership rather than editing amounts.
 
-## known-wrong state and where attribution is going
+## attribution
 
-- the `COSTS.md` snippet in each repo fetches a live figure from
-  `https://hub.waow.tech/api/costs.json`. **as of 2026-08-13 most of those
-  figures are wrong**: 7 of 10 repos report `$0` because the snippets
-  exact-match a `service` name (`leaflet-search-backend`) while fly and
-  cloudflare line items gained component suffixes
-  (`leaflet-search-backend:compute`) on 2026-06-17. prefix-match to get the
-  real number until the generator is fixed.
-- attribution currently infers project ownership from resource-name substrings
-  in `packages/mps/src/mps/costs/projects.py`. that is the wrong model and is
-  being replaced: **each project should declare what it owns**. resource names
-  outlive renames (`pub-search`'s fly apps are still `leaflet-search-*`) and
-  collide (bare `relay` vs plyr's `relay-api`), so inference silently
-  mis-attributes and nothing fails loudly. the collector's job is to reconcile
-  declarations and report conflicts + orphans; ~20 live services are claimed
-  by no repo today. the protocol sketch is [docs/cost-declaration.md](cost-declaration.md).
+Evergreen reconciles declared ownership using `site/services.json` costKeys;
+resource-name patterns in the collector remain a fallback. Resolve conflicts
+and unassigned resources from the current inventory rather than carrying a
+static orphan count in this document. The [protocol sketch](cost-declaration.md)
+is historical design context.
+
+On August 13, seven of ten repository cost snippets incorrectly showed zero
+because they exact-matched service names that had acquired component suffixes.
+Prefix matching fixes that class of query; it does not prove complete provider
+coverage or establish ownership. Compare service-level rows and their coverage
+before interpreting a change in project totals.
 
 ## changelog
 - **2026-11-14** — removed the ephemeral Hetzner builder and its receipt connector; the `hetzner:typeahead:ephemeral-builds` month-to-date line stops, and builder-labelled Hetzner resources are no longer excluded from inventory.

@@ -1,3 +1,5 @@
+> Historical Hetzner migration record. Current operations: [home runbook](../../deploy/heavypad-prefect/README.md).
+
 # durable Redis migration
 
 The real-client cutover rehearsal passed seeds 91 and 92 on 2026-10-08:

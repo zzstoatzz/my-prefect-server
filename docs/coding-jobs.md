@@ -19,7 +19,7 @@ variables are not exported. The output files have mode 0600.
 
 The pull inventory includes all Gardener and Phi pulls, including personality
 edits that did not run through Pi. This is supporting evidence, not a count of
-Sprite coding jobs. Review verdicts must match the pull's current CID and round.
+isolated coding jobs. Review verdicts must match the pull's current CID and round.
 An absent owner status is **unknown**, not open or unmerged. The appview can lag;
 verify delivered changes against Git. `git patch-id --stable` can compare a
 published patch with the eventual commit even when commit IDs differ.
@@ -45,16 +45,11 @@ published patch with the eventual commit even when commit IDs differ.
 
 ## What supervises what
 
-A Sprite is the execution machine. Our `prefect-sprites` runtime wrapper starts
-the Prefect process, refreshes the Sprite execution lease, handles cancellation
-and timeouts, cleans up child processes, and preserves exit/log evidence for the
-worker. These are unattended execution responsibilities, not another AI agent.
-
-The Python flow has a separate role: it prepares the repository, invokes Pi,
-and publishes the resulting patch using credentials outside Pi's sandbox.
-Calling both pieces “the supervisor” obscures this distinction. A persistent
-executor could supply process management differently; these responsibilities
-do not inherently require a new Sprite for every job.
+The worker owns process launch, cancellation, timeout and exit/log evidence.
+The Python flow prepares the repository, invokes Pi and publishes the result
+using credentials outside Pi's sandbox. These are separate responsibilities.
+Use the deployment's actual pool and artifact to identify which runtime handled
+a run; historical Sprite evidence does not describe the current exe worker.
 
 ## Usage collection
 
@@ -65,7 +60,7 @@ buckets are converted to the inclusive input total expected by genai-prices.
 The model catalog supplies an **estimate**, with its pricing model recorded.
 Pi's configured zero price is not accepted as proof of free inference.
 Unknown pricing remains null, including after analytics import. Subscription
-allocation, provider billing adjustments, and Sprite compute are not included.
+allocation, provider billing adjustments, and isolated-worker compute are not included.
 
 `llm_usage` records are emitted to Prefect logs as responses complete, as well
 as the existing local spend JSONL. This also exports the prompt judge's usage,
@@ -90,14 +85,12 @@ known estimates without pretending they are whole-job bills.
 
 Deployments pinned to older wheels or Git revisions do not gain this behavior
 from a source change alone. Preserve their execution contracts when applying
-telemetry backports; do not migrate a home-worker job into a Sprite incidentally.
+telemetry backports; do not migrate a home-worker job into an isolated VM incidentally.
 
-The private worker release directories referenced in `prefect.yaml` contain
+The private worker release directories referenced in `prefect.heavypad.yaml` contain
 `provenance.json` and `source-overlay.tar.gz` beside each telemetry backport
 wheel. The provenance records the original Git revision or original wheel hash;
-the overlay contains only the modified modules. The operator-created
-`sprites-spike` deployment uses the same telemetry wheel as `autofix-revise`;
-it is managed on the server, outside the main deployment manifest.
+the overlay contains only the modified modules.
 
 The default report command also loads `recovered-spend.jsonl` from its output
 directory when present. Jobs tagged `telemetry-proof` are labeled as probes.

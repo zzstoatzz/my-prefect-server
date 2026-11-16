@@ -2,25 +2,22 @@
 
 ## access and targets
 
-- Operator credentials are in the gitignored root `.env`; `just` loads it.
-  Do not infer missing access from an empty shell environment. Runtime flow
-  credentials are Prefect Secret blocks, resolved by `mps.secrets_plugin` or
-  loaded through `mps.blocks`. Never commit or print credential values.
 - `just prefect` and `just kubectl` target production through `deploy/targets.toml`.
-  `just prefect-legacy` explicitly targets the retiring server. Root
-  `kubeconfig.yaml` still belongs to that legacy cluster; ambient OrbStack
-  Kubernetes is not production. Never silently change global client profiles
-  or Kubernetes context. `PREFECT_TARGET` selects a configured CLI target.
+  Prefect credentials come from the canonical SOPS store; cluster access uses
+  the home SSH host explicitly. Never change global client profiles or Kubernetes
+  context. An empty shell environment does not mean access is missing. Keep
+  private SSH access details and keys out of Git.
+- Runtime flow credentials are Prefect Secret blocks, resolved by
+  `mps.secrets_plugin` or loaded through `mps.blocks`. Never commit or print
+  credential values. `just` loads gitignored `.env` for other local tooling.
 - Read `deploy/heavypad-prefect/README.md` before operating the home stack.
   Confirm current runtime and deployment ownership from live state; dated
   migration records in `docs/migrations/` are evidence, not standing policy.
-- Missing kubeconfig must be recovered out of band. `just kubeconfig` depends
-  on local Terraform state and is not a universal recovery path. Refresh it
-  after a server restart. Check local operator notes for SSH access; do not
-  commit host addresses or keys.
 
 ## development and releases
 
+- When merging code, consider what should be deleted. Aggressively prune
+  genuinely unused code and stale documentation. Protect your attention span.
 - Keep the primary checkout on `main`. Reconcile temporary branches/worktrees
   and remove them when finished; preserve unfinished work in recoverable
   archives or project docs.
@@ -37,7 +34,6 @@
 ## deployment contracts
 
 - `prefect.heavypad.yaml` owns home-server deployments, schedules and triggers.
-  `prefect.yaml` retains inactive original-server rollback definitions.
   Never enable two schedulers for the same effects or silently resume a
   deliberately paused deployment.
 - Preserve the declared code-delivery mode: Git runs pull their source;
@@ -50,8 +46,6 @@
 - HeavyPad registration runs on the trusted host after green CI for the exact
   main revision. Follow the registration runbook rather than injecting home
   credentials into Spindle microVMs.
-- For legacy Kubernetes workers, read the compatibility requirements in
-  [deployment validation](docs/deployments-validation.md).
 
 ## retiring shared resources
 

@@ -1,6 +1,9 @@
 # Alert dispatch with Albedo
 
-Prefect owns incident dispatch and approval. Albedo runs on HeavyPad with access scoped to the incident. A personal assistant such as Duet can surface blocked work from the cloud and help the operator decide how to proceed.
+The automatic dispatch and approval loop below is proposed. The implemented
+`albedo-alert-check` pilot is manual, as described in the final section.
+
+In the proposed loop, Prefect owns incident dispatch and approval. Albedo runs on HeavyPad with access scoped to the incident. A personal assistant such as Duet can surface blocked work from the cloud and help the operator decide how to proceed.
 
 ## From alert to diagnosis
 

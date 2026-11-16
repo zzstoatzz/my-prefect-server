@@ -2,7 +2,7 @@
 
 Flow orchestration is centralized here. The MCP Atlas crawl is
 `flows/mcp_atlas/crawl.py`; it uses the Atlas product's pinned `mcp-atlas` library
-for record parsing and layout. This repository owns its original and HeavyPad
+for record parsing and layout. This repository owns its HeavyPad
 deployment definitions, just as it owns `flows/bisk.py`. The Atlas repository
 continues owning its Worker, website, library and MCP server. It must not register
 another recurring Prefect crawl.
@@ -47,11 +47,11 @@ grep its tool list first. that has been wrong more than once.
 
 ## Local Pi and isolated Gardener runs
 
-`flows/pi_agent.py` is Gardener’s isolated Sprite entry point. Its provider and
+`flows/pi_agent.py` is Gardener’s isolated entry point. Its provider and
 model must match the trusted inference grant; it cannot load local extensions or
 accept an arbitrary execution environment.
 
-The home-pool `pi-agent` deployment uses `flows/pi_agent_local.py` and
+The home `pi-agent` deployment uses `flows/pi_agent_local.py` and
 `mps.pi_local` for the separately configured local runner described below.
 Presence lighting now runs its deterministic lighting flow directly; it does not
 need either Pi runner.
@@ -94,14 +94,15 @@ The runner is not a sandbox: installed extensions execute as the worker user.
 
 A presence receiver can invoke this same flow with a fresh objective. Presence
 state, duplicate-event handling, and manual lighting overrides belong to that
-application, not the generic Pi runner. No lighting deployment is enabled here.
+application, not the generic Pi runner. The deterministic lighting deployments are separate from this generic runner.
 
 
-### Deployment reconciliation
+### deployment state
 
-The live `autofix` and `pi-pr` home-worker deployments remain pinned to their
-previously deployed revisions in `prefect.yaml`. Their newer source calls the
-isolated runner and must not be installed on the home worker accidentally by
-`deploy --all`. Moving those two deployments to Sprites is a separate rollout.
-`autofix-revise` retains its verified provider-switching wheel. The
-`sprites-spike` deployment was deleted on 2026-09-26 (zero successful runs).
+`prefect.heavypad.yaml` declares the actual pools, source pins and immutable
+artifacts. Autofix and autofix-revise are intentionally paused, their incoming
+review/merge/revise automations are disabled, and the separate exe worker was
+disabled at the November 15 audit. Do not enable that chain as routine source
+reconciliation. Local and isolated runner code is not proof that either path
+is currently accepting work. See [autofix](autofix.md) and the
+[home runbook](../deploy/heavypad-prefect/README.md).

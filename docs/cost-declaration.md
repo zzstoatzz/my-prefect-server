@@ -4,9 +4,8 @@
 
 _A **standard atproto protocol for declaring infrastructure costs** — private or
 public — lets any project or actor say “running this costs $X, and here is how I
-counted.” An early working implementation is preserved in the
-[June 2026 migration snapshot](../../sources/infra-cost-home-box-2026-06.md); this
-note is the design sketch for generalizing it._
+counted.” This note is the design sketch; see [costs](costs.md) for the
+current implementation and coverage._
 
 ## why this is interesting
 atproto is full of public-good infra people run out of pocket (relays, appviews,

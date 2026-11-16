@@ -1,3 +1,5 @@
+> Historical Hetzner migration record. Current operations: [home runbook](../../deploy/heavypad-prefect/README.md).
+
 # tailnet policy draft
 
 Status: draft for nate to review and apply in the Tailscale admin console

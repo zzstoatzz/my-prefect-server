@@ -1,5 +1,9 @@
 # Gardener private images
 
+The exe worker was disabled at the November 15 audit. These artifacts still
+back declared deployments; image maintenance does not authorize enabling the
+worker or resuming the suspended autofix chain.
+
 `gardener-registry.exe.xyz` is an ordinary persistent exe.dev VM tagged
 `gardener-infra`. It is separate from disposable `prefect-*` job VMs. Its HTTPS
 proxy stays private, with no shares. exe.dev permits same-account boot-image
@@ -59,7 +63,7 @@ The rollout snapshots live on heavypad in
 To revert one deployment, retrieve that snapshot through SSH, extract only
 `job_variables` with `jq '{job_variables}'`, and pass the result as a file to
 `just prefect api PATCH /deployments/DEPLOYMENT_ID --data @FILE`.
-Also restore that deployment's `prefect.yaml` job variables to its previous
+Also restore that deployment's `prefect.heavypad.yaml` job variables to its previous
 wheel path, omitting image mode and image, so later registration agrees.
 Already-running jobs retain their submitted configuration.
 
@@ -111,7 +115,7 @@ image, passing `BASE_IMAGE`, the committed `SOURCE_REVISION`, and the expected
 `WHEEL_SHA256`. The image records the old/new wheel hashes and changed modules
 in `/opt/gardener/release/haiku-upgrade.json`. Keep the original image and wheel
 for rollback. Legacy process deployments use the same script on a copy of their
-wheel, published under its new content hash before updating `prefect.yaml`.
+wheel, published under its new content hash before updating `prefect.heavypad.yaml`.
 
 Older wheels also receive the existing `_Haiku55Price` implementation from the
 committed spend module, so the new model retains measured cost reporting. The

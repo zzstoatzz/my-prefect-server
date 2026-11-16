@@ -1,405 +1,152 @@
-# Home Prefect operations
+# home Prefect operations
 
-> Current state (October 27): the original Hetzner node and its volume/IPs are
-> deleted. Production is `https://prefect-server.waow.tech`, routed to this home
-> stack. Use `just prefect` and `just kubectl`; the pilot chronology below is
-> historical. See the [retirement receipt](../../docs/audits/2026-10-27-prefect-retirement.md).
+HeavyPad owns the production Zig Prefect control plane, PostgreSQL, Redis and
+process workers. Public routing reaches `https://prefect-server.waow.tech`.
+The original Hetzner node is deleted; its [retirement receipt](../../docs/audits/2026-10-27-prefect-retirement.md)
+and [migration records](../../docs/migrations/) are historical evidence.
 
-The HeavyPad server is a separate k3s cluster inside Docker (k3d), with its own PostgreSQL,
-durable Redis, credentials, worker and deployment file. It uses the same immutable
-server image as the current Hetzner instance. The original hostname, worker and
-critical deployments remain on Hetzner. Never restore the production database
-into a running HeavyPad scheduler: copied deployments/automations could execute twice.
-
-Kubernetes API binds to host loopback 16443; the application binds to loopback
-14200. Tailscale Serve adds a distinct private HTTPS endpoint on port 10443.
-Existing Serve/Funnel mappings are preserved. This requires Tailscale on clients;
-it is not a public Funnel endpoint. Canonical-domain cutover is a later decision.
-
-Source must be on main before applying. Run `cluster.sh` on HeavyPad after
-installing checksum-verified k3d 5.9.0. Kubernetes is pinned to the current cloud
-node's k3s release. Secrets come from the canonical encrypted store via stdin;
-never commit rendered credentials or dump Kubernetes Secret objects. Persistent
-volumes are under `~/.local/share/prefect-home/storage`. Do not delete the cluster
-or its storage as an ordinary rollout operation.
-
-API and services image pins can change independently. For an API-only fix,
-apply only the API Deployment from `stack.yaml` through
-`just kubectl -n prefect-home apply -f -`;
-verify its diff and rollout without restarting services. The
-[retry-ownership rollout](../../docs/audits/2026-11-05-in-process-retry-rollout.md)
-records the current qualification and readback.
-
-The API runs `/app/prefect-server --webserver-only` as two replicas; background
-work runs in the separate `services` Deployment, also two replicas. The API
-keeps nothing per pod: concurrency leases are in Redis because
-`PREFECT_BROKER_BACKEND=redis`, and atproto login state is in sealed cookies.
-The services replicas share Redis consumer groups and one Docket task stream,
-so each event and each scheduled tick goes to one of them. Delivery is at
-least once: a replica killed between announcing an automation trigger and
-running its action leaves the event for the survivor. All replicas are on the
-one k3d node, so this covers a pod restarting or being deleted, not the node.
-The [two services replicas](../../docs/audits/2026-11-14-two-services-replicas.md)
-audit has the qualification and readback. Handler counts are explicit: 32 per API reactor
-(128 total), two for the services metrics listener. Smaller API pools regressed
-under unpaced database contention; retain the qualified count. See the
-[HTTP pool and role rollout](../../docs/audits/2026-11-06-http-thread-pools.md)
-for measurements, canaries and rollback.
-
-The initial pilot has expanded through the approved 21-deployment scoped migration
-in batches 1, 2, 4, 5 and 8; see the [completion and rollback receipt](../../docs/migrations/2026-10-26-scoped-migration.md).
-Verify real execution, persistent state, backup/restore and authenticated remote
-access before transferring additional ownership. Pause the old schedule and cancel its queued scheduled runs before
-activating the new one. Only individually qualified notification rules and
-publication flows may move. Gardener and the long publishers remain deferred; email is included
-in the completed scoped migration.
-Migration records must identify the
-old/new deployment IDs, source pin, schedule and rollback.
-
-## Verified operating state
-
-Live October 25, 2026 at https://heavypad.tailb660b6.ts.net:10443/.
-Tailscale must be connected. Sign-in uses the HeavyPad server credential in the canonical
-SOPS store (`heavypad_prefect`); the original server credential is deliberately
-rejected here. Anonymous API access is rejected. `prefect-server.waow.tech`
-still resolves to the original cloud node; no canonical routing was changed.
-
-The first migrated deployment is `fastmcp-backlog/fastmcp-backlog`:
-GitHub reads and small appends to the existing local counts series, with
-`backfill_days=0`. It is active every 30 minutes on the HeavyPad server. The old server has
-no backlog schedule and its three queued scheduled runs were cancelled. Its
-history remains there. The first automatic backlog run completed at 00:00:02 UTC on October 26,
-after two successful manual runs. Host diagnostics also runs here hourly at :37,
-with its old schedule cleared. Its notification block and two notification rules
-are copied and verified; automatic failure diagnosis remains on the old server.
-Bufo traffic now publishes hourly at :07 here; its original schedule is cleared.
-Its Cloud counterpart defaults to dry-run and has no schedule, but controlled
-remote reads and real PDS publication have both passed with public readback.
-Public MCP health checks run here hourly at :12. The unhealthy-finding rule is
-copied and verified; the Cloud counterpart has passed the same eight-server
-protocol/discovery sweep without notification automations. The broader
-`fleet-health` job runs here at :03/:18/:33/:48 UTC. Its localhost bridge probe
-retains the same HeavyPad host vantage; the original schedule is cleared.
-Costs publish daily at 08:00 UTC here after real Cloud and HeavyPad publication
-and public PDS readback; the old cost schedule is cleared. Cloud is manual-only
-and defaults to dry-run. Known unmeasured Fly root disks and R2 storage remain
-explicitly labelled `Incomplete`; this migration does not make estimates invoices.
-The canary is manual-only. Other original workloads remain on the original
-server.
-MCP Atlas and Bisk snapshot publication also moved on October 26. Their original
-schedules are cleared, and HeavyPad owns `45 */6 * * *` and `*/10 * * * *` UTC
-respectively. The Atlas flow now lives here at `flows/mcp_atlas/crawl.py`, with a
-pinned Atlas library dependency; the Atlas product repo no longer owns a flow or
-deployment file. Both publishers passed real HeavyPad execution and public
-readback. Their automatic run receipts are recorded in the migration plan.
-See the [migration and Cloud recovery plan](../../docs/migrations/heavypad-cloud-recovery.md)
-for IDs, real run receipts, alerting limits and the complete downtime inventory.
-
-- HeavyPad backlog deployment: `75c6a70d-2fcb-46c5-adc9-09522f6f2aea`.
-- Original backlog deployment: `5089a7a2-d3ed-46c6-99bf-314948792a8b`.
-- HeavyPad pool: `heavypad-pool`, concurrency one; worker
-  `prefect-heavypad-worker.service` is a separate user unit.
-- `prefect.heavypad.yaml` owns HeavyPad schedules and pins. The original
-  `prefect.yaml` deliberately has `schedules: []` for migrated flows, so normal CI
-  cannot restore its old recurring schedule.
-
-An empty source schedule does not necessarily clear an existing live schedule.
-Clear it explicitly, then assert the old schedule list is empty and there are
-no queued/pending/running old runs **before** enabling the new owner. For example:
+## access and server rollout
 
 ```sh
-just prefect --no-prompt deployment schedule clear diagnostics/diagnostics --accept-yes
-```
-
-Use the separate operations targets:
-
-```sh
-just prefect version
-just prefect config view
-just prefect deployment inspect fastmcp-backlog/fastmcp-backlog -o json
+just prefect deployment ls
 just kubectl -n prefect-home get pods
+just heavypad-status
 just prefect-secrets
-just prefect-backup
 ```
 
-Register only the HeavyPad server file with an actual committed source pin:
+[targets.toml](../targets.toml) selects the endpoint, SOPS credential and SSH
+host. The kubectl wrapper uses the host Docker socket and the k3d server
+container. It never uses the laptop's current Kubernetes context. The private
+Tailscale Serve API is on port 10443; containers use the separately configured
+host proxy because bridge-network containers cannot reach that Serve listener.
+
+Land source on main before applying. [cluster.sh](cluster.sh) creates the home
+k3d cluster with explicit loopback port bindings and the pinned k3s image. Run
+it only on HeavyPad with the installed k3d tool. Persistent volumes live under
+`~/.local/share/prefect-home/storage`; deleting the cluster or that directory is
+not a rollout procedure. The Kubernetes API binds to loopback 16443 and the
+application to loopback 14200. Preserve existing Tailscale mappings.
+
+[stack.yaml](stack.yaml) owns image pins, resources, server settings and replica
+counts. For an API-only change, inspect the diff and apply only the API Deployment
+through `just kubectl -n prefect-home apply -f -`. Do not restart background
+services unnecessarily. Verify rollout, a real deployment run and output.
+
+API and services each have two replicas on one k3d node. Redis consumer groups
+coordinate background work; delivery is at least once. This covers a pod
+restart, not loss of the host. Preserve the qualified handler counts in the
+manifest; see the [HTTP pool qualification](../../docs/audits/2026-11-06-http-thread-pools.md)
+and [services replica qualification](../../docs/audits/2026-11-14-two-services-replicas.md).
+
+## workers and flow interpreters
+
+The default `prefect-heavypad-worker.service` and the background, build,
+interactive and gardener instances of `prefect-heavypad-worker@.service` run
+process jobs. Their [base units](worker@.service) and `worker-*.conf` overrides
+own slot and resource limits; the corresponding pools must agree. The default
+worker has its own [unit](worker.service). Read the deployment's pool before
+choosing a worker to inspect.
 
 ```sh
-MPS_PIN="@$(git rev-parse HEAD)" just prefect --no-prompt deploy --prefect-file prefect.heavypad.yaml --all
+ssh stoat@heavypad 'systemctl --user list-units "prefect-heavypad-worker*" --all --no-pager'
+ssh stoat@heavypad 'journalctl --user -u prefect-heavypad-worker@background -n 100 --no-pager'
+just prefect work-pool ls
 ```
 
-Operator commands select their endpoint from `deploy/targets.toml`.
-`just prefect` targets production; `just prefect-legacy` targets the retiring
-server. `PREFECT_TARGET` selects another configured target. Credentials stay
-in their existing secret stores; wrappers never alter the global profile.
+These units use `KillMode=control-group`: drain affected runs before stopping or
+replacing a worker. The old system worker's process-survival guard is not the
+current restart contract. The separate `gardener-exe` pool's `pi-exe-worker`
+was disabled at the November 15 audit; do not enable it or resume the suspended
+autofix chain as routine repair. See [autofix](../../docs/autofix.md).
 
-## Persistence and recovery
+Workers read `~/.config/prefect-home/worker.env`. `UV_PYTHON` in the unit selects
+the interpreter inherited by `uv run`; an explicit command `--python` overrides
+it. Keep `~/.cargo/bin` ahead of the distribution toolchain for dependencies
+that need source builds. Do not remove command-prefix Prefect settings as
+redundant: worker settings merging can otherwise override the deployment's
+storage path.
 
-Redis has a 384 MiB `maxmemory` cap within a 512 MiB container limit. During
-outage recovery, monitor `INFO memory` and broker/lease errors: `noeviction`
-rejects writes at the cap, which can surface as an analytics lease HTTP 500.
-Preserve synchronous AOF and the PVC; do not flush streams or bypass the writer
-lease to clear the symptom. After correcting capacity or the consumer failure,
-verify a real lease acquire/release and a production deployment run. See the
-[November 6 incident](../../docs/incidents/2026-11-06-home-internet-autofix-cascade.md).
+Persistent analytics and local storage are under `/home/stoat/prefect-analytics`.
+Dagster's two user services use [dagster-prefect.conf](dagster-prefect.conf) for
+the same server's analytics writer lease. Drain writers before changing that
+client. Readers snapshot shared DuckDB files; all read-write opens hold the
+`analytics-duckdb-writer` lease.
 
-PostgreSQL uses a 20 GiB PVC; Redis uses a 1 GiB PVC with synchronous AOF and
-no eviction. These are isolated from the original node. The server runs the
-existing `8733e319` image by immutable digest. Application API and Kubernetes
-API Docker port mappings bind only to 127.0.0.1. Existing Tailscale mappings on
-443, 8443 and 9443 were verified unchanged. Port 10443 is private Serve, not Funnel.
+## persistence, backups and recovery
 
-The UI bundle image is `prefect-ui:<commit>`, built by prefect-server's
-`publish-ui-image` workflow from the commit in its `docker/ui.env`. Confirm a new
-tag resolves with HeavyPad's `atcr-creds` before pinning it here.
+PostgreSQL and Redis use persistent volumes. Redis uses synchronous AOF and
+`noeviction`; at its memory cap, writes and lease acquisition fail. Diagnose
+capacity or stalled consumers rather than flushing streams or bypassing the
+writer lease. Verify lease acquire/release and real execution after repair.
+See the [November 6 incident](../../docs/incidents/2026-11-06-home-internet-autofix-cascade.md).
 
-The original UI tag, `3c108a1`, no longer resolves in the registry (404 again on
-2026-11-06). Its cached 14.4 MiB image was exported read-only from the old node
-and imported into the HeavyPad server. The OCI archive is retained at
-`~/.local/share/prefect-home/images/prefect-ui-3c108a1.tar` on HeavyPad and
-copied to the operator Mac's private backup directory. Rolling the UI back to
-`3c108a1` on a rebuilt cluster requires importing that archive. Manifest digest:
+The backup, offsite and restore-verification units invoke
+[prefect-dr](https://github.com/prefectlabs/prefect-dr), installed on the host
+from its wheel. [prefect-dr.toml](prefect-dr.toml) is installed at
+`~/.config/prefect-dr/heavypad.toml`; the units read bucket credentials from
+`~/.config/prefect-dr/env`. The older `offsite.sh` and `offsite-verify.sh`
+installers are gone. Read the installed unit and package version before changing
+this interface.
+
+- `prefect-home-backup.timer` runs daily at 05:45 UTC with fixed jitter. Dumps
+  are age-encrypted and kept under `~/.local/state/prefect-home/backups` for
+  seven days, separate from cluster storage.
+- A successful backup starts `prefect-home-offsite.service`; its timer retries
+  daily at 17:45 UTC. R2 receives ciphertext under `postgres/`, with immutable
+  object writes and local/remote verification. Local retention does not delete
+  offsite copies. Preserve the bucket's lock and lifecycle policy.
+- `prefect-home-offsite-verify.timer` restores the newest offsite dump into an
+  isolated throwaway PostgreSQL. It checks expected deployment names and recent
+  completed runs, then writes `restore-verified.json`. It starts no Prefect
+  scheduler or automation service. Expected names and the restore image are in
+  `prefect-dr.toml`.
+- [host-backup.sh](host-backup.sh), daily at 06:15 UTC, encrypts host state that
+  the database dump does not contain: units, referenced environments, ingress,
+  keys, selected local state, the UI archive and Redis AOF. It uploads under
+  `host/` and writes `host-backup.json`. This is a selected-path backup:
+  root-owned spindle state, Prefect results/storage and edge/Dagster persistent
+  state are excluded. See the [recovery coverage](../../docs/heavypad-outage-runbook.md)
+  before relying on it to rebuild a service.
+
+```sh
+just prefect-backup
+just prefect-offsite
+just prefect-offsite-verify
+ssh stoat@heavypad 'systemctl --user list-timers "prefect-home-*" --all'
+```
+
+`backup-freshness` checks local dump, offsite and host-snapshot freshness plus
+weekly restore verification. Its notification depends on the home server, so
+it cannot detect total host loss. Use the [outage runbook](../../docs/heavypad-outage-runbook.md)
+for recovery and off-host checks. Never attach a restored database to a second
+active scheduler or enable copied automations by default.
+
+`just prefect-secrets` verifies the consumers it renders, including
+`~/.config/prefect-home/r2.env`; it does not verify the separately installed
+prefect-dr environment. When rotating bucket credentials, reconcile both
+consumers before exercising backup/offsite/verify. API auth rotation requires
+re-rendering and restarting its consumers. Changing a Kubernetes Secret does
+not change an initialized PostgreSQL role's password.
+
+The current UI image is pinned in `stack.yaml`. The old `3c108a1` UI tag is
+unavailable in the registry; its recovery archive remains at
+`~/.local/share/prefect-home/images/prefect-ui-3c108a1.tar`. A rollback to that
+specific version requires importing the archive. Its manifest digest is
 `sha256:33a07cc4c10caf78af728e484447620c5c80b4d26e5a40b366cc7fc76cad95c3`.
-The server image itself pulled successfully from the registry.
 
-Since 2026-11-08 the backup, off-site and restore-verify units run
-[prefect-dr](https://github.com/prefectlabs/prefect-dr) (installed with `uv tool` from its
-wheel) with the checked-in `prefect-dr.toml`, which lives at `~/.config/prefect-dr/heavypad.toml`
-on HeavyPad; bucket credentials and endpoint are in `~/.config/prefect-dr/env`, rendered from
-`r2.env`. The timers, state files and bucket layout are unchanged, so `backup-freshness` and the
-watchdog read the same records. The previous unit files are kept beside them as
-`*.pre-prefect-dr`. The paragraphs below describe the contract prefect-dr now implements.
+## host startup
 
-`prefect-home-backup.timer` creates an age-encrypted PostgreSQL custom-format dump
-at 05:45 UTC daily with up to five minutes of jitter, retaining seven days.
-Files live under `~/.local/state/prefect-home/backups`, separate from cluster
-storage. Recipients are the canonical laptop/HeavyPad age keys. Manual encrypted
-backups were copied to `~/.local/state/prefect-home-backups` on the operator Mac.
-The initial dump was decrypted privately and restored to a separate scratch
-PostgreSQL database; the completed canary record was verified, then the scratch
-database was removed. A later dump includes the migrated flow and copied block.
-Since October 26, encrypted dumps also replicate automatically to R2 (below).
+Docker starts at boot, k3d containers use `unless-stopped`, and the user manager
+has lingering enabled. `prefect-home-k3s-guard.service` waits for `/readyz` and
+can restart the server container at most twice when k3s fails inside it. Inspect
+`systemctl --user --failed` if recovery does not complete.
 
-### Off-site replication to R2
+Load `br_netfilter` on the host and persist it in
+`/etc/modules-load.d/br_netfilter.conf`. The k3d node cannot load host modules;
+without it, pods can fail to reach service IPs even while k3s reports ready.
+This remains one host and one disk, not host-level high availability.
 
-HeavyPad pushes the already age-encrypted dumps to the private R2 bucket named by
-`heavypad_prefect.r2_backup_bucket` (planned: `heavypad-prefect-backups`), under
-`postgres/`. R2 only ever holds ciphertext. A successful
-`prefect-home-backup.service` starts `prefect-home-offsite.service` (`OnSuccess=`), and
-`offsite.timer` repeats it daily at 17:45 UTC to catch up after a failed upload.
-`offsite.sh` runs a digest-pinned rclone container with `copy --immutable --checksum`:
-new dumps are uploaded under their unique timestamped names, an identical existing object
-is skipped without a write (so re-runs succeed inside the lock window), an existing object
-whose content differs fails the run instead of being overwritten, and nothing is deleted
-when HeavyPad prunes its seven-day local copies. `rclone check --one-way` must then confirm
-every local dump is in R2 before `offsite.json` records the newest upload.
-
-A 90-day lifecycle rule expires objects. A bucket lock rule (7 days, if the bucket
-supports it) blocks deletes and overwrites, including those made with the upload
-credential. R2 has no "write but not delete" permission, so only the lock window is
-protected against a stolen upload token; older copies are not. The token is scoped
-to Object Read & Write on this one bucket. Its S3 credentials, endpoint and bucket name
-live in the canonical store as `heavypad_prefect.r2_backup_access_key_id`,
-`r2_backup_secret_access_key`, `r2_backup_endpoint` and `r2_backup_bucket`;
-`just prefect-secrets` renders `~/.config/prefect-home/r2.env` (mode 600) and
-checks it by hash.
-
-All three timers use `FixedRandomDelay=true`. Without it, a user-manager daemon-reload
-re-rolls `RandomizedDelaySec`. The first scheduled 05:45 UTC backup on October 26 never
-triggered while other units were being reloaded near its elapse time, and a timer that
-has never run has no `Persistent=` stamp to catch up from.
-
-`offsite-verify.sh` (weekly, `offsite-verify.timer`) downloads the newest R2 object,
-verifies its hash against R2 and against the local dump if HeavyPad still has it,
-decrypts it with HeavyPad's age key, and restores it into a throwaway PostgreSQL
-with the server's pinned image digest. That container has `--network none`, a throwaway
-disk volume and memory/CPU limits. It runs on HeavyPad's host Docker, outside k3d, and no Prefect
-server is started, so restored schedules and automations cannot run. It asserts the
-HeavyPad deployment IDs exist and the newest completed run is within two hours of the
-dump time, then records counts (never values) in `restore-verifications.log` and
-`restore-verified.json`. Expected deployments are matched by name in `prefect-dr.toml`; add new ones there.
-
-### Host state snapshot
-
-`host-backup.sh` (`prefect-home-host-backup.timer`, daily at 06:15 UTC) captures what
-no repository or dump holds: every user unit and the env files they reference,
-`.cloudflared`, `.local/state` (minus the dumps), the UI image archive, the studio app
-source, the age key, live captures (`tailscale serve` JSON, enabled units, package
-selections, the `prefect-home` namespace manifests and secrets) and a tar of the Redis
-`/data` AOF. It is age-encrypted to both recipients, checked to decrypt and list, then
-uploaded immutably to `host/` in the same bucket and recorded in `host-backup.json`.
-The [outage runbook](../../docs/heavypad-outage-runbook.md) says how to use it.
-spindle state is root-owned and not included.
-
-The `backup-freshness` deployment reads those status files daily at 07:05 UTC and
-fails if the newest local dump is over 26 hours old, R2's newest object differs from it,
-the last upload is over 26 hours old, the last verified restore is over eight days old,
-or the host state snapshot is over 26 hours old.
-A failed run is the alert, through the existing `flow-run failure -> discord` rule. That
-alert depends on HeavyPad itself, so it does not detect a HeavyPad outage.
-
-Enabled October 26, 2026 from `6929e03`: all ten dumps through
-`postgres/20261026T074947Z.dump.age` uploaded and checked; the restore from R2 passed
-(7 deployments, 74 flow runs, newest completed run 12 minutes before the dump); the
-first manual `backup-freshness` run completed. The previous backup unit (without
-`OnSuccess=`) and timer (without `FixedRandomDelay=`) are kept beside the scripts as
-`*.pre-onsuccess` and `*.pre-fixed-delay` for rollback.
-
-#### Enable runbook
-
-Run in order from a clean main checkout; stop at the first failed check. Each step lists
-its rollback. Prerequisite: the `heavypad_prefect.r2_backup_*` keys exist in the store.
-
-1. Land source. Merge this work to main and `just push`. Rollback: revert the commits.
-2. Render the R2 credential. `just prefect-secrets --apply`, then the plain check
-   must print "already current"; other consumers re-render byte-identically. Rollback:
-   `ssh stoat@heavypad 'rm ~/.config/prefect-home/r2.env'`.
-3. Fix the backup timer delay. Compare first, then install and reload:
-
-   ```sh
-   ssh stoat@heavypad 'cat ~/.config/systemd/user/prefect-home-backup.{service,timer}' | diff - <(cat deploy/heavypad-prefect/backup.{service,timer})
-   scp deploy/heavypad-prefect/backup.timer stoat@heavypad:.config/systemd/user/prefect-home-backup.timer
-   ssh stoat@heavypad 'systemctl --user daemon-reload && systemctl --user list-timers prefect-home-backup.timer'
-   ```
-
-   The next elapse must stay put across a second `daemon-reload`. Rollback: restore the
-   previous timer file (without `FixedRandomDelay=`) and reload.
-4. Install the scripts and off-site units, not yet chained or timed:
-
-   ```sh
-   scp deploy/heavypad-prefect/offsite{,-verify}.sh stoat@heavypad:.local/share/prefect-home/
-   for unit in offsite.service offsite.timer offsite-verify.service offsite-verify.timer; do
-     scp "deploy/heavypad-prefect/$unit" "stoat@heavypad:.config/systemd/user/prefect-home-$unit"
-   done
-   ssh stoat@heavypad 'systemctl --user daemon-reload'
-   ```
-
-   Rollback: remove those four unit files and two scripts, then reload.
-5. First upload: `just prefect-offsite`. Uploaded objects stay locked for seven days.
-   Readback: `offsite.json` names the newest local dump. Rollback: none needed;
-   objects expire through the lifecycle rule.
-6. First restore check: `just prefect-offsite-verify` prints an `ok` line. Rollback:
-   none; it only reads R2 and removes its own container and files.
-7. Chain uploads to backups and start the timers:
-
-   ```sh
-   scp deploy/heavypad-prefect/backup.service stoat@heavypad:.config/systemd/user/prefect-home-backup.service
-   ssh stoat@heavypad 'systemctl --user daemon-reload && systemctl --user enable --now prefect-home-offsite.timer prefect-home-offsite-verify.timer'
-   ```
-
-   Rollback: `systemctl --user disable --now` both timers, restore the backup service
-   without `OnSuccess=`, reload.
-8. Register freshness inactive, then prove it:
-
-   ```sh
-   MPS_PIN="@$(git rev-parse HEAD)" just prefect --no-prompt deploy --prefect-file prefect.heavypad.yaml --name backup-freshness
-   just prefect deployment run backup-freshness/backup-freshness --watch
-   ```
-
-   It must complete. Then set its schedule `active: true`, land that on main, and register
-   it again with the new pin. Rollback: set `active: false` and register again, or
-   `just prefect deployment delete backup-freshness/backup-freshness`.
-
-Locked objects remain until their lock expires; change the lock rule only by explicit decision.
-
-The HeavyPad server API/services were restarted, then the whole isolated k3d cluster was
-stopped and started. Database state and the canary survived; all pods and the
-HeavyPad worker recovered, and the migrated backlog flow subsequently completed.
-Docker is enabled at boot, k3d containers use `unless-stopped`, and the user
-manager has lingering enabled. This is still one host and one disk, not HA.
-
-After the October 26 host reboot, k3s in the running server container twice exited
-within seconds ("failed to find interface with specified node ip"). Docker never
-restarts the container for that, so the API stayed down until a manual restart.
-`prefect-home-k3s-guard.service` (enabled for `default.target`) waits up to two
-minutes for `/readyz` after each boot, restarts the server container at most twice,
-and otherwise fails visibly in `systemctl --user --failed`. It does nothing when k3s
-is healthy.
-
-The host must load the `br_netfilter` kernel module, persisted in
-`/etc/modules-load.d/br_netfilter.conf`. The k3d node has no `/lib/modules` and
-cannot load it. Without it pods cannot reach service IPs, so the API and
-services pods crash-loop on `NameServerFailure` while k3s itself reports ready
-and the guard passes. After the November 14 reboot the module was absent and
-the API stayed down until it was loaded by hand.
-
-Credential consumers have an idempotent render/check command. A harmless comment
-was injected into the HeavyPad worker environment; the check detected drift and
-`--apply` restored the canonical bytes. Auth rotation requires render plus HeavyPad server
-API/services/worker restart. PostgreSQL rotation also requires updating the actual
-database role; a Secret change alone cannot rotate an initialized role. No
-existing credential was rotated. Selected flow blocks are `github-token`,
-`logfire-read-token` and `operator-atproto-creds`; the existing Discord notification
-block is also copied. Only the latter two Secret blocks have Cloud recovery copies.
-Use `just recovery-secret-blocks TARGET --block NAME` to verify those copies and
-append `--apply` to repair drift. Their rotation path is in the canonical store
-README and the migration plan.
-
-## Rollback and later cutover
-
-For backlog rollback, first deactivate its HeavyPad schedule and cancel its queued
-scheduled runs. Wait for any active HeavyPad server run to finish. Restore the old schedule
-in the original source file and deactivate it in the HeavyPad source file, then
-register those selected deployments with their respective CLI targets. Verify
-only one instance has queued recurring runs. Keep the local counts file; it is
-shared persistent output, not an instance-owned disposable file.
-
-Do not point the canonical hostname at this HeavyPad server yet. Before that separate
-cutover: inventory every remaining client, pool, automation, cursor, limit,
-Secret block and history dependency; plan PostgreSQL/Redis state ownership;
-provide automatic off-host backups and a verified public/private ingress path;
-keep shared DuckDB writers under one cross-instance lock or transfer them as a
-cohort (each server has independent concurrency limits); move Hub, monitoring
-and push notifications; and rehearse routing rollback. Never attach both schedulers
-to a restored production database or activate copied automations by default.
-The current Hetzner node remains required and billed until that work is complete.
-
-Execution receipts are linked from
-[the setup audit](../../docs/audits/2026-10-25-heavypad-prefect-pilot.md).
-
-## Scoped worker capacity
-
-The enabled `prefect-heavypad-worker@background`, `@interactive` and `@build`
-instances use `worker@.service` plus the checked-in instance overrides.
-Their pools are `heavypad-background-pool` (one slot/8 GiB),
-`heavypad-interactive-pool` (two slots/2 GiB), and
-`heavypad-build-pool` (one slot/32 GiB). Monitoring remains on its original
-one-slot/2 GiB HeavyPad worker. The `presence` queue there has one slot and
-can be paused independently for ingress cutover. Pools and worker limits must
-match; a queue alone does not add capacity.
-
-Dagster's two user services have `dagster-prefect.conf` drop-ins pointing at
-the HeavyPad worker environment for the shared analytics writer lease. Change
-that client only while both cohorts and Dagster are drained. Explicit command
-Prefix `PREFECT_LOCAL_STORAGE_PATH` preserves the declared shared cache after
-the Prefect worker settings merge; do not remove it as redundant job env.
-
-Phone ingress uses the scoped backend rendered by
-`just presence-ingress --apply` and the Hub's private hostname alias.
-Its public credential/URL are preserved. Gardener now uses the scoped HeavyPad
-client environment and per-run tailnet transport described in the remaining
-migration receipt. The normal
-`just presence-deploy` registers the active HeavyPad definition. Stream's
-spindle routing is checked/repaired by `scripts/stream_spindle_prefect.py`;
-its canonical references are in the existing secret store.
-
-
-## Flow-run interpreters
-
-The worker units set `UV_PYTHON`, and flow-run processes inherit the worker's
-environment, so that one line chooses the interpreter for every `uv run` job
-command. A command that needs a different one passes `--python`, which wins.
-`UV_PYTHON` also beats the host's global uv pin
-(`~/.config/uv/.python-version`), so installing or removing a Python on the
-host cannot change what a deployment runs on.
-
-HeavyPad is Ubuntu 22.04 with glibc 2.35. On Python 3.15, `orjson`, `pyyaml`,
-`ruamel-yaml-clib` and `zstandard` have no wheel for that glibc, so uv builds
-them from source once and caches the result. `orjson` needs a current Rust
-toolchain: the worker units put `~/.cargo/bin` (rustup) ahead of `/usr/bin`,
-whose apt `cargo` 1.75 is too old.
-
-## Registering main revisions
+## registering main revisions
 
 Spindle microVMs intentionally block private networks, including Tailscale IPs
 and MagicDNS answers. CI validates source without Prefect credentials. Deployment
@@ -440,8 +187,3 @@ Source and units are `scripts/register_heavypad_main.py`,
 The installed script is `~/.local/share/prefect-home/register-main.py`; install
 updated source there after landing it on main, then reload the user manager when
 units change. The oneshot reads freshly rendered credentials on every start.
-
-Current migration, qualification, backup and canonical routing gates are in
-[the remaining migration receipt](../../docs/migrations/2026-10-27-remaining-cutover.md)
-and its linked live audit. Canonical routing and Hetzner retirement remain
-separate work.

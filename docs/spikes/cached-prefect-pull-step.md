@@ -168,4 +168,4 @@ logging, byte limits, and interrupted-process cleanup remain implementation work
 - Local `cli/flow_run.py::execute`: creates a temporary run workspace.
 - Existing `prefect.yaml`, `pyproject.toml`, `packages/mps/pyproject.toml`, and
   `scripts/validate_deployments.py`: installed package, source pin, and pull-step contracts.
-- [Bandwidth investigation](../audits/2026-09-28-home-bandwidth.md).
+- The original home-bandwidth investigation was not retained in this repository.

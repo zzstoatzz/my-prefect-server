@@ -50,37 +50,18 @@ Lighting dependencies are in the `lighting` project extra, pinned to FastMCP
 
 ## Deployment
 
-The running deployment uses the previously tested private source bundle on
-heavypad. Local cleanup is not deployed automatically. Once a source remote is
-available, `deploy/presence.yaml` replaces the temporary bundle/PYTHONPATH setup.
-It registers only the phone-presence deployment; unrelated deployments are not
-updated. Supply these variables to `just presence-deploy`:
+`phone-presence` is declared in [prefect.heavypad.yaml](../prefect.heavypad.yaml),
+including its source URL/revision, persistent marker and credential file paths.
+Its selected revision is deliberately pinned independently of other deployments.
+`just presence-deploy` registers that definition against production; it does not
+accept a separate set of source variables or register a second manifest.
 
-| Variable | Value |
-| --- | --- |
-| `PRESENCE_SOURCE_URL` | HTTPS clone URL of this repository |
-| `PRESENCE_SOURCE_REVISION` | Full published commit SHA |
-| `PRESENCE_CREDENTIAL_FILE` | Worker path to the mode-0600 app password file |
-| `PRESENCE_HUE_ENV_FILE` | Worker path to protected Hue configuration JSON |
-| `PRESENCE_LIGHTING_STATE_FILE` | Persistent worker path for the state marker |
-
-The flow source and installed package use the same revision. The worker needs
-`uv` on PATH and the `home-presence-writer` global concurrency limit with limit 1.
-Reuse the existing marker when replacing the deployment. The hub's deployment
-ID must continue pointing to `report-presence/phone-presence`.
-
-Hue configuration contains `HUE_BRIDGE_IP`, `HUE_BRIDGE_USERNAME`, and
-`HUE_BRIDGE_CERTIFICATE` (a worker-local trusted certificate path). Credentials
-are derived from the encrypted store, not stored in this repository. The
-presence consumer's rotation gap is documented in the secret store README.
-
-The hub uses the `presence-ingress` Kubernetes secret (`webhook-token`,
-`prefect-api-url`, `prefect-api-auth`, `deployment-id`). An exact ingress rule
-exposes `/api/presence` on the API hostname; other hub routes retain Cloudflare
-Access. Missing endpoint configuration returns 503, missing authentication 401.
-The JSON body accepts only `state` and `observedAt` with a timezone. The current
-Prefect server accepted duplicate idempotency keys in testing, so correctness
-relies on the flow's lock and marker rather than API deduplication.
+The `presence` queue uses the home process worker. Preserve the existing marker
+and the `home-presence-writer` global limit of one when changing delivery.
+The hub receives requests through the edge configuration. `just presence-ingress`
+and `just edge-secrets` check their respective consumers; read their changes
+before using `--apply`. HTTP 202 proves queuing only, so verify a real deployment
+run, private record and light readback when changing this path.
 
 ## iPhone setup and verification
 

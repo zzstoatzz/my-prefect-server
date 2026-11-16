@@ -1,3 +1,5 @@
+> Historical Hetzner migration record. Current operations: [home runbook](../../deploy/heavypad-prefect/README.md).
+
 # tailnet-only prefect server
 
 Goal: `prefect-server.waow.tech` (UI, `/api`, `/push`, `/api/presence`) answers

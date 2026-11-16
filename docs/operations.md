@@ -1,158 +1,63 @@
-> Legacy Hetzner infrastructure runbook. CLI examples below explicitly target
-> the retiring server; current production targets are in `deploy/targets.toml`.
-
 # operations
 
-standing the system up, and the recipes that run it day to day. every command
-is a `justfile` recipe; `just --list` is the full surface. `just` loads `.env`,
-so nothing here needs variables exported in the shell.
+Production runs on HeavyPad. The old Prefect Hetzner server (142141293), its
+150 GB volume and two primary IPs were deleted on October 27, 2026, after
+migration; see the [retirement receipt](audits/2026-10-27-prefect-retirement.md).
+The removed setup commands and deployment definitions belonged to that node.
 
-## credentials
+## access
 
-copy `.env.example` to `.env` and fill in `HCLOUD_TOKEN`, `POSTGRES_PASSWORD`,
-`AUTH_STRING`, `DOMAIN`, `LETSENCRYPT_EMAIL`, and optionally `GRAFANA_DOMAIN`.
-
-- `AUTH_STRING` (`user:pass`) is the Prefect API admin credential. the server
-  enforces basic auth on `/api/*`; `just prefect-legacy <args>` injects it for the CLI.
-- flow runtime secrets (`ANTHROPIC_API_KEY`, `TURBOPUFFER_API_KEY`,
-  `CLOUDFLARE_API_TOKEN`, `TURSO_*`) are Prefect Secret blocks, not `.env`.
-  `prefect.yaml` references them as `prefect-block://` values in
-  `job_variables.env`, resolved when a run starts. flows that load blocks
-  explicitly use the typed helpers in `mps.blocks`.
-- `kubeconfig.yaml` at the repo root (gitignored) is what `kubectl` and every
-  cluster recipe use. `just kubeconfig` fetches it after the server boots.
-
-## the control plane (hetzner VM)
+Use the repository wrappers, which select the production endpoint and host from
+[targets.toml](../deploy/targets.toml) without changing global profiles or the
+laptop's Kubernetes context:
 
 ```sh
-just init              # terraform init
-just infra             # create the VM with k3s
-just kubeconfig        # wait for k3s, fetch kubeconfig.yaml
-just deploy            # cert-manager, prefect-server (zig chart), postgres + redis, monitoring, dashboards
-just storage           # analytics hostPath + results PVC, kubernetes-pool base job template
+just prefect deployment ls
+just prefect flow-run ls
+just kubectl -n prefect-home get pods
+just heavypad-status
 ```
 
-then point DNS at `just server-ip`: `$DOMAIN`, `$GRAFANA_DOMAIN` (default
-`prefect-metrics.waow.tech`), and `hub.waow.tech`.
+The Prefect wrapper reads `heavypad_prefect.api_auth_string` from the canonical
+SOPS store using the operator's existing age identity. Kubernetes access uses
+SSH and kubectl inside the home k3d node; it does not use a root `kubeconfig.yaml`.
+Do not print credentials to diagnose access. `just` also loads the gitignored
+`.env` for tools with their own operator environment, including the MCP plugin.
+Runtime credentials are Prefect Secret blocks, resolved at run startup by
+`mps.secrets_plugin` or loaded explicitly through `mps.blocks`.
 
-the prefect server is the zig port at
-[prefect-server](https://tangled.org/zzstoatzz.io/prefect-server), built on
-the node and imported into k3s by `just publish-server-remote`. after a server
-deploy, `just verify-deploy` waits for a flow run to *complete*, because pods
-Running and `/health` 200 have both been true while every run crashed.
+For SDK operations that need the same authenticated target, write a script and
+run `just prefect --script /path/to/script.py`. Prefer the connected read-only
+Prefect MCP for inspection; confirm its endpoint with `get_identity`.
 
-## the worker (heavypad)
+## source and deployment
 
-most flow execution runs on the home box as a systemd process worker for
-`home-pool`, polling the server outbound over Tailscale. no ingress, no
-port-forward. the installer and unit are in [deploy/home-worker/](../deploy/home-worker/);
-[deploy/hub-data-sync/](../deploy/hub-data-sync/) rsyncs `hub.duckdb` and
-`llm-spend.jsonl` to the VM every few minutes so the hub serves fresh data
-without a round trip home.
+[The home manifest](../prefect.heavypad.yaml) owns this repository's production
+deployments. [Standalone automations](../deploy/automations.yaml) are applied
+separately with `just automations`; deployment registration does not reconcile
+those notification and cross-deployment rules.
 
-`gardener-exe` runs selected gardener jobs in exe.dev VMs, one per flow-run
-attempt. That includes `pi-agent/investigate`, the deployment phi's
-`request_workflow` reaches through the heavypad bridge. Its worker (`deploy/phi-inference/pi-exe-worker.service`) and local
-wheel artifacts live on Heavypad; see the deployment declarations and
-[validation contracts](deployments-validation.md). The `phi-sprites-spike`
-pool was deleted on 2026-10-22 after six weeks with no deployments, and its
-heavypad worker unit removed; `packages/prefect-sprites` and `mps.sprite_worker`
-remain.
+Publish source to main with `just push` after the required checks pass. CI
+validates source; the trusted home registration timer waits for green CI for
+that exact revision, validates its release pin, and registers it. Follow the
+[home runbook](../deploy/heavypad-prefect/README.md) for registration receipts,
+worker operations, server rollout and backup/recovery. A successful registration
+is not proof of successful execution: verify the intended worker, real run and
+output before calling a change shipped.
 
-`kubernetes-pool` survives only as a defined fallback. its base job template
-is applied by `just storage`; no k8s worker runs in normal operation.
+Git-backed deployments pull their declared revision. Wheel/image-backed jobs
+keep their own immutable artifacts. A source push does not update an older
+wheel. [Deployment validation](deployments-validation.md) explains these contracts.
 
-```sh
-just heavypad-status   # installed toolchain, worker unit, disk, codex login expiry
-```
+Prefect coordinates ingestion and downstream workflows. Dagster owns dbt asset
+execution and metadata; see [analytics](analytics.md) and the
+[Dagster runbook](../deploy/dagster/README.md). Hub, push, proxy and monitoring
+services use the committed definitions in [prefect-edge](../deploy/prefect-edge/),
+installed by `just edge-install REVISION` after publishing that revision.
 
-### disk on heavypad
+## recovery and history
 
-Verified October 25: root usage fell from 92% to 43%, with about 1,000 GiB free,
-after retiring 48 old build directories and 184 experiment database/prefix paths.
-Two newest home build generations remain (36 GiB); experiment scripts, manifests,
-JSON evidence and logs remain. The cloud publisher is unchanged. The local home
-publisher remains disabled; PLC history, Stream data, package caches and active
-model downloads were not removed. See the [producer audit and cleanup record](audits/2026-10-25-worker-disk-cleanup.md).
-
-Historical September 19 inventory (superseded by the audit above): 878 GB used of 1.8 TB. What holds it, who cleans it, and
-who a cleanup touches:
-
-| path | size | owner | retention | affected by cleanup |
-| --- | --- | --- | --- | --- |
-| `~/typeahead-index/build/build-*` | 446 GB (37 builds) | retired `typeahead-index` flow; no active owner | the flow pruned after each publish until it was removed on 2026-11-14; nothing prunes now | nobody; removal is a storage cleanup decision |
-| `~/typeahead-plc/weekly/*.jsonl.gz` | 51 GB (200 weeks) | retired PLC job; no active owner | historical retained data; no automatic pruning | no active flow; removal requires a separate storage cleanup decision |
-| `~/stream-gate`, `~/github.com`, `~/data` | 43 / 28 / 11 GB | stream, checkouts, misc | none | stream's gate state; clones other flows reuse |
-| `~/.cache/uv` | **115 GB** (100 GB in `archive-v0`, 8,458 envs; `diagnostics` reports the count hourly) | every flow, since each run installs from git | none; `uv cache prune` is safe (drops unreferenced entries only) | every home-pool flow's next start is slower |
-| `~/.cache/llama.cpp/models` | 35 GB: gemma-4-12b-it, Qwen3.5-9B, Qwen3.6-35B-A3B (all Q4_K_M, fetched 2026-08-26; `server.log` shows a CPU-only llama-server, no CUDA) | a hand-run inference experiment | none | nobody; re-downloadable |
-| `~/.cache/huggingface/hub` | 32 GB: FLUX.1-dev, untouched since 2024-08-19 | an old experiment | none | nobody; safe to delete |
-| `/tmp` | 11 GB, 771 entries; three fixed-name 2.6 GB duckdb snapshots (`brief`, `compact`, `ingest` overwrite theirs each run), an `iroh-mcp-smoke` dir, a leaflet build | flows and hand runs | Ubuntu cleans `/tmp` only at boot (`D /tmp 1777 root root -`), and the box has been up 22 days | a flow mid-run if its snapshot is removed underneath it |
-
-The index builds were the only thing growing fast (about 14 GB every 3 days).
-The rest is a one-time ~180 GB of caches and stale experiments (uv archive,
-FLUX, the llama models if not wanted); `uv cache prune` and `rm` by hand,
-between flow runs. Revisit when `diagnostics` shows disk free trending down.
-
-## flows
-
-`prefect.yaml` owns schedules, triggers, tags, parameters, and per-deployment
-job variables. `.tangled/workflows/deploy.yml` only checks each push to `main`;
-it does not register deployments. Register changed deployments by hand with the
-pushed commit as MPS_PIN, after `just push` so the GitHub mirror has it too
-(checked 2026-11-01: a passing CI run left a deployment on its old pin).
-Git-backed jobs run the commit their registration pinned; explicit legacy pins
-and wheel routes retain their declared versions. Run the static
-[validator](deployments-validation.md) before registering.
-
-```sh
-just check                                       # what CI runs before it deploys
-MPS_PIN="@$(git rev-parse HEAD)" just validate-deployments --release # check the intended pin
-MPS_PIN="@$(git rev-parse HEAD)" just prefect deploy --name <deployment>  # register one
-just prefect-legacy deployment run 'diagnostics/diagnostics' --watch   # exercise the real worker
-just automations                                 # apply deploy/automations.yaml (idempotent)
-just work-pool                                   # apply deploy/work-pools templates
-```
-
-standalone automations (send-notification, cross-deployment triggers) live in
-`deploy/automations.yaml` because `prefect.yaml` can only express
-run-deployment triggers bound to a deployment.
-
-## day to day
-
-```sh
-just health            # /api/health
-just status            # node + pod resource usage
-just logs              # tail prefect-server; `just logs <component>` for others
-just prefect-legacy flow-run ls
-just ssh               # the VM
-just dashboards        # reload grafana from deploy/dashboards/
-```
-
-## the hub
-
-```sh
-just publish-web-remote   # build the sveltekit image on the node, import into k3s, roll the pod
-```
-
-`just web` is the older local docker build-and-push path. the hub itself is
-described in [hub.md](hub.md).
-
-## analytics
-
-```sh
-just init-analytics    # first time: dbt deps, seed, compile
-```
-
-`analytics.duckdb` is single-writer. every read-write open holds the
-`analytics-duckdb-writer` global concurrency limit through
-`mps.lock.analytics_write_slot`; readers snapshot the file instead of locking.
-
-## Isolated HeavyPad control plane
-
-The HeavyPad server is live at a separate private Tailscale HTTPS URL, with the
-backlog-count, diagnostics, bufo traffic, costs and public MCP health flows migrated.
-The original server, domain and worker still serve
-critical jobs. Use the explicit HeavyPad server CLI and Kubernetes targets; do not change
-the default context. [HeavyPad operations, backups, rollback and cutover prerequisites](../deploy/heavypad-prefect/README.md).
-The [Cloud recovery and downtime inventory](migrations/heavypad-cloud-recovery.md)
-records managed execution evidence, state transfer and remaining limitations.
+Use the [outage runbook](heavypad-outage-runbook.md) for host recovery and manual
+Cloud recovery paths. Never enable a second scheduler for the same effects.
+Dated [migration records](migrations/) and [audits](audits/) preserve past
+qualification; they are not installation procedures for the current system.

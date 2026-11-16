@@ -9,8 +9,8 @@ by a self-hosted [Zig control plane](https://tangled.org/zzstoatzz.io/prefect-se
 ## install
 
 Requires Python 3.13+, [uv](https://docs.astral.sh/uv/), and
-[just](https://just.systems/). Copy `.env.example` to `.env` and configure operator
-access before using the server commands.
+[just](https://just.systems/). Configure [operator access](docs/operations.md)
+before using server commands.
 
 ```sh
 uv sync --locked
@@ -24,17 +24,6 @@ just prefect flow-run ls
 just prefect deployment run 'diagnostics/diagnostics' --watch
 ```
 
-## design
-
-- **centralized workflows** — flow code and deployment definitions stay together;
-  product repositories own the applications those flows support.
-- **durable orchestration** — Prefect tracks execution; workers run jobs at home
-  or in disposable cloud VMs according to their data and resource needs.
-- **asset ownership** — Dagster owns dbt assets; Prefect coordinates ingestion
-  and downstream work.
-- **runtime credentials** — deployments name Secret blocks rather than embedding
-  credentials in configuration.
-
 ## develop
 
 ```sh
@@ -43,11 +32,13 @@ just push   # GitHub mirror first, then Tangled
 ```
 
 Web checks require [Bun](https://bun.sh/). Read [AGENTS.md](AGENTS.md) for repository
-conventions and operational constraints.
+conventions and operational constraints, and [testing](docs/testing.md) for coverage
+and focused test commands.
 
 ## docs
 
-[docs/](docs/) contains operations, design notes, migration records, and audits.
+Start with [operations](docs/operations.md) for production access and deployment.
+[docs/](docs/) contains design notes, migration records, and audits.
 Service-specific installation and recovery instructions live with [deploy/](deploy/).
 
 ## license

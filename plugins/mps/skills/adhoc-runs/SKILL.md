@@ -1,66 +1,28 @@
 ---
 name: adhoc-runs
-description: Execute a flow in this repo by hand — locally for debugging, or through the API to exercise the real production worker. Use when asked to run, test, or trigger a flow outside its schedule, and to avoid corrupting production write paths while doing it.
+description: Run a flow locally for debugging or through its production deployment, accounting for credentials, persistent data and external effects.
 ---
 
-# ad-hoc flow runs
+# ad hoc flow runs
 
-Two ways to run a flow, and they test different things. Pick deliberately.
+Inspect the flow's entrypoint, parameters and effects before running it. Local
+execution uses local source and may use different storage and credentials from
+the production worker; it does not exercise pull steps or job-variable injection.
+Use `uv run` for Python and the existing tests for pure logic where possible.
 
-## local execution — debugging pure Python
+A deployment run exercises its configured worker and immutable source/artifact:
 
-Flow files under `flows/` are ordinary modules and most have an
-`if __name__ == "__main__"` entrypoint:
-
-```bash
-uv run python flows/diagnostics.py
-uv run python flows/phi_atlas.py --dry-run
-```
-
-Good for iterating on logic. Two traps:
-
-- **Write paths.** Default local storage may be `/tmp`, not the production
-  analytics dir (`/home/stoat/prefect-analytics` on heavypad). Check where a flow
-  writes before running it, especially anything touching DuckDB or the spend log.
-- **Secrets.** Flow code calling `Secret.load(...)` still needs
-  `PREFECT_API_URL`/`PREFECT_API_AUTH_STRING` pointed at the live server —
-  see [[server-access]].
-
-Local execution does **not** exercise pull steps, job variables, or injected
-secret-block values. A flow that works locally can still fail as a deployment.
-
-## deployment execution — exercising prod
-
-Runs on the real home-pool worker with real pull steps and job variables:
-
-```bash
+```sh
 just prefect deployment run 'diagnostics/diagnostics' --watch
-just prefect deployment run 'ingest/ingest' --watch
 ```
 
-The form is `flow-name/deployment-name`. This is the only way to validate the
-full path — and note it pulls **pushed `main`**, so an uncommitted local fix will
-not be present ([[deployments]]).
+It does not run uncommitted local edits. Git, wheel and image delivery differ;
+read [deployment validation](../../../../docs/deployments-validation.md).
+Runtime secrets come from Prefect blocks; operator access is described in
+[operations](../../../../docs/operations.md).
 
-`diagnostics` is the intended canary: it is retargeted to the home box
-specifically to prove the worker pulls code and executes flows.
-
-## dry-run first
-
-Some flows take a dry-run parameter, and some default to it — `pds-records` is an
-operator flow whose default deployment is dry-run list mode. For anything that
-writes PDS records, deletes remote resources, or publishes to R2, run dry first
-and read the output before running for real.
-
-## before running anything with side effects
-
-Ask what the flow actually does at the boundary. Several flows here publish
-externally — PDS records, R2 objects, Cloudflare Pages deploys, Discord alerts.
-Re-running them is not free and is sometimes visible to other people. Snapshot
-flows upsert at `rkey=YYYY-MM-DD` and so are idempotent within a day; that is a
-property of those flows, not a general guarantee.
-
-## related
-
-Cost flow specifics: [[infra-costs]]. Where execution happens:
-[[home-pool-worker]].
+Read the actual dry-run contract where available. A rerun may publish PDS records,
+R2 objects, Pages or notifications; idempotency of one publisher is not a general
+property of flows. Do not trigger external effects as part of a read-only audit.
+For production verification, inspect the terminal state name and output as well
+as state type: `Completed` alone does not establish complete upstream coverage.

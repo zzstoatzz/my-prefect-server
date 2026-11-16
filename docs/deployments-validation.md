@@ -11,13 +11,12 @@ just check                         # static check plus the existing full suite
 MPS_PIN="@$(git rev-parse HEAD)" just validate-deployments --release
 ```
 
-The [pre-commit hook](https://pre-commit.com/#usage) checks staged content on
-commit. CI invokes the same validator before the test suite and again, with
-`--release`, immediately before registering deployments. Hooks can be skipped;
-CI is the delivery gate. Direct `just prefect deploy` and API mutations bypass
-that gate: run the release check first, using the same MPS_PIN for registration.
-Installing the hook is required in each new clone; `just hooks` does that without
-adding the entire application's dependencies to the hook environment.
+The commit hook, `just validate-deployments` and CI all check
+`prefect.heavypad.yaml`. Install the hook once per clone with `just hooks`;
+do not bypass it. CI validates source without production credentials. The
+trusted-host registration service additionally runs `--release` using the same
+full `MPS_PIN` that it registers. See the
+[registration runbook](../deploy/heavypad-prefect/README.md#registering-main-revisions).
 
 ## what it checks
 
@@ -27,7 +26,7 @@ adding the entire application's dependencies to the hook environment.
 - A deployment that installs the mps wheel, with no pull steps or explicit
   image/worker path supplying files, must use an importable
   dotted entrypoint. The flow module must be declared in the mps wheel's Hatch
-  force-includes, and the command or Sprite `local_packages` must include mps.
+  force-includes, and the command or worker `local_packages` must include mps.
 - Git package requirements use either the shared MPS_PIN template or a full
   explicit commit SHA. When pulling source, job env.MPS_PIN must match that
   requirement. Release mode requires a full SHA for the shared template.
@@ -65,43 +64,14 @@ inside the intended worker environment using Prefect's loader with placeholder
 fallback disabled. Keep the source checkout off the import path; never invoke a
 flow body merely to test its entrypoint. These layers are not implemented yet.
 
-## breadth review and follow-ups
+## registration and runtime verification
 
-The September 11 review covered flows and mps helpers, package build manifests,
-the Sprite worker and home-worker units, automation registration, CI/just
-recipes, inventory rendering, tests, and operator documentation.
+Spindle runs the source checks in a NixOS microVM. It does not register
+production deployments. HeavyPad waits for green CI for the exact main revision,
+validates the target and release pin, and registers the home manifest.
 
-| Boundary | Finding and disposition |
-|---|---|
-| Configuration to runtime | Five wheel routes retain dotted entrypoints. Regression checks now live in the validator tests rather than the documentation renderer tests. |
-| Package to checkout | 24 custom job mappings lacked MPS_PIN propagation. Their source checkout now receives the same declared pin as the installed package. Existing explicit legacy pins remain unchanged. |
-| Package ownership | The root distribution supplies mps helpers; the separate mps wheel additionally force-includes selected flow modules. A checkout import is insufficient evidence of wheel contents. |
-| Execution | Home process jobs and Sprite jobs coexist. README and operations now describe both and point here for the delivery contracts. |
-| Registration | CI still registers all deployments on a main push. Selecting changed deployments, comparing live state, preserving a rollback snapshot, and verifying completion need a separate rollout change. |
-| Separate presence config | `deploy/presence.yaml` has its own source variables and `just presence-deploy` guard. This first validator gates the main manifest; it does not yet establish presence revision binding. |
-| Automation writes | `scripts/apply_automations.py` is a separate mutation path. Static deployment validation does not check notification routing, recursive autofix triggers, or automation diffs. |
-| Historical notes | Local operator notes outside the checkout and archived build logs describe past snapshots. Use current configuration and live state for operational decisions. |
-| Runtime tests | Unit tests and successful registration do not certify artifact imports or successful worker execution. Artifact and worker preflight remain the highest-priority follow-ups. |
-
-General entrypoint/storage preflight may belong in Prefect. This repository owns
-its mps wheel layout, Heavypad paths, Sprite package declarations and revision
-binding. Keep these policies here; an upstream validator should allow legitimate
-image and worker-path deployments.
-
-## CI execution environment
-
-The deployment workflow uses Spindle's NixOS microVM engine with explicit Nix
-packages. The check and registration steps retain the same validation gates.
-On October 17, Docker on HeavyPad rejected the Nixery registry manifest because
-its HEAD response omitted Content-Length. A direct pull reproduced the failure;
-GET returned a valid manifest. The microVM engine provisions dependencies through
-Nix and avoids this failing OCI registry path. Verification requires a completed
-CI run through registration, not merely successful VM creation.
-
-## legacy Kubernetes workers
-
-Retained Kubernetes deployments require the `-kubernetes` Prefect image variant,
-namespace `prefect` in the pool template, and
-`PREFECT_INTEGRATIONS_KUBERNETES_OBSERVER_NAMESPACES=prefect` for scoped RBAC.
-Interpreter and dependency overrides belong in `work_pool.job_variables.command`.
-These requirements do not select or reactivate a deployment.
+Standalone automation writes remain a separate operation. This validator does
+not check notification routing, automation diffs or live pause state. Preserve
+intentionally paused deployments and verify real worker execution after an
+authorized rollout. Successful source checks and registration do not certify
+artifact availability or successful flow execution.

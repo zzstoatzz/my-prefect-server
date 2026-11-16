@@ -1,6 +1,8 @@
 # hub
 
-action item dashboard and intelligence pipeline at [hub.waow.tech](https://hub.waow.tech). aggregates issues and PRs from github and [tangled.org](https://tangled.org), scores them by importance, generates a daily briefing with an LLM, and maintains phi's long-term memory.
+Action item dashboard and intelligence pipeline at [hub.waow.tech](https://hub.waow.tech).
+It scores GitHub and Tangled issues, PRs and email, generates briefings after
+successful transforms, and maintains Phi's long-term memory.
 
 ## data sources
 
@@ -12,7 +14,12 @@ DuckDB allows one read-write process per file, and flows on independent schedule
 
 **tangled.org** — fetches issues, PRs, and comments from the account's PDS (resolved from its DID document) via AT Protocol's `com.atproto.repo.listRecords`. no auth needed — records are public. targets repos: zat, zlay, plyr.fm, at-me, pollz, typeahead. persists to `raw_tangled_items`.
 
-**bluesky likes** — fetches nate's recent likes from the PDS via `app.bsky.feed.like` records, then batch-resolves post content via `app.bsky.feed.getPosts` (25 per call). persists to `raw_likes` and `raw_liked_posts`.
+**bluesky likes** — fetches recent `app.bsky.feed.like` records, resolves recent
+posts not already stored, and persists content and like timestamps in
+`raw_liked_posts`.
+
+**email** — reads Proton Mail Bridge into `raw_emails`. Classification writes
+`raw_email_classifications`; dbt combines the two for email scoring.
 
 **phi memory** — reads phi's TurboPuffer namespaces (`phi-users-*`) to snapshot observations and interactions into DuckDB for dbt processing. persists to `raw_phi_observations` and `raw_phi_interactions`.
 
@@ -29,6 +36,7 @@ and its observed schema/column lineage.
   github API        ──┐
   tangled PDS       ──┤
   bluesky likes     ──┼──► ingest (hourly) ──► DuckDB
+  email             ──┤
   phi memory (tpuf) ──┘
                                                   │
                                                   ▼
@@ -45,12 +53,12 @@ and its observed schema/column lineage.
                         │                         │
                         ▼                         ▼
                   briefing.json              TurboPuffer
-                  /api/briefing              (phi-users-*)
+                  /api/briefing.json         (phi-users-*)
 
                         phi identity flows
   ─────────────────────────────────────────────
-  phi-tag-maintenance (daily 8am CT)   ──► TurboPuffer
-  phi-atlas (daily 8am CT) ──► PDS atlas blob
+  phi-tag-maintenance (daily 13:00 UTC)   ──► TurboPuffer
+  phi-atlas (daily 13:00 UTC) ──► PDS atlas blob
           │
           ▼
   docket                   ──► PDS docket blob
@@ -58,59 +66,35 @@ and its observed schema/column lineage.
                         publication flows
   ─────────────────────────────────────────────
   pub-search-atlas (every 6h)    ──► Cloudflare Pages
-  pub-search-snapshot (every 2h) ──► R2
+  pub-search-snapshot (daily) ──► R2
   bisk-snapshot (every 10m)      ──► R2
-  pds-records (ad hoc)           ──► PDS record maintenance
 ```
 
-## flows
+## deployment ownership
 
-| deployment | trigger | what it does |
-|---|---|---|
-| `diagnostics` | cron `*/5 * * * *` (inactive) | prints system info — canary for worker health |
-| `ingest` | cron `0 * * * *` | fetches github, tangled.org, email, bluesky likes, and phi memory concurrently, resolves liked post content, persists all to DuckDB sequentially |
-| `classify-emails` | on `ingest` completion | LLM-categorizes new inbox emails (personal/work/notification/promotional) in cached 25-email batches so scoring can down-weight promotional mail |
-| `transform` | on `classify-emails` completion | hands off the full staging → enrichment → mart dbt build and atomic hub export to Dagster, waits for success; shared writer lease and one Dagster run at a time |
-| `brief` | on `transform` completion | loads top 200 scored items, sends to claude haiku 4.5 via pydantic-ai, writes `briefing.json`. cached by items content hash (skips LLM when data unchanged) |
-| `phi-memory-synthesis` | on `transform` completion | synthesizes per-user relationship summaries from phi's observations + interactions. extracts new observations from liked posts (LLM). writes summaries to TurboPuffer (`phi-users-*`). cached by observations content hash |
-| `phi-tag-maintenance` | cron `0 13 * * *` (8am CT) | tag maintenance (dedup, merge, relationship discovery) in TurboPuffer. runs 1h before phi's daily reflection |
-| `phi-atlas` | cron `0 13 * * *` (8am CT) | builds phi's daily private/public semantic atlas from TurboPuffer + PDS records, writes `io.zzstoatzz.phi.atlas/self` |
-| `docket` | on `phi-atlas` completion | synthesizes promotion-pressure candidates from the atlas and writes `io.zzstoatzz.phi.docket/self` |
-| `bufo-traffic` | cron `7 * * * *` | rolls find-bufo.com requests from logfire (zig HTTP spans + the retired rust backend's access logs, routes normalized in SQL) into one `com.find-bufo.traffic` record per UTC day on the operator PDS; the bufo-bot stats page draws its traffic charts from those public records |
-| `pub-search-atlas` | cron `0 */6 * * *` | rebuilds the pub-search 2D semantic map (UMAP + HDBSCAN on TurboPuffer embeddings), deploys to Cloudflare Pages |
-| `pds-records` | ad hoc, no schedule | operator flow for listing/creating/updating/deleting PDS records; default deployment is dry-run list mode |
-| `costs` | cron `0 8 * * *` (daily 08:00 UTC) | collects provider billing (neon/cloudflare/hetzner/fly connectors), writes an `io.zzstoatzz.cost.snapshot` PDS record, surfaced at hub.waow.tech |
-| `pub-search-snapshot` | cron `40 */2 * * *` | builds the pub-search FTS snapshot from the Turso document corpus and publishes it to R2 |
-| `bisk-snapshot` | cron `*/10 * * * *` | computes the authoritative bisk.social standings and publishes a static snapshot to R2 for the edge site to adopt |
-| `phi-curation` / `phi-editorial` / `phi-character-retro` / `phi-chicken-precheck` / `phi-chicken-scout` | crons (weekly Mon 03 / daily 15 / monthly 1st 17 / daily 04 / daily 18, UTC) | thin `phi-trigger` deployments that kick named passes on the phi bot via its control API — the bot defines what runs, prefect owns the clock |
-| `watch-fastmcp` | cron `*/5 * * * *` | polls fastmcp's github notifications (conditional requests) and emits `github.<reason>` events onto the hub bus |
-| `fastmcp-brief` | automations + cron `0 */4 * * *` floor | reads the recent event window off the bus and composes a brief when something merits surfacing |
-| `fastmcp-triage` | on `hub.brief.ready`, **laptop-pool** | headless Claude Code in a sandboxed fastmcp clone triages what the brief surfaced; the flow opens any pull request the agent proposes. see [fastmcp-attention.md](fastmcp-attention.md) |
+[The home manifest](../prefect.heavypad.yaml) owns schedules, trigger chains,
+pools and source pins. The trusted home registration service applies green main
+revisions; CI itself does not register deployments. Git, wheel and image routes
+have different delivery contracts; see [deployment validation](deployments-validation.md).
 
-all flows run on the `home-pool` process worker on the home box (heavypad), except the gardener flows (`autofix-revise`, `investigate`, `pi-pr`, `test-pull-patch`) on `gardener-exe`; `kubernetes-pool` is retained as an unused fallback. code is pulled at runtime via `git clone` from tangled.sh (github fallback). deps install via `uv run --with 'my-prefect-server @ git+...'`. deployments are registered by CI on every push to main (`.tangled/workflows/deploy.yml`).
+Ingest triggers classification, which triggers the Prefect transform handoff to
+Dagster. Successful transform completion starts brief and memory synthesis;
+phi-atlas completion starts docket. The FastMCP attention pipeline is described
+[separately](fastmcp-attention.md). Read current cron expressions from the
+manifest rather than maintaining another deployment inventory here.
 
 ## dbt layer
 
-project lives in `analytics/`. The full DuckDB database is
-`/var/lib/prefect-analytics/analytics.duckdb`. `transform` also exports a slim
-hub-only database at `/var/lib/prefect-analytics/hub.duckdb`, which is what the
-SvelteKit hub mounts and reads.
+The project lives in [analytics/](../analytics/). Dagster runs dbt against
+`/home/stoat/prefect-analytics/analytics.duckdb`, then its `hub_export` asset writes
+the slim `hub.duckdb` that the SvelteKit hub reads. Its `llm_spend` asset
+materializes the append-only spend log into `raw_llm_spend`.
 
-| model | type | description |
-|---|---|---|
-| `stg_github_issues` | view | dedup `raw_github_issues` by (repo, number), keep most recent fetch |
-| `stg_tangled_items` | view | dedup `raw_tangled_items` by `at_uri`, exclude comments, keep most recent |
-| `stg_likes` | view | dedup `raw_likes` by `subject_uri` |
-| `stg_liked_posts` | view | dedup `raw_liked_posts` by `subject_uri`, join with like timestamps |
-| `stg_phi_observations` | view | dedup `raw_phi_observations` by observation id |
-| `stg_phi_interactions` | view | dedup `raw_phi_interactions` by interaction id |
-| `int_github_issues_scored` | table | scoring: recency (30-day decay) x engagement (log scale) x label multiplier (bug=1.5) x contributor weight |
-| `int_tangled_items_scored` | table | scoring: recency (30-day decay) x 0.5 (no engagement data) x contributor weight |
-| `int_phi_user_profiles` | table | aggregates per-user observation + interaction counts for phi-memory-synthesis flow |
-| `hub_action_items` | mart | union of both scored tables, ordered by `importance_score` desc, limit 200 |
-| `raw_llm_spend` | not a dbt model | materialized directly by `transform.py` from the append-only `llm-spend.jsonl` telemetry log (listed here for completeness) |
-
-contributor weights come from the `known_contributors` seed (zzstoatzz + zzstoatzz.io at 2.0x).
+Staging models deduplicate raw records; enrichment models score GitHub, Tangled
+and email independently. `hub_action_items` combines all three, reduces source
+scales above one without inflating low scores, then selects the top 200. The
+[SQL models](../analytics/models/) define the scoring formulas; the
+[analytics guide](analytics.md) records table ownership and consumers.
 
 ## curation
 
@@ -119,10 +103,11 @@ the `brief` flow fires automatically when `transform` completes (via deployment 
 1. snapshots DuckDB to `/tmp` (bypass exclusive flock)
 2. loads top 200 items from `hub_action_items`
 3. checks cache — the `generate_briefing` task uses a `ByItemsContent` cache policy that hashes the items text + system prompt. if the data hasn't changed since the last run, the cached briefing is returned without calling the LLM (4h expiration)
-4. on cache miss, sends items to claude haiku 4.5 with a system prompt that groups by actionability
+4. on cache miss, sends items to the configured briefing model with a system prompt that groups by actionability
 5. writes a structured `Briefing` (headline, 4 themed sections with accent colors, icons, priority) to `briefing.json`
 
-briefing model is defined in `packages/mps/src/mps/briefing.py`.
+The model and cache policy are in `flows/brief.py`; the output schema is in
+`packages/mps/src/mps/briefing.py`.
 
 ## phi-memory-synthesis
 
@@ -136,7 +121,7 @@ the result: observations from likes are indistinguishable from observations phi 
 
 ## phi-tag-maintenance and phi identity
 
-the `phi-tag-maintenance` flow runs daily at 8am CT (1h before phi's reflection). it owns
+the `phi-tag-maintenance` flow runs daily at 13:00 UTC. it owns
 the mechanical TurboPuffer tag-graph cleanup:
 
 1. collect all tags across all `phi-users-*` namespaces
@@ -157,7 +142,7 @@ the `pub-search-atlas` flow runs every 6h. it clones pub-search, runs the build-
 and TurboPuffer memory rows into a single 2D map, using cached embeddings where
 possible and only embedding records that are missing vectors. It archives the
 generated atlas JSON and uploads the current atlas to phi's PDS.
-The original design contract lives in [phi-atlas.md](phi-atlas.md).
+The original design contract lives in [the archived Phi atlas design](archive/phi-atlas.md).
 
 `docket` is event-triggered from `phi-atlas`. It reads the atlas, selects
 high-pressure clusters, asks an LLM for candidate work items, and archives the
@@ -167,8 +152,8 @@ result in DuckDB while publishing the current docket back to PDS.
 
 LLM calls are recorded by shared helpers in `packages/mps/src/mps/spend.py`.
 The helper writes an append-only JSONL file next to the analytics DB
-(`llm-spend.jsonl` by default). `transform` materializes that log into
-`raw_llm_spend` for analysis, while the hub reads the live JSONL file directly
+(`llm-spend.jsonl` by default). Dagster's `llm_spend` asset materializes that log
+into `raw_llm_spend`, while the hub reads the live JSONL file directly
 for near-live totals.
 
 The landing page shows phi-memory-synthesis 24h/7d spend, recent calls, top flows, the
@@ -176,10 +161,9 @@ models in use, and the prompt-cache hit rate for the window. Tiny nonzero costs
 are displayed with enough decimal places to avoid misleading `$0.00` rows for
 cheap embedding calls.
 
-The call count usually dwarfs the dollar figure because every LLM flow uses
-prompt caching (cache reads bill at 0.1× input price). The panel's "why so
-cheap?" link and [docs/prompt-caching.md](./prompt-caching.md) explain the
-strategy and where each flow configures it.
+Call volume alone does not explain spend. Inspect the selected model, token
+usage, pricing basis and cache activity for the measured window; see
+[prompt caching and spend](prompt-caching.md).
 
 ## frontend
 
@@ -199,16 +183,9 @@ the frontend reads DuckDB through a snapshot copy (`/tmp/hub_analytics_snapshot.
 
 ### deployment
 
-```bash
-just publish-web-remote    # build on the Hetzner node + deploy
-```
-
-this rsyncs the clean repo to the Hetzner node, builds
-`atcr.io/zzstoatzz.io/hub:<git-sha>` there with buildah, imports it into k3s
-containerd, applies the hub manifests, sets the deployment image, and waits for
-rollout. The hub pod mounts the analytics hostPath at `/analytics`, reads
-`DUCKDB_PATH=/analytics/hub.duckdb`, and reads live spend from
-`/analytics/llm-spend.jsonl`.
-
-`just web` remains as the older local Docker build/push path, but the normal
-production path is `publish-web-remote`.
+The hub runs on HeavyPad as `prefect-hub.service`, using the immutable image
+and source revision in [services.toml](../deploy/prefect-edge/services.toml).
+The container mounts `/home/stoat/prefect-analytics` read-only at `/analytics`
+and reads the exported `hub.duckdb` and spend log locally. No Hetzner replica or
+rsync hop remains. [Operations](operations.md) describes committed edge releases
+and the production target wrappers.

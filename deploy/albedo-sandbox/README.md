@@ -2,7 +2,8 @@
 
 [albedo](https://tangled.org/okami.mom/albedo) runs model-driven jobs on heavypad inside a bwrap sandbox. albedo's agents get an unrestricted Python kernel and shell, so the sandbox is what makes a job safe: the agent sees `/nix`, `/usr` and `/etc` read-only plus `~/albedo-sandbox/{home,work}`, and none of the real home (no sops keys, no `~/.config/prod-worker/env`, no other checkouts). Network is shared because the model is remote; staying off other hosts is an instruction in the prompt, not an enforced rule.
 
-The first job is the weekly `albedo-drift-audit` deployment (`flows/albedo_drift_audit.py`). It compares heavypad's user units with `deploy/` and `docs/`, archives the report under `~/prefect-analytics/albedo-drift-audit/`, and hands it to phi's `drift-audit` slot.
+`flows/albedo_drift_audit.py` is an on-demand drift-audit flow. It has no
+registered production deployment or weekly schedule as of the November 15 audit. It compares heavypad's user units with `deploy/` and `docs/`, archives the report under `~/prefect-analytics/albedo-drift-audit/`, and hands it to phi's `drift-audit` slot.
 
 ## one-time setup
 
@@ -35,4 +36,5 @@ deploy/albedo-sandbox/sandbox.sh albedo -p "..." --timeout 10m
 deploy/albedo-sandbox/sandbox.sh albedo daemon --stop
 ```
 
-Or run the deployment: `just prefect deployment run 'albedo-drift-audit/albedo-drift-audit' --watch`.
+A recurring audit requires a separate decision and registration in the home
+manifest; the retired legacy declaration did not provide a working schedule.

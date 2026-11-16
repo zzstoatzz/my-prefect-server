@@ -39,9 +39,9 @@ exported `hub.duckdb`.
   SQL casts by log order, preserving last-event-wins behavior, including replay
   against existing rows. A failed batch rolls back as a unit. Full-log scanning
   remains deliberate; there is no checkpoint that can skip rewritten events.
-- The 3 GiB analytics file stays at home. Only the existing slim hub export and
-  append-only spend log sync to Hetzner. That sync now caps transfer at 256 KiB/s
-  and skips overlapping invocations. The public hub continues serving at Hetzner.
+- The analytics database, slim hub export and append-only spend log stay on
+  HeavyPad. The home hub container mounts the analytics directory read-only;
+  there is no remote rsync consumer.
 
 ```sh
 ssh -N -L 3030:127.0.0.1:3030 stoat@heavypad
@@ -59,7 +59,7 @@ uses dbt-adapters 1.24.5 and Mashumaro 3.17. dbt's
 required serialization changes.
 
 Use `uv run --python 3.14 --extra dagster pytest -q` for the CI runtime and
-`uv run --python 3.13 --extra dagster pytest tests/test_dagster_hub.py tests/test_dbt_runtime.py -q`
+`uv run --python 3.13 --extra dagster pytest tests/test_dagster_hub.py -q`
 for the production runtime. These exercise real dbt parsing, builds, failure
 propagation, and schema metadata; no serializer dependency overrides are needed.
 
@@ -76,7 +76,7 @@ handoff is idle too. Future Dagster source changes require a release installatio
 registering Prefect deployments alone does not update this local code.
 
 Services read the existing worker environment file for Prefect connection/auth;
-no copied credentials or additional secret store is introduced. `prefect.yaml`
+no copied credentials or additional secret store is introduced. `prefect.heavypad.yaml`
 points only the `transform` deployment at this installed environment. Other flows
 retain their existing delivery paths.
 
@@ -107,7 +107,6 @@ Verified on HeavyPad on 2026-09-28:
   materialized, Prefect completed, and retrying the bridge reused the finished
   run. The dbt step took 15 seconds; total runtime was about seven minutes,
   dominated by the former row-at-a-time spend-log import (replaced below).
-- The HeavyPad and Hetzner hub exports have identical SHA-256 hashes after sync.
 - A failed production seed build prevented publication and downstream triggers.
   Absolute manifest paths and disabling stale partial parses fix that failure;
   a real seed regression reproduces the relative-path cache scenario.

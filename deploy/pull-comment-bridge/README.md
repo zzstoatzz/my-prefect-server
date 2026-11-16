@@ -1,5 +1,9 @@
 # pull-comment-bridge
 
+The revise consumer is disabled with the autofix chain. Event ingestion and
+reconciliation do not imply that a revision job starts; see
+[autofix status](../../docs/autofix.md).
+
 systemd **user** unit on heavypad running `mps.pull_comment_bridge`: it stays
 subscribed to `stream.waow.tech` for the operator's and Phi's tangled comments
 and emits `autofix.revise-requested` for each one that asks gardener for a new

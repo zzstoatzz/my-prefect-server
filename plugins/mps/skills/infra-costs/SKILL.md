@@ -1,135 +1,28 @@
 ---
 name: infra-costs
-description: Read or debug the daily infra cost snapshot across Fly, Hetzner, Cloudflare, and Neon. Use when asked whether a teardown reduced spend, why a provider total moved, how a resource is attributed to a project, or when adding a cost connector. Also covers Fly volume and snapshot cleanup.
+description: Read or debug cost snapshots, provider coverage and resource ownership without confusing missing measurements with savings.
 ---
 
-# infra costs
+# infrastructure costs
 
-The `costs` flow (cron `0 8 * * *`, daily 08:00 UTC) collects provider billing,
-writes an `io.zzstoatzz.cost.snapshot` PDS record at `rkey=YYYY-MM-DD` (upserted,
-so re-runs are idempotent), and surfaces it at hub.waow.tech.
+Read [cost coverage and attribution](../../../../docs/costs.md) before comparing
+snapshots or changing a connector. `flows/costs.py` owns collection and
+publication; `packages/mps/src/mps/costs/` owns connectors and attribution.
+The current schedule and runtime credentials are in `prefect.heavypad.yaml`.
 
-## reading a snapshot
+Prefer the connected PDSX tools to read `io.zzstoatzz.cost.snapshot` records.
+Resolve the account's current PDS if using raw HTTP. Snapshots contain
+`lineItems`, not `items`; amounts are cents. Compare service-level line items,
+coverage and pricing basis before interpreting provider/project total changes.
+Coverage changes can look like spending changes.
 
-**Use the pdsx MCP tools.** `list_records` and `get_record` cover this with
-structured output and no handle/DID/PDS resolution dance:
+Declared resource ownership takes precedence; name patterns are a fallback.
+Inspect the current reconciliation code rather than maintaining a provider or
+server inventory in this skill. Missing measurements are unknown, not zero.
+`Incomplete` is a named completed state for known coverage gaps; connector
+failures and partial publication have different contracts in the flow.
 
-```
-list_records(repo="zzstoatzz.io", collection="io.zzstoatzz.cost.snapshot", limit=30)
-get_record(repo="zzstoatzz.io", collection="io.zzstoatzz.cost.snapshot", rkey="2026-07-24")
-```
-
-pdsx MCP does full record CRUD — reads *and* `create_record`/`update_record`/
-`delete_record`. It is not read-only. Only blob upload, batch JSONL operations,
-and permissioned spaces need the `pdsx` CLI.
-
-Raw HTTP only as a fallback when the MCP isn't available. Records are public, so
-no auth is needed:
-
-```bash
-DID=$(curl -s "https://api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=zzstoatzz.io" | jq -r .did)
-PDS=$(curl -s "https://plc.directory/$DID" | jq -r '.service[] | select(.id | endswith("#atproto_pds")) | .serviceEndpoint')
-curl -s "$PDS/xrpc/com.atproto.repo.listRecords?repo=$DID&collection=io.zzstoatzz.cost.snapshot&limit=30" \
-  | jq -r '.records | sort_by(.uri) | .[] | [(.uri|split("/")|last), (.value.total/100)] | @tsv'
-```
-
-Record fields are `total`, `currency`, `byProvider`, `byProject`, `lineItems`,
-`periodStart`, `periodEnd`, `generatedAt`. There is **no** `items` field —
-`jq '.value.items'` silently yields nothing and looks like zero cost.
-
-## comparing spend across dates — read this first
-
-Snapshots are a measurement, and the measurement has changed. **Diff
-`lineItems` by service, not `byProvider`/`byProject` totals**, or a coverage
-change will masquerade as a spend change.
-
-Known discontinuity: on **2026-07-20** the Fly connector changed shape
-(`7a212e8`). Before, one item per app (~26 items) with machines and volumes
-bundled and snapshots not billed at all. After, a
-`app:compute` / `app:volumes` / `app:snapshots` split (~55 items) with snapshot
-storage newly counted — roughly $11/mo of previously invisible cost appeared.
-Any before/after window spanning that date understates real savings.
-
-Worked example: deleting the typeahead builder removed a $15/mo volume, yet the
-`typeahead` project total moved only ~$2.40, because newly-counted snapshots
-absorbed the difference.
-
-## project attribution
-
-There is no provider-side project tag. Attribution is by **resource name
-pattern**, longest match wins, in `packages/mps/src/mps/costs/projects.py`
-(`_RESOURCE_PATTERNS`). So `relay.waow` → `relays` while `relay-api-staging` →
-`plyr.fm`. Adding a resource whose name doesn't match a pattern lands it in
-`misc` or `unattributed` — add the pattern and a `project_for` assertion in
-`tests/test_costs.py`.
-
-## fail-closed is the invariant
-
-A connector that raises is collected into `failed_providers`, and the flow then
-**refuses to publish** rather than shipping a snapshot with a silent hole
-(`flows/costs.py`). Never let a connector swallow an error and return partial
-results — an omitted resource must never be counted as $0.
-
-Hetzner specifics: Cloud API tokens are **project-scoped** (no account-wide
-token), so the flow loads a `hetzner-tokens` Secret block of `{label: token}`
-and merges all projects, deduping by server id. There are currently two project
-tokens covering four Cloud servers — `relay-eval`, `relay`, `zlay`,
-`prefect-server` — and that is the entire Hetzner footprint.
-
-Hetzner **Robot** (the legacy dedicated/auction product) is deliberately out of
-scope: there are no dedicated servers on this account. `hetzner-edge` on the
-tailnet is not a separate machine — it is `prefect-server` under a different
-tailnet hostname, same public IP. Don't build a Robot connector without first
-confirming a dedicated server actually exists; one was written and reverted for
-exactly this reason.
-
-## Fly cleanup
-
-`fly volumes destroy <id>` is **broken without `-a`** — its app-lookup GraphQL
-query fails with `Field 'node' doesn't exist on type 'Queries'`. This is
-Fly-side, not a stale client. Always pass the app:
-
-```bash
-fly volumes destroy -y -a <app> <vol_id> [<vol_id>...]
-```
-
-`fly volumes snapshots list` hits the same broken query with no `-a` escape.
-Use the Machines REST API instead:
-
-```bash
-TOK=$(fly auth token)
-curl -s -H "Authorization: Bearer $TOK" \
-  "https://api.machines.dev/v1/apps/<app>/volumes/<vol_id>/snapshots" | jq .
-curl -s -H "Authorization: Bearer $TOK" \
-  "https://api.machines.dev/v1/apps/<app>/volumes/<vol_id>" \
-  | jq '{size_gb,snapshot_retention,auto_backup_enabled,blocks,blocks_free}'
-```
-
-Destroyed volumes linger in a pending-destroy state and still appear via the
-REST API after `fly volumes list` stops showing them. The connector ignores
-them (`3efa153`), so they are not double-counted.
-
-### snapshots are not cruft
-
-Every volume defaults to `auto_backup_enabled: true`,
-`snapshot_retention: 5` — a daily snapshot at ~00:02 UTC with a rolling 5-day
-window. The count is a bounded steady state, not accumulation, and snapshots are
-never read except on restore. Deleting them individually is pointless; they
-regenerate. The only real lever is retention:
-
-```bash
-fly volumes update <vol_id> --snapshot-retention <days> -a <app>
-```
-
-Retention changes apply to **future** aging-out, so cost falls over the
-following days rather than immediately.
-
-Judge retention by whether the data is authoritative or derived. A volume that
-holds a **derived** index, one a job rebuilds and republishes, can be set to 2 days.
-`zds-zzstoatzz-io` is authoritative PDS data and stays at 5. Do not lower
-retention account-wide.
-
-## related
-
-Running the flow by hand is [[adhoc-runs]]; the Secret blocks it needs are
-injected per [[deployments]].
+Before retiring resources or lowering backup retention, establish current
+consumers and data ownership using [service retirement](../../../../docs/service-retirement.md).
+Do not infer unused storage from a lack of restores. Confirm current CLI/API
+behavior before treating a historical provider bug as an active limitation.
