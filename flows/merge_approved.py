@@ -78,7 +78,7 @@ PROTECTED_PATHS: dict[str, tuple[str, ...]] = {
     "bot": ("src/bot/core/policy.py", "personalities/phi.md", "deploy/", "fly.toml"),
     "my-prefect-server": (
         "deploy/",
-        "prefect.yaml",
+        "prefect.heavypad.yaml",
         "packages/mps/",
         ".tangled/",
         "flows/merge_approved.py",

@@ -19,7 +19,7 @@ def test_inherited_git_dir_leaves_the_caller_repository_alone(tmp_path):
             "-p",
             "no:cacheprovider",
             "tests/test_deployment_steps.py::test_checkout_preserves_git_history_tags_and_export_ignored_files",
-            "tests/test_agentic_skills.py::test_loads_exact_pinned_content_and_stage_specific_skills",
+            "tests/test_presence_deployment.py::test_presence_pull_uses_requested_revision",
         ],
         cwd=ROOT,
         env=env,

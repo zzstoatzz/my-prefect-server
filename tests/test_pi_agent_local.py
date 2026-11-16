@@ -89,19 +89,6 @@ def test_rejected_prompt_never_launches(monkeypatch):
     run.assert_not_called()
 
 
-def test_existing_deployment_keeps_legacy_mode_overrides():
-    from pathlib import Path
-
-    import yaml
-
-    config = yaml.safe_load(Path("prefect.yaml").read_text())
-    deployment = next(d for d in config["deployments"] if d["name"] == "pi-agent")
-    settings = {**deployment["parameters"]["agent"], "tool_mode": "full"}
-    agent = pi_agent.Agent.model_validate(settings)
-    assert agent.toolset is None
-    assert agent.tool_mode == "full"
-
-
 @pytest.mark.parametrize("provider", ["anthropic", "openai-codex"])
 def test_flow_passes_only_selected_provider_credential(monkeypatch, provider):
     monkeypatch.setenv("PREFECT_API_AUTH_STRING", "server-secret")

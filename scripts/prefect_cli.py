@@ -11,24 +11,21 @@ from prefect_target import target_config
 
 def main() -> int:
     target = target_config()
-    if "auth_environment" in target:
-        auth = os.environ[target["auth_environment"]]
-    else:
-        result = subprocess.run(
-            [
-                "sops",
-                "decrypt",
-                "--output-type",
-                "json",
-                "--extract",
-                json.dumps([target["auth_sops_section"]]),
-                str(Path.home() / "tangled.org/zzstoatzz.io/secrets/prod.yaml"),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        auth = json.loads(result.stdout)[target["auth_sops_field"]]
+    result = subprocess.run(
+        [
+            "sops",
+            "decrypt",
+            "--output-type",
+            "json",
+            "--extract",
+            json.dumps([target["auth_sops_section"]]),
+            str(Path.home() / "tangled.org/zzstoatzz.io/secrets/prod.yaml"),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    auth = json.loads(result.stdout)[target["auth_sops_field"]]
     env = {
         **os.environ,
         "PREFECT_API_URL": target["api_url"],

@@ -38,8 +38,9 @@ async def test_presence_pull_uses_requested_revision(tmp_path):
         "-m",
         "second",
     )
-    config = yaml.safe_load((Path(__file__).parents[1] / "deploy/presence.yaml").read_text())
-    step = config["pull"][0]["prefect.deployments.steps.run_shell_script"]
+    config = yaml.safe_load((Path(__file__).parents[1] / "prefect.heavypad.yaml").read_text())
+    deployment = next(d for d in config["deployments"] if d["name"] == "phone-presence")
+    step = deployment["pull"][0]["prefect.deployments.steps.run_shell_script"]
     await run_shell_script(
         **step,
         directory=str(tmp_path),

@@ -213,7 +213,7 @@ def validate_deployments(config: dict, *, root: Path, release_pin: str | None = 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=ROOT / "prefect.yaml")
+    parser.add_argument("--config", type=Path, default=ROOT / "prefect.heavypad.yaml")
     parser.add_argument("--release", action="store_true", help="require the CI/manual MPS_PIN")
     args = parser.parse_args()
     try:

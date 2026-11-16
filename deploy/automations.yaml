@@ -1,6 +1,6 @@
-# Standalone automations — the ones prefect.yaml cannot express.
+# Standalone automations — the ones prefect.heavypad.yaml cannot express.
 #
-# Deployment `triggers:` sugar in prefect.yaml only produces automations whose
+# Deployment `triggers:` sugar in prefect.heavypad.yaml only produces automations whose
 # action is run-deployment on that deployment. Anything else (send-notification,
 # or a trigger that fans into a different deployment) has to be created against
 # the API, which is why `flow-run failure -> discord` lived only as a database

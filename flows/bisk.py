@@ -15,7 +15,7 @@ the sibling R2-snapshot flow).
 
 source repo: https://tangled.org/zzstoatzz.io/bisk
 
-Secrets are injected into the environment by the deployment (see prefect.yaml);
+Secrets are injected into the environment by the deployment (see prefect.heavypad.yaml);
 flow code never touches the Secret API. Expected env (project-scoped — a token
 minted for the `bisk` bucket only, NOT shared with other flows):
 

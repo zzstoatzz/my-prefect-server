@@ -24,7 +24,7 @@ Pipeline (overselect-then-filter):
                          (final list capped at MAX_CANDIDATES)
   archive_to_duckdb    — append-only history
 
-Event-triggered on phi-atlas completion (prefect.yaml). No separate cron — the
+Event-triggered on phi-atlas completion (prefect.heavypad.yaml). No separate cron — the
 docket exactly tracks the atlas it was derived from.
 """
 

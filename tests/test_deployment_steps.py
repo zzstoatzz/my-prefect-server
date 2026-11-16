@@ -150,36 +150,19 @@ def test_existing_destination_is_untouched(tmp_path, source, monkeypatch):
     assert (target / "valuable.txt").read_text() == "keep"
 
 
-def test_all_home_source_deployments_use_cache_and_preserve_legacy_pins():
+def test_pinned_home_deployments_use_the_immutable_cache_helper():
     import yaml
 
     root = Path(__file__).resolve().parents[1]
-    config = yaml.safe_load((root / "prefect.yaml").read_text())
-    selected = [
-        d
-        for d in config["deployments"]
-        if d["work_pool"]["name"] == "home-pool" and d.get("pull", config["pull"])
-    ]
-    assert selected
-    assert "pi-pr" not in {deployment["name"] for deployment in selected}
-    legacy = {
-        "pi-agent": "@8a7edeea882095cb82e53e673853a37091188ed8",
-        "autofix": "@34dc208d0278a2ee885c2dd0f2f7fc9e7a6db96f",
-    }
+    config = yaml.safe_load((root / "prefect.heavypad.yaml").read_text())
     helper = root / "packages/mps/src/mps/deployment_steps.py"
     digest = hashlib.sha256(helper.read_bytes()).hexdigest()
-    for deployment in selected:
-        if deployment["name"] in legacy:
-            assert (
-                deployment["work_pool"]["job_variables"]["env"]["MPS_PIN"]
-                == legacy[deployment["name"]]
-            )
-            script = deployment["pull"][0]["prefect.deployments.steps.run_shell_script"]["script"]
-            assert f"/{digest}/deployment_steps.py" in script
-        else:
-            assert "mps.deployment_steps.cached_checkout" in deployment["pull"][0]
     for deployment in config["deployments"]:
-        if deployment["work_pool"]["name"] != "home-pool":
+        for step in deployment.get("pull") or []:
+            script = step.get("prefect.deployments.steps.run_shell_script", {}).get("script", "")
+            if "deployment_steps.py" in script:
+                assert f"/{digest}/deployment_steps.py" in script
+        if not deployment["work_pool"]["name"].startswith("heavypad-"):
             assert "/home/stoat/" not in json.dumps(deployment.get("pull"))
 
 

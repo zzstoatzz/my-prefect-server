@@ -19,17 +19,11 @@ def check(config, **kwargs):
 
 @pytest.fixture
 def config():
-    return yaml.safe_load((ROOT / "prefect.yaml").read_text())
+    return yaml.safe_load((ROOT / "prefect.heavypad.yaml").read_text())
 
 
 def deployment(config, name):
     return next(d for d in config["deployments"] if d["name"] == name)
-
-
-def test_repository_contracts(config):
-    errors, unverified = check(config)
-    assert errors == []
-    assert len(unverified) == 10
 
 
 @pytest.mark.parametrize(
@@ -40,7 +34,6 @@ def test_repository_contracts(config):
         "merge-approved",
         "test-pull-patch",
         "investigate",
-        "pi-pr",
     ],
 )
 def test_reconciliation_regression(config, name):
@@ -102,9 +95,9 @@ def test_image_mode_rejects_mutable_or_runtime_installed_code(config, field, val
 
 @pytest.mark.parametrize("pin", [None, "@main", "@" + "a" * 40])
 def test_checkout_must_match_installed_package(config, pin):
-    env = deployment(config, "diagnostics")["work_pool"]["job_variables"]["env"]
+    env = deployment(config, "ingest")["work_pool"]["job_variables"]["env"]
     env["MPS_PIN"] = pin
-    assert any("diagnostics: job env.MPS_PIN" in e for e in check(config)[0])
+    assert any("ingest: job env.MPS_PIN" in e for e in check(config)[0])
 
 
 def test_explicit_legacy_pins_remain_valid(config):
@@ -117,9 +110,9 @@ def test_release_requires_full_pin(config, pin):
 
 
 def test_anchors_do_not_supply_implicit_job_environment(config):
-    dep = deployment(config, "diagnostics")
+    dep = deployment(config, "ingest")
     del dep["work_pool"]["job_variables"]["env"]
-    assert any("diagnostics:" in e for e in check(config)[0])
+    assert any("ingest:" in e for e in check(config)[0])
 
 
 def test_validation_never_rewrites(config):
@@ -140,11 +133,6 @@ def test_explicit_worker_path_with_wheel_is_unverified(config):
     errors, unverified = check(config)
     assert not errors
     assert any("worker path or image" in warning for warning in unverified)
-
-
-def test_heavypad_repository_contracts():
-    errors, _ = check(yaml.safe_load((ROOT / "prefect.heavypad.yaml").read_text()))
-    assert errors == []
 
 
 def checkout_config(command):

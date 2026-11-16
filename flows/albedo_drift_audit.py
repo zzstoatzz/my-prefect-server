@@ -1,6 +1,6 @@
 """albedo-drift-audit — a cheap model audits heavypad against this repo.
 
-Weekly, on the home-pool worker (heavypad). The flow snapshots the user units
+On demand on heavypad; no current scheduled deployment. The flow snapshots the user units
 heavypad runs (names, states, descriptions and unit-file paths; never unit
 contents, which can carry credentials), clones this repo fresh, and runs
 albedo with DeepSeek inside the bwrap sandbox in `deploy/albedo-sandbox/`.
@@ -41,8 +41,7 @@ SOURCES = (
 
 
 def _user_systemctl(*args: str) -> str:
-    # the worker is a system unit running as stoat, so the user manager is
-    # only reachable once its runtime dir and bus are named explicitly
+    # Noninteractive callers may lack the user manager's environment.
     runtime = f"/run/user/{os.getuid()}"
     env = {
         **os.environ,

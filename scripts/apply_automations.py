@@ -5,7 +5,7 @@
 # ///
 """Apply deploy/automations.yaml to the Prefect server, idempotently.
 
-Standalone automations have no declarative home: prefect.yaml's deployment
+Standalone automations have no declarative home: prefect.heavypad.yaml's deployment
 `triggers:` only generates run-deployment automations bound to that deployment,
 so a send-notification automation can only be made against the API. That is how
 `flow-run failure -> discord` ended up existing solely as a database row with

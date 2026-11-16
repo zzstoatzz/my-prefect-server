@@ -4,7 +4,7 @@
 # Run on heavypad:  bash install.sh
 #
 # Prometheus scrapes it over the tailnet beside node_exporter — see the
-# `heavypad-gpu` job in deploy/monitoring-values.yaml. Like node_exporter it
+# `heavypad-gpu` job in scripts/prefect_edge_secrets.py. Like node_exporter it
 # binds ONLY to the tailnet address.
 set -euo pipefail
 

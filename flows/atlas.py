@@ -5,7 +5,7 @@ Clones pub-search, runs the build-atlas script (UMAP + HDBSCAN),
 then deploys the site to Cloudflare Pages via wrangler.
 
 Secrets are injected into the pod environment via the deployment's
-``job_variables.env`` in prefect.yaml; the values are sourced from Prefect
+``job_variables.env`` in prefect.heavypad.yaml; the values are sourced from Prefect
 Secret blocks and resolved at ``prefect deploy`` time. Flow code never
 touches the Secret API directly — subprocesses just inherit the env.
 

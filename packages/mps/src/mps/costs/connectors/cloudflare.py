@@ -8,7 +8,7 @@ the 10 GB account-level free tier, then allocate the paid storage back across
 buckets. Fixed costs can be supplied
 as resource-shaped JSON so project attribution has something real to match.
 
-Auth: CLOUDFLARE_API_TOKEN (already a secret block in prefect.yaml). The bucket
+Auth: CLOUDFLARE_API_TOKEN (already a secret block in prefect.heavypad.yaml). The bucket
 census needs "Workers R2 Storage: Read" and stored bytes need "Account
 Analytics: Read"; without them R2 is reported unmeasured, never $0.
 Optional: CLOUDFLARE_ACCOUNT_ID (else the first account is used),

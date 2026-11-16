@@ -4,7 +4,7 @@
 #
 # heavypad is not in the cluster, so it cannot be discovered by a ServiceMonitor.
 # Prometheus scrapes it directly over the tailnet instead — see the
-# `additionalScrapeConfigs` block in deploy/monitoring-values.yaml, and the
+# Prometheus scrape jobs in scripts/prefect_edge_secrets.py, and the
 # `heavypad / host` dashboard in deploy/dashboards/.
 #
 # The exporter binds ONLY to the tailnet address. It is deliberately not

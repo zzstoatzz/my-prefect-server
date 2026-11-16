@@ -12,7 +12,6 @@ from urllib.parse import urlsplit
 
 import httpx
 import yaml
-from dotenv import dotenv_values
 from prefect_target import target_config
 
 REMOTE = r"""
@@ -37,7 +36,6 @@ for name,value in payload['files'].items():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--import-legacy", action="store_true")
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
@@ -45,77 +43,6 @@ def main():
     data = json.loads(
         subprocess.check_output(["sops", "decrypt", "--output-type", "json", str(store)], text=True)
     )
-    if args.import_legacy:
-
-        def secret(name):
-            result = json.loads(
-                subprocess.check_output(
-                    [
-                        "kubectl",
-                        "--kubeconfig",
-                        str(root / "kubeconfig.yaml"),
-                        "-n",
-                        "prefect",
-                        "get",
-                        "secret",
-                        name,
-                        "-o",
-                        "json",
-                    ],
-                    text=True,
-                )
-            )
-            return {k: base64.b64decode(v).decode() for k, v in result["data"].items()}
-
-        readonly = secret("prefect-auth-ro")
-        presence = secret("presence-ingress")
-        apns = secret("prefect-push-apns")
-        edge = {
-            "readonly_auth_string": readonly["auth-string"],
-            "presence_webhook_token": presence["webhook-token"],
-            "apns_key": apns["key"],
-            "apns_key_id": apns["key-id"],
-            "apns_team_id": apns["team-id"],
-        }
-        edge["legacy_api_auth_string"] = dotenv_values(root / ".env")["AUTH_STRING"]
-        result = json.loads(
-            subprocess.check_output(
-                [
-                    "kubectl",
-                    "--kubeconfig",
-                    str(root / "kubeconfig.yaml"),
-                    "-n",
-                    "monitoring",
-                    "get",
-                    "secret",
-                    "grafana-admin",
-                    "-o",
-                    "json",
-                ],
-                text=True,
-            )
-        )
-        edge.update(
-            {
-                "grafana_admin_user": base64.b64decode(result["data"]["admin-user"]).decode(),
-                "grafana_admin_password": base64.b64decode(
-                    result["data"]["admin-password"]
-                ).decode(),
-            }
-        )
-        existing = data.get("prefect_edge", {})
-        if any(existing.get(k, v) != v for k, v in edge.items()):
-            raise RuntimeError("Existing canonical edge credentials disagree; refusing overwrite")
-        edge = {**existing, **edge}
-        if existing != edge:
-            subprocess.run(
-                ["sops", "set", "--value-stdin", str(store), '["prefect_edge"]'],
-                input=json.dumps(edge),
-                text=True,
-                check=True,
-            )
-            data["prefect_edge"] = edge
-        print("Existing edge credentials match canonical source; values withheld")
     edge = data["prefect_edge"]
     target = target_config()
     api = target.get("internal_api_url", target["api_url"])

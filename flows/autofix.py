@@ -53,7 +53,7 @@ from flows.autofix_policy import ScreeningRejected, screen_prompt
 
 REPO_URL = "https://github.com/zzstoatzz/my-prefect-server.git"
 # home-pool runs this flow on the mps wheel frozen before the Sprite migration
-# (the autofix command in prefect.yaml); that wheel predates these names and
+# (the autofix command in prefect.heavypad.yaml); that wheel predates these names and
 # review_verdict's round arguments, so both are resolved at runtime.
 GARDENER_DID = getattr(tangled, "GARDENER_DID", "did:plc:7vx7exykq2zfxjxxejovrymi")
 PHI_DID = getattr(tangled, "PHI_DID", "did:plc:65sucjiel52gefhcdcypynsr")
