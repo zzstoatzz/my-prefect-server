@@ -78,7 +78,12 @@ that projection. Their builders remain, and existing observation/summary rows
 remain readable. No Turbopuffer namespace or analytics table is deleted by this
 source change.
 
-The live deployment and its event automation must be retired separately after
-the bot replacement is validated and published. Removing a YAML entry alone
-does not remove a registered deployment. Follow the service-retirement procedure;
-record approval and runtime verification before calling that transition complete.
+Nate approved live retirement on November 16. After the bot replacement passed
+CI, deployed, and demonstrated persistent notebook reads and writes, automation
+`a1d69735-40ed-490e-88c9-715b7d8bb557` and deployment
+`a3d785e9-a88f-421d-837f-81e4eb7f535d` were removed. No running or queued jobs
+remained. Their configuration was backed up with SOPS encryption in the operator's
+`~/.local/state/phi-memory-retirement/2026-11-16.json.enc` before retirement.
+Atlas and docket remain readable; sampled interaction and episodic references
+still resolve to preserved Turbopuffer source rows. No memory rows or analytics
+tables were deleted.
