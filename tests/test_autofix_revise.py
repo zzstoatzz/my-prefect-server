@@ -3,16 +3,12 @@ import os
 from mps.pull_comments import PULL_PREFIX
 
 from flows import autofix_revise
-from tests.harness import prefect_test_harness
 
 PULL = f"{PULL_PREFIX}3abc"
 
 
 def test_revise_skips_foreign_pull():
-    with prefect_test_harness():
-        state = autofix_revise.autofix_revise(
-            "at://did:plc:someoneelse/sh.tangled.repo.pull/x", return_state=True
-        )
+    state = autofix_revise.autofix_revise.fn("at://did:plc:someoneelse/sh.tangled.repo.pull/x")
     assert state.name == "Skipped"
 
 
@@ -22,16 +18,14 @@ def test_revise_caps_rounds(monkeypatch):
         "get_record",
         lambda uri: {"value": {"rounds": [{}] * autofix_revise.MAX_ROUNDS}},
     )
-    with prefect_test_harness():
-        state = autofix_revise.autofix_revise(PULL, return_state=True)
+    state = autofix_revise.autofix_revise.fn(PULL)
     assert state.name == "Capped"
 
 
 def test_revise_skips_without_operator_comments(monkeypatch):
     monkeypatch.setattr(autofix_revise, "get_record", lambda uri: {"value": {"rounds": []}})
     monkeypatch.setattr(autofix_revise, "list_pull_comments", lambda did, pull: [])
-    with prefect_test_harness():
-        state = autofix_revise.autofix_revise(PULL, return_state=True)
+    state = autofix_revise.autofix_revise.fn(PULL)
     assert state.name == "Skipped"
 
 

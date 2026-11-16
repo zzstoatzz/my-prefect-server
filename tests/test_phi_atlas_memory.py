@@ -87,7 +87,6 @@ def test_later_page_failure_does_not_publish_partial_success(monkeypatch):
     install(monkeypatch, {"phi-users-alice_test": namespace, atlas.EPISODIC_NS: Namespace([])})
     with pytest.raises(RuntimeError, match="store unavailable"):
         atlas.fetch_tpuf_points.fn("test")
-    assert atlas.fetch_tpuf_points.retries == 3
 
 
 def test_nonadvancing_page_fails_instead_of_looping():

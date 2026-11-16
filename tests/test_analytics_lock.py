@@ -17,17 +17,6 @@ def test_no_api_url_skips_coordination(monkeypatch):
     cm.assert_not_called()
 
 
-def test_api_url_acquires_writer_slot(monkeypatch):
-    monkeypatch.setenv("PREFECT_API_URL", "http://example.test/api")
-    with mock.patch("prefect.concurrency.sync.concurrency") as cm, analytics_write_slot():
-        pass
-    cm.assert_called_once_with(
-        ANALYTICS_WRITER_LIMIT,
-        strict=True,
-        raise_on_lease_renewal_failure=False,
-    )
-
-
 def test_db_write_helpers_hold_the_slot(monkeypatch, tmp_path):
     monkeypatch.setenv("PREFECT_API_URL", "http://example.test/api")
     db_path = str(tmp_path / "analytics.duckdb")
@@ -48,7 +37,11 @@ def test_db_write_helpers_hold_the_slot(monkeypatch, tmp_path):
             db_path,
         )
     assert count == 1
-    cm.assert_called_once()
+    cm.assert_called_once_with(
+        ANALYTICS_WRITER_LIMIT,
+        strict=True,
+        raise_on_lease_renewal_failure=False,
+    )
 
     con = duckdb.connect(db_path, read_only=True)
     assert con.execute("SELECT count(*) FROM raw_liked_posts").fetchone()[0] == 1

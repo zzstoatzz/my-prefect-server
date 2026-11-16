@@ -1,4 +1,5 @@
 import struct
+from types import SimpleNamespace
 
 import pytest
 import zstandard
@@ -72,9 +73,11 @@ def test_every_request_carries_the_flow_user_agent():
     assert posted.get_method() == "POST"
 
 
-def test_collections_skips_when_segment_is_mid_rewrite():
+def test_collections_skips_when_segment_is_mid_rewrite(monkeypatch):
     from flows.strata import Archive, SegmentListing
 
+    delays = []
+    monkeypatch.setattr("flows.strata.time", SimpleNamespace(sleep=delays.append))
     seg = SegmentListing(
         idx=732,
         name="seg_00000002dc.jss",
@@ -95,11 +98,14 @@ def test_collections_skips_when_segment_is_mid_rewrite():
     archive._list_page = lambda cursor: [seg]
 
     assert archive.collections(seg) is None
+    assert delays == [1, 3, 6]
 
 
-def test_collections_matches_fresh_listing_by_name_not_index():
+def test_collections_matches_fresh_listing_by_name_not_index(monkeypatch):
     from flows.strata import Archive, SegmentListing
 
+    delays = []
+    monkeypatch.setattr("flows.strata.time", SimpleNamespace(sleep=delays.append))
     seg = SegmentListing(
         idx=732,
         name="seg_00000002dc.jss",
@@ -131,6 +137,7 @@ def test_collections_matches_fresh_listing_by_name_not_index():
     archive._list_page = lambda cursor: [neighbor]
 
     assert archive.collections(seg) is None
+    assert delays == [1]
 
 
 def test_stale_or_new_picks_missing_and_rewritten_segments():

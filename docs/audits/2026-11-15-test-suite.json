@@ -1,0 +1,910 @@
+{
+  "date": "2026-11-15",
+  "scope": "Python pytest collection; before includes preceding source cleanup and deletion of the generic Prefect-state test",
+  "before": {
+    "cases": 922,
+    "modules": 99,
+    "functions": 729
+  },
+  "after": {
+    "cases": 865,
+    "passed": 862,
+    "skipped": 3,
+    "modules": 97,
+    "functions": 702,
+    "seconds": 66.79
+  },
+  "modules": [
+    {
+      "path_before": "tests/test_albedo_alert_check.py",
+      "path_after": "tests/test_albedo_alert_check.py",
+      "area": "Monitoring and recovery",
+      "cases_before": 5,
+      "cases_after": 5,
+      "functions_before": 5,
+      "functions_after": 5
+    },
+    {
+      "path_before": "tests/test_albedo_drift_audit.py",
+      "path_after": "tests/test_albedo_drift_audit.py",
+      "area": "Monitoring and recovery",
+      "cases_before": 3,
+      "cases_after": 3,
+      "functions_before": 3,
+      "functions_after": 3
+    },
+    {
+      "path_before": "tests/test_alerts_mcp.py",
+      "path_after": "tests/test_alerts_mcp.py",
+      "area": "Monitoring and recovery",
+      "cases_before": 22,
+      "cases_after": 22,
+      "functions_before": 16,
+      "functions_after": 16
+    },
+    {
+      "path_before": "tests/test_analytics_lock.py",
+      "path_after": "tests/test_analytics_lock.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 3,
+      "cases_after": 2,
+      "functions_before": 3,
+      "functions_after": 2
+    },
+    {
+      "path_before": "tests/test_analytics_storage.py",
+      "path_after": "tests/test_analytics_storage.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 5,
+      "cases_after": 5,
+      "functions_before": 5,
+      "functions_after": 5
+    },
+    {
+      "path_before": "tests/test_atlas_clustering.py",
+      "path_after": "tests/test_atlas_clustering.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 5,
+      "cases_after": 5,
+      "functions_before": 5,
+      "functions_after": 5
+    },
+    {
+      "path_before": "tests/test_atlas_retries.py",
+      "path_after": "tests/test_atlas_retries.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 3,
+      "cases_after": 2,
+      "functions_before": 3,
+      "functions_after": 2
+    },
+    {
+      "path_before": "tests/test_autofix.py",
+      "path_after": "tests/test_autofix.py",
+      "area": "Coding automation",
+      "cases_before": 23,
+      "cases_after": 23,
+      "functions_before": 21,
+      "functions_after": 21
+    },
+    {
+      "path_before": "tests/test_autofix_outcomes.py",
+      "path_after": "tests/test_autofix_outcomes.py",
+      "area": "Coding automation",
+      "cases_before": 1,
+      "cases_after": 1,
+      "functions_before": 1,
+      "functions_after": 1
+    },
+    {
+      "path_before": "tests/test_autofix_revise.py",
+      "path_after": "tests/test_autofix_revise.py",
+      "area": "Coding automation",
+      "cases_before": 6,
+      "cases_after": 6,
+      "functions_before": 6,
+      "functions_after": 6
+    },
+    {
+      "path_before": "tests/test_automations_spec.py",
+      "path_after": "tests/test_automations_spec.py",
+      "area": "Deployment, source delivery and credentials",
+      "cases_before": 1,
+      "cases_after": 1,
+      "functions_before": 1,
+      "functions_after": 1
+    },
+    {
+      "path_before": "tests/test_backup_freshness.py",
+      "path_after": "tests/test_backup_freshness.py",
+      "area": "Monitoring and recovery",
+      "cases_before": 9,
+      "cases_after": 9,
+      "functions_before": 9,
+      "functions_after": 9
+    },
+    {
+      "path_before": "tests/test_bandwidth_watchdog.py",
+      "path_after": "tests/test_bandwidth_watchdog.py",
+      "area": "Monitoring and recovery",
+      "cases_before": 32,
+      "cases_after": 32,
+      "functions_before": 26,
+      "functions_after": 26
+    },
+    {
+      "path_before": "tests/test_bisk_retries.py",
+      "path_after": "tests/test_bisk_retries.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 5,
+      "cases_after": 3,
+      "functions_before": 4,
+      "functions_after": 2
+    },
+    {
+      "path_before": "tests/test_bisk_window.py",
+      "path_after": "tests/test_bisk_window.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 4,
+      "cases_after": 4,
+      "functions_before": 4,
+      "functions_after": 4
+    },
+    {
+      "path_before": "tests/test_blocks.py",
+      "path_after": "tests/test_blocks.py",
+      "area": "Deployment, source delivery and credentials",
+      "cases_before": 4,
+      "cases_after": 4,
+      "functions_before": 4,
+      "functions_after": 4
+    },
+    {
+      "path_before": "tests/test_bufo_traffic.py",
+      "path_after": "tests/test_bufo_traffic.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 5,
+      "cases_after": 5,
+      "functions_before": 5,
+      "functions_after": 5
+    },
+    {
+      "path_before": "tests/test_classify_emails.py",
+      "path_after": "tests/test_classify_emails.py",
+      "area": "Mail and home presence",
+      "cases_before": 7,
+      "cases_after": 7,
+      "functions_before": 6,
+      "functions_after": 6
+    },
+    {
+      "path_before": "tests/test_coding_jobs_audit.py",
+      "path_after": "tests/test_coding_jobs_audit.py",
+      "area": "Coding automation",
+      "cases_before": 5,
+      "cases_after": 5,
+      "functions_before": 5,
+      "functions_after": 5
+    },
+    {
+      "path_before": "tests/test_compact_retries.py",
+      "path_after": "tests/test_compact_cache.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 3,
+      "cases_after": 1,
+      "functions_before": 3,
+      "functions_after": 1
+    },
+    {
+      "path_before": "tests/test_compact_turbopuffer_live.py",
+      "path_after": "tests/test_compact_turbopuffer_live.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 3,
+      "cases_after": 3,
+      "functions_before": 2,
+      "functions_after": 2
+    },
+    {
+      "path_before": "tests/test_coral_api_costs.py",
+      "path_after": "tests/test_coral_api_costs.py",
+      "area": "Costs and accounting",
+      "cases_before": 4,
+      "cases_after": 4,
+      "functions_before": 4,
+      "functions_after": 4
+    },
+    {
+      "path_before": "tests/test_cost_coverage.py",
+      "path_after": "tests/test_cost_coverage.py",
+      "area": "Costs and accounting",
+      "cases_before": 2,
+      "cases_after": 2,
+      "functions_before": 2,
+      "functions_after": 2
+    },
+    {
+      "path_before": "tests/test_costs.py",
+      "path_after": "tests/test_costs.py",
+      "area": "Costs and accounting",
+      "cases_before": 23,
+      "cases_after": 21,
+      "functions_before": 22,
+      "functions_after": 20
+    },
+    {
+      "path_before": "tests/test_dagster_hub.py",
+      "path_after": "tests/test_dagster_hub.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 8,
+      "cases_after": 8,
+      "functions_before": 6,
+      "functions_after": 6
+    },
+    {
+      "path_before": "tests/test_dbt_runtime.py",
+      "path_after": null,
+      "area": "Analytics, memory and publication",
+      "cases_before": 1,
+      "cases_after": 0,
+      "functions_before": 1,
+      "functions_after": 0
+    },
+    {
+      "path_before": "tests/test_deployment_steps.py",
+      "path_after": "tests/test_deployment_steps.py",
+      "area": "Deployment, source delivery and credentials",
+      "cases_before": 15,
+      "cases_after": 15,
+      "functions_before": 11,
+      "functions_after": 11
+    },
+    {
+      "path_before": "tests/test_diagnostics_burners.py",
+      "path_after": "tests/test_diagnostics_burners.py",
+      "area": "Monitoring and recovery",
+      "cases_before": 6,
+      "cases_after": 2,
+      "functions_before": 6,
+      "functions_after": 2
+    },
+    {
+      "path_before": "tests/test_docket_anchors.py",
+      "path_after": "tests/test_docket_anchors.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 5,
+      "cases_after": 3,
+      "functions_before": 5,
+      "functions_after": 3
+    },
+    {
+      "path_before": "tests/test_docket_synthesis.py",
+      "path_after": "tests/test_docket_synthesis.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 22,
+      "cases_after": 20,
+      "functions_before": 22,
+      "functions_after": 20
+    },
+    {
+      "path_before": "tests/test_email_backlog.py",
+      "path_after": "tests/test_email_backlog.py",
+      "area": "Mail and home presence",
+      "cases_before": 5,
+      "cases_after": 5,
+      "functions_before": 5,
+      "functions_after": 5
+    },
+    {
+      "path_before": "tests/test_email_parsing.py",
+      "path_after": "tests/test_email_parsing.py",
+      "area": "Mail and home presence",
+      "cases_before": 6,
+      "cases_after": 5,
+      "functions_before": 6,
+      "functions_after": 5
+    },
+    {
+      "path_before": "tests/test_email_triage.py",
+      "path_after": "tests/test_email_triage.py",
+      "area": "Mail and home presence",
+      "cases_before": 7,
+      "cases_after": 7,
+      "functions_before": 7,
+      "functions_after": 7
+    },
+    {
+      "path_before": "tests/test_evergreen_checks.py",
+      "path_after": "tests/test_evergreen_checks.py",
+      "area": "Monitoring and recovery",
+      "cases_before": 27,
+      "cases_after": 27,
+      "functions_before": 20,
+      "functions_after": 20
+    },
+    {
+      "path_before": "tests/test_exe_observations.py",
+      "path_after": "tests/test_exe_observations.py",
+      "area": "Monitoring and recovery",
+      "cases_before": 5,
+      "cases_after": 5,
+      "functions_before": 5,
+      "functions_after": 5
+    },
+    {
+      "path_before": "tests/test_exe_runtime.py",
+      "path_after": "tests/test_exe_runtime.py",
+      "area": "Agent execution and inference",
+      "cases_before": 8,
+      "cases_after": 8,
+      "functions_before": 8,
+      "functions_after": 8
+    },
+    {
+      "path_before": "tests/test_exe_worker.py",
+      "path_after": "tests/test_exe_worker.py",
+      "area": "Agent execution and inference",
+      "cases_before": 54,
+      "cases_after": 54,
+      "functions_before": 40,
+      "functions_after": 40
+    },
+    {
+      "path_before": "tests/test_fastmcp_brief.py",
+      "path_after": "tests/test_fastmcp_brief.py",
+      "area": "Coding automation",
+      "cases_before": 23,
+      "cases_after": 19,
+      "functions_before": 20,
+      "functions_after": 19
+    },
+    {
+      "path_before": "tests/test_fastmcp_items.py",
+      "path_after": "tests/test_fastmcp_items.py",
+      "area": "Coding automation",
+      "cases_before": 4,
+      "cases_after": 4,
+      "functions_before": 4,
+      "functions_after": 4
+    },
+    {
+      "path_before": "tests/test_fastmcp_triage.py",
+      "path_after": "tests/test_fastmcp_triage.py",
+      "area": "Coding automation",
+      "cases_before": 39,
+      "cases_after": 39,
+      "functions_before": 21,
+      "functions_after": 21
+    },
+    {
+      "path_before": "tests/test_fleet_health_semantics.py",
+      "path_after": "tests/test_fleet_health_semantics.py",
+      "area": "Monitoring and recovery",
+      "cases_before": 11,
+      "cases_after": 11,
+      "functions_before": 11,
+      "functions_after": 11
+    },
+    {
+      "path_before": "tests/test_fly_costs.py",
+      "path_after": "tests/test_fly_costs.py",
+      "area": "Costs and accounting",
+      "cases_before": 11,
+      "cases_after": 11,
+      "functions_before": 11,
+      "functions_after": 11
+    },
+    {
+      "path_before": "tests/test_fly_observations.py",
+      "path_after": "tests/test_fly_observations.py",
+      "area": "Monitoring and recovery",
+      "cases_before": 21,
+      "cases_after": 20,
+      "functions_before": 16,
+      "functions_after": 15
+    },
+    {
+      "path_before": "tests/test_fly_usage.py",
+      "path_after": "tests/test_fly_usage.py",
+      "area": "Costs and accounting",
+      "cases_before": 6,
+      "cases_after": 6,
+      "functions_before": 6,
+      "functions_after": 6
+    },
+    {
+      "path_before": "tests/test_gardener_haiku_upgrade.py",
+      "path_after": "tests/test_gardener_haiku_upgrade.py",
+      "area": "Agent execution and inference",
+      "cases_before": 3,
+      "cases_after": 3,
+      "functions_before": 3,
+      "functions_after": 3
+    },
+    {
+      "path_before": "tests/test_git_isolation.py",
+      "path_after": "tests/test_git_isolation.py",
+      "area": "Deployment, source delivery and credentials",
+      "cases_before": 1,
+      "cases_after": 1,
+      "functions_before": 1,
+      "functions_after": 1
+    },
+    {
+      "path_before": "tests/test_github_backlog.py",
+      "path_after": "tests/test_github_backlog.py",
+      "area": "Coding automation",
+      "cases_before": 12,
+      "cases_after": 12,
+      "functions_before": 6,
+      "functions_after": 6
+    },
+    {
+      "path_before": "tests/test_heavypad_k3s_guard.py",
+      "path_after": "tests/test_heavypad_k3s_guard.py",
+      "area": "Monitoring and recovery",
+      "cases_before": 4,
+      "cases_after": 4,
+      "functions_before": 3,
+      "functions_after": 3
+    },
+    {
+      "path_before": "tests/test_heavypad_prefect_secrets.py",
+      "path_after": "tests/test_heavypad_prefect_secrets.py",
+      "area": "Deployment, source delivery and credentials",
+      "cases_before": 2,
+      "cases_after": 2,
+      "functions_before": 2,
+      "functions_after": 2
+    },
+    {
+      "path_before": "tests/test_home_lighting.py",
+      "path_after": "tests/test_home_lighting.py",
+      "area": "Mail and home presence",
+      "cases_before": 24,
+      "cases_after": 24,
+      "functions_before": 18,
+      "functions_after": 18
+    },
+    {
+      "path_before": "tests/test_hub_tables_sync.py",
+      "path_after": null,
+      "area": "Analytics, memory and publication",
+      "cases_before": 2,
+      "cases_after": 0,
+      "functions_before": 2,
+      "functions_after": 0
+    },
+    {
+      "path_before": "tests/test_inbox_zero.py",
+      "path_after": "tests/test_inbox_zero.py",
+      "area": "Mail and home presence",
+      "cases_before": 8,
+      "cases_after": 8,
+      "functions_before": 8,
+      "functions_after": 8
+    },
+    {
+      "path_before": "tests/test_inference_bridge.py",
+      "path_after": "tests/test_inference_bridge.py",
+      "area": "Agent execution and inference",
+      "cases_before": 13,
+      "cases_after": 13,
+      "functions_before": 11,
+      "functions_after": 11
+    },
+    {
+      "path_before": "tests/test_inference_grants.py",
+      "path_after": "tests/test_inference_grants.py",
+      "area": "Agent execution and inference",
+      "cases_before": 8,
+      "cases_after": 8,
+      "functions_before": 8,
+      "functions_after": 8
+    },
+    {
+      "path_before": "tests/test_inference_models.py",
+      "path_after": "tests/test_inference_models.py",
+      "area": "Agent execution and inference",
+      "cases_before": 6,
+      "cases_after": 6,
+      "functions_before": 4,
+      "functions_after": 4
+    },
+    {
+      "path_before": "tests/test_inference_service.py",
+      "path_after": "tests/test_inference_service.py",
+      "area": "Agent execution and inference",
+      "cases_before": 2,
+      "cases_after": 2,
+      "functions_before": 2,
+      "functions_after": 2
+    },
+    {
+      "path_before": "tests/test_ingest_degradation.py",
+      "path_after": "tests/test_ingest_degradation.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 16,
+      "cases_after": 7,
+      "functions_before": 9,
+      "functions_after": 7
+    },
+    {
+      "path_before": "tests/test_ingest_redirects.py",
+      "path_after": "tests/test_ingest_redirects.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 3,
+      "cases_after": 3,
+      "functions_before": 3,
+      "functions_after": 3
+    },
+    {
+      "path_before": "tests/test_likes_reconciliation.py",
+      "path_after": "tests/test_likes_reconciliation.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 44,
+      "cases_after": 24,
+      "functions_before": 11,
+      "functions_after": 11
+    },
+    {
+      "path_before": "tests/test_mcp_atlas_crawl.py",
+      "path_after": "tests/test_mcp_atlas_crawl.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 3,
+      "cases_after": 3,
+      "functions_before": 3,
+      "functions_after": 3
+    },
+    {
+      "path_before": "tests/test_merge_approved.py",
+      "path_after": "tests/test_merge_approved.py",
+      "area": "Coding automation",
+      "cases_before": 15,
+      "cases_after": 15,
+      "functions_before": 11,
+      "functions_after": 11
+    },
+    {
+      "path_before": "tests/test_phi_atlas_classifier.py",
+      "path_after": "tests/test_phi_atlas_classifier.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 12,
+      "cases_after": 12,
+      "functions_before": 12,
+      "functions_after": 12
+    },
+    {
+      "path_before": "tests/test_phi_atlas_memory.py",
+      "path_after": "tests/test_phi_atlas_memory.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 6,
+      "cases_after": 6,
+      "functions_before": 6,
+      "functions_after": 6
+    },
+    {
+      "path_before": "tests/test_phi_trigger.py",
+      "path_after": "tests/test_phi_trigger.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 2,
+      "cases_after": 2,
+      "functions_before": 2,
+      "functions_after": 2
+    },
+    {
+      "path_before": "tests/test_phi_validation_http.py",
+      "path_after": "tests/test_phi_validation_http.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 4,
+      "cases_after": 4,
+      "functions_before": 4,
+      "functions_after": 4
+    },
+    {
+      "path_before": "tests/test_pi_agent.py",
+      "path_after": "tests/test_pi_agent.py",
+      "area": "Agent execution and inference",
+      "cases_before": 2,
+      "cases_after": 2,
+      "functions_before": 2,
+      "functions_after": 2
+    },
+    {
+      "path_before": "tests/test_pi_agent_local.py",
+      "path_after": "tests/test_pi_agent_local.py",
+      "area": "Agent execution and inference",
+      "cases_before": 14,
+      "cases_after": 13,
+      "functions_before": 8,
+      "functions_after": 7
+    },
+    {
+      "path_before": "tests/test_pi_events.py",
+      "path_after": "tests/test_pi_events.py",
+      "area": "Agent execution and inference",
+      "cases_before": 5,
+      "cases_after": 5,
+      "functions_before": 2,
+      "functions_after": 2
+    },
+    {
+      "path_before": "tests/test_pi_execution_entrypoint.py",
+      "path_after": "tests/test_pi_execution_entrypoint.py",
+      "area": "Agent execution and inference",
+      "cases_before": 5,
+      "cases_after": 4,
+      "functions_before": 3,
+      "functions_after": 2
+    },
+    {
+      "path_before": "tests/test_pi_pr.py",
+      "path_after": "tests/test_pi_pr.py",
+      "area": "Coding automation",
+      "cases_before": 2,
+      "cases_after": 2,
+      "functions_before": 1,
+      "functions_after": 1
+    },
+    {
+      "path_before": "tests/test_pi_process.py",
+      "path_after": "tests/test_pi_process.py",
+      "area": "Agent execution and inference",
+      "cases_before": 8,
+      "cases_after": 8,
+      "functions_before": 6,
+      "functions_after": 6
+    },
+    {
+      "path_before": "tests/test_pi_process_cleanup.py",
+      "path_after": "tests/test_pi_process_cleanup.py",
+      "area": "Agent execution and inference",
+      "cases_before": 1,
+      "cases_after": 1,
+      "functions_before": 1,
+      "functions_after": 1
+    },
+    {
+      "path_before": "tests/test_pi_skills.py",
+      "path_after": "tests/test_pi_skills.py",
+      "area": "Agent execution and inference",
+      "cases_before": 2,
+      "cases_after": 2,
+      "functions_before": 2,
+      "functions_after": 2
+    },
+    {
+      "path_before": "tests/test_prefect_cli.py",
+      "path_after": "tests/test_prefect_cli.py",
+      "area": "Deployment, source delivery and credentials",
+      "cases_before": 3,
+      "cases_after": 3,
+      "functions_before": 1,
+      "functions_after": 1
+    },
+    {
+      "path_before": "tests/test_presence.py",
+      "path_after": "tests/test_presence.py",
+      "area": "Mail and home presence",
+      "cases_before": 13,
+      "cases_after": 13,
+      "functions_before": 5,
+      "functions_after": 5
+    },
+    {
+      "path_before": "tests/test_presence_deployment.py",
+      "path_after": "tests/test_presence_deployment.py",
+      "area": "Deployment, source delivery and credentials",
+      "cases_before": 1,
+      "cases_after": 1,
+      "functions_before": 1,
+      "functions_after": 1
+    },
+    {
+      "path_before": "tests/test_pull_comments.py",
+      "path_after": "tests/test_pull_comments.py",
+      "area": "Coding automation",
+      "cases_before": 18,
+      "cases_after": 18,
+      "functions_before": 15,
+      "functions_after": 15
+    },
+    {
+      "path_before": "tests/test_relay_health.py",
+      "path_after": "tests/test_relay_health.py",
+      "area": "Monitoring and recovery",
+      "cases_before": 5,
+      "cases_after": 5,
+      "functions_before": 5,
+      "functions_after": 5
+    },
+    {
+      "path_before": "tests/test_resolve_pds.py",
+      "path_after": "tests/test_resolve_pds.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 7,
+      "cases_after": 7,
+      "functions_before": 7,
+      "functions_after": 7
+    },
+    {
+      "path_before": "tests/test_round_publication.py",
+      "path_after": "tests/test_round_publication.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 2,
+      "cases_after": 2,
+      "functions_before": 2,
+      "functions_after": 2
+    },
+    {
+      "path_before": "tests/test_secrets_plugin.py",
+      "path_after": "tests/test_secrets_plugin.py",
+      "area": "Deployment, source delivery and credentials",
+      "cases_before": 4,
+      "cases_after": 4,
+      "functions_before": 4,
+      "functions_after": 4
+    },
+    {
+      "path_before": "tests/test_spend_log.py",
+      "path_after": "tests/test_spend_log.py",
+      "area": "Costs and accounting",
+      "cases_before": 11,
+      "cases_after": 11,
+      "functions_before": 10,
+      "functions_after": 10
+    },
+    {
+      "path_before": "tests/test_sprites_runtime.py",
+      "path_after": "tests/test_sprites_runtime.py",
+      "area": "Agent execution and inference",
+      "cases_before": 8,
+      "cases_after": 8,
+      "functions_before": 8,
+      "functions_after": 8
+    },
+    {
+      "path_before": "tests/test_sprites_worker.py",
+      "path_after": "tests/test_sprites_worker.py",
+      "area": "Agent execution and inference",
+      "cases_before": 42,
+      "cases_after": 42,
+      "functions_before": 33,
+      "functions_after": 33
+    },
+    {
+      "path_before": "tests/test_status_page.py",
+      "path_after": "tests/test_status_page.py",
+      "area": "Monitoring and recovery",
+      "cases_before": 7,
+      "cases_after": 7,
+      "functions_before": 7,
+      "functions_after": 7
+    },
+    {
+      "path_before": "tests/test_strata.py",
+      "path_after": "tests/test_strata.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 8,
+      "cases_after": 8,
+      "functions_before": 8,
+      "functions_after": 8
+    },
+    {
+      "path_before": "tests/test_strata_snapshot.py",
+      "path_after": "tests/test_strata_snapshot.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 5,
+      "cases_after": 5,
+      "functions_before": 5,
+      "functions_after": 5
+    },
+    {
+      "path_before": "tests/test_stream_admission_simulator.py",
+      "path_after": "tests/test_stream_admission_simulator.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 1,
+      "cases_after": 1,
+      "functions_before": 1,
+      "functions_after": 1
+    },
+    {
+      "path_before": "tests/test_tag_merges_patch.py",
+      "path_after": "tests/test_tag_merges_patch.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 2,
+      "cases_after": 2,
+      "functions_before": 2,
+      "functions_after": 2
+    },
+    {
+      "path_before": "tests/test_tangled_merge.py",
+      "path_after": "tests/test_tangled_merge.py",
+      "area": "Coding automation",
+      "cases_before": 10,
+      "cases_after": 10,
+      "functions_before": 10,
+      "functions_after": 10
+    },
+    {
+      "path_before": "tests/test_tangled_patch.py",
+      "path_after": "tests/test_tangled_patch.py",
+      "area": "Coding automation",
+      "cases_before": 5,
+      "cases_after": 5,
+      "functions_before": 5,
+      "functions_after": 5
+    },
+    {
+      "path_before": "tests/test_triage_observability.py",
+      "path_after": "tests/test_triage_observability.py",
+      "area": "Coding automation",
+      "cases_before": 5,
+      "cases_after": 5,
+      "functions_before": 3,
+      "functions_after": 3
+    },
+    {
+      "path_before": "tests/test_validate_deployments.py",
+      "path_after": "tests/test_validate_deployments.py",
+      "area": "Deployment, source delivery and credentials",
+      "cases_before": 29,
+      "cases_after": 28,
+      "functions_before": 15,
+      "functions_after": 14
+    },
+    {
+      "path_before": "tests/test_voyage_costs.py",
+      "path_after": "tests/test_voyage_costs.py",
+      "area": "Costs and accounting",
+      "cases_before": 4,
+      "cases_after": 4,
+      "functions_before": 4,
+      "functions_after": 4
+    },
+    {
+      "path_before": "tests/test_watch_stream.py",
+      "path_after": "tests/test_watch_stream.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 10,
+      "cases_after": 10,
+      "functions_before": 7,
+      "functions_after": 7
+    },
+    {
+      "path_before": "tests/test_watch_stream_delivery.py",
+      "path_after": "tests/test_watch_stream_delivery.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 1,
+      "cases_after": 1,
+      "functions_before": 1,
+      "functions_after": 1
+    },
+    {
+      "path_before": "tests/test_workflow_requests.py",
+      "path_after": "tests/test_workflow_requests.py",
+      "area": "Agent execution and inference",
+      "cases_before": 6,
+      "cases_after": 6,
+      "functions_before": 6,
+      "functions_after": 6
+    },
+    {
+      "path_before": "tests/test_zds_follow.py",
+      "path_after": "tests/test_zds_follow.py",
+      "area": "Analytics, memory and publication",
+      "cases_before": 14,
+      "cases_after": 14,
+      "functions_before": 9,
+      "functions_after": 9
+    },
+    {
+      "path_before": "tests/test_zig_toolchain.py",
+      "path_after": "tests/test_zig_toolchain.py",
+      "area": "Deployment, source delivery and credentials",
+      "cases_before": 5,
+      "cases_after": 5,
+      "functions_before": 5,
+      "functions_after": 5
+    }
+  ]
+}

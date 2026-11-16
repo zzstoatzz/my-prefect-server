@@ -38,6 +38,12 @@ def test_protected_touches_match_files_and_prefix_dirs() -> None:
     ]
 
 
+def test_home_deployment_changes_are_flagged_for_human_review() -> None:
+    assert protected_touches(
+        "my-prefect-server", ["README.md", "prefect.heavypad.yaml", "flows/brief.py"]
+    ) == ["prefect.heavypad.yaml"]
+
+
 def test_protected_touches_empty_for_unknown_repo() -> None:
     assert protected_touches("find-bufo", ["deploy/x"]) == []
 

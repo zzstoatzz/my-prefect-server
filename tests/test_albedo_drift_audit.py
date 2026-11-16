@@ -62,5 +62,5 @@ def test_missing_phi_slot_degrades(monkeypatch, tmp_path):
 
 def test_other_phi_errors_fail(monkeypatch, tmp_path):
     _stub_audit(monkeypatch, tmp_path, 500)
-    with prefect_test_harness(), pytest.raises(httpx.HTTPStatusError):
-        asyncio.run(audit.albedo_drift_audit())
+    with pytest.raises(httpx.HTTPStatusError):
+        asyncio.run(audit.albedo_drift_audit.fn())

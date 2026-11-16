@@ -6,7 +6,7 @@ import pytest
 from flows.phi_atlas import COARSE_GROUPS, assign_clusters
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def coords():
     """A map shaped like phi's real one: many small fine clusters packed into
     one dense region, plus scattered noise.
@@ -31,38 +31,43 @@ def coords():
     return np.vstack(parts).astype(np.float32)
 
 
-def test_no_single_coarse_group_swallows_the_map(coords) -> None:
+@pytest.fixture(scope="module")
+def clustered(coords):
+    return assign_clusters(coords)
+
+
+def test_no_single_coarse_group_swallows_the_map(coords, clustered) -> None:
     # the bug: on 2026-07-27 the coarse pass returned 2 clusters, one holding
     # 93.5% of 4,416 points, labelled "audit trails and memory". At the top
     # level the map said "everything" and nothing else.
-    _, coarse = assign_clusters(coords)
+    _, coarse = clustered
     counts = np.bincount(coarse)
     assert counts.max() / len(coords) < 0.6, (
         f"largest coarse group holds {counts.max() / len(coords):.1%} of points"
     )
 
 
-def test_coarse_group_count_is_bounded_and_plural(coords) -> None:
-    _, coarse = assign_clusters(coords)
+def test_coarse_group_count_is_bounded_and_plural(clustered) -> None:
+    _, coarse = clustered
     n = len(set(coarse.tolist()))
     assert 2 <= n <= COARSE_GROUPS
 
 
-def test_every_fine_cluster_belongs_to_exactly_one_coarse_group(coords) -> None:
+def test_every_fine_cluster_belongs_to_exactly_one_coarse_group(clustered) -> None:
     """The old pass ran two independent HDBSCANs, so a fine cluster's members
     could disagree about their coarse parent and `parent_coarse` was a majority
     vote. Deriving coarse from fine makes the hierarchy real."""
-    fine, coarse = assign_clusters(coords)
+    fine, coarse = clustered
     for fid in {int(f) for f in fine if f != -1}:
         parents = {int(c) for c, f in zip(coarse, fine, strict=True) if f == fid}
         assert len(parents) == 1, f"fine cluster {fid} spans coarse groups {parents}"
 
 
-def test_noise_points_still_get_a_coarse_group(coords) -> None:
+def test_noise_points_still_get_a_coarse_group(clustered) -> None:
     """~38% of real points are HDBSCAN noise. The old coarse pass labelled
     every point, and the docket's anchor lookup filters on cluster_coarse — so
     dropping them would silently shrink the anchor pool."""
-    fine, coarse = assign_clusters(coords)
+    fine, coarse = clustered
     assert (fine == -1).sum() > 0, "fixture should produce some noise to be meaningful"
     assert all(c >= 0 for c in coarse)
 

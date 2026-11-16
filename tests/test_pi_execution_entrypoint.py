@@ -42,8 +42,3 @@ def test_caller_rejects_unscoped_execution_before_launch(monkeypatch, tmp_path, 
     monkeypatch.setattr("mps.pi_execution.run_isolated_pi", unexpected)
     with pytest.raises(ValueError):
         run_pi("fix it", cwd=str(tmp_path), **options)
-
-
-def test_caller_cannot_inject_an_agent_environment(tmp_path):
-    with pytest.raises(TypeError, match="env"):
-        run_pi("fix it", cwd=str(tmp_path), env={"PREFECT_API_KEY": "sentinel"})

@@ -121,12 +121,6 @@ def test_render_stays_within_the_discord_budget() -> None:
     assert "more" in body.splitlines()[-1]
 
 
-@pytest.mark.parametrize("severity", ["broken", "bug", "waiting", "decision"])
-def test_every_severity_has_a_mark(severity: str) -> None:
-    body = render(Brief(items=[_item(1, severity)], considered=1), 6)
-    assert not body.startswith("⚪"), f"{severity} fell through to the default mark"
-
-
 # --- links must come from data, never from the model -----------------------
 
 

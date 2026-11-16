@@ -1,7 +1,6 @@
 import pytest
 
 from flows import pi_pr
-from tests.harness import prefect_test_harness
 
 
 @pytest.mark.parametrize("dry_run", [False, True])
@@ -48,10 +47,9 @@ def test_pi_pr_publishes_as_gardener_and_emits_proposed(monkeypatch, dry_run):
     monkeypatch.setattr(pi_pr, "create_pull", create_pull)
     monkeypatch.setattr(pi_pr, "emit_event", lambda **kw: events.append(kw))
 
-    with prefect_test_harness():
-        out = pi_pr.pi_pr(
-            "rename x", "title", "body", repo="tangled-mcp", requested_by="phi", dry_run=dry_run
-        )
+    out = pi_pr.pi_pr.fn(
+        "rename x", "title", "body", repo="tangled-mcp", requested_by="phi", dry_run=dry_run
+    )
 
     assert out["changed"] is True
     if dry_run:

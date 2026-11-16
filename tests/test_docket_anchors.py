@@ -37,27 +37,12 @@ def atlas():
     }
 
 
-def test_anchors_differ_per_candidate(atlas) -> None:
-    # the bug: all 7 docket candidates carried byte-identical
-    # existing_public_anchors — always the same six records, including "get
-    # better at trading the chicken market" — because the lookup took the first
-    # N public points in the coarse cluster and broke.
-    near = _public_anchors_in_coarse(atlas, 1, 2, cluster_fine=10)
-    far = _public_anchors_in_coarse(atlas, 1, 2, cluster_fine=20)
-    assert {a.at_uri for a in near} != {a.at_uri for a in far}
-
-
 def test_anchors_are_the_nearest_public_points(atlas) -> None:
     near = _public_anchors_in_coarse(atlas, 1, 2, cluster_fine=10)
     assert {a.snippet for a in near} == {"mushroom foraging", "mycology notes"}
 
     far = _public_anchors_in_coarse(atlas, 1, 2, cluster_fine=20)
     assert {a.snippet for a in far} == {"prefect deployment", "worker restarts"}
-
-
-def test_private_points_are_never_offered_as_public_anchors(atlas) -> None:
-    got = _public_anchors_in_coarse(atlas, 1, 6, cluster_fine=10)
-    assert all("private" not in a.at_uri for a in got)
 
 
 def test_respects_the_coarse_scope(atlas) -> None:

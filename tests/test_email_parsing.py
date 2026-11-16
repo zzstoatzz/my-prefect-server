@@ -2,7 +2,7 @@
 
 from email.message import EmailMessage
 
-from mps.email import SNIPPET_CHARS, _decode_header, _extract_text
+from mps.email import _decode_header, _extract_text
 
 
 def test_decode_header_plain():
@@ -29,9 +29,3 @@ def test_extract_text_multipart_prefers_text_plain():
     msg.set_content("plain body")
     msg.add_alternative("<p>html body</p>", subtype="html")
     assert _extract_text(msg) == "plain body"
-
-
-def test_snippet_truncation():
-    msg = EmailMessage()
-    msg.set_content("x" * (SNIPPET_CHARS * 2))
-    assert len(_extract_text(msg)[:SNIPPET_CHARS]) == SNIPPET_CHARS

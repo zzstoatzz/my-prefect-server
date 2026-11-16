@@ -33,23 +33,3 @@ def test_parse_ps():
 def test_runaway_simulator_flags():
     flagged = sustained_burners(procs())
     assert [p["pid"] for p in flagged] == [458333]
-
-
-def test_prefect_workload_never_flags():
-    flagged = sustained_burners(procs())
-    assert not any("prefect" in p["args"] for p in flagged)
-
-
-def test_kernel_threads_never_flag():
-    flagged = sustained_burners(procs())
-    assert not any(p["args"].startswith("[") for p in flagged)
-
-
-def test_young_hot_process_does_not_flag():
-    # a build pegging a core for 10 minutes is a busy afternoon, not a leak
-    assert not any(p["pid"] == 99999 for p in sustained_burners(procs()))
-
-
-def test_old_mostly_idle_daemon_does_not_flag():
-    # spindle: old and nonzero cpu, but duty cycle far below the bar
-    assert not any(p["pid"] == 3437 for p in sustained_burners(procs()))

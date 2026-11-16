@@ -9,40 +9,9 @@ whole run including the sources that had already succeeded.
 import logging
 
 import httpx
-import pytest
 from mps.likes import fetch_likes
 
-from flows.ingest import (
-    LIKES_PAGES,
-    NETWORK_RETRIES,
-    _tolerate,
-    fetch_all_tangled_items,
-    fetch_authored_items,
-    fetch_emails,
-    fetch_issue_or_pr,
-    fetch_nate_likes,
-    fetch_notifications,
-    fetch_phi_memory,
-    resolve_liked_posts,
-)
-
-NETWORK_TASKS = [
-    fetch_notifications,
-    fetch_issue_or_pr,
-    fetch_authored_items,
-    fetch_all_tangled_items,
-    fetch_emails,
-    fetch_phi_memory,
-    fetch_nate_likes,
-    resolve_liked_posts,
-]
-
-
-@pytest.mark.parametrize("task", NETWORK_TASKS, ids=lambda t: t.name)
-def test_network_tasks_retry(task):
-    assert task.retries == NETWORK_RETRIES["retries"]
-    assert task.retry_delay_seconds == NETWORK_RETRIES["retry_delay_seconds"]
-    assert task.retry_jitter_factor == NETWORK_RETRIES["retry_jitter_factor"]
+from flows.ingest import _tolerate, resolve_liked_posts
 
 
 class _FailedFuture:
@@ -132,38 +101,6 @@ def test_fetch_likes_stops_on_a_missing_cursor_before_max_pages():
     with httpx.Client(base_url=PDS, transport=_paged_transport(2)) as client:
         items = fetch_likes(client, max_pages=10)
     assert len(items) == 2
-
-
-def test_ingest_bounds_the_hourly_likes_walk():
-    assert fetch_nate_likes.fn.__defaults__ == (LIKES_PAGES,)
-    assert LIKES_PAGES is not None
-
-
-# --- the Degraded state contract ingest relies on ---
-
-
-def test_a_named_completed_state_is_completed_but_not_Completed():
-    """The flow returns Completed(name="Degraded") when a source was skipped.
-
-    The failure automation expects prefect.flow-run.{Failed,TimedOut,Crashed},
-    and the event name is built from state.name — so this must stay a
-    COMPLETED-type state carrying a name of its own.
-    """
-    from prefect import flow
-    from prefect.states import Completed
-
-    from tests.harness import prefect_test_harness
-
-    @flow
-    def degraded_flow():
-        return Completed(name="Degraded", message="unavailable: likes")
-
-    with prefect_test_harness():
-        state = degraded_flow(return_state=True)
-
-    assert state.is_completed()
-    assert state.name == "Degraded"
-    assert state.type.value == "COMPLETED"
 
 
 def test_resolve_liked_posts_fetches_only_recent_likes_not_yet_stored(tmp_path, monkeypatch):

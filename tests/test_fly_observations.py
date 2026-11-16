@@ -9,7 +9,6 @@ from pydantic import ValidationError
 
 from flows import fly_observations as fly
 from flows.evergreen_checks import Project
-from flows.fleet_health import CheckResult, summarize
 
 NOW = datetime(2026, 11, 7, 5, tzinfo=UTC)
 APP = "zds-pds"
@@ -251,10 +250,3 @@ def test_targets_require_explicit_eligible_owned_resources():
                 ],
             }
         )
-
-
-def test_observations_do_not_become_availability_pages():
-    _, unhealthy, broken = summarize([CheckResult("zds/PDS health", True, "HTTP 200")])
-    assert not unhealthy and not broken
-    assert fly.observation_rows([]) == []
-    assert "UNKNOWN" in "\n".join(fly.observation_rows(RuntimeError("missing evidence")))

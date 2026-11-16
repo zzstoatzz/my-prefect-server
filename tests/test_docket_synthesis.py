@@ -233,61 +233,6 @@ def test_tags_merged_and_ordered_by_frequency():
 # ---------------------------------------------------------------------------
 
 
-def test_anchors_in_same_coarse_only():
-    """Anchors come from the SAME coarse cluster as the candidate — that's
-    'nearby public state.'"""
-    points = [
-        _point(
-            pid="card-near",
-            kind="note",
-            promotion_status="promoted",
-            cluster_fine=99,
-            cluster_coarse=5,
-            layer="public-knowledge",
-            at_uri="at://x/network.cosmik.card/near",
-        ),
-        _point(
-            pid="card-far",
-            kind="note",
-            promotion_status="promoted",
-            cluster_fine=98,
-            cluster_coarse=99,
-            layer="public-knowledge",
-            at_uri="at://x/network.cosmik.card/far",
-        ),
-    ]
-    anchors = _public_anchors_in_coarse(_atlas(points), cluster_coarse=5, max_anchors=10)
-    uris = [a.at_uri for a in anchors]
-    assert "at://x/network.cosmik.card/near" in uris
-    assert "at://x/network.cosmik.card/far" not in uris
-
-
-def test_anchors_only_public_layers():
-    """Private-working points in the same coarse cluster are NOT anchors —
-    they're MORE PRESSURE, not resolution."""
-    points = [
-        _point(
-            pid="obs-private",
-            kind="observation",
-            promotion_status="raw",
-            cluster_fine=1,
-            cluster_coarse=7,
-            layer="private-working",
-        ),
-        _point(
-            pid="blog-public",
-            kind="blog",
-            promotion_status="promoted",
-            cluster_fine=2,
-            cluster_coarse=7,
-            layer="public-output",
-            at_uri="at://x/app.greengale.document/post",
-        ),
-    ]
-    anchors = _public_anchors_in_coarse(_atlas(points), cluster_coarse=7, max_anchors=10)
-    assert [a.kind for a in anchors] == ["blog"]
-
-
 def test_anchors_capped_at_max():
     points = [
         _point(

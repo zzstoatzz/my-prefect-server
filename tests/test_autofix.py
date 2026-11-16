@@ -10,7 +10,6 @@ import pytest
 from prefect.exceptions import ObjectNotFound
 
 from flows import autofix
-from tests.harness import prefect_test_harness
 
 
 def test_ui_links_ignore_internal_api_address(monkeypatch):
@@ -45,9 +44,12 @@ class FakeRun:
 
 
 @pytest.fixture(autouse=True)
-def no_skill_clones(monkeypatch):
+def no_remote_diagnosis(monkeypatch):
     monkeypatch.setattr(autofix, "fetch_skills", lambda workdir: [])
     monkeypatch.setattr(autofix, "prior_attempt", AsyncMock(return_value=None))
+    monkeypatch.setattr(autofix, "proposal_events", AsyncMock(return_value=[]))
+    monkeypatch.setattr(autofix, "emit_event", lambda **kwargs: None)
+    monkeypatch.setattr(autofix, "run_context", SimpleNamespace(id=None))
 
 
 def ctx(dep_name):
@@ -108,8 +110,6 @@ def test_diagnosis_uses_available_run_timestamp(monkeypatch, clock):
     monkeypatch.setattr(autofix, "secret_sync", lambda _: "fake")
     monkeypatch.setattr(autofix, "screen_prompt", lambda *args: None)
     monkeypatch.setattr(autofix, "run_pi", lambda *args, **kwargs: "SUMMARY: diagnosis")
-    monkeypatch.setattr(autofix, "emit_event", lambda **kwargs: None)
-    monkeypatch.setattr(autofix, "run_context", SimpleNamespace(id=None))
 
     result = autofix.autofix.fn(run.id)
 
@@ -122,8 +122,7 @@ def test_gather_error_never_fails_the_run(monkeypatch):
         raise RuntimeError("api down")
 
     monkeypatch.setattr(autofix, "gather", broken)
-    with prefect_test_harness():
-        state = autofix.autofix(uuid4(), return_state=True)
+    state = autofix.autofix.fn(uuid4())
     assert state.is_completed()
     assert state.name == "Degraded"
     assert "api down" in state.message
@@ -134,8 +133,7 @@ def test_skips_own_failures(monkeypatch):
         return ctx("autofix")
 
     monkeypatch.setattr(autofix, "gather", fake)
-    with prefect_test_harness():
-        state = autofix.autofix(uuid4(), return_state=True)
+    state = autofix.autofix.fn(uuid4())
     assert state.name == "Skipped"
 
 
@@ -145,8 +143,7 @@ def test_dry_run_renders_without_pi(monkeypatch):
 
     monkeypatch.setattr(autofix, "gather", fake)
     monkeypatch.setattr(autofix, "run_pi", lambda *a, **k: (_ for _ in ()).throw(AssertionError))
-    with prefect_test_harness():
-        state = autofix.autofix(uuid4(), dry_run=True, return_state=True)
+    state = autofix.autofix.fn(uuid4(), dry_run=True)
     assert state.name == "DryRun"
 
 
@@ -224,8 +221,7 @@ def test_propose_off_by_default(monkeypatch):
     monkeypatch.setattr(
         autofix, "propose_fix", lambda *a, **k: (_ for _ in ()).throw(AssertionError)
     )
-    with prefect_test_harness():
-        state = autofix.autofix(uuid4(), return_state=True)
+    state = autofix.autofix.fn(uuid4())
     assert state.name == "Diagnosed"
 
 
@@ -269,8 +265,7 @@ def test_propose_for_allowlist_turns_proposing_on(monkeypatch):
         }
 
     monkeypatch.setattr(autofix, "propose_fix", fake_propose)
-    with prefect_test_harness():
-        other = autofix.autofix(uuid4(), propose_for=["strata-hourly"], return_state=True)
+    other = autofix.autofix.fn(uuid4(), propose_for=["strata-hourly"])
     assert other.name == "Proposed"
     assert proposed == ["strata-hourly"]
 
@@ -278,8 +273,7 @@ def test_propose_for_allowlist_turns_proposing_on(monkeypatch):
         return ctx("ingest")
 
     monkeypatch.setattr(autofix, "gather", fake_other)
-    with prefect_test_harness():
-        state = autofix.autofix(uuid4(), propose_for=["strata-hourly"], return_state=True)
+    state = autofix.autofix.fn(uuid4(), propose_for=["strata-hourly"])
     assert state.name == "Diagnosed"
     assert proposed == ["strata-hourly"]
 
@@ -318,8 +312,7 @@ def test_second_failure_on_same_sha_does_not_open_another_pull(monkeypatch):
     monkeypatch.setattr(
         autofix, "propose_fix", lambda *a, **k: (_ for _ in ()).throw(AssertionError)
     )
-    with prefect_test_harness():
-        state = autofix.autofix(uuid4(), propose_for=["strata-hourly"], return_state=True)
+    state = autofix.autofix.fn(uuid4(), propose_for=["strata-hourly"])
     assert state.name == "Diagnosed"
     assert "https://tangled.org/x/pulls/9" in state.message
 
@@ -404,8 +397,7 @@ def test_fixed_on_main_diagnosis_skips_the_fix_round(monkeypatch):
     monkeypatch.setattr(
         autofix, "propose_fix", lambda *a, **k: (_ for _ in ()).throw(AssertionError)
     )
-    with prefect_test_harness():
-        state = autofix.autofix(uuid4(), propose_for=["strata-hourly"], return_state=True)
+    state = autofix.autofix.fn(uuid4(), propose_for=["strata-hourly"])
     assert state.name == "Diagnosed"
     assert "fixed on main: 992475c" in state.message
 
@@ -431,8 +423,7 @@ def test_diagnosis_round_gets_the_context_file_and_the_skill(monkeypatch, tmp_pa
     monkeypatch.setattr(autofix, "run_pi", fake_pi)
     monkeypatch.setattr(autofix, "screen_prompt", lambda *a, **k: None)
     monkeypatch.setattr(autofix, "secret_sync", lambda name: "k")
-    with prefect_test_harness():
-        state = autofix.autofix(uuid4(), return_state=True)
+    state = autofix.autofix.fn(uuid4())
     assert state.name == "Diagnosed"
     assert "commits since abc: none" in seen["context"]
     assert seen["skills"] and seen["skills"][0].endswith("skill-pr-body")

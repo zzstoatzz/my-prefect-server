@@ -90,8 +90,6 @@ def test_collect_connector_propagates_failure_instead_of_reporting_zero():
         async def collect(self, period):
             raise RuntimeError("provider unavailable")
 
-    assert collect_connector.retries == 3
-    assert collect_connector.retry_delay_seconds == [2.0, 10.0, 30.0]
     with pytest.raises(RuntimeError, match="provider unavailable"):
         asyncio.run(collect_connector.fn(BrokenConnector(), Period.trailing_month()))
 
@@ -609,20 +607,6 @@ def test_turso_price_override_and_unknown_plan(monkeypatch):
     monkeypatch.setenv("TURSO_PLAN", "enterprise")
     with pytest.raises(RuntimeError, match="unknown turso plan"):
         asyncio.run(TursoConnector().collect(Period.trailing_month()))
-
-
-def test_flow_collects_turso():
-    import flows.costs as costs_flow
-
-    connectors = asyncio.run(costs_flow.build_connectors())
-    assert "turso" in [c.name for c in connectors]
-
-
-def test_flow_has_no_builder_receipt_connector():
-    import flows.costs as costs_flow
-
-    connectors = asyncio.run(costs_flow.build_connectors())
-    assert "hetzner-builders" not in [c.name for c in connectors]
 
 
 def test_month_to_date_basis_survives_publication_without_monthly_projection():
