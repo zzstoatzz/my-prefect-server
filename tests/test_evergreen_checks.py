@@ -165,6 +165,7 @@ def monitor_server():
         thread.join()
 
 
+@pytest.mark.integration
 def test_real_http_preserves_target_failure_and_detects_inventory_drift(
     monitor_server, monkeypatch
 ):
@@ -186,6 +187,7 @@ def test_real_http_preserves_target_failure_and_detects_inventory_drift(
         check_evergreen.fn(f"{url}/inventory", f"{url}/status")
 
 
+@pytest.mark.integration
 def test_real_http_rejects_stale_report(monitor_server):
     url, payload = monitor_server
     payload["/status"]["checkedAt"] = NOW.isoformat()
@@ -248,6 +250,7 @@ def test_the_confirming_probe_uses_the_inventory_check():
     assert [s.check.model_dump() for s in probed] == [post]
 
 
+@pytest.mark.integration
 def test_probe_reports_the_status_and_sends_the_check(monitor_server):
     url, payload = monitor_server
     with httpx.Client(timeout=5) as client:
@@ -268,6 +271,7 @@ def test_probe_reports_the_status_and_sends_the_check(monitor_server):
         assert payload["posted"] == ("text/event-stream", "{}")
 
 
+@pytest.mark.integration
 def test_probe_reports_a_refused_connection_as_its_error():
     refused = Service.model_construct(
         name="api", url="http://127.0.0.1:1/", check=evergreen_checks.Check()

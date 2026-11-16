@@ -54,6 +54,7 @@ def test_history_is_bounded_without_discarding_active_attempts(tmp_path):
     assert snapshot["active_attempts"] == 1
 
 
+@pytest.mark.integration
 def test_image_environment_executes_without_installing_and_does_not_replay(tmp_path):
     payload = {
         "packages": [],

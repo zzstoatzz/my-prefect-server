@@ -154,8 +154,8 @@ registration runs on the trusted HeavyPad host, using its existing
 `~/.config/prefect-home/client.env` derived from canonical SOPS.
 
 `prefect-home-registration.timer` checks every five minutes. Its oneshot service
-fetches GitHub main into a dedicated clean clone, requires the matching Tangled
-`deploy.yml` push pipeline to be green, verifies the existing HeavyPad process
+fetches GitHub main into a dedicated clean clone, requires `check.yml` and
+`integration.yml` to pass in the matching Tangled push pipeline, verifies the existing HeavyPad process
 pool, then validates and registers `prefect.heavypad.yaml` with the exact
 `MPS_PIN=@<SHA>`. It records success in
 `~/.local/share/prefect-home/registration/registered-sha`. A lock prevents
@@ -185,5 +185,6 @@ by checking out source.
 Source and units are `scripts/register_heavypad_main.py`,
 `deploy/heavypad-prefect/prefect-home-registration.service` and its `.timer`.
 The installed script is `~/.local/share/prefect-home/register-main.py`; install
-updated source there after landing it on main, then reload the user manager when
-units change. The oneshot reads freshly rendered credentials on every start.
+updated source there after landing it on GitHub main. When changing required
+workflows, update the installed script before pushing the new workflow layout
+to Tangled. Reload the user manager when units change. The oneshot reads freshly rendered credentials on every start.

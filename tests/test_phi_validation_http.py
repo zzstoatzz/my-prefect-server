@@ -7,6 +7,8 @@ import pytest
 
 from flows import phi_trigger
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def bot(monkeypatch):

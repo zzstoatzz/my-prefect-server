@@ -31,7 +31,7 @@ push:
 init-analytics:
     cd analytics && uv run dbt deps && uv run dbt seed && uv run dbt compile
 
-# Source checks before trusted-host registration: lint, format, types, Python and hub tests
+# Run the checks required before trusted-host registration.
 check:
     just validate-deployments
     uv run ruff check .
@@ -39,11 +39,20 @@ check:
     uv run --extra inbox ty check
     just test
     cd web && bun install --frozen-lockfile && bun run check && bun run lint && bun test
+    cd deploy/heavypad-watchdog && bun install --frozen-lockfile && bun run check && bun test
 
 # Run Python tests with the same bounded parallelism as CI; use -n 0 for a focused test.
 [positional-arguments]
 test *args:
     uv run --extra dagster --extra inbox pytest -q -n 4 "$@"
+
+[positional-arguments]
+test-unit *args:
+    just test -m "not integration" "$@"
+
+[positional-arguments]
+test-integration *args:
+    just test -n 2 -m integration "$@"
 
 # Apply standalone notification and cross-deployment automations.
 [positional-arguments]

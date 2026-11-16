@@ -3,9 +3,12 @@ import subprocess
 import sys
 import time
 
+import pytest
+
 from flows.stream_admission import _process_group_exists, _terminate_process_group
 
 
+@pytest.mark.integration
 def test_terminate_process_group_stops_leader_and_child(tmp_path):
     child_pid_path = tmp_path / "child.pid"
     leader = subprocess.Popen(

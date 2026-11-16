@@ -155,7 +155,7 @@ def test_merge_gate_runs_each_repo_suite_as_its_ci_does():
     from flows.test_pull_patch import test_script
 
     workflow = yaml.safe_load(
-        (Path(__file__).parents[1] / ".tangled/workflows/deploy.yml").read_text()
+        (Path(__file__).parents[1] / ".tangled/workflows/integration.yml").read_text()
     )
     sync = next(
         line.strip()

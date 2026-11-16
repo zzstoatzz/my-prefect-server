@@ -8,6 +8,8 @@ from prefect.logging import disable_run_logger
 
 from flows.mcp_atlas import crawl
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def endpoints():

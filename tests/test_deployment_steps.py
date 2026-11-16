@@ -13,6 +13,8 @@ import pytest
 from mps.deployment_steps import cached_checkout
 from prefect.deployments.steps.core import run_step
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def source(tmp_path):

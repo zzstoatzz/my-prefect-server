@@ -96,6 +96,7 @@ def test_request_endpoint_cannot_be_mounted_into_agent_namespace(requests, tmp_p
         pass
 
 
+@pytest.mark.integration
 def test_proposal_dispatch_over_http_preserves_scope_and_retry_identity(tmp_path):
     deployment_id = "ec0cc6dc-bed2-4b93-80ba-41c15cb2a5cb"
     submitted = []

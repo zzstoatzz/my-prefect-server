@@ -1,5 +1,6 @@
 import time
 
+import pytest
 from prefect import flow, get_client
 from prefect.events.filters import EventFilter, EventNameFilter
 from prefect.events.worker import EventsWorker
@@ -7,6 +8,8 @@ from prefect.states import Failed
 
 from flows.autofix import autofix
 from tests.harness import prefect_test_harness
+
+pytestmark = pytest.mark.integration
 
 
 def test_error_is_persisted_and_next_attempt_reuses_it(monkeypatch):

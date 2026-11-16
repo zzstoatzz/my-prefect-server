@@ -120,6 +120,7 @@ def test_typesafe_usage_is_priced_per_input_token(tmp_path: Path):
     assert event["total_cost_usd"] == pytest.approx(0.042)
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize(("status", "expected_requests"), [(402, 1), (400, 4)])
 def test_classification_retry_policy_against_http_server(monkeypatch, status, expected_requests):
     from flows.classify_emails import classify_email_batch

@@ -87,8 +87,10 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
+addopts = "--strict-markers"
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = ["integration: exercises a real service, subprocess, or persistence boundary"]
 
 [tool.ty.src]
 include = ["flows", "packages/mps/src"]

@@ -60,8 +60,8 @@ required serialization changes.
 
 Use `uv run --python 3.14 --extra dagster pytest -q` for the CI runtime and
 `uv run --python 3.13 --extra dagster pytest tests/test_dagster_hub.py -q`
-for the production runtime. These exercise real dbt parsing, builds, failure
-propagation, and schema metadata; no serializer dependency overrides are needed.
+for the production runtime. The smoke test parses and builds a small dbt
+project, checks schema metadata, and reads the resulting hub export.
 
 ## Release
 
@@ -94,9 +94,9 @@ worker environment loaded and production `ANALYTICS_DB_PATH`/
 uv run --no-sync python deploy/dagster/validate_snapshot.py ~/dagster-hub/validation-YYYYMMDD
 ```
 
-Use `uv run --extra dagster pytest tests/test_dagster_hub.py` for failure/retry
-regressions. A deliberately broken real dbt build must leave the published export
-unchanged. Run the repository's normal checks before releasing changes.
+Use `uv run --extra dagster pytest tests/test_dagster_hub.py` for the smoke
+test, terminal-run reuse, and preservation of the published database if export
+fails. Run the repository's normal checks before releasing changes.
 
 Verified on HeavyPad on 2026-09-28:
 

@@ -1,0 +1,24 @@
+when:
+  - event: ["push"]
+    branch: main
+
+engine: microvm
+image: nixos
+
+dependencies:
+  - uv
+  - python314
+  - stdenv.cc.cc.lib
+  - git
+
+environment:
+  UV_PYTHON_PREFERENCE: "only-system"
+
+steps:
+  - name: integration
+    command: |
+      set -euo pipefail
+      ulimit -n 8192
+      for lib in /nix/store/*-gcc-*-lib/lib; do export LD_LIBRARY_PATH="$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; done
+      uv sync --locked --extra dagster --extra inbox
+      uv run --no-sync pytest -q -x -n 2 -m integration --durations=20

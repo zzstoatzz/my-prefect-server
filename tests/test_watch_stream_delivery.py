@@ -3,12 +3,15 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import pytest
 from prefect.blocks.system import Secret
 from prefect.variables import Variable
 
 from flows import watch_stream as watcher
 from tests.harness import prefect_test_harness
 from tests.test_watch_stream import PROFILE, sample, verdict
+
+pytestmark = pytest.mark.integration
 
 
 async def test_real_http_delivery_retry_and_persisted_episode(monkeypatch):
@@ -49,6 +52,7 @@ async def test_real_http_delivery_retry_and_persisted_episode(monkeypatch):
     base = f"http://127.0.0.1:{server.server_port}"
     for name in ("STREAM", "RELAY", "PHI_BASE"):
         monkeypatch.setattr(watcher, name, base)
+    monkeypatch.setattr(watcher, "deliver", watcher.deliver.with_options(retry_delay_seconds=0))
     try:
         with prefect_test_harness():
             await Secret(value="local-test-token").asave("phi-control-token", overwrite=True)

@@ -27,13 +27,11 @@ just prefect deployment run 'diagnostics/diagnostics' --watch
 ## develop
 
 ```sh
-just check  # deployment validation, lint, types, tests, and web checks
-just push   # GitHub mirror first, then Tangled
+just check  # run repository checks
 ```
 
-Web checks require [Bun](https://bun.sh/). Read [AGENTS.md](AGENTS.md) for repository
-conventions and operational constraints, and [testing](docs/testing.md) for coverage
-and focused test commands.
+See [testing](docs/testing.md) for focused commands and [AGENTS.md](AGENTS.md)
+for repository conventions.
 
 ## docs
 

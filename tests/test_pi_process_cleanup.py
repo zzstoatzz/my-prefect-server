@@ -5,6 +5,8 @@ import sys
 import pytest
 from mps import pi_process
 
+pytestmark = pytest.mark.integration
+
 
 def test_exited_process_group_does_not_mask_the_inference_failure(tmp_path, monkeypatch):
     monkeypatch.setenv("LLM_SPEND_LOG_PATH", str(tmp_path / "usage.jsonl"))

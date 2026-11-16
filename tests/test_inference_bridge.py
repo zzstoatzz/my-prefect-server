@@ -10,6 +10,8 @@ import pytest
 from mps.inference_bridge import inference_bridge
 from mps.inference_grants import InferenceGrants
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def bridge_dir():

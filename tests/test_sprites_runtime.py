@@ -11,6 +11,8 @@ from contextlib import suppress
 import pytest
 from prefect_sprites import runtime
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def configure(tmp_path, monkeypatch):
@@ -156,16 +158,15 @@ def test_sigterm_bounds_shutdown_when_child_ignores_it(configure):
     launcher = (
         "from pathlib import Path; from prefect_sprites import runtime; "
         "runtime.subprocess.run = lambda *a, **k: None; "
+        "runtime._TERMINATION_GRACE_SECONDS = 0.05; "
         f"runtime.execute(Path({str(directory)!r}))"
     )
     supervisor = subprocess.Popen([sys.executable, "-c", launcher])
     try:
         wait_for_child(supervisor, directory / "ready")
-        requested_at = time.time()
         supervisor.terminate()
-        supervisor.wait(timeout=120)
+        assert supervisor.wait(timeout=5) == 0
         state = json.loads((directory / "state.json").read_text())
-        assert state["finished_at"] - requested_at < 15
         assert state["phase"] == "exited"
         assert state["reason"] == "execution cancelled"
         assert state["exit_code"] == 143

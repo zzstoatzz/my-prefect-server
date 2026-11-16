@@ -3,9 +3,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 
 
+@pytest.mark.integration
 def test_inherited_git_dir_leaves_the_caller_repository_alone(tmp_path):
     caller = tmp_path / "caller"
     subprocess.run(["git", "init", "--quiet", str(caller)], check=True)

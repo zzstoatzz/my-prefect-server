@@ -123,6 +123,7 @@ def bridge():
         thread.join()
 
 
+@pytest.mark.integration
 def test_dry_run_reads_only(bridge):
     (host, port), commands, state = bridge
     result = sweep_inbox(host, port, "u", "p", {}, dry_run=True, now=NOW)
@@ -132,6 +133,7 @@ def test_dry_run_reads_only(bridge):
     assert len(state["inbox"]) == 4
 
 
+@pytest.mark.integration
 def test_sweep_moves_to_archive_and_keeps_people(bridge):
     (host, port), commands, state = bridge
     result = sweep_inbox(host, port, "u", "p", {}, now=NOW)

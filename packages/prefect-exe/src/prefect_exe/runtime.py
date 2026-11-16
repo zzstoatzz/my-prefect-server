@@ -8,6 +8,8 @@ import subprocess
 import time
 from pathlib import Path
 
+_TERMINATION_GRACE_SECONDS = 10
+
 
 class _TerminationRequested(Exception):
     pass
@@ -147,7 +149,7 @@ def execute(directory: Path) -> None:
                     signal.signal(signal.SIGTERM, signal.SIG_IGN)
                     os.killpg(process.pid, signal.SIGTERM)
                     try:
-                        process.wait(timeout=10)
+                        process.wait(timeout=_TERMINATION_GRACE_SECONDS)
                     except subprocess.TimeoutExpired:
                         os.killpg(process.pid, signal.SIGKILL)
                         process.wait()

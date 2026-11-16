@@ -100,6 +100,7 @@ def api(monkeypatch):
         thread.join()
 
 
+@pytest.mark.integration
 def test_recovered_http_health_does_not_erase_an_oom(api):
     client, state = api
     assert client.get("health").status_code == 200
@@ -116,6 +117,7 @@ def test_recovered_http_health_does_not_erase_an_oom(api):
     assert all(auth == "FlyV1 fixture" for _, auth in state["requests"])
 
 
+@pytest.mark.integration
 def test_stopped_machine_keeps_failure_evidence_without_stale_memory(api):
     client, state = api
     state["machines"][0]["state"] = "stopped"
@@ -125,6 +127,7 @@ def test_stopped_machine_keeps_failure_evidence_without_stale_memory(api):
     assert "/metrics" not in [path for path, _ in state["requests"]]
 
 
+@pytest.mark.integration
 def test_planned_stop_is_not_a_process_failure(api):
     client, state = api
     state["events"] = [event(oom_killed=False, requested_stop=True, exit_code=130)]
@@ -148,6 +151,7 @@ def test_old_failures_expire_and_future_events_are_not_trusted():
         fly.failure_events([parsed], datetime(2026, 11, 6, tzinfo=UTC))
 
 
+@pytest.mark.integration
 def test_missing_exit_evidence_is_unknown_not_clean(api):
     client, state = api
     state["events"][0]["request"] = {}
@@ -155,6 +159,7 @@ def test_missing_exit_evidence_is_unknown_not_clean(api):
         fly.collect_app(client, "zds", APP, NOW)
 
 
+@pytest.mark.integration
 def test_events_failure_cannot_produce_a_clean_history(api):
     client, state = api
     state["events_status"] = 503
@@ -165,6 +170,7 @@ def test_events_failure_cannot_produce_a_clean_history(api):
     )
 
 
+@pytest.mark.integration
 def test_missing_memory_is_explicitly_unknown(api):
     client, state = api
     state["memory"]["data"]["result"] = []
@@ -174,6 +180,7 @@ def test_missing_memory_is_explicitly_unknown(api):
     assert any("unknown" in row for row in fly.observation_rows([observation]))
 
 
+@pytest.mark.integration
 def test_absent_machine_does_not_claim_event_coverage(api):
     client, state = api
     state["machines"] = []
@@ -216,6 +223,7 @@ def test_partial_provider_report_is_not_complete_coverage():
         fly.MetricResponse.model_validate({**memory(), "isPartial": True})
 
 
+@pytest.mark.integration
 def test_no_opt_in_needs_no_provider_credential(api):
     client, _ = api
     assert fly.observe_fly.fn(inventory_url=str(client.base_url) + "inventory") == []

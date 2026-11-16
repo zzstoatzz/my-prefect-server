@@ -95,6 +95,7 @@ def comment(rkey, created_at):
     return relevant_comment(event)
 
 
+@pytest.mark.integration
 async def test_reconcile_recovers_missed_comments_once(monkeypatch):
     old = comment("3old", "2026-09-01T00:00:00Z")
     emitted = []
@@ -109,6 +110,7 @@ async def test_reconcile_recovers_missed_comments_once(monkeypatch):
     assert emitted[0]["payload"]["pull"] == PULL
 
 
+@pytest.mark.integration
 async def test_reconcile_leaves_fresh_comments_to_the_bridge(monkeypatch):
     fresh = comment("3new", datetime.now(UTC).isoformat())
     emitted = []
@@ -193,6 +195,7 @@ async def test_bridge_advances_cursor_on_irrelevant_events(tmp_path, handled):
     assert bridge.read_cursor(state) == 99
 
 
+@pytest.mark.integration
 async def test_quiet_subscription_restarts_from_durable_cursor(monkeypatch, tmp_path):
     state = tmp_path / "state" / "cursor"
     before = time.time_ns() // 1000
@@ -249,6 +252,7 @@ def test_health_goes_stale_only_after_a_sustained_disconnect():
     assert not status.healthy(status.disconnected_since + bridge.STALE_AFTER_S + 1)
 
 
+@pytest.mark.integration
 async def test_health_endpoint_reports_503_when_stale():
     status = bridge.Status()
     status.disconnected_since -= bridge.STALE_AFTER_S + 1

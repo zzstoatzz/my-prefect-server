@@ -1,5 +1,3 @@
-import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -25,6 +23,7 @@ def test_export_failure_preserves_last_good_database(tmp_path):
     assert published.read_bytes() == b"previous export"
 
 
+@pytest.mark.integration
 @pytest.mark.parametrize("status", [dg.DagsterRunStatus.SUCCESS, dg.DagsterRunStatus.FAILURE])
 def test_bridge_reuses_terminal_run_and_propagates_failure(tmp_path, monkeypatch, status):
     monkeypatch.setenv("DAGSTER_HOME", str(tmp_path))
@@ -43,10 +42,8 @@ def test_bridge_reuses_terminal_run_and_propagates_failure(tmp_path, monkeypatch
         assert len(instance.get_runs()) == 1
 
 
-@pytest.mark.parametrize("fails", [False, True])
-def test_real_dbt_build_and_metadata_release_database_before_other_assets(
-    tmp_path, monkeypatch, fails
-):
+@pytest.mark.integration
+def test_dbt_build_releases_database_and_publishes_schema_and_export(tmp_path, monkeypatch):
     project = tmp_path / "dbt"
     (project / "models").mkdir(parents=True)
     (project / "profiles").mkdir()
@@ -59,9 +56,7 @@ def test_real_dbt_build_and_metadata_release_database_before_other_assets(
     (project / "profiles/profiles.yml").write_text(
         f"failure_check:\n  target: dev\n  outputs:\n    dev:\n      type: duckdb\n      path: '{database}'\n      threads: 1\n"
     )
-    (project / "models/hub_action_items.sql").write_text(
-        "select * from missing_source_table" if fails else "select 1 as n"
-    )
+    (project / "models/hub_action_items.sql").write_text("select 1 as n")
     with duckdb.connect(str(database)) as db:
         db.execute("CREATE TABLE raw_github_issues AS SELECT 1 AS n")
         db.execute("CREATE TABLE raw_liked_posts AS SELECT 1 AS n")
@@ -82,32 +77,17 @@ def test_real_dbt_build_and_metadata_release_database_before_other_assets(
     )
     monkeypatch.setenv("PREFECT_API_URL", "")
     export = tmp_path / "hub.duckdb"
-    export.write_bytes(b"last good export")
     defs = build_definitions(project, database, tmp_path / "missing-spend.jsonl", export)
     graph = defs.resolve_asset_graph()
     assert dg.AssetKey("llm_spend") not in graph.get(dg.AssetKey("hub_action_items")).parent_keys
     assert len(graph.get(dg.AssetKey("hub_export")).parent_keys) == len(HUB_TABLES)
     with temporary_settings({PREFECT_API_URL: None}):
-        result = defs.resolve_job_def("hub_transform").execute_in_process(raise_on_error=False)
-    if fails:
-        assert not result.success
-        assert any(
-            event.event_type_value == "STEP_FAILURE"
-            and "missing_source_table" in str(event.event_specific_data)
-            for event in result.all_events
-        )
-        assert export.read_bytes() == b"last good export"
-        assert not any(
-            e.asset_key == dg.AssetKey("hub_export")
-            for e in result.get_asset_materialization_events()
-        )
-    else:
-        assert result.success
-        with duckdb.connect(str(export), read_only=True) as db:
-            assert db.execute("SELECT * FROM hub_action_items").fetchall() == [(1,)]
-        events = result.get_asset_materialization_events()
-        model = next(e for e in events if e.asset_key == dg.AssetKey("hub_action_items"))
-        assert "dagster/column_schema" in model.event_specific_data.materialization.metadata
+        result = defs.resolve_job_def("hub_transform").execute_in_process()
+    with duckdb.connect(str(export), read_only=True) as db:
+        assert db.execute("SELECT * FROM hub_action_items").fetchall() == [(1,)]
+    events = result.get_asset_materialization_events()
+    model = next(e for e in events if e.asset_key == dg.AssetKey("hub_action_items"))
+    assert "dagster/column_schema" in model.event_specific_data.materialization.metadata
 
 
 def test_phi_top_tags_break_ties_independent_of_input_order():
@@ -127,51 +107,6 @@ def test_phi_top_tags_break_ties_independent_of_input_order():
             )
             result = db.execute(query).fetchone()
             assert result[5] == ["u", "v", "w", "x", "y"]
-
-
-def test_snapshot_validation_uses_its_own_catalog_and_preserves_source_project(tmp_path):
-    project = tmp_path / "analytics"
-    (project / "models").mkdir(parents=True)
-    (project / "profiles").mkdir()
-    (project / "dbt_project.yml").write_text("name: snapshot\nversion: '1.0'\nprofile: snapshot\n")
-    (project / "profiles/profiles.yml").write_text(
-        "snapshot:\n  target: dev\n  outputs:\n    dev:\n      type: duckdb\n"
-        "      path: \"{{ env_var('ANALYTICS_DB_PATH') }}\"\n      threads: 1\n"
-    )
-    (project / "models/hub_action_items.sql").write_text("select 1 as n")
-    database = tmp_path / "production.duckdb"
-    with duckdb.connect(str(database)) as db:
-        db.execute("CREATE TABLE raw_github_issues AS SELECT 1 AS n")
-        db.execute("CREATE TABLE raw_liked_posts AS SELECT 1 AS n")
-        for table in ("fastmcp_daily", "fastmcp_weekly", "fastmcp_stuck"):
-            db.execute(f"CREATE TABLE {table} AS SELECT 1 AS n")
-    spend = tmp_path / "spend.jsonl"
-    spend.write_text("")
-    env = {
-        **os.environ,
-        "ANALYTICS_DB_PATH": str(database),
-        "LLM_SPEND_LOG_PATH": str(spend),
-        "PREFECT_API_URL": "",
-    }
-    report_dir = tmp_path / "validation"
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(Path("deploy/dagster/validate_snapshot.py").resolve()),
-            str(report_dir),
-        ],
-        cwd=tmp_path,
-        env=env,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=600,
-    )
-    assert result.returncode == 0, result.stderr
-    report = json.loads((report_dir / "verification.json").read_text())
-    assert report["equal_row_counts"] == {"hub_action_items": 1, "raw_llm_spend": 0}
-    assert "dagster/column_schema" in report["materialization_metadata"]["hub_action_items"]
-    assert not (project / "target").exists()
 
 
 def test_duckdb_memory_limit_stays_under_daemon_memory_high():

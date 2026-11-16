@@ -1,59 +1,50 @@
 # testing
 
-## run the checks
+Run these from the repository root after installing the project with uv.
 
-```sh
-just test                                 # Python suite, four workers, like CI
-just test -n 0 tests/test_phi_trigger.py   # focused test without worker startup
-just test --durations=20                   # find the expensive tests
-just check                                # deployment contracts, lint, types, Python and hub tests
-```
+| Command | What it runs |
+| --- | --- |
+| `just test-unit` | Python unit tests and fast component checks |
+| `just test-integration` | Python tests that exercise real service, subprocess, and persistence boundaries |
+| `just test` | Both Python groups |
+| `just check` | Deployment contracts, lint, types, both Python groups, and hub and watchdog checks |
 
-The test recipe installs the locked workspace's Dagster and inbox extras through
-uv. Four workers bound contention between temporary servers, database processes
-and subprocess tests; using every CPU previously allowed eighteen simultaneous
-workers. For an already-synced environment, prefix a recipe with `UV_NO_SYNC=1`.
+Pass pytest arguments through any of the three test recipes. For example,
+`just test-unit -n 0 tests/test_phi_trigger.py` runs a focused file without
+starting parallel test workers. Use `--durations=20` to find expensive tests.
 
-CI also checks the separate Cloudflare watchdog in `deploy/heavypad-watchdog`
-with `bun install --frozen-lockfile`, `bun run check` and `bun test`.
-The hub's checks include type/component analysis, lint and the existing Bun
-tests for Access authentication, presence input, PDS resolution, Gardener data
-loading and Markdown sanitization. These exercise server modules, not a browser.
-See [.tangled/workflows/deploy.yml](../.tangled/workflows/deploy.yml) for the
-release check sequence.
+## what belongs in each group
 
-## what the Python suite tests
+Unit tests cover decisions, payloads, parsing, state transitions, and error
+handling. Call a Prefect flow's `.fn` when checking its own decisions and
+stub external calls at the boundary. Fast component checks can use small
+in-process fixtures such as a temporary DuckDB database.
 
-| Area | Behavior exercised | Representative tests |
-| --- | --- | --- |
-| Workflow decisions | Proposal permissions, duplicate handling, degraded outcomes, request construction and provider error classification; external APIs and model calls are generally mocked | `test_autofix.py`, `test_phi_trigger.py`, `test_costs.py` |
-| Workflow integration | Our event lookup prevents duplicate autofix attempts, comment checkpoints prevent repeat delivery, and classification billing errors stop retries | `test_autofix_outcomes.py`, `test_pull_comments.py`, `test_classify_emails.py` |
-| Analytics | Real DuckDB mutations/compaction, writer coordination, dbt execution, Dagster asset metadata and preserving the previous export after failure | `test_analytics_storage.py`, `test_dagster_hub.py` |
-| Agent execution and source delivery | Cancellation and child-process cleanup, timeouts, immutable source selection, concurrent Git cache access and isolation from the caller's Git environment | `test_exe_runtime.py`, `test_sprites_runtime.py`, `test_deployment_steps.py`, `test_git_isolation.py` |
-| Event delivery | Retry, durable checkpoints, reconnect behavior and duplicate suppression, including local HTTP/WebSocket servers | `test_watch_stream_delivery.py`, `test_pull_comments.py` |
-| Deployment contracts | Manifest entrypoints, pins, delivery modes and authenticated CLI argument routing | `test_validate_deployments.py`, `test_presence_deployment.py`, `test_prefect_cli.py` |
+Mark an integration test with `@pytest.mark.integration` when it depends on
+a real service or subprocess, or exercises a heavier persistence path. Use
+`pytestmark = pytest.mark.integration` when the whole module fits. These tests
+cover Prefect attempt deduplication and delivery checkpoints, HTTP and
+WebSocket reconnects, worker process cancellation, source delivery, DuckDB
+compaction, and Dagster publishing a dbt-built export. Use small fixtures and
+short test-only retry or shutdown intervals.
 
-Tests live in [tests/](../tests/). Decision and payload tests call a flow's `.fn`
-when they need only its Python behavior. Tests of Prefect orchestration use
-[the test harness](../tests/harness.py), which starts an isolated Python Prefect
-server and database. Keep that distinction when adding coverage: starting a
-server does not make a mocked request-body assertion more useful. Test decisions
-and wiring owned by this repository; generic Prefect semantics belong upstream.
+The Prefect harness runs an isolated Python server. The Dagster smoke test uses
+a small fixture project. Hub Bun tests exercise server modules and the watchdog
+tests cover alert decisions. Production Zig behavior, the full analytics graph,
+and browser interactions need separate verification. Provider probes such as
+`exe_provider_probe.py` and `gardener_skills_probe.py` are explicit live operations.
 
-## limits and live probes
+## spindle and registration
 
-The local harness is not the production Zig control plane. Passing tests do not
-prove that production credentials work, a release artifact is available, a
-deployment is registered, or a real worker can execute it. Production verification
-still needs the intended worker and an observed deployment run.
+Spindle starts two independent workflows on each push to main.
+[check.yml](../.tangled/workflows/check.yml) runs the fast Python suite with four
+workers, plus deployment contracts, lint, types, and the hub and watchdog checks.
+[integration.yml](../.tangled/workflows/integration.yml) runs the marked Python
+tests with two workers and prints the slowest cases. Separate jobs let fast
+checks report while integration runs, subject to Spindle capacity.
 
-The dbt/Dagster integration tests build a small fixture project, not the full
-production analytics graph. Hub tests do not execute the complete exported-DuckDB
-query boundary or browser interactions. See the
-[test suite audit](audits/2026-11-15-test-suite.md) for the reviewed coverage and
-pruning decisions.
-
-Standalone provider
-probes such as `exe_provider_probe.py` and
-`gardener_skills_probe.py` are not pytest-collected tests. They exercise live
-infrastructure and are separate, explicit operations.
+HeavyPad requires both workflows to pass on the same main push for the exact
+revision it will register. See the
+[registration runbook](../deploy/heavypad-prefect/README.md#registering-main-revisions)
+for the operator procedure and [deployment validation](deployments-validation.md)
+for the checks that still require the real worker.

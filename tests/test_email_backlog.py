@@ -56,6 +56,7 @@ def inbox_server():
         thread.join()
 
 
+@pytest.mark.integration
 def test_real_imap_pagination_preserves_seen_and_requires_stable_mailbox(inbox_server):
     (host, port), commands = inbox_server
     first = read_backlog(host, port, "test", "test", "2026-07-14", batch_size=2, body_chars=10)
@@ -94,6 +95,7 @@ def test_html_only_mail_and_attachment_exclusion():
     assert message_text(msg) == "Pay by Friday & confirm."
 
 
+@pytest.mark.integration
 def test_sent_mail_is_examined_read_only_and_includes_recipient(inbox_server):
     (host, port), commands = inbox_server
     page = read_backlog(host, port, "test", "test", None, mailbox="Sent")
@@ -103,6 +105,7 @@ def test_sent_mail_is_examined_read_only_and_includes_recipient(inbox_server):
     assert all("STORE" not in c and " SELECT " not in c for c in commands)
 
 
+@pytest.mark.integration
 def test_all_mail_unread_uses_peek(inbox_server):
     (host, port), commands = inbox_server
     page = read_backlog(host, port, "test", "test", None, mailbox="All Mail", unread_only=True)
@@ -112,6 +115,7 @@ def test_all_mail_unread_uses_peek(inbox_server):
     assert not any(" STORE " in c for c in commands)
 
 
+@pytest.mark.integration
 def test_mark_read_validates_all_identities_before_any_mutation(inbox_server):
     (host, port), commands = inbox_server
     with pytest.raises(ValueError, match="identity changed"):

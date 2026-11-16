@@ -71,6 +71,7 @@ def test_list_columns_take_part_in_change_detection(tmp_path):
         assert con.execute("SELECT labels FROM raw_github_issues").fetchall() == [(["bug", "p1"],)]
 
 
+@pytest.mark.integration
 def test_compaction_drops_dead_versions_and_obsolete_relations(tmp_path):
     db = tmp_path / "analytics.duckdb"
     with duckdb.connect(str(db)) as con:
@@ -96,6 +97,7 @@ def test_compaction_drops_dead_versions_and_obsolete_relations(tmp_path):
     assert not list(tmp_path.glob("*.compacting*"))
 
 
+@pytest.mark.integration
 def test_compaction_keeps_the_storage_version_older_readers_open(tmp_path):
     import struct
 
@@ -108,6 +110,7 @@ def test_compaction_keeps_the_storage_version_older_readers_open(tmp_path):
     assert struct.unpack("<Q", header[12:20])[0] == 64
 
 
+@pytest.mark.integration
 def test_failed_compaction_leaves_the_original_in_place(tmp_path, monkeypatch):
     db = tmp_path / "analytics.duckdb"
     with duckdb.connect(str(db)) as con:

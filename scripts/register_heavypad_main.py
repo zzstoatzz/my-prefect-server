@@ -13,6 +13,15 @@ ROOT = Path.home() / ".local/share/prefect-home/registration"
 REPO = "https://github.com/zzstoatzz/my-prefect-server.git"
 CI = "https://spindle.zzstoatzz.io/xrpc/org.tangled.ci.queryPipelines"
 REPO_DID = "did:plc:xrndz6e42qj6ygbclfmruugv"
+REQUIRED_WORKFLOWS = {"check.yml", "integration.yml"}
+
+
+def ci_passed(workflows):
+    checks = [w for w in workflows if w["name"] in REQUIRED_WORKFLOWS]
+    return (
+        len(checks) == len(REQUIRED_WORKFLOWS)
+        and {w["name"] for w in checks if w["status"] == "success"} == REQUIRED_WORKFLOWS
+    )
 
 
 def run(*args, cwd=None, capture=False, env=None):
@@ -48,8 +57,7 @@ def main():
         pipeline = pipelines[0]
         assert pipeline["commit"] == sha
         assert pipeline["trigger"]["ref"] == "refs/heads/main"
-        checks = [w for w in pipeline["workflows"] if w["name"] == "deploy.yml"]
-        if len(checks) != 1 or checks[0]["status"] != "success":
+        if not ci_passed(pipeline["workflows"]):
             print("Main CI is not green; no registration:", sha)
             return
         receipt = ROOT / "registered-sha"

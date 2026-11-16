@@ -200,6 +200,7 @@ def test_month_rollover_and_counter_reset():
     assert state["month_tcp_bytes"] == 0
 
 
+@pytest.mark.integration
 def test_http_failure_retains_same_event_for_retry():
     received = []
 
@@ -240,6 +241,7 @@ def test_http_failure_retains_same_event_for_retry():
         thread.join()
 
 
+@pytest.mark.integration
 def test_duplicate_monitor_lock(tmp_path):
     import fcntl
 

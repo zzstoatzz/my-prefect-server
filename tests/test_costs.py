@@ -532,7 +532,6 @@ def test_costs_names_the_run_incomplete_when_a_connector_reports_a_gap(monkeypat
     """A snapshot missing R2 or stopped-machine rootfs still publishes, but its
     total is a floor, so the run must not read as a plain Completed."""
     import flows.costs as costs_flow
-    from tests.harness import prefect_test_harness
 
     class Connector:
         name = "cloudflare"
@@ -565,15 +564,14 @@ def test_costs_names_the_run_incomplete_when_a_connector_reports_a_gap(monkeypat
     monkeypatch.setattr(costs_flow, "write_snapshot", fake_write_snapshot)
     monkeypatch.setattr(costs_flow, "configure_logfire", lambda *_: None)
 
-    with prefect_test_harness():
-        state = asyncio.run(
-            costs_flow.costs(costs_flow.CostsConfig(dry_run=False), return_state=True)
-        )
-        from prefect.client.orchestration import get_client
+    artifacts = []
 
-        with get_client(sync_client=True) as client:
-            artifacts = client.read_artifacts()
-        assert [artifact.key for artifact in artifacts] == ["cost-snapshot"]
+    async def record_artifact(*, key, **kwargs):
+        artifacts.append(key)
+
+    monkeypatch.setattr(costs_flow, "acreate_table_artifact", record_artifact)
+    state = asyncio.run(costs_flow.costs.fn(costs_flow.CostsConfig(dry_run=False)))
+    assert artifacts == ["cost-snapshot"]
 
     assert len(wrote) == 1
     if gap:
