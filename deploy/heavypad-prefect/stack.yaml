@@ -149,7 +149,7 @@ spec:
             limits: {cpu: 200m, memory: 64Mi}
       containers:
         - name: api
-          image: atcr.io/zzstoatzz.io/prefect-server@sha256:9eb968c24e4295431d7b942fc474c4eb55e151d6d34935fa89d8e669e92d050b
+          image: atcr.io/zzstoatzz.io/prefect-server@sha256:d24cbddf2fc99206ba113b6bbc966ac3b968bd5b32db475c71233bbb1bc99332
           imagePullPolicy: IfNotPresent
           command: [/app/prefect-server]
           args: [--webserver-only]
