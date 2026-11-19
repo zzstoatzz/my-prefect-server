@@ -3,7 +3,9 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from flows.atlas import build_atlas, clone_repo
+import pytest
+
+from flows.atlas import PAGES_ASSET_LIMIT, build_atlas, clone_repo, validate_atlas_asset_sizes
 
 
 def test_clone_repo_is_retry_safe(tmp_path: Path):
@@ -40,3 +42,14 @@ def test_build_atlas_does_not_pass_the_worker_python(tmp_path: Path, monkeypatch
     env = run.call_args.kwargs["env"]
     assert "UV_PYTHON" not in env
     assert env["TURBOPUFFER_API_KEY"] == "kept"
+
+
+def test_pages_limit_is_inclusive_and_names_the_oversized_asset(tmp_path: Path):
+    asset = tmp_path / "atlas-summaries.json.gz"
+    with asset.open("wb") as stream:
+        stream.truncate(PAGES_ASSET_LIMIT)
+        validate_atlas_asset_sizes(tmp_path)
+        stream.truncate(PAGES_ASSET_LIMIT + 1)
+
+    with pytest.raises(RuntimeError, match=r"atlas-summaries\.json\.gz.*26,214,401 bytes"):
+        validate_atlas_asset_sizes(tmp_path)

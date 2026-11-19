@@ -33,6 +33,7 @@ from prefect.tasks import exponential_backoff
 REPO_URL = "https://github.com/zzstoatzz/pub-search.git"
 CF_ACCOUNT_ID = "3e9ba01cd687b3c4d29033908177072e"
 CF_PROJECT = "leaflet-search"
+PAGES_ASSET_LIMIT = 25 * 1024 * 1024
 
 # node distribution — nodejs.org/dist. used to drive wrangler. tried bun
 # initially (single binary, no curl needed) but bun ≥1.2 on linux-x64
@@ -148,7 +149,7 @@ def build_atlas(repo_dir: Path) -> Path:
 
 @task(retries=0)
 def build_summaries(repo_dir: Path) -> Path:
-    output = repo_dir / "site" / "atlas-summaries.json"
+    output = repo_dir / "site" / "atlas-summaries.json.gz"
     result = subprocess.run(
         [
             "uv",
@@ -337,6 +338,15 @@ def deploy_to_pages(site_dir: Path) -> str:
     return ""
 
 
+def validate_atlas_asset_sizes(site_dir: Path) -> None:
+    for asset in sorted(site_dir.glob("atlas*.json*")):
+        if asset.is_file() and (size := asset.stat().st_size) > PAGES_ASSET_LIMIT:
+            raise RuntimeError(
+                f"{asset.name} is {size:,} bytes, exceeding the Cloudflare Pages "
+                f"per-asset limit of {PAGES_ASSET_LIMIT:,} bytes"
+            )
+
+
 @flow(name="pub-search-atlas", log_prints=True, timeout_seconds=7200)
 def rebuild_atlas():
     """Rebuild the 2D semantic map and deploy to Cloudflare Pages."""
@@ -356,6 +366,7 @@ def rebuild_atlas():
                 f"build-facts failed, deploying with committed facts.json: {e}"
             )
         archive_atlas(repo_dir)
+        validate_atlas_asset_sizes(repo_dir / "site")
         deploy_to_pages(repo_dir / "site")
 
 
