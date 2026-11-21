@@ -8,6 +8,7 @@ from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from mps.alerts.model import NOTIFICATIONS, incidents, key_of
 from mps.alerts.server import Prefect, TailscaleIdentity, create_app, create_server
+from fastmcp.experimental.events import list_events, poll_events_mcp
 from starlette.testclient import TestClient
 
 FAILURE = "prefect.automation.aaaa"
@@ -372,7 +373,7 @@ def fired(at, event_id, run="r1"):
 
 
 def events_client(mcp):
-    from fastmcp.events import EventsClientExtension
+    from fastmcp.experimental.events import EventsClientExtension
 
     return Client(mcp, mode="auto", extensions=[EventsClientExtension()])
 
@@ -380,13 +381,13 @@ def events_client(mcp):
 async def test_alert_event_starts_from_now_then_delivers_later_firings(mcp, server):
     server.triggered = [fired("2026-11-07T07:12:00Z", "e1")]
     async with events_client(mcp) as client:
-        (listed,) = await client.list_events()
-        start = await client.poll_events_mcp("alert.fired")
-        quiet = await client.poll_events_mcp("alert.fired", cursor="2026-11-07T07:12:00+00:00")
+        (listed,) = await list_events(client)
+        start = await poll_events_mcp(client, "alert.fired")
+        quiet = await poll_events_mcp(client, "alert.fired", cursor="2026-11-07T07:12:00+00:00")
         server.triggered.append(fired("2026-11-07T08:12:00Z", "e2", "r2"))
         server.triggered.append(fired("2026-11-07T09:12:00Z", "e3", "r3"))
-        first = await client.poll_events_mcp("alert.fired", cursor=quiet.cursor, max_events=1)
-        rest = await client.poll_events_mcp("alert.fired", cursor=first.cursor)
+        first = await poll_events_mcp(client, "alert.fired", cursor=quiet.cursor, max_events=1)
+        rest = await poll_events_mcp(client, "alert.fired", cursor=first.cursor)
 
     assert (listed.name, listed.delivery) == ("alert.fired", ["poll", "push"])
     assert start.events == [] and start.cursor is not None
@@ -410,5 +411,5 @@ async def test_alert_event_rejects_a_cursor_that_is_not_a_time(mcp):
 
     async with events_client(mcp) as client:
         with pytest.raises(MCPError) as refused:
-            await client.poll_events_mcp("alert.fired", cursor="yesterday")
+            await poll_events_mcp(client, "alert.fired", cursor="yesterday")
     assert refused.value.error.code == -32602
