@@ -2,7 +2,7 @@
 
 A systemd user service on heavypad samples Linux TCP socket counters every five
 seconds. It emits `bandwidth.*` Prefect events and sends warning evidence to
-Logfire (`zig-prefect-server`, service `bandwidth-watchdog`). Prefect sends the
+Logfire (project `infra`, service `bandwidth-watchdog`). Prefect sends the
 operator a deterministic Discord notification. A Logfire alert uses the existing
 `phi alert watch (push)` channel; Phi needs no new code or polling loop.
 
@@ -83,7 +83,7 @@ events are delivered. Startup credentials and queued events use the canonical
 home Prefect server; the write block and host-event rules moved before retirement.
 
 Thresholds live in the three `logfire-disk-*.json` rules in Logfire, project
-`zig-prefect-server`, using the existing `phi alert watch (push)` channel.
+`infra`, using the existing `phi alert watch (push)` channel.
 Warning means under 15% or 100 GiB available, or under 10% free inodes. Critical
 means under 5% or 30 GiB available, or under 2% free inodes. Warning excludes
 critical conditions. The missing-sample rule detects five minutes without disk

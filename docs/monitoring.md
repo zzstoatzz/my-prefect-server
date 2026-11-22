@@ -32,8 +32,8 @@ assessment and cohort in `docs/operational-checks.md` and `site/services.json`.
 ## HeavyPad storage alerts
 
 Grafana is a dashboard surface; alert rules for HeavyPad storage live in Logfire,
-project `zig-prefect-server`. No Grafana alert rules or notification contacts were
-created. The host's existing bandwidth watchdog now sends filesystem samples
+project `infra` (named `zig-prefect-server` before 2026-11-22). No Grafana alert
+rules or notification contacts were created. The host's existing bandwidth watchdog now sends filesystem samples
 once a minute, independent of Prefect flow scheduling. Physical filesystems are
 deduplicated, so `/` and the orchestration Postgres storage path currently produce
 one sample. Available space excludes filesystem-reserved blocks.

@@ -1,5 +1,5 @@
 {
-  "project": "zig-prefect-server",
+  "project": "infra",
   "id": "2ee3a685-f659-46a9-b8c1-9b6090c3ac35",
   "name": "heavypad fan degraded",
   "frequency": "PT5M",

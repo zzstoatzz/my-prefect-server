@@ -1,5 +1,5 @@
 {
-  "project": "zig-prefect-server",
+  "project": "infra",
   "id": "df8c7795-6af2-44c5-9df9-3848d64b04a3",
   "name": "heavypad bandwidth watchdog",
   "frequency": "PT5M",
