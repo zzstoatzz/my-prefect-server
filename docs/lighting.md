@@ -37,7 +37,7 @@ change means adding a schedule, not a deployment or a flow.
 
 | Slug | When | Changes |
 | --- | --- | --- |
-| `nightly-off` | 01:00 America/Chicago, daily | every light off |
+| `nightly-off` | 01:00 America/Chicago, Monday through Friday (Friday and Saturday nights stay on) | every light off |
 
 Schedules are written in local time with their `timezone`. The server honors
 it since prefect-server `78beba2` (2026-11-11); before that it evaluated cron

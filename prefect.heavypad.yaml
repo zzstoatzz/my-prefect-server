@@ -48,7 +48,7 @@ deployments:
     tags: [home, heavypad]
     entrypoint: flows/lighting.py:lighting
     schedules:
-      - cron: "0 1 * * *"
+      - cron: "0 1 * * 1-5"
         timezone: America/Chicago
         slug: nightly-off
         parameters:
