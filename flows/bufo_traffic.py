@@ -10,7 +10,7 @@ per-bucket rate from — it reads `com.find-bufo.traffic` straight off the
 public PDS, so this flow is the whole pipeline.
 
 Read token: `LOGFIRE_READ_TOKEN` (Secret block `logfire-read-token`, project
-prefect/bufo, minted with `logfire read-tokens create`). Write creds: the
+waow/pub-search since 2026-11-22; the query filters on service_name). Write creds: the
 operator-atproto-creds block, same as `costs`.
 
 ad hoc:  uv run python flows/bufo_traffic.py               # dry-run, prints days
