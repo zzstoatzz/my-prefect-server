@@ -97,10 +97,23 @@ def main() -> None:
         check=True,
     ).stdout.rstrip("\n")
     assert ":" in readonly_auth and "\n" not in readonly_auth
+    logfire_token = subprocess.run(
+        [
+            "sops",
+            "decrypt",
+            "--extract",
+            '["prefect"]["blocks"]["logfire-server-write-token"]',
+            str(Path.home() / "tangled.org/zzstoatzz.io/secrets/prod.yaml"),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.rstrip("\n")
     values = {
         "api-auth": credentials["api_auth_string"],
         "api-auth-readonly": readonly_auth,
         "atproto-login-key": credentials["atproto_login_key"],
+        "logfire-token": logfire_token,
         "postgres-password": credentials["postgres_password"],
         "database-url": f"postgresql://prefect:{credentials['postgres_password']}@postgres:5432/prefect",
     }
