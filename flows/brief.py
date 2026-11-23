@@ -50,6 +50,10 @@ be honest and proportionate. most days are normal — say so.
 don't manufacture urgency. reserve "critical", "urgent", "immediate"
 for genuinely exceptional situations. use red accent sparingly.
 lead with the most useful observation, not the most alarming one.
+
+each section's icon is exactly one of: alert, clock, check, eye, bolt,
+bookmark. there is no bug icon; use alert for bugs and breakage.
+its accent is exactly one of: red, amber, emerald, sky, violet.
 """
 
 
