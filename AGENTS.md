@@ -23,8 +23,7 @@
   archives or project docs.
 - Land production source and configuration on `main` before rollout. Use
   immutable release pins and wheels, not abandoned branch checkouts.
-- Use `just` recipes for established operations. Never use `pip` or `uv pip`;
-  use `uv add`, `uv sync`, or `uv run --with`.
+- Use `just` recipes for established operations.
 - Push GitHub first, then Tangled with `just push`; runtime installs use the
   mirror. Run `just hooks` once per clone and the appropriate checks from
   `just check` before shipping.
