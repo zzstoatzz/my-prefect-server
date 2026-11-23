@@ -116,7 +116,9 @@ ssh stoat@heavypad 'systemctl --user list-timers "prefect-home-*" --all'
 ```
 
 `backup-freshness` checks local dump, offsite and host-snapshot freshness plus
-weekly restore verification. Its notification depends on the home server, so
+weekly restore verification, and fails when `~/.config/prefect-dr/heavypad.toml`
+differs from the pinned revision's `prefect-dr.toml`. Install that file with
+`just prefect-dr-config` after changing it on main. Its notification depends on the home server, so
 it cannot detect total host loss. Use the [outage runbook](../../docs/heavypad-outage-runbook.md)
 for recovery and off-host checks. Never attach a restored database to a second
 active scheduler or enable copied automations by default.

@@ -1,4 +1,5 @@
-"""Fail when HeavyPad's local, R2, restore-verified or host-state backups go stale.
+"""Fail when HeavyPad's local, R2, restore-verified or host-state backups go stale,
+or when the installed prefect-dr config has drifted from the revision under test.
 
 A failed run is the alert: HeavyPad's existing flow-run failure rule notifies.
 """
@@ -11,6 +12,8 @@ from pathlib import Path
 from prefect import flow
 
 STATE_DIR = "/home/stoat/.local/state/prefect-home"
+DR_CONFIG = "/home/stoat/.config/prefect-dr/heavypad.toml"
+REPO_DR_CONFIG = Path(__file__).parents[1] / "deploy/heavypad-prefect/prefect-dr.toml"
 DUMP = re.compile(r"^(\d{8}T\d{6}Z)\.dump\.age$")
 MAX_BACKUP_AGE = dt.timedelta(hours=26)
 MAX_RESTORE_AGE = dt.timedelta(days=8)
@@ -56,12 +59,20 @@ def problems(
     return found
 
 
+def config_drift(installed: Path, expected: Path) -> str | None:
+    if not installed.exists():
+        return f"prefect-dr config {installed} is missing"
+    if installed.read_text() != expected.read_text():
+        return f"prefect-dr config {installed} differs from main's {expected.name}"
+    return None
+
+
 def read_json(path: Path) -> dict | None:
     return json.loads(path.read_text()) if path.exists() else None
 
 
 @flow(name="backup-freshness", log_prints=True, timeout_seconds=60)
-def backup_freshness(state_dir: str = STATE_DIR) -> list[str]:
+def backup_freshness(state_dir: str = STATE_DIR, dr_config: str = DR_CONFIG) -> list[str]:
     state = Path(state_dir)
     found = problems(
         dt.datetime.now(dt.UTC),
@@ -70,6 +81,8 @@ def backup_freshness(state_dir: str = STATE_DIR) -> list[str]:
         read_json(state / "restore-verified.json"),
         read_json(state / "host-backup.json"),
     )
+    if drift := config_drift(Path(dr_config), REPO_DR_CONFIG):
+        found.append(drift)
     if found:
         raise RuntimeError("; ".join(found))
     print("Local, R2, restore-verified and host state backups are fresh")

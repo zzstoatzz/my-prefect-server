@@ -1,9 +1,16 @@
 import datetime as dt
 import json
+from pathlib import Path
 
 import pytest
 
-from flows.backup_freshness import backup_freshness, dump_time, problems
+from flows.backup_freshness import (
+    REPO_DR_CONFIG,
+    backup_freshness,
+    config_drift,
+    dump_time,
+    problems,
+)
 
 NOW = dt.datetime(2026, 10, 27, 7, 5, tzinfo=dt.UTC)
 NEWEST = "20261027T054712Z.dump.age"
@@ -52,10 +59,33 @@ def test_stale_host_snapshot():
     assert found == ["host state snapshot last uploaded at 2026-10-25T06:16:10Z"]
 
 
+def installed_config(tmp_path, text=None):
+    path = tmp_path / "heavypad.toml"
+    path.write_text(REPO_DR_CONFIG.read_text() if text is None else text)
+    return str(path)
+
+
+def test_config_drift_flags_missing_and_passes_matching(tmp_path):
+    assert config_drift(tmp_path / "heavypad.toml", REPO_DR_CONFIG) is not None
+    assert config_drift(Path(installed_config(tmp_path)), REPO_DR_CONFIG) is None
+
+
+def test_stale_installed_config_is_drift(tmp_path):
+    stale = REPO_DR_CONFIG.read_text().replace('"mcp-atlas", ', '"leaflet-atlas", "mcp-atlas", ')
+    drift = config_drift(Path(installed_config(tmp_path, stale)), REPO_DR_CONFIG)
+    assert drift is not None and "differs from main" in drift
+
+
 def test_flow_fails_on_problems(tmp_path):
     (tmp_path / "backups").mkdir()
     with pytest.raises(RuntimeError, match="no local dump"):
-        backup_freshness.fn(state_dir=str(tmp_path))
+        backup_freshness.fn(state_dir=str(tmp_path), dr_config=installed_config(tmp_path))
+
+
+def test_flow_reports_config_drift(tmp_path):
+    (tmp_path / "backups").mkdir()
+    with pytest.raises(RuntimeError, match="differs from main"):
+        backup_freshness.fn(state_dir=str(tmp_path), dr_config=installed_config(tmp_path, "x"))
 
 
 def test_flow_passes_when_fresh(tmp_path):
@@ -69,4 +99,5 @@ def test_flow_passes_when_fresh(tmp_path):
     (tmp_path / "host-backup.json").write_text(
         json.dumps({"checked_at": at, "newest_uploaded": "x.host.tar.age"})
     )
-    assert backup_freshness.fn(state_dir=str(tmp_path)) == []
+    config = installed_config(tmp_path)
+    assert backup_freshness.fn(state_dir=str(tmp_path), dr_config=config) == []
