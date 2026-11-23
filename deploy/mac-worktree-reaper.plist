@@ -6,13 +6,9 @@
     <string>io.zzstoatzz.mac-worktree-reaper</string>
     <key>ProgramArguments</key>
     <array>
-        <string>uv</string>
-        <string>run</string>
-        <string>--quiet</string>
-        <string>python</string>
-        <string>-m</string>
-        <string>mps.worktree_reaper</string>
-        <string>--apply</string>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>exec uv run --quiet python -m mps.worktree_reaper --apply</string>
     </array>
     <key>WorkingDirectory</key>
     <string>REPOSITORY_PATH</string>
