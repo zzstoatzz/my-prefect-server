@@ -56,6 +56,7 @@ REGENERABLE = {
 REGENERABLE_SUFFIXES = (".egg-info", ".pyc", ".so", ".tsbuildinfo")
 SKIP_DIRS = REGENERABLE | {".git", "Library", ".Trash"}
 DAY = 86400
+SUMMARY = "Remove idle git worktrees whose work already landed, and report the rest."
 
 
 @dataclass
@@ -294,7 +295,7 @@ def run(
 
 def main(argv: list[str] | None = None) -> int:
     home = Path.home()
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=SUMMARY)
     parser.add_argument("--apply", action="store_true", help="remove; without it, only report")
     parser.add_argument("--no-fetch", action="store_true", help="skip fetching origin first")
     parser.add_argument("--min-idle-days", type=float, default=3.0)
