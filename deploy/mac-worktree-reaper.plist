@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.zzstoatzz.mac-worktree-reaper</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>uv</string>
+        <string>run</string>
+        <string>--quiet</string>
+        <string>python</string>
+        <string>-m</string>
+        <string>mps.worktree_reaper</string>
+        <string>--apply</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>REPOSITORY_PATH</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>EXECUTABLE_PATH</string>
+    </dict>
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>4</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+    <key>LowPriorityIO</key>
+    <true/>
+    <key>Nice</key>
+    <integer>10</integer>
+    <key>StandardOutPath</key>
+    <string>LOG_PATH</string>
+    <key>StandardErrorPath</key>
+    <string>LOG_PATH</string>
+</dict>
+</plist>
