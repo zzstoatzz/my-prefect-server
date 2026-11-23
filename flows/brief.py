@@ -17,7 +17,7 @@ from prefect.artifacts import create_markdown_artifact
 from prefect.cache_policies import CachePolicy
 from prefect.context import TaskRunContext
 from pydantic_ai import Agent
-from pydantic_ai.durable_exec.prefect import PrefectAgent, TaskConfig
+from pydantic_ai.durable_exec.prefect import PrefectDurability, TaskConfig
 from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.providers.anthropic import AnthropicProvider
 
@@ -53,10 +53,10 @@ lead with the most useful observation, not the most alarming one.
 """
 
 
-def make_agent(api_key: str) -> PrefectAgent[None, Briefing]:
+def make_agent(api_key: str) -> Agent[None, Briefing]:
     """Build agent after API key is available (provider validates key at init)."""
     model = AnthropicModel("claude-haiku-5-5", provider=AnthropicProvider(api_key=api_key))
-    agent = Agent[None, Briefing](
+    return Agent[None, Briefing](
         model,
         output_type=Briefing,
         system_prompt=SYSTEM_PROMPT,
@@ -67,13 +67,15 @@ def make_agent(api_key: str) -> PrefectAgent[None, Briefing]:
         model_settings=AnthropicModelSettings(
             anthropic_cache_instructions="5m", anthropic_effort="low"
         ),
-    )
-    return PrefectAgent(
-        agent,
-        model_task_config=TaskConfig(
-            retries=2,
-            retry_delay_seconds=[2.0, 5.0],
-        ),
+        # model calls run as retried Prefect tasks under the calling flow
+        capabilities=[
+            PrefectDurability(
+                model_task_config=TaskConfig(
+                    retries=2,
+                    retry_delay_seconds=[2.0, 5.0],
+                ),
+            )
+        ],
     )
 
 
@@ -112,8 +114,8 @@ def load_items(db_path: str) -> str:
 )
 async def generate_briefing(items_text: str, api_key: str) -> Briefing:
     """Call the LLM to curate items into a briefing. Cached by items content hash."""
-    prefect_agent = make_agent(api_key)
-    result = await prefect_agent.run(f"curate these items:\n\n{items_text}")
+    agent = make_agent(api_key)
+    result = await agent.run(f"curate these items:\n\n{items_text}")
     record_pydantic_ai_result(
         task_name="generate_briefing",
         model="claude-haiku-5-5",
