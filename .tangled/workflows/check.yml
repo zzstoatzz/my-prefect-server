@@ -1,6 +1,8 @@
+# a push that only changes docs or top-level markdown skips this run.
 when:
   - event: ["push"]
     branch: main
+    paths: ["analytics/**", "deploy/**", "flows/**", "hub_dagster/**", "infra/**", "lexicons/**", "packages/**", "plugins/**", "scripts/**", "tests/**", "tools/**", "web/**", "*.yaml", pyproject.toml, uv.lock, justfile, .python-version, .tangled/workflows/check.yml]
 
 engine: microvm
 image: nixos
