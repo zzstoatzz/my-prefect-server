@@ -9,8 +9,6 @@ dependencies:
   - uv
   - python314
   - bun
-  - ruff
-  - ty
   - stdenv.cc.cc.lib
   - git
 
@@ -25,9 +23,9 @@ steps:
       for lib in /nix/store/*-gcc-*-lib/lib; do export LD_LIBRARY_PATH="$lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; done
       uv run scripts/validate_deployments.py --config prefect.heavypad.yaml
       uv sync --locked --extra dagster --extra inbox
-      ruff check .
-      ruff format --check .
-      ty check
+      uv run --no-sync ruff check .
+      uv run --no-sync ruff format --check .
+      uv run --no-sync ty check
       uv run --no-sync pytest -q -x -n 4 -m "not integration" --durations=10
       cd web
       bun install --frozen-lockfile
