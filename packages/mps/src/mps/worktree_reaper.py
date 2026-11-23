@@ -57,6 +57,11 @@ REGENERABLE_SUFFIXES = (".egg-info", ".pyc", ".so", ".tsbuildinfo")
 SKIP_DIRS = REGENERABLE | {".git", "Library", ".Trash"}
 DAY = 86400
 SUMMARY = "Remove idle git worktrees whose work already landed, and report the rest."
+PROTECTED = tuple(Path.home() / name for name in ("Desktop", "Documents", "Downloads"))
+
+
+def is_protected(path: str | Path) -> bool:
+    return any(Path(path).is_relative_to(folder) for folder in PROTECTED)
 
 
 @dataclass
@@ -170,8 +175,16 @@ def landed(wt: Worktree) -> tuple[bool, str]:
 
 
 def classify(
-    wt: Worktree, entry: dict[str, str], cwds: list[str], now: float, min_idle_days: float
+    wt: Worktree,
+    entry: dict[str, str],
+    cwds: list[str],
+    now: float,
+    min_idle_days: float,
+    allow_protected: bool = False,
 ) -> None:
+    if is_protected(wt.path) and not allow_protected:
+        wt.verdict, wt.reason = "keep", "in a folder macOS guards; pass it as --root to include it"
+        return
     if "locked" in entry:
         wt.verdict, wt.reason = "keep", "locked"
         return
@@ -252,6 +265,7 @@ def run(
 ) -> dict:
     now = time.time()
     cwds = process_cwds()
+    allow_protected = any(is_protected(root) for root in roots)
     results: list[Worktree] = []
     for repo in find_repos(roots):
         git(repo, "worktree", "prune")
@@ -273,7 +287,7 @@ def run(
                 branch=entry.get("branch", "").removeprefix("refs/heads/") or None,
                 head=entry.get("HEAD", ""),
             )
-            classify(wt, entry, cwds, now, min_idle_days)
+            classify(wt, entry, cwds, now, min_idle_days, allow_protected)
             if apply and wt.verdict == "remove":
                 remove(wt)
             results.append(wt)
@@ -317,7 +331,6 @@ def main(argv: list[str] | None = None) -> int:
     roots = args.root or [
         home / "tangled.org",
         home / "github.com",
-        home / "Documents/Codex",
         home / ".codex/worktrees",
         home / ".cache/checkouts",
     ]

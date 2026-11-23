@@ -143,3 +143,21 @@ def test_derived_data_for_missing_workspaces(tmp_path: Path) -> None:
         stamp = time.time() - 10 * reaper.DAY
         os.utime(root / name, (stamp, stamp))
     assert reaper.dead_derived_data(root, time.time(), 3.0) == [root / "gone"]
+
+
+def test_skips_worktrees_in_folders_macos_guards(
+    home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    guarded = home / "wt"
+    monkeypatch.setattr(reaper, "PROTECTED", (guarded,))
+    path = add(home, "guarded")
+    age(path, 10)
+    seen = verdicts(home, apply=True)
+    assert seen["guarded"] == (
+        "keep",
+        "in a folder macOS guards; pass it as --root to include it",
+    )
+    assert path.exists()
+    report = reaper.run([home / "roots", guarded], True, False, 3.0, home / "DerivedData")
+    assert {Path(w["path"]).name: w["verdict"] for w in report["worktrees"]}["guarded"] == "remove"
+    assert not path.exists()
