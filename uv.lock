@@ -5149,22 +5149,22 @@ wheels = [
 
 [[package]]
 name = "turbopuffer"
-version = "2.14.0"
+version = "3.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "anyio" },
     { name = "distro" },
-    { name = "httpx" },
+    { name = "httpx2" },
     { name = "orjson" },
     { name = "pybase64" },
     { name = "pydantic" },
     { name = "sniffio" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e8/92/3cc076a299c251e5f551ba0e6c157a1ca75223df4953af36508bfd0f17e3/turbopuffer-2.14.0.tar.gz", hash = "sha256:e8bfd9cf7c186f1d8da77308678b6c4896d238bdc4f8b71b874485dc6ff2c1d8", size = 357668, upload-time = "2026-10-21T23:40:34.851Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a8/d1/28dd2b0f655f0c89e44a4f5e9e0a87f5a940f6854e8cdd004e0177be39af/turbopuffer-3.1.0.tar.gz", hash = "sha256:8ae6e7229063814e556026c79d0abebda0e2e5d9a833214bcefc709f64bfcf70", size = 349736, upload-time = "2026-10-28T22:27:20.703Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5d/ae/c0840db0397403526c66b926067596b3eda5d768b60ffc5c03924a0f1d93/turbopuffer-2.14.0-py3-none-any.whl", hash = "sha256:af4f1cb8e01a14972e081ea07c959b224e0359f8c27c9d61fad300882e5cfc13", size = 159299, upload-time = "2026-10-21T23:40:32.965Z" },
+    { url = "https://files.pythonhosted.org/packages/05/90/baf12c9cd88bb44da43fa968aeda756fe313b028f68a190ce485e70a43fb/turbopuffer-3.1.0-py3-none-any.whl", hash = "sha256:f5e44b540902f58e8201a62d0df0e98e8fe04987c41efec4bf8a83ea35254389", size = 162059, upload-time = "2026-10-28T22:27:19.115Z" },
 ]
 
 [[package]]
