@@ -8,14 +8,14 @@ of dying on the lock.
 """
 
 import os
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 
 ANALYTICS_WRITER_LIMIT = "analytics-duckdb-writer"
 
 
 @contextmanager
-def analytics_write_slot() -> Iterator[None]:
+def analytics_write_slot() -> Generator[None]:
     """hold the single analytics.duckdb writer slot; blocks until free.
 
     strict=True so a missing limit or unreachable server fails loudly rather

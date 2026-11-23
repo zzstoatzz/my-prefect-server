@@ -1,7 +1,7 @@
 """DuckDB write helpers shared across flows."""
 
 import datetime
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -55,7 +55,7 @@ def _upsert_changed(
 
 
 @contextmanager
-def _write_conn(db_path: str) -> Iterator[duckdb.DuckDBPyConnection]:
+def _write_conn(db_path: str) -> Generator[duckdb.DuckDBPyConnection]:
     """RW connection that holds the single analytics writer slot for its lifetime."""
     with analytics_write_slot():
         con = duckdb.connect(db_path)

@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from time import monotonic
@@ -36,7 +36,7 @@ class TriageReport:
 
 
 @contextmanager
-def observe_triage(report: TriageReport) -> Iterator[TriageReport]:
+def observe_triage(report: TriageReport) -> Generator[TriageReport]:
     started = monotonic()
     logfire.info("fastmcp triage started", **asdict(report))
     error_type = ""
