@@ -12,10 +12,23 @@ dependencies:
   - python314
   - bun
   - stdenv.cc.cc.lib
+  - zstd
   - git
 
 environment:
   UV_PYTHON_PREFERENCE: "only-system"
+  UV_CACHE_DIR: /workspace/repo/.ci-cache/uv
+
+# uv's download cache persists between runs, so a run fetches only the wheels
+# a uv.lock change adds instead of the whole environment from PyPI.
+cache:
+  - key: uv
+    hash:
+      - uv.lock
+    fallback: true
+    compression-level: 1
+    paths:
+      - .ci-cache
 
 steps:
   - name: check

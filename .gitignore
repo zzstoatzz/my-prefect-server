@@ -21,3 +21,4 @@ analytics/profiles/.user.yml
 
 # pi agent local state
 .pi/
+.ci-cache/
