@@ -160,6 +160,10 @@ prefect-offsite:
 prefect-offsite-verify:
     uv run scripts/prefect_remote.py offsite-verify
 
+# Install deploy/heavypad-prefect/prefect-dr.toml as the host's prefect-dr config.
+prefect-dr-config:
+    uv run scripts/prefect_remote.py dr-config
+
 # Verify secret consumers; --apply renders changes.
 [positional-arguments]
 prefect-secrets *args:
