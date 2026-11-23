@@ -18,7 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 lighting = [
-    "fastmcp==4.0.3",
+    "fastmcp==4.2.5",
     "smart-home @ git+https://github.com/PrefectHQ/fastmcp.git@e3fb4af36892e6477399df2597f0dd5abd469799#subdirectory=examples/smart_home",
 ]
 

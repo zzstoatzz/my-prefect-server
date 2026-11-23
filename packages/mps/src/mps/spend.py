@@ -182,7 +182,9 @@ def _row_id(
         "task_name": task_name,
         "provider": provider,
         "model": model,
-        "usage": asdict(usage) if is_dataclass(usage) else str(usage),
+        "usage": asdict(usage)
+        if is_dataclass(usage) and not isinstance(usage, type)
+        else str(usage),
         "metadata": metadata or {},
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()[

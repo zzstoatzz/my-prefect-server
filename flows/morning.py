@@ -33,10 +33,10 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 from pydantic_ai.models.anthropic import AnthropicModel, AnthropicModelSettings
 from pydantic_ai.providers.anthropic import AnthropicProvider
-from turbopuffer.types import AttributeSchemaConfigParam, RowParam
+from turbopuffer.types import AttributeSchemaConfigParam, AttributeSchemaDropParam, RowParam
 
 TAG_REL_NAMESPACE = "phi-tag-relationships"
-TAG_REL_SCHEMA: dict[str, str | AttributeSchemaConfigParam] = {
+TAG_REL_SCHEMA: dict[str, str | AttributeSchemaConfigParam | AttributeSchemaDropParam] = {
     "tag_a": {"type": "string", "filterable": True},
     "tag_b": {"type": "string", "filterable": True},
     "relationship_type": {"type": "string", "filterable": True},
