@@ -130,7 +130,15 @@ def test_classification_retry_policy_against_http_server(monkeypatch, status, ex
 
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):
-            requests.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+            raw = self.rfile.read(int(self.headers["Content-Length"]))
+            # typesafe-sdk 0.7.5+ sends zstd-compressed bodies where zstd is available
+            if self.headers.get("Content-Encoding") == "zstd":
+                try:
+                    from compression.zstd import decompress
+                except ImportError:
+                    from backports.zstd import decompress
+                raw = decompress(raw)
+            requests.append(json.loads(raw))
             body = json.dumps({"message": "provider unavailable"}).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
