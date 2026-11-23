@@ -11,8 +11,6 @@ from atproto_identity.resolver import IdResolver
 if TYPE_CHECKING:
     from atproto import AsyncClient
 
-PDS_BASE = "https://bsky.social"
-
 
 @cache
 def resolve_pds(did: str) -> str:
@@ -35,11 +33,11 @@ def session_did(client: AsyncClient) -> str:
     return client.me.did
 
 
-def create_bsky_session(handle: str, password: str) -> dict[str, Any]:
-    """Create an app-password session through the bsky entryway."""
+def create_session(did: str, password: str) -> dict[str, Any]:
+    """Create a session for `did` at the PDS its DID document names."""
     resp = httpx.post(
-        f"{PDS_BASE}/xrpc/com.atproto.server.createSession",
-        json={"identifier": handle, "password": password},
+        f"{resolve_pds(did)}/xrpc/com.atproto.server.createSession",
+        json={"identifier": did, "password": password},
         timeout=15,
     )
     resp.raise_for_status()

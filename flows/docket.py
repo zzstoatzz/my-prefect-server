@@ -37,7 +37,7 @@ from typing import Any
 
 import duckdb
 import httpx
-from mps.atproto import create_bsky_session
+from mps.atproto import create_session, resolve_pds
 from mps.blocks import secret
 from mps.lock import analytics_write_slot
 from mps.observability import configure_logfire
@@ -55,7 +55,6 @@ from pydantic_ai.providers.anthropic import AnthropicProvider
 # ---------------------------------------------------------------------------
 
 PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
-PDS_BASE = "https://bsky.social"  # entryway; routes to phi's actual PDS
 
 ATLAS_COLLECTION = "io.zzstoatzz.phi.atlas"
 ATLAS_RKEY = "self"
@@ -185,7 +184,7 @@ def _get_record(repo: str, collection: str, rkey: str) -> dict[str, Any] | None:
     a plain dict with uri/cid/value, or None if not found."""
     try:
         resp = httpx.get(
-            f"{PDS_BASE}/xrpc/com.atproto.repo.getRecord",
+            f"{resolve_pds(PHI_DID)}/xrpc/com.atproto.repo.getRecord",
             params={"repo": repo, "collection": collection, "rkey": rkey},
             timeout=15,
         )
@@ -202,7 +201,7 @@ def _get_blob(did: str, cid: str) -> bytes:
     the 302 to the actual PDS host (carried project memory)."""
     with httpx.Client(timeout=60, follow_redirects=True) as client:
         resp = client.get(
-            f"{PDS_BASE}/xrpc/com.atproto.sync.getBlob",
+            f"{resolve_pds(PHI_DID)}/xrpc/com.atproto.sync.getBlob",
             params={"did": did, "cid": cid},
         )
         resp.raise_for_status()
@@ -647,12 +646,12 @@ def upload_docket_to_pds(docket: Docket, handle: str, password: str) -> dict[str
     Consumers parse as JSON regardless.
     """
     logger = get_run_logger()
-    session = create_bsky_session(handle, password)
+    session = create_session(PHI_DID, password)
     headers = {"Authorization": f"Bearer {session['accessJwt']}"}
     docket_bytes = _docket_to_bytes(docket)
 
     blob_resp = httpx.post(
-        f"{PDS_BASE}/xrpc/com.atproto.repo.uploadBlob",
+        f"{resolve_pds(PHI_DID)}/xrpc/com.atproto.repo.uploadBlob",
         headers={**headers, "Content-Type": "application/octet-stream"},
         content=docket_bytes,
         timeout=60,
@@ -669,7 +668,7 @@ def upload_docket_to_pds(docket: Docket, handle: str, password: str) -> dict[str
         "blob": blob_ref,
     }
     put_resp = httpx.post(
-        f"{PDS_BASE}/xrpc/com.atproto.repo.putRecord",
+        f"{resolve_pds(PHI_DID)}/xrpc/com.atproto.repo.putRecord",
         headers={**headers, "Content-Type": "application/json"},
         json={
             "repo": session["did"],

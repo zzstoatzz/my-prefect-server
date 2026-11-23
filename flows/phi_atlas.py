@@ -37,7 +37,7 @@ from typing import Any
 import httpx
 import numpy as np
 import turbopuffer
-from mps.atproto import create_bsky_session
+from mps.atproto import create_session, resolve_pds
 from mps.blocks import secret
 from mps.observability import configure_logfire
 from mps.phi import clean_handle, restore_handle
@@ -56,7 +56,6 @@ from pydantic_ai.providers.anthropic import AnthropicProvider
 # ---------------------------------------------------------------------------
 
 PHI_DID = "did:plc:65sucjiel52gefhcdcypynsr"
-PDS_BASE = "https://bsky.social"  # entryway routes to phi's actual PDS
 USER_NS_PREFIX = "phi-users-"
 EPISODIC_NS = "phi-episodic"
 
@@ -161,7 +160,7 @@ def _list_records(did: str, collection: str) -> list[dict[str, Any]]:
         for attempt in range(3):
             try:
                 resp = httpx.get(
-                    f"{PDS_BASE}/xrpc/com.atproto.repo.listRecords",
+                    f"{resolve_pds(PHI_DID)}/xrpc/com.atproto.repo.listRecords",
                     params=params,
                     timeout=30,
                 )
@@ -927,12 +926,12 @@ def upload_atlas_to_pds(
     regardless of the stored mime type.
     """
     logger = get_run_logger()
-    session = create_bsky_session(handle, password)
+    session = create_session(PHI_DID, password)
     headers = {"Authorization": f"Bearer {session['accessJwt']}"}
 
     # upload blob
     blob_resp = httpx.post(
-        f"{PDS_BASE}/xrpc/com.atproto.repo.uploadBlob",
+        f"{resolve_pds(PHI_DID)}/xrpc/com.atproto.repo.uploadBlob",
         headers={**headers, "Content-Type": "application/octet-stream"},
         content=atlas_bytes,
         timeout=60,
@@ -949,7 +948,7 @@ def upload_atlas_to_pds(
         "blob": blob_ref,
     }
     put_resp = httpx.post(
-        f"{PDS_BASE}/xrpc/com.atproto.repo.putRecord",
+        f"{resolve_pds(PHI_DID)}/xrpc/com.atproto.repo.putRecord",
         headers={**headers, "Content-Type": "application/json"},
         json={
             "repo": session["did"],
