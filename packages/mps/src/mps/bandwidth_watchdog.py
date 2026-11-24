@@ -16,6 +16,8 @@ from uuid import uuid4
 
 import httpx
 
+FAN_RATIO_LOW = 0.92
+
 EXCLUDED = tuple(
     ipaddress.ip_network(n)
     for n in (
@@ -456,7 +458,7 @@ def main() -> None:
         "heat_alert_celsius": 95,
         "heat_window_seconds": 300,
         "fan_window_seconds": 900,
-        "fan_ratio_low": 0.95,
+        "fan_ratio_low": FAN_RATIO_LOW,
         "fan_ratio_high": 1.10,
         "fan_cooldown_seconds": 86400,
         "disk_paths": ["/", str(Path.home() / ".local/share/prefect-home/storage")],

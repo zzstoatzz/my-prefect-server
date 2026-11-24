@@ -9,6 +9,7 @@ import httpx
 import logfire
 import pytest
 from mps.bandwidth_watchdog import (
+    FAN_RATIO_LOW,
     advance,
     fan,
     flush,
@@ -29,7 +30,7 @@ CONFIG = {
     "heat_alert_celsius": 95,
     "heat_window_seconds": 300,
     "fan_window_seconds": 900,
-    "fan_ratio_low": 0.95,
+    "fan_ratio_low": FAN_RATIO_LOW,
     "fan_ratio_high": 1.10,
     "fan_cooldown_seconds": 86400,
 }
@@ -340,7 +341,7 @@ def test_fan_slower_than_its_twin_warns_once_per_day():
     [warning] = state["outbox"]
     assert warning["event"] == "fan.degraded"
     assert warning["payload"]["slow_fan"] == "CPU fan"
-    assert warning["payload"]["median_ratio"] < 0.95
+    assert warning["payload"]["median_ratio"] < FAN_RATIO_LOW
     assert "CPU fan is turning slower than GPU fan" in warning["payload"]["summary"]
     spin(state, 1800000905, 3600, 1500, 2191)
     assert len(state["outbox"]) == 1
@@ -352,6 +353,13 @@ def test_fan_within_healthy_band_and_mismatched_duty_stay_quiet():
     state = {}
     spin(state, 1800000000, 1800, lambda o: 2220 + o % 60, 2190)
     spin(state, 1800001805, 1800, 1000, 4800, gpu_pwm=200)
+    assert state.get("outbox", []) == []
+
+
+def test_fan_stays_quiet_at_the_november_24_alert_speeds():
+    state = {}
+    spin(state, 1800000000, 900, 2065, 2175)
+    spin(state, 1800000905, 900, 2069, 2178)
     assert state.get("outbox", []) == []
 
 

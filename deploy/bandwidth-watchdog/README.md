@@ -63,7 +63,7 @@ the GPU fan's ~2190, with audible noise. Its ratio dropped below 0.95 for about
 half of the following day, while CPU temperatures had not yet risen.
 
 When the median ratio over `fan_window_seconds` (15 minutes) leaves
-`fan_ratio_low`-`fan_ratio_high` (0.95-1.10), the watchdog emits
+`fan_ratio_low`-`fan_ratio_high` (0.92-1.10), the watchdog emits
 `fan.degraded`, naming the slower fan, and repeats it once per
 `fan_cooldown_seconds` (a day) while the fault persists. A stalled fan reading
 0 rpm counts too. When the ratio returns to the band it emits `fan.recovered`
