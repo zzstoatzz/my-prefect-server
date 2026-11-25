@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from datetime import datetime
 from typing import Any
 
 # Automations that notify without reporting a fault. Everything else that sends
@@ -187,6 +188,34 @@ def incidents(
             updates=updates,
         )
     return result
+
+
+def firings_after(
+    automations: dict[str, str], triggered: Iterable[dict[str, Any]], after: str
+) -> list[dict[str, Any]]:
+    """Each alert firing later than `after`, oldest first, for event delivery."""
+    floor = datetime.fromisoformat(after)
+    found = []
+    for event in triggered:
+        name = automations.get((event.get("resource") or {}).get("prefect.resource.id", ""))
+        if name is None or datetime.fromisoformat(event["occurred"]) <= floor:
+            continue
+        trigger = (event.get("payload") or {}).get("triggering_event") or None
+        if str((trigger or {}).get("event", "")).startswith(RESOURCE_PREFIX):
+            continue
+        subject = subject_of(trigger)
+        title = name.split(" -> ")[0]
+        found.append(
+            {
+                "id": event["id"],
+                "at": event["occurred"],
+                "key": key_of(name, trigger),
+                "title": f"{title}: {subject}" if subject else title,
+                "event": (trigger or {}).get("event", ""),
+                "summary": describe(trigger),
+            }
+        )
+    return sorted(found, key=lambda firing: datetime.fromisoformat(firing["at"]))
 
 
 def recover(incident: dict[str, Any], at: str) -> None:
