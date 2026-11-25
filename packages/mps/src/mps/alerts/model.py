@@ -18,8 +18,6 @@ from typing import Any
 NOTIFICATIONS = frozenset(
     {
         "alert update -> discord",
-        "brief ready -> discord",
-        "triage ready -> discord",
         "email shortlist -> discord",
         "email triage done -> discord",
         "autofix diagnosed -> discord",

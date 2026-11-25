@@ -6,6 +6,10 @@ Cloud maintainer digest. The retired watcher also carried personal GitHub
 notifications such as mentions and review requests, which are available in
 the GitHub inbox.
 
+The run archive contains the records retained by HeavyPad when the deployments
+were deleted. It is stored privately on HeavyPad at
+`~/archives/prefect/fastmcp-home-triage-2026-11-25/`.
+
 ## analytics
 
 The hourly warehouse supplies backlog, contributor-wait and stuck-PR evidence

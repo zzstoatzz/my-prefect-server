@@ -69,38 +69,6 @@ automations:
         subject: "🟡 Fleet · checks need attention"
         body: "{{ payload.summary }}"
 
-  - name: brief ready -> discord
-    description: Retired FastMCP brief delivery.
-    enabled: false
-    trigger:
-      type: event
-      posture: Reactive
-      expect:
-        - hub.brief.ready
-      threshold: 1
-      within: 60
-    actions:
-      - type: send-notification
-        block: discord-alerts
-        subject: "{{ resource.name }}"
-        body: "{{ payload.brief }}"
-
-  - name: triage ready -> discord
-    description: Retired local FastMCP triage delivery.
-    enabled: false
-    trigger:
-      type: event
-      posture: Reactive
-      expect:
-        - hub.triage.ready
-      threshold: 1
-      within: 60
-    actions:
-      - type: send-notification
-        block: discord-alerts
-        subject: "{{ resource.name }}"
-        body: "{{ payload.summary }}"
-
   - name: email shortlist -> discord
     description: >-
       The daily email-triage run's shortlist, composed by luna, with the link

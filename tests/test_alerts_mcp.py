@@ -160,7 +160,7 @@ class Server:
                 + [
                     {
                         "id": "digest",
-                        "name": "brief ready -> discord",
+                        "name": "email shortlist -> discord",
                         "actions": [{"type": "send-notification"}],
                     },
                     {
