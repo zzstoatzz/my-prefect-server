@@ -17,6 +17,7 @@ from uuid import uuid4
 import httpx
 
 FAN_RATIO_LOW = 0.92
+FAN_RECOVERY_MARGIN = 0.01
 
 EXCLUDED = tuple(
     ipaddress.ip_network(n)
@@ -201,7 +202,6 @@ def fan(state: dict, reading: list[dict] | None, now: float, config: dict) -> No
         return
     median = statistics.median(s["ratio"] for s in samples)
     low, high = config["fan_ratio_low"], config["fan_ratio_high"]
-    healthy = low <= median <= high
     cooldowns = state.setdefault("cooldowns", {})
     host = socket.gethostname()
     now_text = (
@@ -215,12 +215,15 @@ def fan(state: dict, reading: list[dict] | None, now: float, config: dict) -> No
         "ratio_high": high,
         "fans": reading,
     }
-    if healthy:
-        if state.pop("fan_degraded", False):
+    if low <= median <= high:
+        margin = min(FAN_RECOVERY_MARGIN, (high - low) / 2)
+        recovery_low, recovery_high = low + margin, high - margin
+        if state.get("fan_degraded") and recovery_low <= median <= recovery_high:
+            state.pop("fan_degraded")
             payload["summary"] = (
-                f"{host}: fans match again; {first['label']} turns at {median:.2f}x "
+                f"{host}: fans are back within the recovery band; {first['label']} turns at {median:.3f}x "
                 f"{second['label']} at the same duty over the last {window // 60} minutes "
-                f"(healthy {low}-{high}). {now_text}"
+                f"(recovery {recovery_low:.3f}-{recovery_high:.3f}). {now_text}"
             )
             state.setdefault("outbox", []).append(event("recovered", payload, now, namespace="fan"))
         return
@@ -235,8 +238,8 @@ def fan(state: dict, reading: list[dict] | None, now: float, config: dict) -> No
     payload["slow_fan"] = slow["label"]
     payload["summary"] = (
         f"{host}: {slow['label']} is turning slower than {fast['label']} at the same duty; "
-        f"{first['label']}/{second['label']} speed ratio {median:.2f} over the last "
-        f"{window // 60} minutes (healthy {low}-{high}). {now_text} "
+        f"{first['label']}/{second['label']} speed ratio {median:.3f} over the last "
+        f"{window // 60} minutes (alert outside {low}-{high}). {now_text} "
         "Suspect a worn bearing, dust or an obstruction."
     )
     state.setdefault("outbox", []).append(event("degraded", payload, now, namespace="fan"))

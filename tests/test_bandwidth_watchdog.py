@@ -373,6 +373,21 @@ def test_fan_recovery_reports_once_and_rearms():
     assert len(state["outbox"]) == 3
 
 
+@pytest.mark.parametrize(
+    ("degraded", "near_boundary", "recovered"),
+    [(2000, 2030, 2060), (2440, 2400, 2350)],
+)
+def test_fan_does_not_rearm_near_alert_boundary(degraded, near_boundary, recovered):
+    state = {}
+    spin(state, 1800000000, 900, degraded, 2189)
+    spin(state, 1800000905, 900, near_boundary, 2189)
+    assert state["fan_degraded"]
+    spin(state, 1800001810, 900, degraded, 2189)
+    assert [e["event"] for e in state["outbox"]] == ["fan.degraded"]
+    spin(state, 1800002715, 900, recovered, 2189)
+    assert [e["event"] for e in state["outbox"]] == ["fan.degraded", "fan.recovered"]
+
+
 def test_stalled_gpu_fan_is_named():
     state = {}
     spin(state, 1800000000, 900, 2220, 0)

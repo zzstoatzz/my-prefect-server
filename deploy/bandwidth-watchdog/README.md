@@ -65,9 +65,11 @@ half of the following day, while CPU temperatures had not yet risen.
 When the median ratio over `fan_window_seconds` (15 minutes) leaves
 `fan_ratio_low`-`fan_ratio_high` (0.92-1.10), the watchdog emits
 `fan.degraded`, naming the slower fan, and repeats it once per
-`fan_cooldown_seconds` (a day) while the fault persists. A stalled fan reading
-0 rpm counts too. When the ratio returns to the band it emits `fan.recovered`
-once, which confirms a cleaning or replacement worked.
+`fan_cooldown_seconds` (a day) while the ratio remains outside the alert band.
+A stalled fan reading 0 rpm counts too. The watchdog emits `fan.recovered`
+and rearms once the median reaches the recovery band, inset by one percentage
+point from each alert limit (0.93–1.09 by default). Readings between the alert
+and recovery limits preserve the current state.
 `heavypad fan health -> discord` notifies the operator, and the
 `heavypad fan degraded` Logfire alert (`logfire-fan-alert.json`) delivers the
 evidence to Phi.
