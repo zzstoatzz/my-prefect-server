@@ -28,7 +28,7 @@ def test_restart_exhaustion_requires_terminal_automatic_failure():
         "timestamp": int(now.timestamp() * 1000),
         "request": {
             "restart_count": 10,
-            "exit_event": {"requested_stop": False, "restarting": False, "exit_code": 7},
+            "exit_event": {"exit_code": 7},
         },
     }
     event = Event.model_validate(data)

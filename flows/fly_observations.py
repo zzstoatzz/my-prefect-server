@@ -173,7 +173,7 @@ def exhausted_restart(machine: Machine, events: list[Event], now: datetime) -> E
         or latest.request.restart_count is None
         or latest.request.restart_count < restart.max_retries
         or details is None
-        or details.requested_stop is not False
+        or details.requested_stop is True
         or details.restarting
         or not (details.oom_killed or details.exit_code not in (None, 0))
     ):
