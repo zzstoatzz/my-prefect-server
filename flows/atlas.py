@@ -1,8 +1,9 @@
 """
 Rebuild the atlas (2D semantic map) and deploy to Cloudflare Pages.
 
-Clones pub-search, runs the build-atlas script (UMAP + HDBSCAN),
-then deploys the site to Cloudflare Pages via wrangler.
+Clones pub-search, builds the map and its summaries, then deploys to Cloudflare
+Pages. Publication metadata and summary text come from the completed SQLite
+replica retained on HeavyPad by pub-search-snapshot.
 
 Secrets are injected into the pod environment via the deployment's
 ``job_variables.env`` in prefect.heavypad.yaml; the values are sourced from Prefect
@@ -14,8 +15,9 @@ Expected env vars (set by the deployment):
   - CLOUDFLARE_API_TOKEN (block: cloudflare-api-token)
   - ANTHROPIC_API_KEY    (block: anthropic-api-key)
   - OPENAI_API_KEY       (block: pub-search-atlas-openai-api-key)
-  - TURSO_URL            (block: turso-url, optional)
-  - TURSO_TOKEN          (block: turso-token, optional)
+  - TURSO_URL            (block: turso-url, for summary publication opt-outs)
+  - TURSO_TOKEN          (block: turso-token, for summary publication opt-outs)
+  - PREFECT_LOCAL_STORAGE_PATH (the snapshot handoff lives beside this path)
 """
 
 import os
@@ -111,10 +113,10 @@ def clone_repo(dest: Path) -> Path:
     retry_jitter_factor=1,
 )
 def build_atlas(repo_dir: Path) -> Path:
-    """Run the build-atlas script. Returns path to atlas.json.
+    """Run the build-atlas script. Returns the path to atlas.json.gz.
 
-    The script reads TURBOPUFFER_API_KEY, ANTHROPIC_API_KEY, and (optionally)
-    TURSO_URL / TURSO_TOKEN from the inherited environment.
+    The script reads TURBOPUFFER_API_KEY and ANTHROPIC_API_KEY from the
+    inherited environment and uses the local snapshot for publication data.
     """
     logger = get_run_logger()
     output = repo_dir / "site" / "atlas.json.gz"

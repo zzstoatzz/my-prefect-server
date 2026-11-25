@@ -20,7 +20,7 @@ Expected env (set by the deployment):
                                   (blocks: leaflet-index-r2-* — bucket
                                    leaflet-search-index)
   - BUILDER_CHANNEL               (staging | prod; prod also needs BUILDER_ALLOW_PROD=1)
-  - BUILDER_HOME                  (persistent path for repo + build scratch)
+  - BUILDER_HOME                  (persistent path for the source checkout)
   - PREFECT_LOCAL_STORAGE_PATH    (the local Atlas handoff lives beside this path)
   - RCLONE_BWLIMIT                (cap the ~600MB upload; rclone inherits it)
 """
