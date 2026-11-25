@@ -8,5 +8,4 @@ Inspect those repositories and their live workspace before changing the pipeline
 This repository's earlier issue experiment and its Cloud validation/publication
 deployments are retired. Its implementation remains in Git history; there is no
 local command to republish it. The [November 15 audit](audits/2026-11-15-documentation-and-deployments.md)
-records the ownership and run-usage evidence. Home-side observation and briefings
-remain here; see [FastMCP attention](fastmcp-attention.md).
+records the ownership and run-usage evidence. Home-side backlog and warehouse jobs remain here. See [FastMCP attention](fastmcp-attention.md).

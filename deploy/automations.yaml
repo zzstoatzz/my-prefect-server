@@ -43,54 +43,6 @@ automations:
           {{ state.message }}
           run: https://prefect-server.waow.tech/runs/flow-run/{{ flow_run.id }}
 
-  - name: fastmcp activity -> brief
-    description: >-
-      Fires when fastmcp gets busy, not when a single notification arrives.
-      threshold/within is the whole point: 8 thread updates inside an hour means
-      something is happening. The brief flow then reads the entire window back
-      off the bus, so it sees the situation rather than the one event that
-      tripped the trigger.
-    enabled: false
-    trigger:
-      type: event
-      posture: Reactive
-      expect:
-        - github.*
-      match:
-        githubrepo: PrefectHQ/fastmcp
-      threshold: 8
-      within: 3600
-    actions:
-      - type: run-deployment
-        source: selected
-        deployment: fastmcp-brief
-        parameters:
-          window_hours: 6
-
-  - name: fastmcp direct ask -> brief
-    description: >-
-      Someone is actually blocked on you (review requested, mention, assignment).
-      No threshold — one is enough.
-    enabled: false
-    trigger:
-      type: event
-      posture: Reactive
-      expect:
-        - github.review_requested
-        - github.mention
-        - github.team_mention
-        - github.assign
-      match:
-        githubrepo: PrefectHQ/fastmcp
-      threshold: 1
-      within: 60
-    actions:
-      - type: run-deployment
-        source: selected
-        deployment: fastmcp-brief
-        parameters:
-          window_hours: 2
-
   - name: fleet unhealthy -> discord
     description: >-
       Endpoint or Stream deep-check findings; full results live in Hub.
@@ -118,11 +70,8 @@ automations:
         body: "{{ payload.summary }}"
 
   - name: brief ready -> discord
-    description: >-
-      The only automation that sends fastmcp activity to a human, and it sends
-      LLM-composed text rather than a rendered notification. Keeping delivery
-      here means fastmcp_brief.py needs no webhook credentials.
-    enabled: true
+    description: Retired FastMCP brief delivery.
+    enabled: false
     trigger:
       type: event
       posture: Reactive
@@ -137,11 +86,8 @@ automations:
         body: "{{ payload.brief }}"
 
   - name: triage ready -> discord
-    description: >-
-      What the laptop's fastmcp-triage run concluded about the threads a brief
-      surfaced: the short read, any pull request it opened (draft or ready,
-      the agent's call), and the session to resume.
-    enabled: true
+    description: Retired local FastMCP triage delivery.
+    enabled: false
     trigger:
       type: event
       posture: Reactive
