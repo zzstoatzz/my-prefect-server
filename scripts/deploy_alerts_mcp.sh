@@ -8,7 +8,7 @@ if ! git diff --quiet HEAD -- packages/mps/src/mps/alerts deploy/alerts-mcp scri
 fi
 release="/home/stoat/alerts-mcp/releases/$sha"
 ssh heavypad "mkdir -p '$release/mps/alerts'"
-scp packages/mps/src/mps/alerts/{__init__,model,server}.py "heavypad:$release/mps/alerts/"
+scp packages/mps/src/mps/alerts/{__init__,model,recovery,server}.py "heavypad:$release/mps/alerts/"
 scp deploy/alerts-mcp/{pyproject.toml,uv.lock,env,alerts-mcp.service} "heavypad:$release/"
 ssh heavypad bash -s -- "$release" <<'REMOTE'
 set -euo pipefail

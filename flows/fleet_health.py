@@ -42,6 +42,7 @@ from prefect.states import Failed, State
 from flows.evergreen_checks import INVENTORY_URL, STATUS_URL, check_evergreen
 from flows.fleet_events import unhealthy_payload
 from flows.fly_observations import observation_rows, observe_fly
+from flows.recovery_events import publish_exhausted_recovery
 from flows.zds_follow import Follow, zds_follow
 
 TIMEOUT_S = 10
@@ -290,7 +291,9 @@ def fleet_health() -> State | None:
     else:
         logger.warning("zds follow check errored: %s", follow)
         rows.append(f"| zds follow | **CHECK ERRORED** | {follow} |")
-    operational_rows = observation_rows(fly_future.result(raise_on_failure=False))
+    fly = fly_future.result(raise_on_failure=False)
+    operational_rows = observation_rows(fly)
+    publish_exhausted_recovery(evergreen, fly)
 
     create_markdown_artifact(
         key="fleet-health",

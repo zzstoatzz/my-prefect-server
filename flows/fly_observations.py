@@ -13,6 +13,8 @@ from flows.evergreen_checks import INVENTORY_URL, Project
 
 MACHINES_API = "https://api.machines.dev/v1/"
 METRICS_API = "https://api.fly.io/prometheus/personal/api/v1/query"
+CELLAR_APP = "zzstoatzz-cellar"
+CELLAR_PROJECT = "cellar"
 LOOKBACK = timedelta(hours=24)
 METRICS_MAX_AGE = timedelta(minutes=3)
 
@@ -26,19 +28,33 @@ class Exit(BaseModel):
 
 
 class EventRequest(BaseModel):
+    restart_count: int | None = Field(default=None, ge=0)
     exit_event: Exit | None = None
 
 
 class Event(BaseModel):
     id: str
     type: str
+    status: str = ""
+    source: str = ""
     timestamp: int = Field(ge=0)
     request: EventRequest = Field(default_factory=EventRequest)
+
+
+class RestartPolicy(BaseModel):
+    policy: str = ""
+    max_retries: int = Field(default=0, ge=0)
+
+
+class MachineConfig(BaseModel):
+    restart: RestartPolicy = Field(default_factory=RestartPolicy)
 
 
 class Machine(BaseModel):
     id: str = Field(pattern=r"^[a-z0-9]+$")
     state: str
+    version: str | None = None
+    config: MachineConfig = Field(default_factory=MachineConfig)
 
 
 class Observation(BaseModel):
@@ -50,6 +66,8 @@ class Observation(BaseModel):
     available_mib: float | None = None
     available_percent: float | None = None
     recent_failures: list[str] = Field(default_factory=list)
+    exhausted_restart: Event | None = None
+    machine_version: str | None = None
     coverage: str = "Fly's retained machine events; not a complete restart history"
 
 
@@ -138,6 +156,31 @@ def memory_sample(
     return available / 1024**2, available / total * 100
 
 
+def exhausted_restart(machine: Machine, events: list[Event], now: datetime) -> Event | None:
+    restart = machine.config.restart
+    if machine.state != "stopped" or restart.policy != "on-failure" or restart.max_retries <= 0:
+        return None
+    if not events:
+        return None
+    latest = max(events, key=lambda item: item.timestamp)
+    details = latest.request.exit_event
+    at = datetime.fromtimestamp(latest.timestamp / 1000, UTC)
+    if (
+        latest.type != "exit"
+        or latest.source != "flyd"
+        or latest.status != "stopped"
+        or not now - LOOKBACK <= at <= now
+        or latest.request.restart_count is None
+        or latest.request.restart_count < restart.max_retries
+        or details is None
+        or details.requested_stop is not False
+        or details.restarting
+        or not (details.oom_killed or details.exit_code not in (None, 0))
+    ):
+        return None
+    return latest
+
+
 def collect_app(client: httpx.Client, project: str, app: str, now: datetime) -> list[Observation]:
     response = client.get(f"apps/{app}/machines")
     response.raise_for_status()
@@ -165,6 +208,10 @@ def collect_app(client: httpx.Client, project: str, app: str, now: datetime) -> 
             state=machine.state,
             checked_at=now,
             recent_failures=failure_events(events, now),
+            exhausted_restart=exhausted_restart(machine, events, now)
+            if app == CELLAR_APP
+            else None,
+            machine_version=machine.version,
         )
         if machine.state == "started":
             response = client.get(
@@ -195,6 +242,16 @@ def observe_fly(inventory_url: str = INVENTORY_URL) -> list[Observation]:
         response.raise_for_status()
         projects = TypeAdapter(list[Project]).validate_json(response.content)
     selected = targets(projects)
+    cellar = any(
+        project.name == CELLAR_PROJECT
+        and any(
+            resource.provider == "fly" and resource.kind == "app" and resource.name == CELLAR_APP
+            for resource in project.resources
+        )
+        for project in projects
+    )
+    if cellar and (CELLAR_PROJECT, CELLAR_APP) not in selected:
+        selected.append((CELLAR_PROJECT, CELLAR_APP))
     if not selected:
         return []
     token = secret_sync("fly-api-token")

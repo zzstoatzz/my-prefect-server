@@ -78,3 +78,16 @@ cache hit likely; the whole locked set is about 17 MB of wheels. The Prefect
 credential comes from `~/.config/prod-worker/env`.
 
 Tests: `uv run --extra inbox pytest tests/test_alerts_mcp.py`.
+
+## Phi recovery events
+
+When a dedicated `PHI_RECOVERY_MCP_TOKEN` is supplied in
+`~/.config/alerts-mcp/recovery.env`, the same process also serves
+`/phi/mcp`. The endpoint requires both the tailnet identity and the Phi
+bearer. The main endpoint keeps its existing access and event types.
+
+The existing fleet sweep writes `incident.recovery_failed` to Prefect when
+Fly reports that Cellar exhausted its automatic restart retries and the
+Pollz backend fails confirmation after the last exit. The private endpoint
+reads the Prefect log. The client keeps its cursor and report receipts.
+No automation forwards this event to Discord.

@@ -6,7 +6,7 @@ endpoint is not reported as that endpoint's outage.
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -71,6 +71,7 @@ class Finding:
     name: str
     healthy: bool
     detail: str
+    checked_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 class EvergreenStatus(BaseModel):

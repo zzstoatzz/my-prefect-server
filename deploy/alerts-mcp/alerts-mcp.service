@@ -6,6 +6,7 @@ After=network-online.target tailscaled.service
 WorkingDirectory=%h/alerts-mcp/current
 EnvironmentFile=%h/.config/prod-worker/env
 EnvironmentFile=%h/.config/alerts-mcp/env
+EnvironmentFile=-%h/.config/alerts-mcp/recovery.env
 Environment=PYTHONPATH=%h/alerts-mcp/current
 ExecStart=%h/alerts-mcp/current/.venv/bin/python -m mps.alerts.server
 Restart=on-failure

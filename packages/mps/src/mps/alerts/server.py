@@ -6,19 +6,24 @@ import json
 import os
 import re
 import time
+from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import UTC, datetime, timedelta
+from secrets import compare_digest
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 from fastmcp import FastMCP
 from fastmcp_events import Event, EventBatch, EventPoll, EventsExtension
 from mcp.shared.exceptions import MCPError
 from mcp.types import ToolAnnotations
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field, ValidationError
+from starlette.applications import Starlette
+from starlette.datastructures import Headers
 from starlette.middleware import Middleware
 from starlette.responses import PlainTextResponse
+from starlette.routing import Mount
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from mps.alerts.model import (
@@ -30,6 +35,7 @@ from mps.alerts.model import (
     recover,
     update_line,
 )
+from mps.alerts.recovery import EVENT_NAME, RESOURCE_ID, RecoveryFailed
 
 TAILNET = ipaddress.ip_network("100.64.0.0/10")
 MAX_HOURS = 14 * 24
@@ -368,6 +374,107 @@ def create_server(prefect: Prefect, ui_url: str = "") -> FastMCP:
     return mcp
 
 
+class RecoveryCursor(BaseModel):
+    since: AwareDatetime
+    seen: list[UUID] = Field(default_factory=list, max_length=512)
+
+
+def create_recovery_server(prefect: Prefect) -> FastMCP:
+    mcp = FastMCP("Phi recovery events")
+    events = EventsExtension(push=False, poll_interval_ms=POLL_INTERVAL_MS)
+    mcp.add_extension(events)
+    events.event(EVENT_NAME)(RecoveryFailed)
+
+    @events.reader(RecoveryFailed)
+    def recovery_failed(poll: EventPoll) -> EventBatch:
+        now = datetime.now(UTC)
+        if poll.cursor is None:
+            return EventBatch(cursor=RecoveryCursor(since=now).model_dump_json())
+        try:
+            cursor = RecoveryCursor.model_validate_json(poll.cursor)
+            if cursor.since > now:
+                raise ValueError
+        except ValueError:
+            raise MCPError(code=-32602, message="Invalid recovery cursor") from None
+
+        retain_from = now - timedelta(hours=MAX_HOURS)
+        since = max(cursor.since, retain_from)
+        rows, truncated = prefect.events(
+            {
+                "event": {"name": [EVENT_NAME]},
+                "resource": {"id": [RESOURCE_ID]},
+                "occurred": {"since": since.isoformat(), "until": now.isoformat()},
+            }
+        )
+        if truncated:
+            raise MCPError(code=-32603, message="Recovery history read exceeded its page budget")
+        occurrences: dict[UUID, tuple[datetime, RecoveryFailed]] = {}
+        for row in rows:
+            if (
+                row.get("event") != EVENT_NAME
+                or row.get("resource", {}).get("prefect.resource.id") != RESOURCE_ID
+            ):
+                continue
+            event_id = UUID(row["id"])
+            at = datetime.fromisoformat(row["occurred"])
+            if since <= at <= now:
+                data = RecoveryFailed.model_validate(row["payload"])
+                previous = occurrences.get(event_id)
+                if previous is None or at < previous[0]:
+                    occurrences[event_id] = (at, data)
+
+        seen = set(cursor.seen) & occurrences.keys()
+        age_cutoff = (
+            now - timedelta(milliseconds=min(poll.max_age_ms, MAX_HOURS * 3_600_000))
+            if poll.max_age_ms is not None
+            else since
+        )
+        pending = sorted(
+            (at, event_id, data)
+            for event_id, (at, data) in occurrences.items()
+            if event_id not in seen
+        )
+        expired = {event_id for at, event_id, _ in pending if at < age_cutoff}
+        ready = [(at, event_id, data) for at, event_id, data in pending if event_id not in expired]
+        page = ready[: poll.max_events]
+        seen |= expired | {event_id for _, event_id, _ in page}
+        try:
+            next_cursor = RecoveryCursor(since=since, seen=sorted(seen)).model_dump_json()
+        except ValidationError:
+            raise MCPError(
+                code=-32603, message="Recovery history exceeded its cursor budget"
+            ) from None
+        return EventBatch(
+            cursor=next_cursor,
+            events=[
+                Event(data=data.model_dump(mode="json"), event_id=str(event_id), timestamp=at)
+                for at, event_id, data in page
+            ],
+            has_more=len(page) < len(ready),
+            truncated=since > cursor.since or bool(expired),
+        )
+
+    return mcp
+
+
+class RecoveryBearer:
+    def __init__(self, app: ASGIApp, token: str):
+        if len(token) < 32 or not token.isascii():
+            raise ValueError("Recovery bearer must be at least 32 ASCII characters")
+        self.app = app
+        self.expected = f"Bearer {token}".encode("ascii")
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http":
+            presented = Headers(scope=scope).getlist("authorization")
+            if len(presented) != 1 or not compare_digest(
+                presented[0].encode("latin-1"), self.expected
+            ):
+                await PlainTextResponse("Unauthorized", status_code=401)(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
+
+
 class TailscaleIdentity:
     """Admit only connections whose tailnet peer belongs to one login."""
 
@@ -412,8 +519,8 @@ class TailscaleIdentity:
         await self.app(scope, receive, send)
 
 
-def create_app(prefect: Prefect, login: str, bind: str, ui_url: str = ""):
-    return create_server(prefect, ui_url).http_app(
+def create_app(prefect: Prefect, login: str, bind: str, ui_url: str = "", recovery_token: str = ""):
+    alerts = create_server(prefect, ui_url).http_app(
         path="/mcp",
         stateless_http=True,
         # Push delivery of alert.fired writes to the response stream, which a
@@ -421,6 +528,30 @@ def create_app(prefect: Prefect, login: str, bind: str, ui_url: str = ""):
         json_response=False,
         allowed_hosts=[bind],
         middleware=[Middleware(TailscaleIdentity, login=login)],
+    )
+
+    if not recovery_token:
+        return alerts
+    recovery = create_recovery_server(prefect).http_app(
+        path="/mcp",
+        stateless_http=True,
+        json_response=True,
+        allowed_hosts=[bind],
+        middleware=[
+            Middleware(TailscaleIdentity, login=login),
+            Middleware(RecoveryBearer, token=recovery_token),
+        ],
+    )
+
+    @asynccontextmanager
+    async def lifespan(_app):
+        async with AsyncExitStack() as stack:
+            for child in (alerts, recovery):
+                await stack.enter_async_context(child.router.lifespan_context(child))
+            yield
+
+    return Starlette(
+        routes=[Mount("/phi", app=recovery), Mount("/", app=alerts)], lifespan=lifespan
     )
 
 
@@ -437,6 +568,7 @@ def main() -> None:
         os.environ["ALERTS_TAILSCALE_LOGIN"],
         bind,
         os.environ.get("ALERTS_UI_URL", ""),
+        os.environ.get("PHI_RECOVERY_MCP_TOKEN", ""),
     )
     uvicorn.run(
         app,
