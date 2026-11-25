@@ -134,7 +134,15 @@ there is no background curator. a `curate` flow ran after `phi-tag-maintenance` 
 
 ## atlas
 
-the `pub-search-atlas` flow runs every 6h. it clones pub-search, runs the build-atlas script (PCA → UMAP → HDBSCAN on TurboPuffer document embeddings), produces `atlas.json`, and deploys the static site to Cloudflare Pages via wrangler.
+`pub-search-atlas/pub-search-atlas` runs every six hours on HeavyPad. It builds the
+map from turbopuffer embeddings, generates summaries, archives the assets, and
+publishes them to Cloudflare Pages. The daily
+`pub-search-snapshot/pub-search-snapshot` run builds one SQLite snapshot and
+publishes it to R2 for Fly. It then atomically retains the same file on HeavyPad
+at `~/prefect-analytics/pub-search-snapshot/replica.db`, where Atlas reads
+publication metadata and extracts evidence locally. Each deployment owns one
+schedule. Use the scheduled Atlas run for routine releases to avoid another
+full embedding export.
 
 ## phi atlas and docket
 

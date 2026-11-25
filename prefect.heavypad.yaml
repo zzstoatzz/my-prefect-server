@@ -848,7 +848,7 @@ deployments:
           PREFECT_LOCAL_STORAGE_PATH: /home/stoat/prefect-analytics/storage
           PREFECT_UI_URL: https://prefect-server.waow.tech
 
-  # Prepared long-publisher batch. Keep clocks inactive until explicit ownership transfer.
+  # Atlas consumes the verified snapshot retained by pub-search-snapshot on HeavyPad.
   - name: pub-search-atlas
     tags:
     - publish

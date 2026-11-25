@@ -9,6 +9,9 @@ R2, rewrites the channel pointer LAST, and exits. The serving backend's promote
 watcher adopts it on its own. A late or failed run just leaves the prior
 snapshot serving — no SLA here.
 
+After publishing to R2, the production run atomically replaces the local
+snapshot used by Atlas. The builder and Atlas share the HeavyPad filesystem.
+
 Expected env (set by the deployment):
   - TURSO_URL / TURSO_TOKEN       (shared blocks: turso-url / turso-token —
                                    already the leaf db; full libsql:// URL is
@@ -18,6 +21,7 @@ Expected env (set by the deployment):
                                    leaflet-search-index)
   - BUILDER_CHANNEL               (staging | prod; prod also needs BUILDER_ALLOW_PROD=1)
   - BUILDER_HOME                  (persistent path for repo + build scratch)
+  - PREFECT_LOCAL_STORAGE_PATH    (the local Atlas handoff lives beside this path)
   - RCLONE_BWLIMIT                (cap the ~600MB upload; rclone inherits it)
 """
 
@@ -25,6 +29,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from mps.zig_toolchain import zig_for
 from prefect import flow, get_run_logger, task
@@ -109,7 +114,7 @@ def build_binary(repo_dir: Path) -> tuple[Path, str]:
 
 
 @task(retries=2, retry_delay_seconds=60)
-def run_builder(binary: Path, version: str) -> None:
+def run_builder(binary: Path, version: str, scratch: Path) -> None:
     """BUILDER_MODE=1: turso → gated build → rclone to R2 → pointer last → exit."""
     logger = get_run_logger()
     channel = os.environ.get("BUILDER_CHANNEL", "staging")
@@ -121,6 +126,7 @@ def run_builder(binary: Path, version: str) -> None:
         **os.environ,
         "BUILDER_MODE": "1",
         "BUILDER_VERSION": version,
+        "BUILD_DIR": str(scratch),
         "RCLONE": rclone,
         # healthy builds run 15-40min at a ~60k-doc corpus, but export/VACUUM/
         # hash/upload all scale ~linearly and we're planning for 5x (see
@@ -144,6 +150,19 @@ def run_builder(binary: Path, version: str) -> None:
 # ~600s) without the flow timeout beheading a genuinely slow second attempt
 @flow(name="pub-search-snapshot", log_prints=True, timeout_seconds=9000)
 def pub_search_snapshot(ref: str | None = None):
+    handoff = None
+    if os.environ.get("BUILDER_CHANNEL") == "prod" and "SKIP_UPLOAD" not in os.environ:
+        storage_path = os.environ.get("PREFECT_LOCAL_STORAGE_PATH")
+        if not storage_path:
+            raise RuntimeError("Production snapshots require PREFECT_LOCAL_STORAGE_PATH")
+        handoff = Path(storage_path).parent / "pub-search-snapshot"
+        handoff.mkdir(mode=0o700, parents=True, exist_ok=True)
+
     repo = clone_repo(ref)
     binary, version = build_binary(repo)
-    run_builder(binary, version)
+    with TemporaryDirectory(prefix="build-", dir=handoff) as scratch:
+        build_dir = Path(scratch)
+        run_builder(binary, version, build_dir)
+        if handoff is not None:
+            (build_dir / "replica.db").replace(handoff / "replica.db")
+            get_run_logger().info("Published local snapshot for Atlas")
