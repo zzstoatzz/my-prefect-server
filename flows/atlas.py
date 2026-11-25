@@ -20,13 +20,17 @@ Expected env vars (set by the deployment):
   - PREFECT_LOCAL_STORAGE_PATH (the snapshot handoff lives beside this path)
 """
 
+import gzip
+import json
 import os
 import platform
 import shutil
+import sqlite3
 import subprocess
 import tarfile
 import tempfile
 import urllib.request
+from contextlib import closing
 from pathlib import Path
 
 from prefect import flow, get_run_logger, task
@@ -36,6 +40,8 @@ REPO_URL = "https://github.com/zzstoatzz/pub-search.git"
 CF_ACCOUNT_ID = "3e9ba01cd687b3c4d29033908177072e"
 CF_PROJECT = "leaflet-search"
 PAGES_ASSET_LIMIT = 25 * 1024 * 1024
+PUBLIC_ATLAS = "https://pub-search.waow.tech"
+ATLAS_METADATA_LIMIT = 4 * 1024 * 1024
 
 # node distribution — nodejs.org/dist. used to drive wrangler. tried bun
 # initially (single binary, no curl needed) but bun ≥1.2 on linux-x64
@@ -172,14 +178,72 @@ def build_summaries(repo_dir: Path) -> Path:
     return output
 
 
-@task(retries=2, retry_delay_seconds=5)
-def archive_atlas(repo_dir: Path) -> str:
+def atlas_history_path() -> Path:
     storage = Path(
         os.environ.get(
             "PREFECT_LOCAL_STORAGE_PATH", str(Path.home() / ".local/share/prefect/storage")
         )
     )
-    database = storage.parent / "pub-search-atlas" / "history.sqlite3"
+    return storage.parent / "pub-search-atlas" / "history.sqlite3"
+
+
+def public_atlas_asset(name: str) -> bytes:
+    with urllib.request.urlopen(f"{PUBLIC_ATLAS}/{name}", timeout=30) as response:
+        data = response.read(ATLAS_METADATA_LIMIT + 1)
+    if len(data) > ATLAS_METADATA_LIMIT:
+        raise ValueError(f"{name} exceeds the Atlas metadata transfer limit")
+    json.loads(data)
+    return data
+
+
+def published_atlas_version() -> tuple[str, str]:
+    metadata = json.loads(public_atlas_asset("atlas-summaries-lite.json"))
+    return metadata["atlasGeneratedAt"], metadata["generatedAt"]
+
+
+@task
+def restore_published_atlas(repo_dir: Path) -> tuple[str, str]:
+    version = published_atlas_version()
+    database = atlas_history_path()
+    with closing(sqlite3.connect(database.as_uri() + "?mode=ro", uri=True)) as connection:
+        match = connection.execute(
+            """
+            SELECT id FROM snapshots WHERE atlas_generated_at=? AND summary_generated_at=?
+            AND status='ready' ORDER BY archived_at DESC LIMIT 1
+            """,
+            version,
+        ).fetchone()
+    if match is None:
+        raise ValueError("HeavyPad archive does not match the Atlas currently in production")
+    site = repo_dir / "site"
+    subprocess.run(
+        [
+            "uv",
+            "run",
+            "--no-project",
+            "python",
+            str(repo_dir / "scripts" / "atlas_history.py"),
+            str(database),
+            "restore",
+            match[0],
+            str(site),
+        ],
+        timeout=120,
+        check=True,
+    )
+    for name in (
+        "atlas-mini.json",
+        "atlas-avatar-cache.json",
+        "atlas-theme-cache.json",
+        "facts.json",
+    ):
+        (site / name).write_bytes(public_atlas_asset(name))
+    return version
+
+
+@task(retries=2, retry_delay_seconds=5)
+def archive_atlas(repo_dir: Path) -> str:
+    database = atlas_history_path()
     result = subprocess.run(
         [
             "uv",
@@ -350,23 +414,35 @@ def validate_atlas_asset_sizes(site_dir: Path) -> None:
 
 
 @flow(name="pub-search-atlas", log_prints=True, timeout_seconds=7200)
-def rebuild_atlas():
-    """Rebuild the 2D semantic map and deploy to Cloudflare Pages."""
+def rebuild_atlas(reuse_published_map: bool = False):
+    """Publish the Atlas. Reuse the live map when only its summaries need refreshing."""
     with tempfile.TemporaryDirectory() as tmpdir:
         repo_dir = clone_repo(Path(tmpdir) / "repo")
-        build_atlas(repo_dir)
-        try:
-            build_summaries(repo_dir)
-        except Exception as exc:
-            get_run_logger().warning(f"Atlas summaries unavailable: {type(exc).__name__}")
-        # facts are a garnish: a failure shouldn't block the atlas deploy —
-        # the repo checkout already carries the last committed facts.json
-        try:
-            build_facts(repo_dir)
-        except Exception as e:
-            get_run_logger().warning(
-                f"build-facts failed, deploying with committed facts.json: {e}"
-            )
+        if reuse_published_map:
+            version = restore_published_atlas(repo_dir)
+            sidecar_path = build_summaries(repo_dir)
+            with gzip.open(sidecar_path, "rt") as file:
+                sidecar = json.load(file)
+            if (
+                sidecar.get("status") != "ready"
+                or not sidecar.get("evidenceWatermark")
+                or sidecar.get("atlasGeneratedAt") != version[0]
+            ):
+                raise ValueError("Refreshed summaries are unavailable for the published Atlas")
+            if published_atlas_version() != version:
+                raise RuntimeError("The published Atlas changed during the summary refresh")
+        else:
+            build_atlas(repo_dir)
+            try:
+                build_summaries(repo_dir)
+            except Exception as exc:
+                get_run_logger().warning(f"Atlas summaries unavailable: {type(exc).__name__}")
+            try:
+                build_facts(repo_dir)
+            except Exception as e:
+                get_run_logger().warning(
+                    f"build-facts failed, deploying with committed facts.json: {e}"
+                )
         archive_atlas(repo_dir)
         validate_atlas_asset_sizes(repo_dir / "site")
         deploy_to_pages(repo_dir / "site")

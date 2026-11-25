@@ -144,6 +144,12 @@ publication metadata and extracts evidence locally. Each deployment owns one
 schedule. Use the scheduled Atlas run for routine releases to avoid another
 full embedding export.
 
+For an urgent summary-only release, run the same production deployment with
+`reuse_published_map=true`. It restores the currently published map from the
+HeavyPad archive, preserves the public metadata assets, and republishes only
+after the new summaries report a local evidence watermark. The release stops
+if the public map or summaries change while it is preparing the replacement.
+
 ## phi atlas and docket
 
 `phi-atlas` runs daily alongside `phi-tag-maintenance`. It combines phi-owned PDS records
