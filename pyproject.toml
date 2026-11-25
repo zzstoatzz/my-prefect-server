@@ -18,7 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 lighting = [
-    "fastmcp==4.0.3",
+    "fastmcp==4.2.6",
     "smart-home @ git+https://github.com/PrefectHQ/fastmcp.git@e3fb4af36892e6477399df2597f0dd5abd469799#subdirectory=examples/smart_home",
 ]
 
@@ -77,7 +77,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "ruff>=0.16.6",
     "boto3>=1.43.88",
-    "fastmcp>=4.0.0b5",
+    "fastmcp[events]==4.2.6",
     "umap-learn>=0.5",
     "prefect-sprites",
     "prefect-exe",
