@@ -188,7 +188,10 @@ def atlas_history_path() -> Path:
 
 
 def public_atlas_asset(name: str) -> bytes:
-    with urllib.request.urlopen(f"{PUBLIC_ATLAS}/{name}", timeout=30) as response:
+    request = urllib.request.Request(
+        f"{PUBLIC_ATLAS}/{name}", headers={"User-Agent": "pub-search-atlas/1.0"}
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
         data = response.read(ATLAS_METADATA_LIMIT + 1)
     if len(data) > ATLAS_METADATA_LIMIT:
         raise ValueError(f"{name} exceeds the Atlas metadata transfer limit")

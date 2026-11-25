@@ -1,6 +1,7 @@
 """Atlas builds clean up failed clones and select their own Python runtime."""
 
 import gzip
+import io
 import json
 import sqlite3
 from contextlib import closing
@@ -124,3 +125,11 @@ def test_restore_selects_the_published_archive_entry(tmp_path: Path, monkeypatch
         assert atlas.restore_published_atlas.fn(tmp_path) == ("map", "summaries")
         assert restore.call_args.args[0][-4:] == [str(database), "restore", "current", str(site)]
     assert (site / "facts.json").read_bytes() == b"{}"
+
+
+def test_public_atlas_fetch_identifies_the_worker():
+    with patch.object(atlas.urllib.request, "urlopen", return_value=io.BytesIO(b"{}")) as fetch:
+        assert atlas.public_atlas_asset("atlas-summaries-lite.json") == b"{}"
+    request = fetch.call_args.args[0]
+    assert request.get_header("User-agent") == "pub-search-atlas/1.0"
+    assert request.full_url == "https://pub-search.waow.tech/atlas-summaries-lite.json"
