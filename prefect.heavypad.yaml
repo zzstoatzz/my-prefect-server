@@ -42,20 +42,17 @@ deployments:
           PRESENCE_HUE_ENV_FILE: /home/stoat/.config/presence/hue-env.json
           PRESENCE_LIGHTING_STATE_FILE: /home/stoat/.config/presence/lighting-state
 
-  # every scheduled light change is a schedule here carrying its own `changes`;
-  # ad hoc changes run this same deployment with parameters.
   - name: home
     tags: [home, heavypad]
     entrypoint: flows/lighting.py:lighting
     schedules:
-      - cron: "0 1 * * 1-5"
+      - cron: "40 0 * * 1-5"
         timezone: America/Chicago
-        slug: nightly-off
+        slug: wind-down
         parameters:
-          changes:
-            - target: all
-              state:
-                "on": false
+          wind_down:
+            minutes: 20
+            brightness: 5
     concurrency_limit:
       limit: 1
       collision_strategy: ENQUEUE

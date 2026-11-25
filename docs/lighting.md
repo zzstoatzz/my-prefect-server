@@ -1,9 +1,9 @@
 # Lighting
 
-Every change to the home's lights that is not a presence reaction goes through
-one flow, `lighting`, registered once as `lighting/home` on heavypad. The flow
-takes `changes`, an ordered list. Each change names a `target` (`all`, a room
-name, or a light name) and exactly one of:
+Prefect runs scheduled wind-downs and ad hoc lighting changes through
+`lighting/home` on HeavyPad. For ad hoc changes, `changes` is an ordered
+list. Each entry names a `target` (`all`, a room name, or a light name) and
+exactly one of:
 
 - `scene`: a saved Hue scene in the target room.
 - `state`: any of `on`, `brightness` (percent), `temperature_kelvin`, `xy`,
@@ -31,17 +31,35 @@ marker.
 
 ## Scheduled changes
 
-A scheduled change is a schedule on the one deployment, carrying its own
-`changes` as schedule parameters in `prefect.heavypad.yaml`. Adding a recurring
-change means adding a schedule, not a deployment or a flow.
+The `lighting/home` deployment owns the recurring fade in
+`prefect.heavypad.yaml`. HeavyPad re-registers this manifest from main, so make
+durable schedule changes there.
 
 | Slug | When | Changes |
 | --- | --- | --- |
-| `nightly-off` | 01:00 America/Chicago, Monday through Friday (Friday and Saturday nights stay on) | every light off |
+| `wind-down` | 00:40–01:00 America/Chicago, Monday through Friday | fade lit, reachable lights to 5% |
 
-Schedules are written in local time with their `timezone`. The server honors
-it since prefect-server `78beba2` (2026-11-11); before that it evaluated cron
-in UTC and ignored the field.
+Off lights and lights already at or below the target stay as they are. The
+flow gives Hue one brightness transition per eligible light and logs
+unreachable bulbs and unconfirmed commands by name. It does no follow-up
+writes, so lights can be adjusted during the fade. Runs more than five minutes
+late skip the fade. A run starting within that window still targets the
+scheduled end time.
+
+## One-night overrides
+
+Schedule a replacement before either fade would start. The date is the local
+calendar date of the fade, so after midnight use the new day's date. The
+default duration is 20 minutes and `--minutes` accepts 15 through 30.
+
+```sh
+just prefect --script scripts/lighting_override.py 2026-11-25T02:00 --minutes 20
+```
+
+The latest override registered for that date wins. It can also schedule a fade
+on a weekend morning. The override skips the regular run for that date and
+has no effect on subsequent nights. Rescheduling after a fade has started
+does not cancel the transition Hue already received.
 
 ## Ad hoc changes
 
