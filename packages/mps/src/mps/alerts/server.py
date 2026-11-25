@@ -13,7 +13,7 @@ from uuid import uuid4
 
 import httpx
 from fastmcp import FastMCP
-from fastmcp.experimental.events import Event, EventBatch, EventPoll, EventsExtension
+from fastmcp_events import Event, EventBatch, EventPoll, EventsExtension
 from mcp.shared.exceptions import MCPError
 from pydantic import BaseModel, Field
 from mcp.types import ToolAnnotations

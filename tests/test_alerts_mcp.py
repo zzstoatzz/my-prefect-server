@@ -8,7 +8,7 @@ from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from mps.alerts.model import NOTIFICATIONS, incidents, key_of
 from mps.alerts.server import Prefect, TailscaleIdentity, create_app, create_server
-from fastmcp.experimental.events import list_events, poll_events_mcp
+from fastmcp_events import list_events, poll_events_mcp
 from starlette.testclient import TestClient
 
 FAILURE = "prefect.automation.aaaa"
@@ -373,7 +373,7 @@ def fired(at, event_id, run="r1"):
 
 
 def events_client(mcp):
-    from fastmcp.experimental.events import EventsClientExtension
+    from fastmcp_events import EventsClientExtension
 
     return Client(mcp, mode="auto", extensions=[EventsClientExtension()])
 

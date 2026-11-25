@@ -23,15 +23,13 @@ name = "alerts-mcp-runtime"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "fastmcp" },
-    { name = "fastmcp-slim" },
+    { name = "fastmcp", extra = ["events"] },
     { name = "httpx" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "fastmcp", git = "https://github.com/PrefectHQ/fastmcp.git?rev=f5c60aeac593960900345f6122563fa950cc43aa" },
-    { name = "fastmcp-slim", git = "https://github.com/PrefectHQ/fastmcp.git?subdirectory=fastmcp_slim&rev=f5c60aeac593960900345f6122563fa950cc43aa" },
+    { name = "fastmcp", extras = ["events"], specifier = "==4.2.6" },
     { name = "httpx", specifier = "==0.28.1" },
 ]
 
@@ -63,19 +61,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/9a/8e/82a0fe20a541c03148528be8cac2408564a6c9a0cc7e9171802bc1d26985/attrs-26.1.0.tar.gz", hash = "sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32", size = 952055, upload-time = "2026-03-19T14:22:25.026Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/64/b4/17d4b0b2a2dc85a6df63d1157e028ed19f90d4cd97c36717afef2bc2f395/attrs-26.1.0-py3-none-any.whl", hash = "sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309", size = 67548, upload-time = "2026-03-19T14:22:23.645Z" },
-]
-
-[[package]]
-name = "authlib"
-version = "1.9.5"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "cryptography" },
-    { name = "joserfc" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/04/96/6e7ed72bb49762a9b65d51c4cb235d793f0485cd8d6f7e9404ce955a4808/authlib-1.9.5.tar.gz", hash = "sha256:3f031d5e9b6486089e91e8f7f1b68f36275f3151c66460d650fc90d420545fd7", size = 183564, upload-time = "2026-11-05T16:13:18.409Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/58/d7/d384e7a639dd1d018767ba0fe39601b61cded066bb7af38db31ec998252d/authlib-1.9.5-py2.py3-none-any.whl", hash = "sha256:e32a63e3d869196b61816b2602231862179a2ffc29358c009d1f022c8b86a8b2", size = 267074, upload-time = "2026-11-05T16:13:16.766Z" },
 ]
 
 [[package]]
@@ -303,16 +288,37 @@ wheels = [
 
 [[package]]
 name = "fastmcp"
-version = "4.2.6.dev49+f5c60aea"
-source = { git = "https://github.com/PrefectHQ/fastmcp.git?rev=f5c60aeac593960900345f6122563fa950cc43aa#f5c60aeac593960900345f6122563fa950cc43aa" }
+version = "4.2.6"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "fastmcp-slim", extra = ["client", "server"] },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/85/1d/9f024f5eef8be87e0a57dec143fdabd087adbbc27e9b3f52b1409be86e60/fastmcp-4.2.6.tar.gz", hash = "sha256:df629f183202124342a2cad58b069b4058d8bb53696a015694e41b128bf21651", size = 41900204, upload-time = "2026-11-25T02:55:07.247Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dd/58/03a235d1c9f01f076d9f5093c31826946de357d85673d0fdec9879ecbadd/fastmcp-4.2.6-py3-none-any.whl", hash = "sha256:828b8b34f4b0b4656ee7e2cdfc49989e30d6a2b4b3d234fd3203fe1bb3632734", size = 8262, upload-time = "2026-11-25T02:55:05.384Z" },
+]
+
+[package.optional-dependencies]
+events = [
+    { name = "fastmcp-events" },
+]
+
+[[package]]
+name = "fastmcp-events"
+version = "4.2.6"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "fastmcp-slim", extra = ["mcp"] },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/31/f8/7829d7075cc09934fb4832af974008d2dfb8dd4aacff9f989a1c00302e60/fastmcp_events-4.2.6.tar.gz", hash = "sha256:e322a2ee3c8452ffb8f898167405090e8b13151d36d695cb7b9407822e909013", size = 25660, upload-time = "2026-11-25T02:55:00.93Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/83/f5/84ce489648afdabf19f49a370b972ffa02da1acd956d8d35ea9d24e98de7/fastmcp_events-4.2.6-py3-none-any.whl", hash = "sha256:db140fd52818c40484e6e6cc31261eca7262fe0356bb8963f76690065addd159", size = 31483, upload-time = "2026-11-25T02:55:00.248Z" },
 ]
 
 [[package]]
 name = "fastmcp-slim"
-version = "4.2.6.dev49+f5c60aea"
-source = { git = "https://github.com/PrefectHQ/fastmcp.git?subdirectory=fastmcp_slim&rev=f5c60aeac593960900345f6122563fa950cc43aa#f5c60aeac593960900345f6122563fa950cc43aa" }
+version = "4.2.6"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "mcp-types" },
     { name = "platformdirs" },
@@ -322,10 +328,13 @@ dependencies = [
     { name = "rich" },
     { name = "typing-extensions" },
 ]
+sdist = { url = "https://files.pythonhosted.org/packages/b6/2e/1dd46ee862200b104f57833c88db89f5203bef50090b4e74812b8326f372/fastmcp_slim-4.2.6.tar.gz", hash = "sha256:15467ae9bb3fc80897dec7b37eab5310b47b75066b56720e286a3c08fd469577", size = 835437, upload-time = "2026-11-25T02:54:36.172Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fd/dc/6291c289871ffeddf7c4de32adb59cfa436b552d30c2c8fc0a1ee245971b/fastmcp_slim-4.2.6-py3-none-any.whl", hash = "sha256:20fa67fd970ef806aa8b387db6a4f2a8d6fc37007186169c90f050ccb3bcec04", size = 1025251, upload-time = "2026-11-25T02:54:34.87Z" },
+]
 
 [package.optional-dependencies]
 client = [
-    { name = "authlib" },
     { name = "beartype", version = "0.23.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.15'" },
     { name = "exceptiongroup" },
     { name = "httpx2" },
@@ -334,8 +343,14 @@ client = [
     { name = "py-key-value-aio", extra = ["filetree", "memory"] },
     { name = "starlette" },
 ]
+mcp = [
+    { name = "exceptiongroup" },
+    { name = "httpx2" },
+    { name = "mcp" },
+    { name = "opentelemetry-api" },
+    { name = "starlette" },
+]
 server = [
-    { name = "authlib" },
     { name = "beartype", version = "0.23.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.15'" },
     { name = "certifi" },
     { name = "cyclopts" },
