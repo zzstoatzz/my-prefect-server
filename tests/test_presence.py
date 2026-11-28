@@ -83,4 +83,4 @@ def test_presence_client_targets_the_owners_resolved_pds(monkeypatch):
     with presence.presence_client() as client:
         assert client.base_url == "https://pds.test"
     assert resolved == [presence.OWNER]
-    assert presence.SPACE.startswith(f"at://{presence.OWNER}/space/")
+    assert f"at:space/{presence.OWNER}/io.zzstoatzz.home.space/home" == presence.SPACE

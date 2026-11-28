@@ -81,7 +81,7 @@ and departure actuation still await a real trip test.
 
 The record owner is `zzstoatzz.io` (`did:plc:xbtmt2zjwlrfegqvch7fboei`), whose
 PDS, `zds.zzstoatzz.io`, is also the space host. The space is
-`at://did:plc:xbtmt2zjwlrfegqvch7fboei/space/io.zzstoatzz.home.space/home` with
+`at:space/did:plc:xbtmt2zjwlrfegqvch7fboei/io.zzstoatzz.home.space/home` with
 a `com.atproto.personalspace.policy`, so only the owner reads or writes. The
 record is `io.zzstoatzz.home.presence/self`. Anonymous reads are rejected with
 401. The code resolves the host from the owner's DID document.

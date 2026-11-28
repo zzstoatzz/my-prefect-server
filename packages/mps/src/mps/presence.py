@@ -11,7 +11,7 @@ from mps.atproto import resolve_pds
 OWNER = "did:plc:xbtmt2zjwlrfegqvch7fboei"
 SPACE_TYPE = "io.zzstoatzz.home.space"
 COLLECTION = "io.zzstoatzz.home.presence"
-SPACE = f"at://{OWNER}/space/{SPACE_TYPE}/home"
+SPACE = f"at:space/{OWNER}/{SPACE_TYPE}/home"
 
 
 class PresenceUpdate(BaseModel):
