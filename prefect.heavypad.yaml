@@ -32,12 +32,12 @@ deployments:
       job_variables:
         command: >-
           uv run --no-project --with prefect==3.9.3
-          --with 'my-prefect-server[lighting] @ git+https://github.com/zzstoatzz/my-prefect-server.git@e5b4a40ed6d9ce06a629d5d9bab0fd726fe5bb0d'
+          --with 'my-prefect-server[lighting] @ git+https://github.com/zzstoatzz/my-prefect-server.git@67beffccea8b4182ca33538ad7e770e7d963b8ce'
           prefect flow-run execute
         env:
           PRESENCE_SOURCE_URL: https://github.com/zzstoatzz/my-prefect-server.git
-          PRESENCE_SOURCE_REVISION: e5b4a40ed6d9ce06a629d5d9bab0fd726fe5bb0d
-          MPS_PIN: '@e5b4a40ed6d9ce06a629d5d9bab0fd726fe5bb0d'
+          PRESENCE_SOURCE_REVISION: 67beffccea8b4182ca33538ad7e770e7d963b8ce
+          MPS_PIN: '@67beffccea8b4182ca33538ad7e770e7d963b8ce'
           PRESENCE_CREDENTIAL_FILE: /home/stoat/.config/presence/zzstoatzz-io-app-password
           PRESENCE_HUE_ENV_FILE: /home/stoat/.config/presence/hue-env.json
           PRESENCE_LIGHTING_STATE_FILE: /home/stoat/.config/presence/lighting-state
